@@ -74,6 +74,7 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/cache.h>
+#include <net/devlink.h>
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/uaccess.h>
@@ -350,6 +351,9 @@ struct cp_private {
 	dma_addr_t		ring_dma;
 
 	struct mii_if_info	mii_if;
+
+	struct devlink		*dlx;
+	struct devlink_port	devlink_port;
 };
 
 #define cpr8(reg)	readb(cp->regs + (reg))
@@ -1886,6 +1890,47 @@ static const struct net_device_ops cp_netdev_ops = {
 #endif
 };
 
+static int cp_devlink_port_type_set(struct devlink_port *devlink_port,
+				    enum devlink_port_type port_type)
+{
+	struct cp_private *cp = container_of(devlink_port, struct cp_private,
+					     devlink_port);
+
+	switch (port_type) {
+	case DEVLINK_PORT_TYPE_AUTO:
+	case DEVLINK_PORT_TYPE_ETH:
+		devlink_port_type_clear(&cp->devlink_port);
+		devlink_port_type_eth_set(&cp->devlink_port, cp->dev);
+		break;
+	case DEVLINK_PORT_TYPE_IB:
+		devlink_port_type_clear(&cp->devlink_port);
+		devlink_port_type_ib_set(&cp->devlink_port, NULL);
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static int cp_devlink_port_split(struct devlink *devlink, unsigned int port_index,
+				 unsigned int count)
+{
+	printk("split port index %d, count %d\n", port_index, count);
+	return 0;
+}
+
+static int cp_devlink_port_unsplit(struct devlink *devlink, unsigned int port_index)
+{
+	printk("unsplit port index %d\n", port_index);
+	return 0;
+}
+
+static const struct devlink_ops cp_devlink_ops = {
+	.port_type_set = cp_devlink_port_type_set,
+	.port_split = cp_devlink_port_split,
+	.port_unsplit = cp_devlink_port_unsplit,
+};
+
 static int cp_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct net_device *dev;
@@ -2025,8 +2070,29 @@ static int cp_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (cp->wol_enabled)
 		cp_set_d3_state (cp);
 
+	cp->dlx = devlink_alloc(&cp_devlink_ops, 0);
+	if (!cp->dlx)
+		goto err_out_register_netdev;
+
+	set_devlink_dev(cp->dlx, &pdev->dev);
+	rc = devlink_register(cp->dlx);
+	if (rc)
+		goto err_out_devlink_alloc;
+
+	rc = devlink_port_register(cp->dlx, &cp->devlink_port, 99);
+	if (rc)
+		goto err_out_devlink_register;
+
+	devlink_port_type_eth_set(&cp->devlink_port, dev);
+
 	return 0;
 
+err_out_devlink_register:
+	devlink_unregister(cp->dlx);
+err_out_devlink_alloc:
+	devlink_free(cp->dlx);
+err_out_register_netdev:
+	unregister_netdev(dev);
 err_out_iomap:
 	iounmap(regs);
 err_out_res:
@@ -2045,6 +2111,10 @@ static void cp_remove_one (struct pci_dev *pdev)
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct cp_private *cp = netdev_priv(dev);
 
+	devlink_port_type_clear(&cp->devlink_port);
+	devlink_port_unregister(&cp->devlink_port);
+	devlink_unregister(cp->dlx);
+	devlink_free(cp->dlx);
 	unregister_netdev(dev);
 	iounmap(cp->regs);
 	if (cp->wol_enabled)
