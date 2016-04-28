@@ -2469,6 +2469,7 @@ err_event_register:
 static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
+	int i;
 
 	mlxsw_sp_router_fini(mlxsw_sp);
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
@@ -2477,6 +2478,9 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_event_unregister(mlxsw_sp, MLXSW_TRAP_ID_PUDE);
 	mlxsw_sp_ports_remove(mlxsw_sp);
 	WARN_ON(!list_empty(&mlxsw_sp->fids));
+	for (i = 0; i < MLXSW_SP_RIF_MAX; i++)
+		WARN_ON_ONCE(mlxsw_sp->rifs[i]);
+
 }
 
 static struct mlxsw_config_profile mlxsw_sp_config_profile = {
