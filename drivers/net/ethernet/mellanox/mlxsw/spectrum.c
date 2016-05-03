@@ -870,8 +870,8 @@ err_port_vport_create:
 	return err;
 }
 
-int mlxsw_sp_port_kill_vid(struct net_device *dev,
-			   __be16 __always_unused proto, u16 vid)
+static int mlxsw_sp_port_kill_vid(struct net_device *dev,
+				  __be16 __always_unused proto, u16 vid)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	struct mlxsw_sp_port *mlxsw_sp_vport;
