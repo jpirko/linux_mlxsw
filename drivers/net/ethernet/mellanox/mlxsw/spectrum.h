@@ -51,6 +51,7 @@
 #define MLXSW_SP_VFID_BASE VLAN_N_VID
 #define MLXSW_SP_VFID_PORT_MAX 512	/* Non-bridged VLAN interfaces */
 #define MLXSW_SP_VFID_BR_MAX 6144	/* Bridged VLAN interfaces */
+#define MLXSW_SP_BR_VFID_BASE (MLXSW_SP_VFID_BASE + MLXSW_SP_VFID_PORT_MAX)
 #define MLXSW_SP_VFID_MAX (MLXSW_SP_VFID_PORT_MAX + MLXSW_SP_VFID_BR_MAX)
 
 #define MLXSW_SP_LAG_MAX 64
@@ -385,7 +386,7 @@ int mlxsw_sp_port_vlan_set(struct mlxsw_sp_port *mlxsw_sp_port, u16 vid_begin,
 			   u16 vid_end, bool is_member, bool untagged);
 int mlxsw_sp_port_add_vid(struct net_device *dev, __be16 __always_unused proto,
 			  u16 vid);
-int mlxsw_sp_vport_flood_set(struct mlxsw_sp_port *mlxsw_sp_vport, u16 vfid,
+int mlxsw_sp_vport_flood_set(struct mlxsw_sp_port *mlxsw_sp_vport, u16 fid,
 			     bool set, bool only_uc);
 void mlxsw_sp_port_active_vlans_del(struct mlxsw_sp_port *mlxsw_sp_port);
 int mlxsw_sp_port_pvid_set(struct mlxsw_sp_port *mlxsw_sp_port, u16 vid);
