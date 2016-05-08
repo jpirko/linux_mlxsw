@@ -232,6 +232,7 @@ struct mlxsw_sp {
 	u8 port_to_module[MLXSW_PORT_MAX_PORTS];
 	struct mlxsw_sp_sb sb;
 	struct mlxsw_sp_router router;
+	struct delayed_work neigh_update_dw;
 };
 
 static inline struct mlxsw_sp_upper *
