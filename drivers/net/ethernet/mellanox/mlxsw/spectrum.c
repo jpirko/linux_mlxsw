@@ -860,6 +860,11 @@ static const struct net_device_ops mlxsw_sp_port_netdev_ops = {
 	.ndo_get_phys_port_name	= mlxsw_sp_port_get_phys_port_name,
 };
 
+bool mlxsw_sp_port_dev_check(const struct net_device *dev)
+{
+	return dev->netdev_ops == &mlxsw_sp_port_netdev_ops;
+}
+
 static void mlxsw_sp_port_get_drvinfo(struct net_device *dev,
 				      struct ethtool_drvinfo *drvinfo)
 {
@@ -1656,6 +1661,7 @@ static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		goto err_alloc_stats;
 	}
 
+	dev->neigh_priv_len = sizeof(struct mlxsw_neigh_data);
 	dev->netdev_ops = &mlxsw_sp_port_netdev_ops;
 	dev->ethtool_ops = &mlxsw_sp_port_ethtool_ops;
 
@@ -2578,11 +2584,6 @@ static int mlxsw_sp_vport_fdb_flush(struct mlxsw_sp_port *mlxsw_sp_vport,
 static int mlxsw_sp_vport_bridge_leave(struct mlxsw_sp_port *mlxsw_sp_vport,
 				       struct net_device *br_dev,
 				       bool flush_fdb);
-
-static bool mlxsw_sp_port_dev_check(const struct net_device *dev)
-{
-	return dev->netdev_ops == &mlxsw_sp_port_netdev_ops;
-}
 
 static bool mlxsw_sp_master_bridge_check(struct mlxsw_sp *mlxsw_sp,
 					 struct net_device *br_dev)
