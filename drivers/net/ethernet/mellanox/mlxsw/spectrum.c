@@ -1588,6 +1588,20 @@ static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	return 0;
 }
 
+static struct net_device *
+mlxsw_sp_vport_dev_get(struct mlxsw_sp_port *mlxsw_sp_vport)
+{
+	struct mlxsw_sp_upper *lag;
+
+	if (!mlxsw_sp_vport->lagged)
+		return mlxsw_sp_vport->dev;
+
+	lag = mlxsw_sp_lag_get(mlxsw_sp_vport->mlxsw_sp,
+			       mlxsw_sp_vport->lag_id);
+
+	return lag->dev;
+}
+
 static int __mlxsw_sp_vport_vlan_link(struct mlxsw_sp_port *mlxsw_sp_port,
 				      struct net_device *dev);
 
@@ -1597,6 +1611,7 @@ static void __mlxsw_sp_vport_vlan_unlink(struct mlxsw_sp_port *mlxsw_sp_vport,
 static int mlxsw_sp_port_pvid_vport_add(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	struct mlxsw_sp_port *mlxsw_sp_vport;
+	struct net_device *dev;
 	int err;
 
 	/* If we got here following upper devices receiving the
@@ -1619,7 +1634,10 @@ static int mlxsw_sp_port_pvid_vport_add(struct mlxsw_sp_port *mlxsw_sp_port)
 		goto err_port_pvid_set;
 
 	mlxsw_sp_vport = mlxsw_sp_port_vport_find(mlxsw_sp_port, 1);
-	err = __mlxsw_sp_vport_vlan_link(mlxsw_sp_vport, mlxsw_sp_vport->dev);
+
+	dev = mlxsw_sp_vport_dev_get(mlxsw_sp_vport);
+
+	err = __mlxsw_sp_vport_vlan_link(mlxsw_sp_vport, dev);
 	if (err)
 		goto err_vport_vlan_link;
 
