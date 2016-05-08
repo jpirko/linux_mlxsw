@@ -1610,6 +1610,10 @@ static int mlxsw_sp_port_pvid_vport_add(struct mlxsw_sp_port *mlxsw_sp_port)
 	if (err)
 		return err;
 
+	err = mlxsw_sp_port_vlan_set(mlxsw_sp_port, 1, 1, true, true);
+	if (err)
+		goto err_port_vlan_set;
+
 	err = mlxsw_sp_port_pvid_set(mlxsw_sp_port, 1);
 	if (err)
 		goto err_port_pvid_set;
@@ -1623,6 +1627,7 @@ static int mlxsw_sp_port_pvid_vport_add(struct mlxsw_sp_port *mlxsw_sp_port)
 
 err_vport_vlan_link:
 err_port_pvid_set:
+err_port_vlan_set:
 	mlxsw_sp_port_kill_vid(mlxsw_sp_port->dev, 0, 1);
 	return err;
 }
