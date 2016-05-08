@@ -230,6 +230,7 @@ struct mlxsw_sp {
 	u8 port_to_module[MLXSW_PORT_MAX_PORTS];
 	struct mlxsw_sp_sb sb;
 	struct mlxsw_sp_router router;
+	struct delayed_work neigh_update_dw;
 };
 
 static inline struct mlxsw_sp_upper *
@@ -370,6 +371,8 @@ mlxsw_sp_rif_find_by_dev(const struct mlxsw_sp *mlxsw_sp,
 	return NULL;
 }
 
+bool mlxsw_sp_port_dev_check(const struct net_device *dev);
+
 enum mlxsw_sp_flood_table {
 	MLXSW_SP_FLOOD_TABLE_UC,
 	MLXSW_SP_FLOOD_TABLE_BM,
@@ -461,5 +464,11 @@ int mlxsw_sp_router_fib4_add(struct mlxsw_sp_port *mlxsw_sp_port,
 			     struct switchdev_trans *trans);
 int mlxsw_sp_router_fib4_del(struct mlxsw_sp_port *mlxsw_sp_port,
 			     const struct switchdev_obj_ipv4_fib *fib4);
+struct mlxsw_neigh_data {
+	bool offloaded;
+	u32 ref_count;
+	struct neighbour *n;
+	struct delayed_work dw;
+};
 
 #endif
