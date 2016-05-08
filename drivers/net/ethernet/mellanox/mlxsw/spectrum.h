@@ -109,6 +109,7 @@ struct mlxsw_sp_rif {
 	struct net_device *dev;
 	struct mlxsw_sp_fid *f;
 	u16 rif;
+	int reachable_time;
 };
 
 struct mlxsw_sp_mid {
@@ -201,6 +202,9 @@ struct mlxsw_sp_router {
 	struct mlxsw_sp_lpm_tree lpm_trees[MLXSW_SP_LPM_TREE_COUNT];
 	struct mlxsw_sp_vr vrs[MLXSW_SP_VIRTUAL_ROUTER_MAX];
 	struct rhashtable neigh_ht;
+	struct delayed_work neigh_update_dw;
+	int neigh_update_time;
+	int last_neigh_update_time;
 };
 
 struct mlxsw_sp {
