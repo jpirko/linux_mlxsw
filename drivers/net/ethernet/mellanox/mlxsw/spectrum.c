@@ -2787,6 +2787,11 @@ static int mlxsw_sp_port_vlan_unlink(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int mlxsw_sp_port_bridge_join(struct mlxsw_sp_port *mlxsw_sp_port)
 {
+	mlxsw_sp_port->learning = 1;
+	mlxsw_sp_port->learning_sync = 1;
+	mlxsw_sp_port->uc_flood = 1;
+	mlxsw_sp_port->bridged = 1;
+
 	/* When port is not bridged untagged packets are tagged with
 	 * PVID=VID=1, thereby creating an implicit VLAN interface in
 	 * the device. Remove it and let bridge code take care of its
@@ -2794,29 +2799,28 @@ static int mlxsw_sp_port_bridge_join(struct mlxsw_sp_port *mlxsw_sp_port)
 	 */
 	mlxsw_sp_port_pvid_vport_del(mlxsw_sp_port);
 
-	mlxsw_sp_port->learning = 1;
-	mlxsw_sp_port->learning_sync = 1;
-	mlxsw_sp_port->uc_flood = 1;
-	mlxsw_sp_port->bridged = 1;
-
 	return 0;
 }
 
-static int mlxsw_sp_port_bridge_leave(struct mlxsw_sp_port *mlxsw_sp_port,
-				      bool flush_fdb)
+static void __mlxsw_sp_port_bridge_leave(struct mlxsw_sp_port *mlxsw_sp_port,
+					 bool flush_fdb)
 {
-	if (flush_fdb && mlxsw_sp_port_fdb_flush(mlxsw_sp_port))
-		netdev_err(mlxsw_sp_port->dev, "Failed to flush FDB\n");
-
 	mlxsw_sp_port->learning = 0;
 	mlxsw_sp_port->learning_sync = 0;
 	mlxsw_sp_port->uc_flood = 0;
 	mlxsw_sp_port->bridged = 0;
 
-	/* Add implicit VLAN interface in the device, so that untagged
-	 * packets will be classified to the default vFID.
-	 */
-	return mlxsw_sp_port_pvid_vport_add(mlxsw_sp_port);
+	if (flush_fdb)
+		mlxsw_sp_port_fdb_flush(mlxsw_sp_port);
+}
+
+static int mlxsw_sp_port_bridge_leave(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	mlxsw_sp_port_pvid_vport_add(mlxsw_sp_port);
+
+	__mlxsw_sp_port_bridge_leave(mlxsw_sp_port, true);
+
+	return 0;
 }
 
 static int mlxsw_sp_lag_create(struct mlxsw_sp *mlxsw_sp, u16 lag_id)
@@ -2939,16 +2943,12 @@ static void mlxsw_sp_port_lag_leave_cleanup(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp_port *mlxsw_sp_vport;
 
 	list_for_each_entry(mlxsw_sp_vport, &mlxsw_sp_port->vports_list,
-			    vport.list) {
-		if (mlxsw_sp_vport_vid_get(mlxsw_sp_vport) == 1)
-			continue;
-
+			    vport.list)
 		__mlxsw_sp_vport_vlan_unlink(mlxsw_sp_vport, false);
-	}
 
 	if (mlxsw_sp_port->bridged) {
 		mlxsw_sp_port_active_vlans_del(mlxsw_sp_port);
-		mlxsw_sp_port_bridge_leave(mlxsw_sp_port, false);
+		__mlxsw_sp_port_bridge_leave(mlxsw_sp_port, false);
 		mlxsw_sp_master_bridge_dec(mlxsw_sp, NULL);
 	}
 
@@ -2956,8 +2956,8 @@ static void mlxsw_sp_port_lag_leave_cleanup(struct mlxsw_sp_port *mlxsw_sp_port,
 		mlxsw_sp_port_fdb_flush_by_lag_id(mlxsw_sp_port);
 }
 
-static int mlxsw_sp_port_lag_join(struct mlxsw_sp_port *mlxsw_sp_port,
-				  struct net_device *lag_dev)
+static int __mlxsw_sp_port_lag_join(struct mlxsw_sp_port *mlxsw_sp_port,
+				    struct net_device *lag_dev)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct mlxsw_sp_upper *lag;
@@ -3001,8 +3001,8 @@ err_col_port_add:
 	return err;
 }
 
-static int mlxsw_sp_port_lag_leave(struct mlxsw_sp_port *mlxsw_sp_port,
-				   struct net_device *lag_dev)
+static int __mlxsw_sp_port_lag_leave(struct mlxsw_sp_port *mlxsw_sp_port,
+				     struct net_device *lag_dev)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct mlxsw_sp_upper *lag;
@@ -3038,6 +3038,40 @@ static int mlxsw_sp_port_lag_leave(struct mlxsw_sp_port *mlxsw_sp_port,
 	mlxsw_sp_port_lag_leave_cleanup(mlxsw_sp_port, lag);
 
 	return 0;
+}
+
+static int mlxsw_sp_port_lag_join(struct mlxsw_sp_port *mlxsw_sp_port,
+				  struct net_device *lag_dev)
+{
+	int err;
+
+	mlxsw_sp_port_pvid_vport_del(mlxsw_sp_port);
+
+	err = __mlxsw_sp_port_lag_join(mlxsw_sp_port, lag_dev);
+	if (err)
+		goto err_port_lag_join;
+
+	err = mlxsw_sp_port_pvid_vport_add(mlxsw_sp_port);
+	if (err)
+		goto err_port_pvid_add;
+
+	return 0;
+
+err_port_pvid_add:
+	__mlxsw_sp_port_lag_leave(mlxsw_sp_port, lag_dev);
+err_port_lag_join:
+	mlxsw_sp_port_pvid_vport_add(mlxsw_sp_port);
+	return err;
+}
+
+static void mlxsw_sp_port_lag_leave(struct mlxsw_sp_port *mlxsw_sp_port,
+				    struct net_device *lag_dev)
+{
+	mlxsw_sp_port_pvid_vport_del(mlxsw_sp_port);
+
+	__mlxsw_sp_port_lag_leave(mlxsw_sp_port, lag_dev);
+
+	mlxsw_sp_port_pvid_vport_add(mlxsw_sp_port);
 }
 
 static int mlxsw_sp_lag_dist_port_add(struct mlxsw_sp_port *mlxsw_sp_port,
@@ -3133,8 +3167,7 @@ static int mlxsw_sp_netdevice_port_upper_event(struct net_device *dev,
 				}
 				mlxsw_sp_master_bridge_inc(mlxsw_sp, upper_dev);
 			} else {
-				err = mlxsw_sp_port_bridge_leave(mlxsw_sp_port,
-								 true);
+				err = mlxsw_sp_port_bridge_leave(mlxsw_sp_port);
 				mlxsw_sp_master_bridge_dec(mlxsw_sp, upper_dev);
 				if (err) {
 					netdev_err(dev, "Failed to leave bridge\n");
@@ -3150,12 +3183,8 @@ static int mlxsw_sp_netdevice_port_upper_event(struct net_device *dev,
 					return NOTIFY_BAD;
 				}
 			} else {
-				err = mlxsw_sp_port_lag_leave(mlxsw_sp_port,
-							      upper_dev);
-				if (err) {
-					netdev_err(dev, "Failed to leave link aggregation\n");
-					return NOTIFY_BAD;
-				}
+				mlxsw_sp_port_lag_leave(mlxsw_sp_port,
+							upper_dev);
 			}
 		}
 		break;
