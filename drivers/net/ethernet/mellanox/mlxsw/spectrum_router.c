@@ -3,6 +3,7 @@
  * Copyright (c) 2016 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2016 Jiri Pirko <jiri@mellanox.com>
  * Copyright (c) 2016 Ido Schimmel <idosch@mellanox.com>
+ * Copyright (c) 2016 Yotam Gigi <yotamg@mellanox.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -38,12 +39,18 @@
 #include <linux/rhashtable.h>
 #include <linux/bitops.h>
 #include <linux/in6.h>
+#include <linux/hashtable.h>
+#include <linux/notifier.h>
 #include <net/neighbour.h>
+#include <net/netevent.h>
 #include <net/arp.h>
 
 #include "spectrum.h"
 #include "core.h"
+#include "port.h"
 #include "reg.h"
+
+#define MLXSW_SP_ROUTER_NEIGH_UPDATE_TIME 2000
 
 #define mlxsw_sp_prefix_usage_for_each(prefix, prefix_usage) \
 	for_each_set_bit(prefix, (prefix_usage)->b, MLXSW_SP_PREFIX_COUNT)
@@ -551,6 +558,9 @@ struct mlxsw_sp_neigh_entry {
 	struct mlxsw_sp_neigh_key key;
 	u16 rif_id;
 	struct neighbour *n;
+	bool offloaded;
+	struct delayed_work dw;
+	unsigned char ha[ETH_ALEN];
 };
 
 static const struct rhashtable_params mlxsw_sp_neigh_ht_params = {
@@ -577,6 +587,8 @@ mlxsw_sp_neigh_entry_remove(struct mlxsw_sp *mlxsw_sp,
 			       mlxsw_sp_neigh_ht_params);
 }
 
+static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work);
+
 static struct mlxsw_sp_neigh_entry *
 mlxsw_sp_neigh_entry_create(const void *addr, size_t addr_len,
 			    struct net_device *dev, u16 rif_id,
@@ -591,6 +603,7 @@ mlxsw_sp_neigh_entry_create(const void *addr, size_t addr_len,
 	neigh_entry->key.dev = dev;
 	neigh_entry->rif_id = rif_id;
 	neigh_entry->n = n;
+	INIT_DELAYED_WORK(&neigh_entry->dw, mlxsw_sp_router_neigh_update_hw);
 	return neigh_entry;
 }
 
@@ -671,14 +684,212 @@ void mlxsw_sp_router_neigh_destroy(struct net_device *dev,
 	mlxsw_sp_neigh_entry_destroy(neigh_entry);
 }
 
+static void mlxsw_sp_router_update_neigh(struct mlxsw_sp *mlxsw_sp,
+					 u32 dip, bool a, u16 rif_id)
+{
+	struct mlxsw_sp_rif *rif = mlxsw_sp->rifs[rif_id];
+	struct net_device *dev;
+	struct neighbour *n;
+	__be32 dipn = htonl(dip);
+
+	if (!rif)
+		return;
+	dev = rif->dev;
+
+	n = neigh_lookup(&arp_tbl, &dipn, dev);
+	if (!n) {
+		netdev_err(dev, "Neighbour %pI4h does not exist!\n", &dip);
+		return;
+	}
+	netdev_dbg(dev, "Updating neigh dip=%pI4h, rif=%d, a=%d\n",
+		   &dip, rif_id, a);
+	n->used = jiffies;
+	neigh_release(n);
+}
+
+static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
+{
+	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
+						 neigh_update_dw.work);
+	char *rauhtd_pl;
+	u8 num_rec;
+	int err;
+
+	rauhtd_pl = kmalloc(MLXSW_REG_RAUHTD_LEN, GFP_KERNEL);
+	if (!rauhtd_pl)
+		return;
+
+	mlxsw_reg_rauhtd_pack(rauhtd_pl, MLXSW_REG_RAUHTD_FILTER_A,
+			      MLXSW_REG_RAUHTD_OP_DUMP_AND_CLEAR,
+			      MLXSW_REG_RAUHTD_REC_MAX_NUM, 1,
+			      MLXSW_REG_RAUHTD_ENTRY_TYPE_IPV4, 0);
+
+	/* start rauhtd transaction */
+	do {
+		int ent;
+
+		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rauhtd),
+				      rauhtd_pl);
+		if (err)
+			goto out;
+
+		mlxsw_reg_rauhtd_unpack(rauhtd_pl, &num_rec);
+
+		/* foreach ipv4 entry */
+		for (ent = 0; ent < num_rec; ent++) {
+			u8 num_neigh;
+			int neigh;
+
+			mlxsw_reg_rauhtd_ipv4ent_unpack(rauhtd_pl, ent,
+							&num_neigh);
+
+			/* hardware returns the number substracted by 1, so
+			 * update it
+			 */
+			num_neigh += 1;
+
+			/* foreach neigh inside an ipv4 entry */
+			for (neigh = 0; neigh < num_neigh; neigh++) {
+				u16 rif_id;
+				u32 dip;
+				bool a;
+
+				mlxsw_reg_rauhtd_ipv4ent_neigh_unpack(rauhtd_pl,
+								      ent,
+								      neigh,
+								      &dip, &a,
+								      &rif_id);
+				mlxsw_sp_router_update_neigh(mlxsw_sp, dip, a,
+							     rif_id);
+			}
+		}
+	} while (num_rec == MLXSW_REG_RAUHTD_REC_MAX_NUM);
+
+out:
+	kfree(rauhtd_pl);
+	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw,
+			       MLXSW_SP_ROUTER_NEIGH_UPDATE_TIME);
+}
+
+static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
+{
+	struct mlxsw_sp_neigh_entry *neigh_entry =
+		container_of(work, struct mlxsw_sp_neigh_entry, dw.work);
+	struct neighbour *n = neigh_entry->n;
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	struct mlxsw_sp *mlxsw_sp;
+	char rauht_pl[MLXSW_REG_RAUHT_LEN];
+	struct net_device *dev;
+	bool entry_connected;
+	u8 nud_state;
+	bool updating;
+	bool removing;
+	bool adding;
+	u32 dip;
+	int err;
+
+	read_lock_bh(&n->lock);
+	dip = ntohl(*((__be32 *) n->primary_key));
+	memcpy(neigh_entry->ha, n->ha, sizeof(neigh_entry->ha));
+	nud_state = n->nud_state;
+	dev = n->dev;
+	read_unlock_bh(&n->lock);
+
+	mlxsw_sp_port = mlxsw_sp_port_dev_lower_find(n->dev);
+	if (WARN_ON(!mlxsw_sp_port))
+		return;
+	mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+
+	entry_connected = nud_state & NUD_CONNECTED;
+	adding = (!neigh_entry->offloaded) && entry_connected;
+	updating = neigh_entry->offloaded && entry_connected;
+	removing = neigh_entry->offloaded && !entry_connected;
+
+	if (adding || updating) {
+		mlxsw_reg_rauht_pack4(rauht_pl, RAUHT_WRITE_OP_ADD,
+				      neigh_entry->rif_id,
+				      neigh_entry->ha, dip);
+		err = mlxsw_reg_write(mlxsw_sp->core,
+				      MLXSW_REG(rauht), rauht_pl);
+		if (err) {
+			netdev_err(dev, "Could not add neigh %pI4h\n", &dip);
+			neigh_entry->offloaded = false;
+		} else {
+			neigh_entry->offloaded = true;
+		}
+	} else if (removing) {
+		mlxsw_reg_rauht_pack4(rauht_pl, RAUHT_WRITE_OP_DELETE,
+				      neigh_entry->rif_id,
+				      neigh_entry->ha, dip);
+		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rauht),
+				      rauht_pl);
+		if (err) {
+			netdev_err(dev, "Could not delete neigh %pI4h\n", &dip);
+			neigh_entry->offloaded = true;
+		} else {
+			neigh_entry->offloaded = false;
+		}
+	}
+}
+
+static int mlxsw_sp_router_netevent_event(struct notifier_block *unused,
+					  unsigned long event, void *ptr)
+{
+	struct neighbour *n = ptr;
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	u32 dip;
+
+	if (event != NETEVENT_NEIGH_UPDATE || n->tbl != &arp_tbl)
+		return NOTIFY_DONE;
+
+	mlxsw_sp_port = mlxsw_sp_port_dev_lower_find(n->dev);
+	if (!mlxsw_sp_port)
+		return NOTIFY_DONE;
+
+	dip = ntohl(*((__be32 *) n->primary_key));
+	neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp_port->mlxsw_sp, &dip,
+						  sizeof(dip), n->dev);
+	if (!neigh_entry) {
+		WARN_ON(!neigh_entry);
+		return NOTIFY_DONE;
+	}
+	mlxsw_core_schedule_dw(&neigh_entry->dw, 0);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block mlxsw_sp_router_netevent_nb __read_mostly = {
+	.notifier_call = mlxsw_sp_router_netevent_event,
+};
+
 static int mlxsw_sp_neigh_init(struct mlxsw_sp *mlxsw_sp)
 {
-	return rhashtable_init(&mlxsw_sp->router.neigh_ht,
-			       &mlxsw_sp_neigh_ht_params);
+	int err;
+
+	err = rhashtable_init(&mlxsw_sp->router.neigh_ht,
+			      &mlxsw_sp_neigh_ht_params);
+	if (err)
+		return err;
+
+	err = register_netevent_notifier(&mlxsw_sp_router_netevent_nb);
+	if (err)
+		goto err_register_netevent_notifier;
+
+	/* Create the delayed work for the activity_update */
+	INIT_DELAYED_WORK(&mlxsw_sp->neigh_update_dw,
+			  mlxsw_sp_router_update_neighbours);
+	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw, 0);
+	return 0;
+
+err_register_netevent_notifier:
+	unregister_netevent_notifier(&mlxsw_sp_router_netevent_nb);
+	return err;
 }
 
 static void mlxsw_sp_neigh_fini(struct mlxsw_sp *mlxsw_sp)
 {
+	cancel_delayed_work_sync(&mlxsw_sp->neigh_update_dw);
+	unregister_netevent_notifier(&mlxsw_sp_router_netevent_nb);
 	rhashtable_destroy(&mlxsw_sp->router.neigh_ht);
 }
 
