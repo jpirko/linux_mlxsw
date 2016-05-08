@@ -52,6 +52,7 @@
 #include <linux/dcbnl.h>
 #include <net/switchdev.h>
 #include <generated/utsrelease.h>
+#include <net/arp.h>
 
 #include "spectrum.h"
 #include "core.h"
@@ -2772,6 +2773,7 @@ mlxsw_sp_vport_rif_sp_create(struct mlxsw_sp_port *mlxsw_sp_vport)
 	struct net_device *dev = mlxsw_sp_vport->dev;
 	struct mlxsw_sp_rif *r;
 	struct mlxsw_sp_fid *f;
+	struct neigh_parms *p;
 	u16 rif, fid;
 	int err;
 
@@ -2801,6 +2803,12 @@ mlxsw_sp_vport_rif_sp_create(struct mlxsw_sp_port *mlxsw_sp_vport)
 	}
 
 	f->r = r;
+
+	read_lock_bh(&arp_tbl.lock);
+	list_for_each_entry(p, &arp_tbl.parms_list, list)
+		if (p->dev && p->dev == r->dev)
+			r->reachable_time = p->reachable_time;
+	read_unlock_bh(&arp_tbl.lock);
 
 	mlxsw_sp->rifs[rif] = r;
 
