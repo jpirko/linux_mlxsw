@@ -4036,6 +4036,165 @@ static inline void mlxsw_reg_rauht_counter_pack(char *payload,
 	mlxsw_reg_rauht_counter_index_set(payload, counter_index);
 }
 
+/* RAUHTD - Router Algorithmic LPM Unicast Host Table Register
+ * -----------------------------------------------------------
+ * The RAUHTD register allows dumping entries from the Router Unicast Host
+ * Table. For a given session an entry is dumped no more than one time. The
+ * first RAUHTD access after reset is a new session. A session ends when the
+ * num_rec response is smaller than num_rec request or for IPv4 when the
+ * num_entries is smaller than 4. The clear activity affect the current session
+ * or the last session if a new session has not started.
+ */
+#define MLXSW_REG_RAUHTD_ID 0x8018
+#define MLXSW_REG_RAUHTD_BASE_LEN 0x20
+#define MLXSW_REG_RAUHTD_REC_LEN 0x20
+#define MLXSW_REG_RAUHTD_REC_MAX_NUM 32
+#define MLXSW_REG_RAUHTD_LEN (MLXSW_REG_RAUHTD_BASE_LEN + \
+		MLXSW_REG_RAUHTD_REC_MAX_NUM * MLXSW_REG_RAUHTD_REC_LEN)
+
+static const struct mlxsw_reg_info mlxsw_reg_rauhtd = {
+	.id = MLXSW_REG_RAUHTD_ID,
+	.len = MLXSW_REG_RAUHTD_LEN,
+};
+
+#define MLXSW_REG_RAUHTD_FILTER_A BIT(0)
+#define MLXSW_REG_RAUHTD_FILTER_RIF BIT(3)
+
+/* reg_rauhtd_filter_fields
+ * if a bit is '0' then the relevant field is ignored and dump is done
+ * regardless of the field value
+ * Bit0 - filter by activity: entry_a
+ * Bit3 - filter by entry rip: entry_rif
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, rauhtd, filter_fields, 0x00, 0, 8);
+
+enum mlxsw_reg_rauhtd_op {
+	MLXSW_REG_RAUHTD_OP_DUMP,
+	MLXSW_REG_RAUHTD_OP_DUMP_AND_CLEAR
+};
+
+/* reg_rauhtd_op
+ * see mlxsw_reg_rauhtd_op
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, rauhtd, op, 0x04, 24, 2);
+
+/* reg_rauhtd_num_rec
+ * At request: number of records requested
+ * At response: number of records dumped
+ * For IPv4, each record has 4 entries at request and up to 4 entries
+ * at response
+ * Range is 0..MLXSW_REG_RAUHTD_REC_MAX_NUM
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, rauhtd, num_rec, 0x04, 0, 8);
+
+/* reg_rauhtd_entry_a
+ * Dump only if activity has value of entry_a
+ * Reserved if filter_fields bit0 is '0'
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, rauhtd, entry_a, 0x08, 16, 1);
+
+enum mlxsw_reg_rauhtd_entry_type {
+	MLXSW_REG_RAUHTD_ENTRY_TYPE_IPV4,
+	MLXSW_REG_RAUHTD_ENTRY_TYPE_IPV6
+};
+
+/* reg_rauhtd_entry_type
+ * Dump only if entry type is IPv4 or IPv6.
+ * see mlxsw_reg_rauhtd_entry_type.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, rauhtd, entry_type, 0x08, 0, 4);
+
+/* reg_rauhtd_entry_rif
+ * Dump only if RIF has value of entry_rif
+ * Reserved if filter_fields bit3 is '0'
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, rauhtd, entry_rif, 0x0C, 0, 16);
+
+/* reg_rauhtd_ipv4ent_num_entries
+ * Number of valid entries in this record:
+ * 0 - 1 valid entry
+ * 1 - 2 valid entries
+ * 2 - 3 valid entries
+ * 3 - 4 valid entries
+ * Access: Index
+ */
+MLXSW_ITEM32_INDEXED(reg, rauhtd, ipv4ent_num_entries, 0x00, 28, 2,
+		     MLXSW_REG_RAUHTD_REC_LEN, MLXSW_REG_RAUHTD_BASE_LEN,
+		     false);
+
+#define MLXSW_REG_RAUHTD_IPv4ENT_ENTRY_SIZE 0x8
+
+/* reg_rauhtd_ipv4ent_a
+ * Activity. Set for new entries. Set if a packet lookup has hit on the
+ * specific entry
+ * Access: Index
+ */
+MLXSW_ITEM32_INDEXED(reg, rauhtd, ipv4ent_a, 0x00, 16, 1,
+		     MLXSW_REG_RAUHTD_IPv4ENT_ENTRY_SIZE,
+		     MLXSW_REG_RAUHTD_BASE_LEN, false);
+
+/* reg_rauhtd_ipv4ent_rif
+ * Router interfce
+ * Access: Index
+ */
+MLXSW_ITEM32_INDEXED(reg, rauhtd, ipv4ent_rif, 0x00, 0, 16,
+		     MLXSW_REG_RAUHTD_IPv4ENT_ENTRY_SIZE,
+		     MLXSW_REG_RAUHTD_BASE_LEN, false);
+
+/* reg_rauhtd_ipv4ent_dip
+ * Destination IPv4 address
+ * Access: Index
+ */
+MLXSW_ITEM32_INDEXED(reg, rauhtd, ipv4ent_dip, 0x04, 0, 32,
+		     MLXSW_REG_RAUHTD_IPv4ENT_ENTRY_SIZE,
+		     MLXSW_REG_RAUHTD_BASE_LEN, false);
+
+static inline void
+mlxsw_reg_rauhtd_pack(char *payload, u8 filter_fields,
+		      enum mlxsw_reg_rauhtd_op op,
+		      u8 num_rec, bool entry_a,
+		      enum mlxsw_reg_rauhtd_entry_type entry_type,
+		      u16 entry_rif)
+{
+	MLXSW_REG_ZERO(rauhtd, payload);
+	mlxsw_reg_rauhtd_filter_fields_set(payload, filter_fields);
+	mlxsw_reg_rauhtd_op_set(payload, op);
+	mlxsw_reg_rauhtd_num_rec_set(payload, num_rec);
+	mlxsw_reg_rauhtd_entry_a_set(payload, entry_a);
+	mlxsw_reg_rauhtd_entry_type_set(payload, entry_type);
+	mlxsw_reg_rauhtd_entry_rif_set(payload, entry_rif);
+}
+
+static inline void mlxsw_reg_rauhtd_unpack(char *payload, u8 *p_num_rec)
+{
+	*p_num_rec = mlxsw_reg_rauhtd_num_rec_get(payload);
+}
+
+static inline void mlxsw_reg_rauhtd_ipv4ent_unpack(char *payload, int rec_index,
+						   u8 *p_num_entries)
+{
+	*p_num_entries = mlxsw_reg_rauhtd_ipv4ent_num_entries_get(payload,
+								  rec_index);
+}
+
+static inline void
+mlxsw_reg_rauhtd_ipv4ent_neigh_unpack(char *payload,
+				      int rec_index, int neigh_index,
+				      u32 *p_dip, bool *p_a, u16 *p_rif)
+{
+	int global_neigh_index = 4 * rec_index + neigh_index;
+
+	*p_dip = mlxsw_reg_rauhtd_ipv4ent_dip_get(payload, global_neigh_index);
+	*p_a = mlxsw_reg_rauhtd_ipv4ent_a_get(payload, global_neigh_index);
+	*p_rif = mlxsw_reg_rauhtd_ipv4ent_rif_get(payload, global_neigh_index);
+}
+
 /* MFCR - Management Fan Control Register
  * --------------------------------------
  * This register controls the settings of the Fan Speed PWM mechanism.
@@ -4788,6 +4947,8 @@ static inline const char *mlxsw_reg_id_str(u16 reg_id)
 		return "RALUE";
 	case MLXSW_REG_RAUHT_ID:
 		return "RAUHT";
+	case MLXSW_REG_RAUHTD_ID:
+		return "RAUHTD";
 	case MLXSW_REG_MFCR_ID:
 		return "MFCR";
 	case MLXSW_REG_MFSC_ID:
