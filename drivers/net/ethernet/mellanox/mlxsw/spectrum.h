@@ -50,10 +50,10 @@
 #include "core.h"
 
 #define MLXSW_SP_VFID_BASE VLAN_N_VID
-#define MLXSW_SP_VFID_PORT_MAX 512	/* Non-bridged VLAN interfaces */
-#define MLXSW_SP_VFID_BR_MAX 6144	/* Bridged VLAN interfaces */
-#define MLXSW_SP_BR_VFID_BASE (MLXSW_SP_VFID_BASE + MLXSW_SP_VFID_PORT_MAX)
-#define MLXSW_SP_VFID_MAX (MLXSW_SP_VFID_PORT_MAX + MLXSW_SP_VFID_BR_MAX)
+#define MLXSW_SP_VFID_MAX 6144	/* Bridged VLAN interfaces */
+
+#define MLXSW_SP_RFID_BASE 15360
+#define MLXSW_SP_RIF_MAX 800
 
 #define MLXSW_SP_LAG_MAX 64
 #define MLXSW_SP_PORT_PER_LAG_MAX 16
@@ -82,8 +82,6 @@
 
 #define MLXSW_SP_CELL_FACTOR 2	/* 2 * cell_size / (IPG + cell_size + 1) */
 
-#define MLXSW_SP_RIF_MAX 800
-
 static inline u16 mlxsw_sp_pfc_delay_get(int mtu, u16 delay)
 {
 	delay = MLXSW_SP_BYTES_TO_CELLS(DIV_ROUND_UP(delay, BITS_PER_BYTE));
@@ -91,6 +89,7 @@ static inline u16 mlxsw_sp_pfc_delay_get(int mtu, u16 delay)
 }
 
 struct mlxsw_sp_port;
+struct mlxsw_sp_rif;
 
 struct mlxsw_sp_upper {
 	struct net_device *dev;
@@ -101,12 +100,13 @@ struct mlxsw_sp_fid {
 	struct list_head list;
 	struct net_device *dev;
 	unsigned int ref_count;
-	u16 vid;
+	struct mlxsw_sp_rif *r;
 	u16 fid;
 };
 
 struct mlxsw_sp_rif {
 	struct net_device *dev;
+	struct mlxsw_sp_fid *f;
 	u16 rif;
 };
 
@@ -130,7 +130,7 @@ static inline u16 mlxsw_sp_fid_to_vfid(u16 fid)
 
 static inline bool mlxsw_sp_fid_is_vfid(u16 fid)
 {
-	return fid >= MLXSW_SP_VFID_BASE;
+	return fid >= MLXSW_SP_VFID_BASE && fid < MLXSW_SP_RFID_BASE;
 }
 
 struct mlxsw_sp_sb_pr {
@@ -204,15 +204,11 @@ struct mlxsw_sp_router {
 struct mlxsw_sp {
 	struct {
 		struct list_head list;
-		unsigned long mapped[BITS_TO_LONGS(MLXSW_SP_VFID_PORT_MAX)];
-	} port_vfids;
+		DECLARE_BITMAP(mapped, MLXSW_SP_VFID_MAX);
+	} vfids;	/* VLAN-unaware bridge FIDs */
 	struct {
 		struct list_head list;
-		unsigned long mapped[BITS_TO_LONGS(MLXSW_SP_VFID_BR_MAX)];
-	} br_vfids;
-	struct {
-		struct list_head list;
-		unsigned long mapped[BITS_TO_LONGS(MLXSW_SP_MID_MAX)];
+		DECLARE_BITMAP(mapped, MLXSW_SP_MID_MAX);
 	} br_mids;
 	struct list_head fids;	/* VLAN-aware bridge FIDs */
 	struct mlxsw_sp_rif *rifs[MLXSW_SP_RIF_MAX];
@@ -443,6 +439,8 @@ int __mlxsw_sp_port_headroom_set(struct mlxsw_sp_port *mlxsw_sp_port, int mtu,
 int mlxsw_sp_port_ets_maxrate_set(struct mlxsw_sp_port *mlxsw_sp_port,
 				  enum mlxsw_reg_qeec_hr hr, u8 index,
 				  u8 next_index, u32 maxrate);
+int mlxsw_sp_rif_fdb_op(struct mlxsw_sp *mlxsw_sp, const char *mac, u16 fid,
+			bool adding);
 
 #ifdef CONFIG_MLXSW_SPECTRUM_DCB
 
