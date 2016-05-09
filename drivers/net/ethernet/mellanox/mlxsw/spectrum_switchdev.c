@@ -169,11 +169,6 @@ static int mlxsw_sp_port_attr_stp_state_set(struct mlxsw_sp_port *mlxsw_sp_port,
 	return mlxsw_sp_port_stp_state_set(mlxsw_sp_port, state);
 }
 
-static bool mlxsw_sp_vfid_is_vport_br(u16 vfid)
-{
-	return vfid >= MLXSW_SP_VFID_PORT_MAX;
-}
-
 static int __mlxsw_sp_port_flood_set(struct mlxsw_sp_port *mlxsw_sp_port,
 				     u16 idx_begin, u16 idx_end, bool set,
 				     bool only_uc)
@@ -185,15 +180,11 @@ static int __mlxsw_sp_port_flood_set(struct mlxsw_sp_port *mlxsw_sp_port,
 	char *sftr_pl;
 	int err;
 
-	if (mlxsw_sp_port_is_vport(mlxsw_sp_port)) {
+	if (mlxsw_sp_port_is_vport(mlxsw_sp_port))
 		table_type = MLXSW_REG_SFGC_TABLE_TYPE_FID;
-		if (mlxsw_sp_vfid_is_vport_br(idx_begin))
-			local_port = mlxsw_sp_port->local_port;
-		else
-			local_port = MLXSW_PORT_CPU_PORT;
-	} else {
+	else
 		table_type = MLXSW_REG_SFGC_TABLE_TYPE_FID_OFFEST;
-	}
+
 
 	sftr_pl = kmalloc(MLXSW_REG_SFTR_LEN, GFP_KERNEL);
 	if (!sftr_pl)
@@ -712,9 +703,10 @@ static enum mlxsw_reg_sfd_op mlxsw_sp_sfd_op(bool adding)
 			MLXSW_REG_SFD_OP_WRITE_REMOVE;
 }
 
-static int mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u8 local_port,
-				   const char *mac, u16 fid, bool adding,
-				   bool dynamic)
+static int __mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u8 local_port,
+				     const char *mac, u16 fid, bool adding,
+				     enum mlxsw_reg_sfd_rec_action action,
+				     bool dynamic)
 {
 	char *sfd_pl;
 	int err;
@@ -731,6 +723,22 @@ static int mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	kfree(sfd_pl);
 
 	return err;
+}
+
+static int mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u8 local_port,
+				   const char *mac, u16 fid, bool adding,
+				   bool dynamic)
+{
+	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, local_port, mac, fid, adding,
+					 MLXSW_REG_SFD_REC_ACTION_NOP, dynamic);
+}
+
+int mlxsw_sp_rif_fdb_op(struct mlxsw_sp *mlxsw_sp, const char *mac, u16 fid,
+			bool adding)
+{
+	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, 0, mac, fid, adding,
+					 MLXSW_REG_SFD_REC_ACTION_FORWARD_IP_ROUTER,
+					 false);
 }
 
 static int mlxsw_sp_port_fdb_uc_lag_op(struct mlxsw_sp *mlxsw_sp, u16 lag_id,
