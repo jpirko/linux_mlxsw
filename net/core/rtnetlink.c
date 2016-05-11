@@ -1046,19 +1046,39 @@ static int rtnl_phys_switch_id_fill(struct sk_buff *skb, struct net_device *dev)
 	return 0;
 }
 
+static void copy_rtnl_link_stats64(void *v, const struct rtnl_link_stats64 *b)
+{
+	memcpy(v, b, sizeof(*b));
+}
+
 static noinline_for_stack int rtnl_fill_stats(struct sk_buff *skb,
 					      struct net_device *dev)
 {
+	struct rtnl_link_stats64 sw_stats;
 	struct rtnl_link_stats64 *sp;
 	struct nlattr *attr;
+	int err;
 
 	attr = nla_reserve_64bit(skb, IFLA_STATS64,
 				 sizeof(struct rtnl_link_stats64), IFLA_PAD);
+
 	if (!attr)
 		return -EMSGSIZE;
 
 	sp = nla_data(attr);
 	dev_get_stats(dev, sp);
+
+	err = dev_get_sw_stats(dev, &sw_stats);
+	if (!err) {
+		attr = nla_reserve_64bit(skb, IFLA_SW_STATS64,
+					 sizeof(struct rtnl_link_stats64),
+					 IFLA_PAD);
+
+		if (!attr)
+			return -EMSGSIZE;
+
+		copy_rtnl_link_stats64(nla_data(attr), &sw_stats);
+	}
 
 	attr = nla_reserve(skb, IFLA_STATS,
 			   sizeof(struct rtnl_link_stats));
