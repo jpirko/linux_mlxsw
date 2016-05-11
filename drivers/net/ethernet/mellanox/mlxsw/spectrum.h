@@ -237,6 +237,9 @@ struct mlxsw_sp {
 	struct mlxsw_sp_sb sb;
 	struct mlxsw_sp_router router;
 	struct delayed_work neigh_update_dw;
+	struct {
+		DECLARE_BITMAP(usage, MLXSW_SP_KVD_LINEAR_SIZE);
+	} kvdl;
 };
 
 static inline struct mlxsw_sp_upper *
@@ -474,5 +477,16 @@ int mlxsw_sp_router_neigh_construct(struct net_device *dev,
 				    struct neighbour *n);
 void mlxsw_sp_router_neigh_destroy(struct net_device *dev,
 				   struct neighbour *n);
+
+#define MLXSW_SP_ECMP_GROUP_MAX 32
+
+enum mlxsw_sp_kvdl_type {
+	MLXSW_SP_KVDL_TYPE_SINGLE,
+	MLXSW_SP_KVDL_TYPE_ECMP_GROUP,
+};
+
+int mlxsw_sp_kvdl_alloc(struct mlxsw_sp *mlxsw_sp,
+			enum mlxsw_sp_kvdl_type type);
+void mlxsw_sp_kvdl_free(struct mlxsw_sp *mlxsw_sp, int entry_index);
 
 #endif
