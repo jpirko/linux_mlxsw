@@ -275,7 +275,7 @@ mlxsw_sp_port_lagged_get(struct mlxsw_sp *mlxsw_sp, u16 lag_id, u8 port_index)
 static inline bool
 mlxsw_sp_port_is_vport(const struct mlxsw_sp_port *mlxsw_sp_port)
 {
-	return mlxsw_sp_port->vport.f;
+	return mlxsw_sp_port->vport.vid;
 }
 
 static inline struct net_device *
