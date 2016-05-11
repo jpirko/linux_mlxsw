@@ -535,8 +535,8 @@ err_port_mtu_set:
 }
 
 static struct rtnl_link_stats64 *
-mlxsw_sp_port_get_stats64(struct net_device *dev,
-			  struct rtnl_link_stats64 *stats)
+mlxsw_sp_port_get_sw_stats64(struct net_device *dev,
+			     struct rtnl_link_stats64 *stats)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	struct mlxsw_sp_port_pcpu_stats *p;
@@ -563,6 +563,59 @@ mlxsw_sp_port_get_stats64(struct net_device *dev,
 		tx_dropped	+= p->tx_dropped;
 	}
 	stats->tx_dropped	= tx_dropped;
+	return stats;
+}
+
+static int mlxsw_sp_port_get_stats_raw(struct net_device *dev,
+				       char *ppcnt_pl)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	int err;
+
+	mlxsw_reg_ppcnt_pack(ppcnt_pl, mlxsw_sp_port->local_port,
+			     MLXSW_REG_PPCNT_IEEE_8023_CNT, 0);
+	err = mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(ppcnt), ppcnt_pl);
+	return err;
+}
+
+static struct rtnl_link_stats64 *
+mlxsw_sp_port_get_stats64(struct net_device *dev,
+			  struct rtnl_link_stats64 *stats)
+{
+	char ppcnt_pl[MLXSW_REG_PPCNT_LEN];
+	int err;
+
+	err =  mlxsw_sp_port_get_stats_raw(dev, ppcnt_pl);
+	if (err)
+		goto out;
+
+	stats->tx_packets =
+		mlxsw_reg_ppcnt_a_frames_transmitted_ok_get(ppcnt_pl);
+	stats->rx_packets =
+		mlxsw_reg_ppcnt_a_frames_received_ok_get(ppcnt_pl);
+	stats->tx_bytes =
+		mlxsw_reg_ppcnt_a_octets_transmitted_ok_get(ppcnt_pl);
+	stats->rx_bytes =
+		mlxsw_reg_ppcnt_a_octets_received_ok_get(ppcnt_pl);
+	stats->multicast =
+		mlxsw_reg_ppcnt_a_multicast_frames_received_ok_get(ppcnt_pl);
+	stats->multicast +=
+		mlxsw_reg_ppcnt_a_broadcast_frames_received_ok_get(ppcnt_pl);
+
+	stats->rx_crc_errors =
+		mlxsw_reg_ppcnt_a_frame_check_sequence_errors_get(ppcnt_pl);
+	stats->rx_frame_errors =
+		mlxsw_reg_ppcnt_a_alignment_errors_get(ppcnt_pl);
+
+	stats->rx_length_errors = (
+		mlxsw_reg_ppcnt_a_in_range_length_errors_get(ppcnt_pl) +
+		mlxsw_reg_ppcnt_a_out_of_range_length_field_get(ppcnt_pl) +
+		mlxsw_reg_ppcnt_a_frame_too_long_errors_get(ppcnt_pl));
+
+	stats->rx_errors = (stats->rx_crc_errors +
+		stats->rx_frame_errors + stats->rx_length_errors);
+out:
 	return stats;
 }
 
@@ -980,6 +1033,7 @@ static const struct net_device_ops mlxsw_sp_port_netdev_ops = {
 	.ndo_set_mac_address	= mlxsw_sp_port_set_mac_address,
 	.ndo_change_mtu		= mlxsw_sp_port_change_mtu,
 	.ndo_get_stats64	= mlxsw_sp_port_get_stats64,
+	.ndo_get_sw_stats64     = mlxsw_sp_port_get_sw_stats64,
 	.ndo_vlan_rx_add_vid	= mlxsw_sp_port_add_vid,
 	.ndo_vlan_rx_kill_vid	= mlxsw_sp_port_kill_vid,
 	.ndo_fdb_add		= switchdev_port_fdb_add,
@@ -1200,15 +1254,10 @@ static int mlxsw_sp_port_set_phys_id(struct net_device *dev,
 static void mlxsw_sp_port_get_stats(struct net_device *dev,
 				    struct ethtool_stats *stats, u64 *data)
 {
-	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
-	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char ppcnt_pl[MLXSW_REG_PPCNT_LEN];
 	int i;
 	int err;
-
-	mlxsw_reg_ppcnt_pack(ppcnt_pl, mlxsw_sp_port->local_port,
-			     MLXSW_REG_PPCNT_IEEE_8023_CNT, 0);
-	err = mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(ppcnt), ppcnt_pl);
+	err = mlxsw_sp_port_get_stats_raw(dev, ppcnt_pl);
 	for (i = 0; i < MLXSW_SP_PORT_HW_STATS_LEN; i++)
 		data[i] = !err ? mlxsw_sp_port_hw_stats[i].getter(ppcnt_pl) : 0;
 }
