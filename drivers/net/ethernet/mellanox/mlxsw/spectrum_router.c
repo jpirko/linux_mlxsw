@@ -38,6 +38,7 @@
 #include <linux/rhashtable.h>
 #include <linux/bitops.h>
 #include <linux/in6.h>
+#include <net/neighbour.h>
 
 #include "spectrum.h"
 #include "core.h"
@@ -618,6 +619,138 @@ static int mlxsw_sp_vrs_init(struct mlxsw_sp *mlxsw_sp)
 	return 0;
 }
 
+struct mlxsw_sp_neigh_key {
+	unsigned char addr[sizeof(struct in6_addr)];
+	struct net_device *dev;
+};
+
+struct mlxsw_sp_neigh_entry {
+	struct rhash_head ht_node;
+	struct mlxsw_sp_neigh_key key;
+	struct neighbour *n;
+};
+
+static const struct rhashtable_params mlxsw_sp_neigh_ht_params = {
+	.key_offset = offsetof(struct mlxsw_sp_neigh_entry, key),
+	.head_offset = offsetof(struct mlxsw_sp_neigh_entry, ht_node),
+	.key_len = sizeof(struct mlxsw_sp_neigh_key),
+};
+
+static int
+mlxsw_sp_neigh_entry_insert(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_neigh_entry *neigh_entry)
+{
+	return rhashtable_insert_fast(&mlxsw_sp->router.neigh_ht,
+				      &neigh_entry->ht_node,
+				      mlxsw_sp_neigh_ht_params);
+}
+
+static void
+mlxsw_sp_neigh_entry_remove(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_neigh_entry *neigh_entry)
+{
+	rhashtable_remove_fast(&mlxsw_sp->router.neigh_ht,
+			       &neigh_entry->ht_node,
+			       mlxsw_sp_neigh_ht_params);
+}
+
+static struct mlxsw_sp_neigh_entry *
+mlxsw_sp_neigh_entry_create(const unsigned char *addr, size_t addr_len,
+			    struct net_device *dev, struct neighbour *n)
+{
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+
+	neigh_entry = kzalloc(sizeof(*neigh_entry), GFP_ATOMIC);
+	if (!neigh_entry)
+		return NULL;
+	memcpy(neigh_entry->key.addr, addr, addr_len);
+	neigh_entry->key.dev = dev;
+	neigh_entry->n = n;
+	return neigh_entry;
+}
+
+static void
+mlxsw_sp_neigh_entry_destroy(struct mlxsw_sp_neigh_entry *neigh_entry)
+{
+	kfree(neigh_entry);
+}
+
+static struct mlxsw_sp_neigh_entry *
+mlxsw_sp_neigh_entry_lookup(struct mlxsw_sp *mlxsw_sp,
+			    const unsigned char *addr, size_t addr_len,
+			    struct net_device *dev)
+{
+	struct mlxsw_sp_neigh_key key = {{0}};
+
+	memcpy(key.addr, addr, addr_len);
+	key.dev = dev;
+	return rhashtable_lookup_fast(&mlxsw_sp->router.neigh_ht,
+				      &key, mlxsw_sp_neigh_ht_params);
+}
+
+int mlxsw_sp_router_neigh_construct(struct net_device *dev,
+				    struct neighbour *n)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+	const unsigned char *addr = n->primary_key;
+	size_t addr_len = sizeof(__be32);
+	int err;
+
+	if (n->tbl != &arp_tbl)
+		return 0;
+
+	neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp, addr, addr_len,
+						  n->dev);
+	if (neigh_entry) {
+		WARN_ON(neigh_entry->n != n);
+		return 0;
+	}
+
+	neigh_entry = mlxsw_sp_neigh_entry_create(addr, addr_len, n->dev, n);
+	if (!neigh_entry)
+		return -ENOMEM;
+	err = mlxsw_sp_neigh_entry_insert(mlxsw_sp, neigh_entry);
+	if (err)
+		goto err_neigh_entry_insert;
+	return 0;
+
+err_neigh_entry_insert:
+	mlxsw_sp_neigh_entry_destroy(neigh_entry);
+	return err;
+}
+
+void mlxsw_sp_router_neigh_destroy(struct net_device *dev,
+				   struct neighbour *n)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+	const unsigned char *addr = n->primary_key;
+	size_t addr_len = sizeof(__be32);
+
+	if (n->tbl != &arp_tbl)
+		return;
+	neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp, addr, addr_len,
+						  n->dev);
+	if (!neigh_entry)
+		return;
+	mlxsw_sp_neigh_entry_remove(mlxsw_sp, neigh_entry);
+	mlxsw_sp_neigh_entry_destroy(neigh_entry);
+}
+
+static int mlxsw_sp_neigh_init(struct mlxsw_sp *mlxsw_sp)
+{
+	return rhashtable_init(&mlxsw_sp->router.neigh_ht,
+			       &mlxsw_sp_neigh_ht_params);
+}
+
+static void mlxsw_sp_neigh_fini(struct mlxsw_sp *mlxsw_sp)
+{
+	rhashtable_destroy(&mlxsw_sp->router.neigh_ht);
+}
+
 static int __mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 {
 	char rgcr_pl[MLXSW_REG_RGCR_LEN];
@@ -645,11 +778,15 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 	err = mlxsw_sp_lpm_init(mlxsw_sp);
 	if (err)
 		return err;
-	return mlxsw_sp_vrs_init(mlxsw_sp);
+	err = mlxsw_sp_vrs_init(mlxsw_sp);
+	if (err)
+		return err;
+	return mlxsw_sp_neigh_init(mlxsw_sp);
 }
 
 void mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 {
+	mlxsw_sp_neigh_fini(mlxsw_sp);
 	__mlxsw_sp_router_fini(mlxsw_sp);
 }
 
