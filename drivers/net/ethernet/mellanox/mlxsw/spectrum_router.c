@@ -634,6 +634,7 @@ struct mlxsw_sp_neigh_entry {
 	struct neighbour *n;
 	bool offloaded;
 	struct delayed_work dw;
+	u32 adj_index;
 };
 
 static const struct rhashtable_params mlxsw_sp_neigh_ht_params = {
@@ -702,6 +703,7 @@ int mlxsw_sp_router_neigh_construct(struct net_device *dev,
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct mlxsw_sp_neigh_entry *neigh_entry;
+	int kvdl_index;
 	u32 dip;
 	int err;
 
@@ -719,12 +721,25 @@ int mlxsw_sp_router_neigh_construct(struct net_device *dev,
 	neigh_entry = mlxsw_sp_neigh_entry_create(&dip, sizeof(dip), n->dev, n);
 	if (!neigh_entry)
 		return -ENOMEM;
+
+	/* Allocate a single KVD linear entry for each neigh entry, it will
+	 * serve for single entry nexthops.
+	 */
+	kvdl_index = mlxsw_sp_kvdl_alloc(mlxsw_sp, MLXSW_SP_KVDL_TYPE_SINGLE);
+	if (kvdl_index < 0) {
+		err = kvdl_index;
+		goto err_kvdl_alloc;
+	}
+	neigh_entry->adj_index = kvdl_index;
+
 	err = mlxsw_sp_neigh_entry_insert(mlxsw_sp, neigh_entry);
 	if (err)
 		goto err_neigh_entry_insert;
 	return 0;
 
 err_neigh_entry_insert:
+	mlxsw_sp_kvdl_free(mlxsw_sp, neigh_entry->adj_index);
+err_kvdl_alloc:
 	mlxsw_sp_neigh_entry_destroy(neigh_entry);
 	return err;
 }
@@ -746,6 +761,7 @@ void mlxsw_sp_router_neigh_destroy(struct net_device *dev,
 	if (!neigh_entry)
 		return;
 	mlxsw_sp_neigh_entry_remove(mlxsw_sp, neigh_entry);
+	mlxsw_sp_kvdl_free(mlxsw_sp, neigh_entry->adj_index);
 	mlxsw_sp_neigh_entry_destroy(neigh_entry);
 }
 
@@ -844,6 +860,7 @@ static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
 	struct mlxsw_sp_port *mlxsw_sp_port;
 	struct mlxsw_sp *mlxsw_sp;
 	char rauht_pl[MLXSW_REG_RAUHT_LEN];
+	char ratr_pl[MLXSW_REG_RATR_LEN];
 	unsigned char ha[ETH_ALEN];
 	struct mlxsw_sp_rif *rif;
 	struct net_device *dev;
@@ -889,6 +906,13 @@ static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
 		} else {
 			neigh_entry->offloaded = true;
 		}
+		mlxsw_reg_ratr_pack(ratr_pl, MLXSW_REG_RATR_OPCODE_WRITE_ENTRY,
+				    true, neigh_entry->adj_index, rif->rif);
+		mlxsw_reg_ratr_eth_entry_pack(ratr_pl, ha);
+		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ratr), ratr_pl);
+		if (err)
+			netdev_err(dev, "Failed to update nexthop MAC for %pI4h\n",
+				   &dip);
 	} else if (removing) {
 		mlxsw_reg_rauht_pack4(rauht_pl, RAUHT_WRITE_OP_DELETE,
 				      rif->rif, ha, dip);
