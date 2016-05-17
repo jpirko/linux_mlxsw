@@ -125,6 +125,8 @@ struct mlxsw_sp_fib_entry {
 	struct rhash_head ht_node;
 	struct mlxsw_sp_fib_key key;
 	enum mlxsw_sp_fib_entry_type type;
+	u32 adj_index;
+	u16 ecmp_size;
 };
 
 struct mlxsw_sp_fib {
@@ -220,6 +222,23 @@ static void mlxsw_sp_fib_destroy(struct mlxsw_sp_fib *fib)
 	kfree(fib);
 }
 
+static int mlxsw_sp_fib_entry_op4_remote(struct mlxsw_sp *mlxsw_sp,
+					 struct mlxsw_sp_vr *vr,
+					 struct mlxsw_sp_fib_entry *fib_entry,
+					 enum mlxsw_reg_ralue_op op)
+{
+	char ralue_pl[MLXSW_REG_RALUE_LEN];
+	u32 *p_dip = (u32 *) fib_entry->key.addr;
+
+	mlxsw_reg_ralue_pack4(ralue_pl, vr->proto, op, vr->id,
+			      fib_entry->key.prefix_len, *p_dip);
+	mlxsw_reg_ralue_act_remote_pack(ralue_pl,
+					MLXSW_REG_RALUE_TRAP_ACTION_NOP, 0,
+					fib_entry->adj_index,
+					fib_entry->ecmp_size);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl);
+}
+
 static int mlxsw_sp_fib_entry_op4_local(struct mlxsw_sp *mlxsw_sp,
 					struct mlxsw_sp_vr *vr, u16 rif_id,
 					struct mlxsw_sp_fib_entry *fib_entry,
@@ -257,7 +276,8 @@ static int mlxsw_sp_fib_entry_op4(struct mlxsw_sp *mlxsw_sp,
 {
 	switch (fib_entry->type) {
 	case MLXSW_SP_FIB_ENTRY_TYPE_REMOTE:
-		return -EINVAL;
+		return mlxsw_sp_fib_entry_op4_remote(mlxsw_sp, vr,
+						     fib_entry, op);
 	case MLXSW_SP_FIB_ENTRY_TYPE_LOCAL:
 		return mlxsw_sp_fib_entry_op4_local(mlxsw_sp, vr, rif_id,
 						    fib_entry, op);
@@ -1049,7 +1069,10 @@ mlxsw_sp_router_fib4_entry_init(struct mlxsw_sp *mlxsw_sp,
 				const struct switchdev_obj_ipv4_fib *fib4,
 				struct mlxsw_sp_fib_entry *fib_entry)
 {
+	struct net_device *dev = fib4->obj.orig_dev;
+	struct mlxsw_sp_neigh_entry *neigh_entry;
 	struct fib_info *fi = fib4->fi;
+	u32 gwip;
 
 	if (fib4->type == RTN_LOCAL || fib4->type == RTN_BROADCAST) {
 		fib_entry->type = MLXSW_SP_FIB_ENTRY_TYPE_TRAP;
@@ -1062,7 +1085,31 @@ mlxsw_sp_router_fib4_entry_init(struct mlxsw_sp *mlxsw_sp,
 		fib_entry->type = MLXSW_SP_FIB_ENTRY_TYPE_LOCAL;
 		return 0;
 	}
-	return -EINVAL;
+
+	if (fi->fib_nhs > 1)
+		return EINVAL; /* we don't support ECMP yet */
+
+	gwip = ntohl(fi->fib_nh[0].nh_gw);
+	neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp, &gwip,
+						  sizeof(gwip), dev);
+	if (!neigh_entry) {
+		__be32 gwipn = htonl(gwip);
+		struct neighbour *n;
+
+		n = neigh_create(&arp_tbl, &gwipn, dev);
+		if (IS_ERR(n))
+			return PTR_ERR(n);
+		neigh_event_send(n, NULL);
+		neigh_release(n);
+		neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp, &gwip,
+							  sizeof(gwip), dev);
+		if (!neigh_entry)
+			return -EINVAL;
+	}
+	fib_entry->adj_index = neigh_entry->adj_index;
+	fib_entry->ecmp_size = 1;
+
+	return 0;
 }
 
 static int
