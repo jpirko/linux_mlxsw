@@ -2661,6 +2661,21 @@ static bool mlxsw_sp_port_dev_check(const struct net_device *dev)
 	return dev->netdev_ops == &mlxsw_sp_port_netdev_ops;
 }
 
+struct mlxsw_sp_port *mlxsw_sp_port_dev_lower_find(struct net_device *dev)
+{
+	struct net_device *lower_dev;
+	struct list_head *iter;
+
+	if (mlxsw_sp_port_dev_check(dev))
+		return netdev_priv(dev);
+
+	netdev_for_each_all_lower_dev(dev, lower_dev, iter) {
+		if (mlxsw_sp_port_dev_check(lower_dev))
+			return netdev_priv(lower_dev);
+	}
+	return NULL;
+}
+
 static bool mlxsw_sp_master_bridge_check(struct mlxsw_sp *mlxsw_sp,
 					 struct net_device *br_dev)
 {
