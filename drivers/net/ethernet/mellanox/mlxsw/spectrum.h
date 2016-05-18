@@ -235,6 +235,7 @@ struct mlxsw_sp {
 	struct mlxsw_sp_router router;
 	struct delayed_work neigh_update_dw;
 	int neigh_update_time;
+	int last_neigh_update_time;
 };
 
 static inline struct mlxsw_sp_upper *
