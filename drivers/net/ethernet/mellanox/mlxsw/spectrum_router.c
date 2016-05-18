@@ -733,13 +733,13 @@ static void mlxsw_sp_router_update_neigh(struct mlxsw_sp *mlxsw_sp,
 static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
 {
 	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
-						 neigh_update_dw.work);
+						 router.neigh_update_dw.work);
 	int new_update_time;
 	char *rauhtd_pl;
 	u8 num_rec;
 	int err;
 
-	mlxsw_sp->last_neigh_update_time = jiffies;
+	mlxsw_sp->router.last_neigh_update_time = jiffies;
 
 	rauhtd_pl = kmalloc(MLXSW_REG_RAUHTD_LEN, GFP_KERNEL);
 	if (!rauhtd_pl)
@@ -794,8 +794,9 @@ static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
 out:
 	kfree(rauhtd_pl);
 	new_update_time = mlxsw_sp_router_neigh_calc_update_time(mlxsw_sp);
-	mlxsw_sp->neigh_update_time = new_update_time;
-	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw, new_update_time);
+	mlxsw_sp->router.neigh_update_time = new_update_time;
+	mlxsw_core_schedule_dw(&mlxsw_sp->router.neigh_update_dw,
+			       new_update_time);
 }
 
 static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
@@ -866,17 +867,17 @@ mlxsw_sp_router_neigh_modify_update_time(struct mlxsw_sp *mlxsw_sp)
 	int retroactive_period;
 	int last_update_delta;
 
-	new_period = mlxsw_sp->neigh_update_time;
-	last_update_delta = (jiffies - mlxsw_sp->last_neigh_update_time) *
-			    HZ / 1000;
+	new_period = mlxsw_sp->router.neigh_update_time;
+	last_update_delta = (jiffies - mlxsw_sp->router.last_neigh_update_time)
+			    * HZ / 1000;
 	retroactive_period = new_period - last_update_delta;
 
 	if (retroactive_period < 0)
-		mlxsw_core_modify_dw(&mlxsw_sp->neigh_update_dw, 0);
+		mlxsw_core_modify_dw(&mlxsw_sp->router.neigh_update_dw, 0);
 	else
-		mlxsw_core_modify_dw(&mlxsw_sp->neigh_update_dw,
+		mlxsw_core_modify_dw(&mlxsw_sp->router.neigh_update_dw,
 				     retroactive_period);
-	mlxsw_sp->neigh_update_time = new_period;
+	mlxsw_sp->router.neigh_update_time = new_period;
 }
 
 static int mlxsw_sp_router_netevent_event(struct notifier_block *unused,
@@ -937,8 +938,8 @@ static int mlxsw_sp_router_netevent_event(struct notifier_block *unused,
 		/* if the rif's is lower than the current reachable time,
 		 * update it
 		 */
-		if (curr_reachable_time < mlxsw_sp->neigh_update_time) {
-			mlxsw_sp->neigh_update_time = curr_reachable_time;
+		if (curr_reachable_time < mlxsw_sp->router.neigh_update_time) {
+			mlxsw_sp->router.neigh_update_time = curr_reachable_time;
 			mlxsw_sp_router_neigh_modify_update_time(mlxsw_sp);
 		}
 
@@ -966,9 +967,9 @@ static int mlxsw_sp_neigh_init(struct mlxsw_sp *mlxsw_sp)
 		goto err_register_netevent_notifier;
 
 	/* Create the delayed work for the activity_update */
-	INIT_DELAYED_WORK(&mlxsw_sp->neigh_update_dw,
+	INIT_DELAYED_WORK(&mlxsw_sp->router.neigh_update_dw,
 			  mlxsw_sp_router_update_neighbours);
-	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw, 0);
+	mlxsw_core_schedule_dw(&mlxsw_sp->router.neigh_update_dw, 0);
 	return 0;
 
 err_register_netevent_notifier:
@@ -978,7 +979,7 @@ err_register_netevent_notifier:
 
 static void mlxsw_sp_neigh_fini(struct mlxsw_sp *mlxsw_sp)
 {
-	cancel_delayed_work_sync(&mlxsw_sp->neigh_update_dw);
+	cancel_delayed_work_sync(&mlxsw_sp->router.neigh_update_dw);
 	unregister_netevent_notifier(&mlxsw_sp_router_netevent_nb);
 	rhashtable_destroy(&mlxsw_sp->router.neigh_ht);
 }
