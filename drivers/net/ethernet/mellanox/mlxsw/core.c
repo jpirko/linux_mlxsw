@@ -1726,6 +1726,12 @@ int mlxsw_cmd_exec(struct mlxsw_core *mlxsw_core, u16 opcode, u8 opcode_mod,
 }
 EXPORT_SYMBOL(mlxsw_cmd_exec);
 
+int mlxsw_core_modify_dw(struct delayed_work *dwork, unsigned long delay)
+{
+	return mod_delayed_work(mlxsw_wq, dwork, delay);
+}
+EXPORT_SYMBOL(mlxsw_core_modify_dw);
+
 int mlxsw_core_schedule_dw(struct delayed_work *dwork, unsigned long delay)
 {
 	return queue_delayed_work(mlxsw_wq, dwork, delay);
