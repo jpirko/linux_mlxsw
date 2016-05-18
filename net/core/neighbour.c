@@ -758,9 +758,12 @@ static void neigh_periodic_work(struct work_struct *work)
 	if (time_after(jiffies, tbl->last_rand + 300 * HZ)) {
 		struct neigh_parms *p;
 		tbl->last_rand = jiffies;
-		list_for_each_entry(p, &tbl->parms_list, list)
+		list_for_each_entry(p, &tbl->parms_list, list) {
 			p->reachable_time =
 				neigh_rand_reach_time(NEIGH_VAR(p, BASE_REACHABLE_TIME));
+			call_netevent_notifiers(NETEVENT_REACHABLE_TIME_UPDATE,
+						p);
+		}
 	}
 
 	if (atomic_read(&tbl->entries) < tbl->gc_thresh1)
@@ -2039,6 +2042,9 @@ static int neightbl_set(struct sk_buff *skb, struct nlmsghdr *nlh)
 				 */
 				p->reachable_time =
 					neigh_rand_reach_time(NEIGH_VAR(p, BASE_REACHABLE_TIME));
+
+				call_netevent_notifiers(NETEVENT_REACHABLE_TIME_UPDATE,
+							p);
 				break;
 			case NDTPA_GC_STALETIME:
 				NEIGH_VAR_SET(p, GC_STALETIME,
@@ -3018,6 +3024,7 @@ static int neigh_proc_base_reachable_time(struct ctl_table *ctl, int write,
 		 */
 		p->reachable_time =
 			neigh_rand_reach_time(NEIGH_VAR(p, BASE_REACHABLE_TIME));
+		call_netevent_notifiers(NETEVENT_REACHABLE_TIME_UPDATE, p);
 	}
 	return ret;
 }
