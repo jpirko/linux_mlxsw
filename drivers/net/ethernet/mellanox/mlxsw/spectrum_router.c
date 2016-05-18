@@ -50,7 +50,7 @@
 #include "port.h"
 #include "reg.h"
 
-#define MLXSW_SP_ROUTER_NEIGH_UPDATE_TIME 2000
+#define MLXSW_SP_ROUTER_NEIGH_MIN_UPDATE_TIME 2000
 
 #define mlxsw_sp_prefix_usage_for_each(prefix, prefix_usage) \
 	for_each_set_bit(prefix, (prefix_usage)->b, MLXSW_SP_PREFIX_COUNT)
@@ -684,6 +684,29 @@ void mlxsw_sp_router_neigh_destroy(struct net_device *dev,
 	mlxsw_sp_neigh_entry_destroy(neigh_entry);
 }
 
+static int mlxsw_sp_router_neigh_calc_update_time(struct mlxsw_sp *mlxsw_sp)
+{
+	int new_update_time = INT_MAX;
+	int i;
+
+	/* for all devices in arp_tbl, find the mlxsw offloaded device
+	 * with the minimum reachable_time
+	 */
+	for (i = 0; i < MLXSW_SP_RIF_MAX; i++) {
+		if (!mlxsw_sp->rifs[i])
+			continue;
+		if (new_update_time > mlxsw_sp->rifs[i]->reachable_time)
+			new_update_time = mlxsw_sp->rifs[i]->reachable_time;
+	}
+	if (new_update_time == INT_MAX)
+		new_update_time = 0;
+
+	new_update_time = max(new_update_time / 10 * 9,
+			      MLXSW_SP_ROUTER_NEIGH_MIN_UPDATE_TIME);
+
+	return new_update_time;
+}
+
 static void mlxsw_sp_router_update_neigh(struct mlxsw_sp *mlxsw_sp,
 					 u32 dip, bool a, u16 rif_id)
 {
@@ -711,6 +734,7 @@ static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
 {
 	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
 						 neigh_update_dw.work);
+	int new_update_time;
 	char *rauhtd_pl;
 	u8 num_rec;
 	int err;
@@ -767,8 +791,9 @@ static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
 
 out:
 	kfree(rauhtd_pl);
-	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw,
-			       MLXSW_SP_ROUTER_NEIGH_UPDATE_TIME);
+	new_update_time = mlxsw_sp_router_neigh_calc_update_time(mlxsw_sp);
+	mlxsw_sp->neigh_update_time = new_update_time;
+	mlxsw_core_schedule_dw(&mlxsw_sp->neigh_update_dw, new_update_time);
 }
 
 static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
@@ -835,26 +860,70 @@ static void mlxsw_sp_router_neigh_update_hw(struct work_struct *work)
 static int mlxsw_sp_router_netevent_event(struct notifier_block *unused,
 					  unsigned long event, void *ptr)
 {
-	struct neighbour *n = ptr;
 	struct mlxsw_sp_neigh_entry *neigh_entry;
 	struct mlxsw_sp_port *mlxsw_sp_port;
+	struct mlxsw_sp_rif *mlxsw_rif;
+	struct mlxsw_sp *mlxsw_sp;
+	struct net_device *dev;
+	struct neigh_parms *p;
+	struct neighbour *n;
+	int curr_reachable_time;
 	u32 dip;
 
-	if (event != NETEVENT_NEIGH_UPDATE || n->tbl != &arp_tbl)
-		return NOTIFY_DONE;
+	switch (event) {
+	case NETEVENT_NEIGH_UPDATE:
+		n = ptr;
+		dev = n->dev;
 
-	mlxsw_sp_port = mlxsw_sp_port_dev_lower_find(n->dev);
-	if (!mlxsw_sp_port)
-		return NOTIFY_DONE;
+		if (n->tbl != &arp_tbl)
+			return NOTIFY_DONE;
 
-	dip = ntohl(*((__be32 *) n->primary_key));
-	neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp_port->mlxsw_sp, &dip,
-						  sizeof(dip), n->dev);
-	if (!neigh_entry) {
-		WARN_ON(!neigh_entry);
-		return NOTIFY_DONE;
+		mlxsw_sp_port = mlxsw_sp_port_dev_lower_find(n->dev);
+		if (!mlxsw_sp_port)
+			return NOTIFY_DONE;
+		mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+
+		dip = ntohl(*((__be32 *) n->primary_key));
+		neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp,
+							  &dip,
+							  sizeof(__be32),
+							  n->dev);
+		if (!WARN_ON(!neigh_entry))
+			return NOTIFY_DONE;
+		mlxsw_core_schedule_dw(&neigh_entry->dw, 0);
+		break;
+	case NETEVENT_REACHABLE_TIME_UPDATE:
+		p = ptr;
+		if (!p->dev)
+			return NOTIFY_DONE;
+		dev = p->dev;
+
+		mlxsw_sp_port = mlxsw_sp_port_dev_lower_find(dev);
+		if (!mlxsw_sp_port)
+			return NOTIFY_DONE;
+		mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+
+		/* Find the specific rif and update its reachable time */
+		mlxsw_rif = mlxsw_sp_rif_find_by_dev(mlxsw_sp, dev);
+		if (WARN_ON(!mlxsw_rif))
+			return NOTIFY_DONE;
+		mlxsw_rif->reachable_time = p->reachable_time;
+		netdev_info(dev, "set reachable time to %dms\n",
+			    mlxsw_rif->reachable_time);
+		curr_reachable_time = p->reachable_time / 10 * 9;
+
+		/* if the rif's is lower than the current reachable time,
+		 * update it
+		 */
+		if (curr_reachable_time < mlxsw_sp->neigh_update_time) {
+			mlxsw_core_modify_dw(&mlxsw_sp->neigh_update_dw,
+					     0);
+			mlxsw_sp->neigh_update_time = curr_reachable_time;
+		}
+
+		break;
 	}
-	mlxsw_core_schedule_dw(&neigh_entry->dw, 0);
+
 	return NOTIFY_DONE;
 }
 

@@ -109,6 +109,7 @@ struct mlxsw_sp_rif {
 	struct net_device *dev;
 	struct mlxsw_sp_fid *f;
 	u16 rif;
+	int reachable_time;
 };
 
 struct mlxsw_sp_mid {
@@ -233,6 +234,7 @@ struct mlxsw_sp {
 	struct mlxsw_sp_sb sb;
 	struct mlxsw_sp_router router;
 	struct delayed_work neigh_update_dw;
+	int neigh_update_time;
 };
 
 static inline struct mlxsw_sp_upper *
