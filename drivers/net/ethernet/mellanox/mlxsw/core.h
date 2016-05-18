@@ -166,6 +166,7 @@ int mlxsw_core_port_init(struct mlxsw_core *mlxsw_core,
 void mlxsw_core_port_fini(struct mlxsw_core_port *mlxsw_core_port);
 
 int mlxsw_core_schedule_dw(struct delayed_work *dwork, unsigned long delay);
+int mlxsw_core_modify_dw(struct delayed_work *dwork, unsigned long delay);
 
 #define MLXSW_CONFIG_PROFILE_SWID_COUNT 8
 
