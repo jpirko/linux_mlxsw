@@ -818,6 +818,28 @@ out_pre_malloc:
 	return err;
 }
 
+static void mlxsw_sp_router_probe_unresolved_nexthops(struct work_struct *work)
+{
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
+						 router.nexthop_probe_dw.work);
+
+	/* Iterate over the neigh hash table, find those who are nh and are
+	 * unresolved and send arp on them. The reason for that is that the
+	 * kernel will not send probes for those nexthops as it doesn't know
+	 * about traffic that goes through them inside HW.
+	 */
+	list_for_each_entry(neigh_entry, &mlxsw_sp->router.nexthop_neighs_list,
+			    nexthop_neighs_list_node) {
+		if (!(neigh_entry->n->nud_state & NUD_CONNECTED) &&
+		    !list_empty(&neigh_entry->nexthop_list))
+			neigh_event_send(neigh_entry->n, NULL);
+	}
+
+	mlxsw_core_schedule_dw(&mlxsw_sp->router.nexthop_probe_dw,
+			       MLXSW_SP_UNRESOLVED_NH_PROBE_INTERVAL_MS);
+}
+
 static void mlxsw_sp_router_update_neighs(struct work_struct *work)
 {
 	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
@@ -1013,10 +1035,13 @@ static int mlxsw_sp_neigh_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_register_netevent_notifier;
 
-	/* Create the delayed work for the activity_update */
+	/* Create the delayed works for the activity_update */
 	INIT_DELAYED_WORK(&mlxsw_sp->router.neigh_update_dw,
 			  mlxsw_sp_router_update_neighs);
+	INIT_DELAYED_WORK(&mlxsw_sp->router.nexthop_probe_dw,
+			  mlxsw_sp_router_probe_unresolved_nexthops);
 	mlxsw_core_schedule_dw(&mlxsw_sp->router.neigh_update_dw, 0);
+	mlxsw_core_schedule_dw(&mlxsw_sp->router.nexthop_probe_dw, 0);
 	return 0;
 
 err_register_netevent_notifier:
@@ -1027,6 +1052,7 @@ err_register_netevent_notifier:
 static void mlxsw_sp_neigh_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	cancel_delayed_work_sync(&mlxsw_sp->router.neigh_update_dw);
+	cancel_delayed_work_sync(&mlxsw_sp->router.nexthop_probe_dw);
 	unregister_netevent_notifier(&mlxsw_sp_router_netevent_nb);
 	rhashtable_destroy(&mlxsw_sp->router.neigh_ht);
 }
