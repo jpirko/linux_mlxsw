@@ -568,6 +568,7 @@ struct mlxsw_sp_neigh_entry {
 	struct list_head nexthop_list; /* list of nexthops using
 					* this neigh entry
 					*/
+	struct list_head nexthop_neighs_list_node;
 };
 
 static const struct rhashtable_params mlxsw_sp_neigh_ht_params = {
@@ -738,20 +739,32 @@ static void mlxsw_sp_router_update_neigh(struct mlxsw_sp *mlxsw_sp,
 	neigh_release(n);
 }
 
-static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
+static void mlxsw_sp_router_update_neighs_nh(struct mlxsw_sp *mlxsw_sp)
 {
-	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
-						 router.neigh_update_dw.work);
-	int new_update_time;
+	u32 dip;
+	struct mlxsw_sp_neigh_entry *neigh_entry;
+
+	list_for_each_entry(neigh_entry, &mlxsw_sp->router.nexthop_neighs_list,
+			    nexthop_neighs_list_node) {
+		/* if this neigh have nexthops, make the kernel think this neigh
+		 * is active regardless of the traffic
+		 */
+		if (!list_empty(&neigh_entry->nexthop_list)) {
+			dip = ntohl(*((__be32 *) neigh_entry->n->primary_key));
+			neigh_entry->n->confirmed = jiffies;
+		}
+	}
+}
+
+static int mlxsw_sp_router_update_neighs_rauhtd(struct mlxsw_sp *mlxsw_sp)
+{
 	char *rauhtd_pl;
 	u8 num_rec;
-	int err;
-
-	mlxsw_sp->router.last_neigh_update_time = jiffies;
+	int err = 0;
 
 	rauhtd_pl = kmalloc(MLXSW_REG_RAUHTD_LEN, GFP_KERNEL);
 	if (!rauhtd_pl)
-		return;
+		goto out_pre_malloc;
 
 	mlxsw_reg_rauhtd_pack(rauhtd_pl, MLXSW_REG_RAUHTD_FILTER_A,
 			      MLXSW_REG_RAUHTD_OP_DUMP_AND_CLEAR,
@@ -801,6 +814,26 @@ static void mlxsw_sp_router_update_neighbours(struct work_struct *work)
 
 out:
 	kfree(rauhtd_pl);
+out_pre_malloc:
+	return err;
+}
+
+static void mlxsw_sp_router_update_neighs(struct work_struct *work)
+{
+	struct mlxsw_sp *mlxsw_sp = container_of(work, struct mlxsw_sp,
+						 router.neigh_update_dw.work);
+	int new_update_time;
+	int err;
+
+	mlxsw_sp->router.last_neigh_update_time = jiffies;
+
+	err = mlxsw_sp_router_update_neighs_rauhtd(mlxsw_sp);
+	if (err)
+		dev_err(mlxsw_sp->bus_info->dev, "Could not update kernel for neigh activity");
+
+	mlxsw_sp_router_update_neighs_nh(mlxsw_sp);
+
+	/* Reschedule */
 	new_update_time = mlxsw_sp_router_neigh_calc_update_time(mlxsw_sp);
 	mlxsw_sp->router.neigh_update_time = new_update_time;
 	mlxsw_core_schedule_dw(&mlxsw_sp->router.neigh_update_dw,
@@ -982,7 +1015,7 @@ static int mlxsw_sp_neigh_init(struct mlxsw_sp *mlxsw_sp)
 
 	/* Create the delayed work for the activity_update */
 	INIT_DELAYED_WORK(&mlxsw_sp->router.neigh_update_dw,
-			  mlxsw_sp_router_update_neighbours);
+			  mlxsw_sp_router_update_neighs);
 	mlxsw_core_schedule_dw(&mlxsw_sp->router.neigh_update_dw, 0);
 	return 0;
 
@@ -1271,6 +1304,14 @@ static int mlxsw_sp_nexthop_init(struct mlxsw_sp *mlxsw_sp,
 		if (!neigh_entry)
 			return -EINVAL;
 	}
+
+	/* If that is the first nexthop connected to that neigh, add to
+	 * nexthop_neighs_list
+	 */
+	if (list_empty(&neigh_entry->nexthop_list))
+		list_add_tail(&neigh_entry->nexthop_neighs_list_node,
+			      &mlxsw_sp->router.nexthop_neighs_list);
+
 	nh->nh_grp = nh_grp;
 	nh->neigh_entry = neigh_entry;
 	list_add_tail(&nh->neigh_list_node, &neigh_entry->nexthop_list);
@@ -1287,6 +1328,12 @@ static void mlxsw_sp_nexthop_fini(struct mlxsw_sp *mlxsw_sp,
 				  struct mlxsw_sp_nexthop *nh)
 {
 	list_del(&nh->neigh_list_node);
+
+	/* If that is the last nexthop connected to that neigh, remove from
+	 * nexthop_neighs_list
+	 */
+	if (list_empty(&nh->neigh_entry->nexthop_list))
+		list_del(&nh->neigh_entry->nexthop_neighs_list_node);
 }
 
 static struct mlxsw_sp_nexthop_group *
@@ -1432,6 +1479,7 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 {
 	int err;
 
+	INIT_LIST_HEAD(&mlxsw_sp->router.nexthop_neighs_list);
 	INIT_LIST_HEAD(&mlxsw_sp->router.nexthop_group_list);
 	err = __mlxsw_sp_router_init(mlxsw_sp);
 	if (err)
