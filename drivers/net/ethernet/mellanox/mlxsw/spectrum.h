@@ -239,6 +239,11 @@ struct mlxsw_sp_port {
 	unsigned long *untagged_vlans;
 	/* VLAN interfaces */
 	struct list_head vports_list;
+	struct {
+		#define MLXSW_HW_STATS_UPDATE_TIME HZ
+		struct rtnl_link_stats64 *cache;
+		struct delayed_work update_dw;
+	} hw_stats;
 };
 
 static inline bool
