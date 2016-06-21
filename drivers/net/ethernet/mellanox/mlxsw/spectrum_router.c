@@ -928,7 +928,7 @@ static int mlxsw_sp_router_netevent_event(struct notifier_block *unused,
 
 		/* Find the specific rif and update its reachable time */
 		mlxsw_rif = mlxsw_sp_rif_find_by_dev(mlxsw_sp, dev);
-		if (WARN_ON(!mlxsw_rif))
+		if (!mlxsw_rif)
 			return NOTIFY_DONE;
 		mlxsw_rif->reachable_time = p->reachable_time;
 		netdev_dbg(dev, "set reachable time to %dms\n",
