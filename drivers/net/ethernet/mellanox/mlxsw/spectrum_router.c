@@ -1086,17 +1086,20 @@ mlxsw_sp_nexthop_group_mac_update(struct mlxsw_sp *mlxsw_sp,
 	for (i = 0; i < nh_grp->count; i++) {
 		nh = &nh_grp->nexthops[i];
 
-		if (!nh->should_offload)
+		if (!nh->should_offload) {
+			nh->offloaded = 0;
 			continue;
+		}
 
 		if (nh->update) {
 			err = mlxsw_sp_nexthop_mac_update(mlxsw_sp,
-							  adj_index++, nh);
+							  adj_index, nh);
 			if (err)
 				return err;
 			nh->update = 0;
 			nh->offloaded = 1;
 		}
+		adj_index++;
 	}
 	return 0;
 }
