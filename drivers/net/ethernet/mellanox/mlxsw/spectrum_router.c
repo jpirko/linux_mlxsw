@@ -726,7 +726,7 @@ static void mlxsw_sp_router_update_neigh(struct mlxsw_sp *mlxsw_sp,
 	}
 	netdev_dbg(dev, "Updating neigh dip=%pI4h, rif=%d, a=%d\n",
 		   &dip, rif_id, a);
-	n->confirmed = jiffies;
+	n->used = jiffies;
 	neigh_release(n);
 }
 
