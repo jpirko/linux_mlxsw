@@ -751,7 +751,7 @@ static void mlxsw_sp_router_update_neighs_nh(struct mlxsw_sp *mlxsw_sp)
 		 */
 		if (!list_empty(&neigh_entry->nexthop_list)) {
 			dip = ntohl(*((__be32 *) neigh_entry->n->primary_key));
-			neigh_entry->n->confirmed = jiffies;
+			neigh_entry->n->used = jiffies;
 		}
 	}
 }
