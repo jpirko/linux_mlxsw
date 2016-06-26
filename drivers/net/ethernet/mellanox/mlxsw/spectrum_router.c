@@ -1266,16 +1266,23 @@ static int mlxsw_sp_nexthop_init(struct mlxsw_sp *mlxsw_sp,
 		if (IS_ERR(n))
 			return PTR_ERR(n);
 		neigh_event_send(n, NULL);
-		neigh_release(n);
 		neigh_entry = mlxsw_sp_neigh_entry_lookup(mlxsw_sp, &gwip,
 							  sizeof(gwip), dev);
-		if (!neigh_entry)
+		if (!neigh_entry) {
+			neigh_release(n);
 			return -EINVAL;
+		}
+	} else {
+		/* Take a reference of neigh here ensuring that neigh would
+		 * not be detructed before the nexthop entry is finished.
+		 * The second branch takes the reference in neith_create()
+		 */
+		n = neigh_entry->n;
+		neigh_clone(n);
 	}
 	nh->nh_grp = nh_grp;
 	nh->neigh_entry = neigh_entry;
 	list_add_tail(&nh->neigh_list_node, &neigh_entry->nexthop_list);
-	n = neigh_entry->n;
 	read_lock_bh(&n->lock);
 	nud_state = n->nud_state;
 	read_unlock_bh(&n->lock);
@@ -1287,7 +1294,10 @@ static int mlxsw_sp_nexthop_init(struct mlxsw_sp *mlxsw_sp,
 static void mlxsw_sp_nexthop_fini(struct mlxsw_sp *mlxsw_sp,
 				  struct mlxsw_sp_nexthop *nh)
 {
+	struct mlxsw_sp_neigh_entry *neigh_entry = nh->neigh_entry;
+
 	list_del(&nh->neigh_list_node);
+	neigh_release(neigh_entry->n);
 }
 
 static struct mlxsw_sp_nexthop_group *
