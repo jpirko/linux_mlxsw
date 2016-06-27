@@ -1239,11 +1239,14 @@ mlxsw_sp_nexthop_neigh_update(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_nexthop *nh;
 
+	/* Take RTNL mutex here to prevent lists from changes */
+	rtnl_lock();
 	list_for_each_entry(nh, &neigh_entry->nexthop_list,
 			    neigh_list_node) {
 		__mlxsw_sp_nexthop_neigh_update(nh, removing);
 		mlxsw_sp_nexthop_group_refresh(mlxsw_sp, nh->nh_grp);
 	}
+	rtnl_unlock();
 }
 
 static int mlxsw_sp_nexthop_init(struct mlxsw_sp *mlxsw_sp,
