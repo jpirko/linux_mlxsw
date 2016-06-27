@@ -811,6 +811,8 @@ static void mlxsw_sp_router_update_neighs_nh(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry;
 
+	/* Take RTNL mutex here to prevent lists from changes */
+	rtnl_lock();
 	list_for_each_entry(neigh_entry, &mlxsw_sp->router.nexthop_neighs_list,
 			    nexthop_neighs_list_node) {
 		/* If this neigh have nexthops, make the kernel think this neigh
@@ -819,6 +821,7 @@ static void mlxsw_sp_router_update_neighs_nh(struct mlxsw_sp *mlxsw_sp)
 		if (!list_empty(&neigh_entry->nexthop_list))
 			neigh_entry->n->used = jiffies;
 	}
+	rtnl_unlock();
 }
 
 static void mlxsw_sp_router_update_neighs(struct work_struct *work)
