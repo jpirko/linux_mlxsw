@@ -418,7 +418,8 @@ static struct mlxsw_sp_vr *mlxsw_sp_vr_create(struct mlxsw_sp *mlxsw_sp,
 	vr->tb_id = tb_id;
 	mlxsw_sp_prefix_usage_zero(&req_prefix_usage);
 	mlxsw_sp_prefix_usage_set(&req_prefix_usage, prefix_len);
-	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage, proto);
+	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage,
+					 proto, true);
 	if (IS_ERR(lpm_tree)) {
 		err = PTR_ERR(lpm_tree);
 		goto err_tree_get;
@@ -458,7 +459,8 @@ mlxsw_sp_vr_lpm_tree_check(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_vr *vr,
 				     &vr->lpm_tree->prefix_usage))
 		return 0;
 
-	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, req_prefix_usage, vr->proto);
+	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, req_prefix_usage,
+					 vr->proto, false);
 	if (IS_ERR(lpm_tree)) {
 		/* We failed to get a tree according to the required
 		 * prefix usage. However, the current tree might be still good
