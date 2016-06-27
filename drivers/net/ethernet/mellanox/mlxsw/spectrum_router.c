@@ -857,13 +857,17 @@ static void mlxsw_sp_router_probe_unresolved_nexthops(struct work_struct *work)
 	 * the nexthop wouldn't get offloaded until the neighbor is resolved
 	 * but it wouldn't get resolved ever in case traffic is flowing in HW
 	 * using different nexthop.
+	 *
+	 * Take RTNL mutex here to prevent lists from changes.
 	 */
+	rtnl_lock();
 	list_for_each_entry(neigh_entry, &mlxsw_sp->router.nexthop_neighs_list,
 			    nexthop_neighs_list_node) {
 		if (!(neigh_entry->n->nud_state & NUD_VALID) &&
 		    !list_empty(&neigh_entry->nexthop_list))
 			neigh_event_send(neigh_entry->n, NULL);
 	}
+	rtnl_unlock();
 
 	mlxsw_core_schedule_dw(&mlxsw_sp->router.nexthop_probe_dw,
 			       MLXSW_SP_UNRESOLVED_NH_PROBE_INTERVAL);
