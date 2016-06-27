@@ -602,6 +602,7 @@ mlxsw_sp_neigh_entry_create(const void *addr, size_t addr_len,
 static void
 mlxsw_sp_neigh_entry_destroy(struct mlxsw_sp_neigh_entry *neigh_entry)
 {
+	flush_delayed_work(&neigh_entry->dw);
 	kfree(neigh_entry);
 }
 
