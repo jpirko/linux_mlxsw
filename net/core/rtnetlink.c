@@ -3583,6 +3583,21 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 		dev_get_stats(dev, sp);
 	}
 
+	if (stats_attr_valid(filter_mask, IFLA_STATS_LINK_SW_64, *idxattr)) {
+		if (dev_have_sw_stats(dev)) {
+			struct rtnl_link_stats64 *sp;
+
+			attr = nla_reserve_64bit(skb, IFLA_STATS_LINK_SW_64,
+						 sizeof(struct rtnl_link_stats64),
+						 IFLA_STATS_UNSPEC);
+			if (!attr)
+				goto nla_put_failure;
+
+			sp = nla_data(attr);
+			dev_get_sw_stats(dev, sp);
+		}
+	}
+
 	if (stats_attr_valid(filter_mask, IFLA_STATS_LINK_XSTATS, *idxattr)) {
 		const struct rtnl_link_ops *ops = dev->rtnl_link_ops;
 
@@ -3644,6 +3659,7 @@ nla_put_failure:
 
 static const struct nla_policy ifla_stats_policy[IFLA_STATS_MAX + 1] = {
 	[IFLA_STATS_LINK_64]	= { .len = sizeof(struct rtnl_link_stats64) },
+	[IFLA_STATS_LINK_SW_64] = { .len = sizeof(struct rtnl_link_stats64) },
 };
 
 static size_t if_nlmsg_stats_size(const struct net_device *dev,
@@ -3683,6 +3699,11 @@ static size_t if_nlmsg_stats_size(const struct net_device *dev,
 			/* for IFLA_STATS_LINK_XSTATS_SLAVE */
 			size += nla_total_size(0);
 		}
+	}
+
+	if (stats_attr_valid(filter_mask, IFLA_STATS_LINK_SW_64, 0)) {
+		if (dev_have_sw_stats(dev))
+			size += nla_total_size_64bit(sizeof(struct rtnl_link_stats64));
 	}
 
 	return size;
