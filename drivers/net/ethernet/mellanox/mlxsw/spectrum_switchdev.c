@@ -1542,23 +1542,6 @@ void mlxsw_sp_switchdev_fini(struct mlxsw_sp *mlxsw_sp)
 	mlxsw_sp_fdb_fini(mlxsw_sp);
 }
 
-int mlxsw_sp_port_vlan_init(struct mlxsw_sp_port *mlxsw_sp_port)
-{
-	struct net_device *dev = mlxsw_sp_port->dev;
-	int err;
-
-	mlxsw_sp_port->pvid = 1;
-
-	/* Add implicit VLAN interface in the device, so that untagged
-	 * packets will be classified to the default vFID.
-	 */
-	err = mlxsw_sp_port_add_vid(dev, 0, 1);
-	if (err)
-		netdev_err(dev, "Failed to configure default vFID\n");
-
-	return err;
-}
-
 void mlxsw_sp_port_switchdev_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	mlxsw_sp_port->dev->switchdev_ops = &mlxsw_sp_port_switchdev_ops;
