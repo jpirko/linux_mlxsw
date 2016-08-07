@@ -330,7 +330,7 @@ static const struct mlxsw_sp_sb_cm mlxsw_sp_cpu_port_sb_cms[] = {
 	MLXSW_SP_CPU_PORT_SB_CM,
 	MLXSW_SP_CPU_PORT_SB_CM,
 	MLXSW_SP_CPU_PORT_SB_CM,
-	MLXSW_SP_CPU_PORT_SB_CM,
+	MLXSW_SP_SB_CM(0, 9, 0),	/* Packets are trapped using TC7 */
 	MLXSW_SP_CPU_PORT_SB_CM,
 	MLXSW_SP_CPU_PORT_SB_CM,
 	MLXSW_SP_CPU_PORT_SB_CM,
@@ -432,6 +432,12 @@ static const struct mlxsw_sp_sb_pm mlxsw_sp_sb_pms_egress[] = {
 
 #define MLXSW_SP_SB_PMS_EGRESS_LEN ARRAY_SIZE(mlxsw_sp_sb_pms_egress)
 
+static const struct mlxsw_sp_sb_pm mlxsw_sp_cpu_port_sb_pms[] = {
+	MLXSW_SP_SB_PM(0, 7),
+};
+
+#define MLXSW_SP_CPU_PORT_SB_PMS_LEN ARRAY_SIZE(mlxsw_sp_cpu_port_sb_pms)
+
 static int __mlxsw_sp_port_sb_pms_init(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				       enum mlxsw_reg_sbxx_dir dir,
 				       const struct mlxsw_sp_sb_pm *pms,
@@ -468,6 +474,14 @@ static int mlxsw_sp_port_sb_pms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 					   MLXSW_REG_SBXX_DIR_EGRESS,
 					   mlxsw_sp_sb_pms_egress,
 					   MLXSW_SP_SB_PMS_EGRESS_LEN);
+}
+
+static int mlxsw_sp_cpu_port_sb_pms_init(struct mlxsw_sp *mlxsw_sp)
+{
+	return __mlxsw_sp_port_sb_pms_init(mlxsw_sp, 0,
+					   MLXSW_REG_SBXX_DIR_EGRESS,
+					   mlxsw_sp_cpu_port_sb_pms,
+					   MLXSW_SP_CPU_PORT_SB_PMS_LEN);
 }
 
 struct mlxsw_sp_sb_mm {
@@ -532,6 +546,9 @@ int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		return err;
 	err = mlxsw_sp_cpu_port_sb_cms_init(mlxsw_sp);
+	if (err)
+		return err;
+	err = mlxsw_sp_cpu_port_sb_pms_init(mlxsw_sp);
 	if (err)
 		return err;
 	err = mlxsw_sp_sb_mms_init(mlxsw_sp);
