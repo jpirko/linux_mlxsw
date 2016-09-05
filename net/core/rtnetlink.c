@@ -3577,6 +3577,74 @@ static bool stats_attr_valid(unsigned int mask, int attrid, int idxattr)
 	       (!idxattr || idxattr == attrid);
 }
 
+static int rtnl_get_offload_stats_attr_size(int attr_id)
+{
+	switch (attr_id) {
+	case IFLA_OFFLOAD_XSTATS_CPU_HIT:
+		return sizeof(struct rtnl_link_stats64);
+	}
+
+	return 0;
+}
+
+static int rtnl_get_offload_stats(struct sk_buff *skb, struct net_device *dev)
+{
+	struct nlattr *attr;
+	int attr_id, size;
+	void *attr_data;
+	int err;
+
+	if (!(dev->netdev_ops && dev->netdev_ops->ndo_has_offload_stats &&
+	      dev->netdev_ops->ndo_get_offload_stats))
+		return 0;
+
+	for (attr_id = IFLA_OFFLOAD_XSTATS_FIRST;
+	     attr_id <= IFLA_OFFLOAD_XSTATS_MAX; attr_id++) {
+		size = rtnl_get_offload_stats_attr_size(attr_id);
+		if (!size)
+			continue;
+
+		if (!dev->netdev_ops->ndo_has_offload_stats(attr_id))
+			continue;
+
+		attr = nla_reserve_64bit(skb, attr_id, size,
+					 IFLA_OFFLOAD_XSTATS_UNSPEC);
+		if (!attr)
+			return -EMSGSIZE;
+
+		attr_data = nla_data(attr);
+		memset(attr_data, 0, size);
+		err = dev->netdev_ops->ndo_get_offload_stats(attr_id, dev,
+							     attr_data);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static int rtnl_get_offload_stats_size(const struct net_device *dev)
+{
+	int size = 0;
+	int attr_id;
+
+	if (!(dev->netdev_ops && dev->netdev_ops->ndo_has_offload_stats &&
+	      dev->netdev_ops->ndo_get_offload_stats))
+		return nla_total_size(0);
+
+	for (attr_id = IFLA_OFFLOAD_XSTATS_FIRST;
+	     attr_id <= IFLA_OFFLOAD_XSTATS_MAX; attr_id++) {
+		if (!dev->netdev_ops->ndo_has_offload_stats(attr_id))
+			continue;
+
+		size += rtnl_get_offload_stats_attr_size(attr_id);
+	}
+
+	size += nla_total_size(0);
+
+	return size;
+}
+
 static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 			       int type, u32 pid, u32 seq, u32 change,
 			       unsigned int flags, unsigned int filter_mask,
@@ -3586,6 +3654,7 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 	struct nlmsghdr *nlh;
 	struct nlattr *attr;
 	int s_prividx = *prividx;
+	int err;
 
 	ASSERT_RTNL();
 
@@ -3614,8 +3683,6 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 		const struct rtnl_link_ops *ops = dev->rtnl_link_ops;
 
 		if (ops && ops->fill_linkxstats) {
-			int err;
-
 			*idxattr = IFLA_STATS_LINK_XSTATS;
 			attr = nla_nest_start(skb,
 					      IFLA_STATS_LINK_XSTATS);
@@ -3639,8 +3706,6 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 		if (master)
 			ops = master->rtnl_link_ops;
 		if (ops && ops->fill_linkxstats) {
-			int err;
-
 			*idxattr = IFLA_STATS_LINK_XSTATS_SLAVE;
 			attr = nla_nest_start(skb,
 					      IFLA_STATS_LINK_XSTATS_SLAVE);
@@ -3653,6 +3718,18 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 				goto nla_put_failure;
 			*idxattr = 0;
 		}
+	}
+
+	if (stats_attr_valid(filter_mask, IFLA_STATS_LINK_OFFLOAD_XSTATS,
+			     *idxattr)) {
+		attr = nla_nest_start(skb, IFLA_STATS_LINK_OFFLOAD_XSTATS);
+		if (!attr)
+			goto nla_put_failure;
+
+		err = rtnl_get_offload_stats(skb, dev);
+		nla_nest_end(skb, attr);
+		if (err)
+			goto nla_put_failure;
 	}
 
 	nlmsg_end(skb, nlh);
@@ -3711,6 +3788,9 @@ static size_t if_nlmsg_stats_size(const struct net_device *dev,
 			size += nla_total_size(0);
 		}
 	}
+
+	if (stats_attr_valid(filter_mask, IFLA_STATS_LINK_OFFLOAD_XSTATS, 0))
+		size += rtnl_get_offload_stats_size(dev);
 
 	return size;
 }
