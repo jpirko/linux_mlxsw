@@ -2897,6 +2897,7 @@ err_rx_listener_register:
 static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
+	struct mlxsw_resources *resources;
 	int i;
 
 	mlxsw_sp_ports_remove(mlxsw_sp);
@@ -2909,7 +2910,9 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_event_unregister(mlxsw_sp, MLXSW_TRAP_ID_PUDE);
 	WARN_ON(!list_empty(&mlxsw_sp->vfids.list));
 	WARN_ON(!list_empty(&mlxsw_sp->fids));
-	for (i = 0; i < MLXSW_SP_RIF_MAX; i++)
+
+	resources = mlxsw_core_resources_get(mlxsw_core);
+	for (i = 0; i < resources->max_rif; i++)
 		WARN_ON_ONCE(mlxsw_sp->rifs[i]);
 }
 
@@ -3052,13 +3055,15 @@ static bool mlxsw_sp_rif_should_config(struct mlxsw_sp_rif *r,
 
 static int mlxsw_sp_avail_rif_get(struct mlxsw_sp *mlxsw_sp)
 {
+	struct mlxsw_resources *resources;
 	int i;
 
-	for (i = 0; i < MLXSW_SP_RIF_MAX; i++)
+	resources = mlxsw_core_resources_get(mlxsw_sp->core);
+	for (i = 0; i < resources->max_rif; i++)
 		if (!mlxsw_sp->rifs[i])
 			return i;
 
-	return MLXSW_SP_RIF_MAX;
+	return MLXSW_SP_INVALID_RIF;
 }
 
 static void mlxsw_sp_vport_rif_sp_attr_get(struct mlxsw_sp_port *mlxsw_sp_vport,
@@ -3138,7 +3143,7 @@ mlxsw_sp_vport_rif_sp_create(struct mlxsw_sp_port *mlxsw_sp_vport,
 	int err;
 
 	rif = mlxsw_sp_avail_rif_get(mlxsw_sp);
-	if (rif == MLXSW_SP_RIF_MAX)
+	if (rif == MLXSW_SP_INVALID_RIF)
 		return ERR_PTR(-ERANGE);
 
 	err = mlxsw_sp_vport_rif_sp_op(mlxsw_sp_vport, l3_dev, rif, true);
@@ -3370,7 +3375,7 @@ static int mlxsw_sp_rif_bridge_create(struct mlxsw_sp *mlxsw_sp,
 	int err;
 
 	rif = mlxsw_sp_avail_rif_get(mlxsw_sp);
-	if (rif == MLXSW_SP_RIF_MAX)
+	if (rif == MLXSW_SP_INVALID_RIF)
 		return -ERANGE;
 
 	err = mlxsw_sp_router_port_flood_set(mlxsw_sp, f->fid, true);
