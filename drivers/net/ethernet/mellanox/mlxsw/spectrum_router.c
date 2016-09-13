@@ -1514,11 +1514,30 @@ static void mlxsw_sp_nexthop_group_put(struct mlxsw_sp *mlxsw_sp,
 
 static int __mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 {
+	struct mlxsw_resources *resources;
 	char rgcr_pl[MLXSW_REG_RGCR_LEN];
+	int err;
+
+	resources = mlxsw_core_resources_get(mlxsw_sp->core);
+	if (!resources->max_rif_valid)
+		return -EIO;
+
+	mlxsw_sp->rifs = kcalloc(resources->max_rif,
+				 sizeof(struct mlxsw_sp_rif *), GFP_KERNEL);
+	if (!mlxsw_sp->rifs)
+		return -ENOMEM;
 
 	mlxsw_reg_rgcr_pack(rgcr_pl, true);
-	mlxsw_reg_rgcr_max_router_interfaces_set(rgcr_pl, MLXSW_SP_RIF_MAX);
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rgcr), rgcr_pl);
+	mlxsw_reg_rgcr_max_router_interfaces_set(rgcr_pl, resources->max_rif);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rgcr), rgcr_pl);
+	if (err)
+		goto err_rgcr_fail;
+
+	return 0;
+
+err_rgcr_fail:
+	kfree(mlxsw_sp->rifs);
+	return err;
 }
 
 static void __mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
@@ -1527,6 +1546,7 @@ static void __mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 
 	mlxsw_reg_rgcr_pack(rgcr_pl, false);
 	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rgcr), rgcr_pl);
+	kfree(mlxsw_sp->rifs);
 }
 
 int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
