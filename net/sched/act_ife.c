@@ -766,8 +766,6 @@ static int tcf_ife_encode(struct sk_buff *skb, const struct tc_action *a,
 		return TC_ACT_SHOT;
 	}
 
-	iethh = eth_hdr(skb);
-
 	err = skb_cow_head(skb, hdrm);
 	if (unlikely(err)) {
 		ife->tcf_qstats.drops++;
@@ -778,6 +776,7 @@ static int tcf_ife_encode(struct sk_buff *skb, const struct tc_action *a,
 	if (!(at & AT_EGRESS))
 		skb_push(skb, skb->dev->hard_header_len);
 
+	iethh = (struct ethhdr *)skb->data;
 	__skb_push(skb, hdrm);
 	memcpy(skb->data, iethh, skb->mac_len);
 	skb_reset_mac_header(skb);
