@@ -229,6 +229,7 @@ struct mlxsw_sp_span_entry {
 
 enum mlxsw_sp_port_mall_action_type {
 	MLXSW_SP_PORT_MALL_MIRROR,
+	MLXSW_SP_PORT_MALL_SAMPLE,
 };
 
 struct mlxsw_sp_port_mall_mirror_tc_entry {
@@ -362,6 +363,16 @@ struct mlxsw_sp_port {
 		struct rtnl_link_stats64 *cache;
 		struct delayed_work update_dw;
 	} hw_stats;
+	struct {
+		bool enable;
+		u32 mark;
+		bool truncate;
+		u32 trunc_size;
+		u8 eth_src[ETH_ALEN];
+		u8 eth_dst[ETH_ALEN];
+		u16 eth_type;
+		bool eth_type_set;
+	} sample;
 };
 
 struct mlxsw_sp_port *mlxsw_sp_port_lower_dev_hold(struct net_device *dev);
