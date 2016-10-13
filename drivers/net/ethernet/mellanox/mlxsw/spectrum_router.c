@@ -403,17 +403,6 @@ static int mlxsw_sp_vr_lpm_tree_bind(struct mlxsw_sp *mlxsw_sp,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(raltb), raltb_pl);
 }
 
-static int mlxsw_sp_vr_lpm_tree_unbind(struct mlxsw_sp *mlxsw_sp,
-				       struct mlxsw_sp_vr *vr)
-{
-	char raltb_pl[MLXSW_REG_RALTB_LEN];
-
-	/* Bind to tree 0 which is default */
-	mlxsw_reg_raltb_pack(raltb_pl, vr->id,
-			     (enum mlxsw_reg_ralxx_protocol) vr->proto, 0);
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(raltb), raltb_pl);
-}
-
 static u32 mlxsw_sp_fix_tb_id(u32 tb_id)
 {
 	/* For our purpose, squash main and local table into one */
@@ -487,7 +476,6 @@ err_tree_get:
 static void mlxsw_sp_vr_destroy(struct mlxsw_sp *mlxsw_sp,
 				struct mlxsw_sp_vr *vr)
 {
-	mlxsw_sp_vr_lpm_tree_unbind(mlxsw_sp, vr);
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, vr->lpm_tree);
 	mlxsw_sp_fib_destroy(vr->fib);
 	vr->used = false;
@@ -517,7 +505,6 @@ mlxsw_sp_vr_lpm_tree_check(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_vr *vr,
 		return PTR_ERR(lpm_tree);
 	}
 
-	mlxsw_sp_vr_lpm_tree_unbind(mlxsw_sp, vr);
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, vr->lpm_tree);
 	vr->lpm_tree = lpm_tree;
 	return mlxsw_sp_vr_lpm_tree_bind(mlxsw_sp, vr);
