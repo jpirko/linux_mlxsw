@@ -168,14 +168,13 @@ static int mlxsw_sp_base_mac_get(struct mlxsw_sp *mlxsw_sp)
 
 static int mlxsw_sp_span_init(struct mlxsw_sp *mlxsw_sp)
 {
-	struct mlxsw_resources *resources;
 	int i;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	if (!resources->max_span_valid)
+	if (!MLXSW_CORE_RES_VALID(mlxsw_sp->core, MAX_SPAN))
 		return -EIO;
 
-	mlxsw_sp->span.entries_count = resources->max_span;
+	mlxsw_sp->span.entries_count = MLXSW_CORE_RES_GET(mlxsw_sp->core,
+							  MAX_SPAN);
 	mlxsw_sp->span.entries = kcalloc(mlxsw_sp->span.entries_count,
 					 sizeof(struct mlxsw_sp_span_entry),
 					 GFP_KERNEL);
@@ -2889,7 +2888,6 @@ static int mlxsw_sp_flood_init(struct mlxsw_sp *mlxsw_sp)
 
 static int mlxsw_sp_lag_init(struct mlxsw_sp *mlxsw_sp)
 {
-	struct mlxsw_resources *resources;
 	char slcr_pl[MLXSW_REG_SLCR_LEN];
 	int err;
 
@@ -2906,11 +2904,11 @@ static int mlxsw_sp_lag_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		return err;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	if (!(resources->max_lag_valid && resources->max_ports_in_lag_valid))
+	if (!MLXSW_CORE_RES_VALID(mlxsw_sp->core, MAX_LAG) ||
+	    !MLXSW_CORE_RES_VALID(mlxsw_sp->core, MAX_LAG_MEMBERS))
 		return -EIO;
 
-	mlxsw_sp->lags = kcalloc(resources->max_lag,
+	mlxsw_sp->lags = kcalloc(MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_LAG),
 				 sizeof(struct mlxsw_sp_upper),
 				 GFP_KERNEL);
 	if (!mlxsw_sp->lags)
@@ -3180,11 +3178,9 @@ static bool mlxsw_sp_rif_should_config(struct mlxsw_sp_rif *r,
 
 static int mlxsw_sp_avail_rif_get(struct mlxsw_sp *mlxsw_sp)
 {
-	struct mlxsw_resources *resources;
 	int i;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	for (i = 0; i < resources->max_rif; i++)
+	for (i = 0; i < MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_RIFS); i++)
 		if (!mlxsw_sp->rifs[i])
 			return i;
 
@@ -3707,14 +3703,15 @@ static bool mlxsw_sp_port_fdb_should_flush(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	u8 local_port = mlxsw_sp_port->local_port;
 	u16 lag_id = mlxsw_sp_port->lag_id;
-	struct mlxsw_resources *resources;
+	u64 max_lag_members;
 	int i, count = 0;
 
 	if (!mlxsw_sp_port->lagged)
 		return true;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	for (i = 0; i < resources->max_ports_in_lag; i++) {
+	max_lag_members = MLXSW_CORE_RES_GET(mlxsw_sp->core,
+					     MAX_LAG_MEMBERS);
+	for (i = 0; i < max_lag_members; i++) {
 		struct mlxsw_sp_port *lag_port;
 
 		lag_port = mlxsw_sp_port_lagged_get(mlxsw_sp, lag_id, i);
@@ -3920,13 +3917,13 @@ static int mlxsw_sp_lag_index_get(struct mlxsw_sp *mlxsw_sp,
 				  struct net_device *lag_dev,
 				  u16 *p_lag_id)
 {
-	struct mlxsw_resources *resources;
 	struct mlxsw_sp_upper *lag;
 	int free_lag_id = -1;
+	u64 max_lag;
 	int i;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	for (i = 0; i < resources->max_lag; i++) {
+	max_lag = MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_LAG);
+	for (i = 0; i < max_lag; i++) {
 		lag = mlxsw_sp_lag_get(mlxsw_sp, i);
 		if (lag->ref_count) {
 			if (lag->dev == lag_dev) {
@@ -3960,11 +3957,12 @@ mlxsw_sp_master_lag_check(struct mlxsw_sp *mlxsw_sp,
 static int mlxsw_sp_port_lag_index_get(struct mlxsw_sp *mlxsw_sp,
 				       u16 lag_id, u8 *p_port_index)
 {
-	struct mlxsw_resources *resources;
+	u64 max_lag_members;
 	int i;
 
-	resources = mlxsw_core_resources_get(mlxsw_sp->core);
-	for (i = 0; i < resources->max_ports_in_lag; i++) {
+	max_lag_members = MLXSW_CORE_RES_GET(mlxsw_sp->core,
+					     MAX_LAG_MEMBERS);
+	for (i = 0; i < max_lag_members; i++) {
 		if (!mlxsw_sp_port_lagged_get(mlxsw_sp, lag_id, i)) {
 			*p_port_index = i;
 			return 0;
