@@ -5419,7 +5419,7 @@ int netdev_walk_all_lower_dev(struct net_device *dev,
 	struct list_head *iter;
 	int ret;
 
-	for (iter = &dev->adj_list.lower,
+	for (iter = dev->adj_list.lower.next,
 	     ldev = netdev_next_lower_dev(dev, &iter);
 	     ldev;
 	     ldev = netdev_next_lower_dev(dev, &iter)) {
