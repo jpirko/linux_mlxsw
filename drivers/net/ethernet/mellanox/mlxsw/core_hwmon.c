@@ -75,7 +75,8 @@ static ssize_t mlxsw_hwmon_temp_show(struct device *dev,
 	int err;
 
 	mlxsw_reg_mtmp_pack(mtmp_pl, mlwsw_hwmon_attr->type_index,
-			    false, false);
+			    false, false,
+			    MLXSW_REG_MTMP_GEN_DISABLE, 0, 0);
 	err = mlxsw_reg_query(mlxsw_hwmon->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
 		dev_err(mlxsw_hwmon->bus_info->dev, "Failed to query temp sensor\n");
@@ -97,7 +98,8 @@ static ssize_t mlxsw_hwmon_temp_max_show(struct device *dev,
 	int err;
 
 	mlxsw_reg_mtmp_pack(mtmp_pl, mlwsw_hwmon_attr->type_index,
-			    false, false);
+			    false, false,
+			    MLXSW_REG_MTMP_GEN_DISABLE, 0, 0);
 	err = mlxsw_reg_query(mlxsw_hwmon->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
 		dev_err(mlxsw_hwmon->bus_info->dev, "Failed to query temp sensor\n");
@@ -124,7 +126,8 @@ static ssize_t mlxsw_hwmon_temp_rst_store(struct device *dev,
 	if (val != 1)
 		return -EINVAL;
 
-	mlxsw_reg_mtmp_pack(mtmp_pl, mlwsw_hwmon_attr->type_index, true, true);
+	mlxsw_reg_mtmp_pack(mtmp_pl, mlwsw_hwmon_attr->type_index, true, true,
+			    MLXSW_REG_MTMP_GEN_DISABLE, 0, 0);
 	err = mlxsw_reg_write(mlxsw_hwmon->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
 		dev_err(mlxsw_hwmon->bus_info->dev, "Failed to reset temp sensor history\n");
@@ -275,7 +278,8 @@ static int mlxsw_hwmon_temp_init(struct mlxsw_hwmon *mlxsw_hwmon)
 	}
 	sensor_count = mlxsw_reg_mtcap_sensor_count_get(mtcap_pl);
 	for (i = 0; i < sensor_count; i++) {
-		mlxsw_reg_mtmp_pack(mtmp_pl, i, true, true);
+		mlxsw_reg_mtmp_pack(mtmp_pl, i, true, true,
+				    MLXSW_REG_MTMP_GEN_DISABLE, 0, 0);
 		err = mlxsw_reg_write(mlxsw_hwmon->core,
 				      MLXSW_REG(mtmp), mtmp_pl);
 		if (err) {

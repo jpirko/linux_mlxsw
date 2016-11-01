@@ -4556,6 +4556,7 @@ MLXSW_ITEM32(reg, mtmp, sensor_index, 0x00, 0, 7);
 
 /* Convert to milli degrees Celsius */
 #define MLXSW_REG_MTMP_TEMP_TO_MC(val) (val * 125)
+#define MLXSW_REG_MTMP_MC_TO_TEMP(val) (val / 125)
 
 /* reg_mtmp_temperature
  * Temperature reading from the sensor. Reading is in 0.125 Celsius
@@ -4583,6 +4584,43 @@ MLXSW_ITEM32(reg, mtmp, mtr, 0x08, 30, 1);
  */
 MLXSW_ITEM32(reg, mtmp, max_temperature, 0x08, 0, 16);
 
+enum mlxsw_reg_mtmp_tee_gen {
+	MLXSW_REG_MTMP_GEN_DISABLE,
+	MLXSW_REG_MTMP_GEN_ENABLE,
+	MLXSW_REG_MTMP_GEN_ENABLE_SINGLE,
+};
+
+/* reg_mtmp_tee
+ * Temperature Event Enable
+ * Note: events may be delayed by up to 60 Seconds.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, tee, 0x0C, 30, 2);
+
+/* reg_mtmp_temperature_threshold_hi
+ * If the sensor temperature measurement is above the threshold (and events
+ * are enabled), an event will be generated. threshold_hi and threshold_lo
+ * implement hysteresis mechanism of the threshold preventing toggling of
+ * the indication.
+ * Note that temperature_threshold_hi must be equal or lower than
+ * the system requirement.
+ * System requirement for module is the module warning temperature.
+ * System requirement for board/silicon sensors is according to
+ * product information parameters.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, temperature_threshold_hi, 0x0C, 0, 16);
+
+/* reg_mtmp_temperature_threshold_hi
+ * The offset threshold_lo implements the lower threshold for the hysteresis
+ * mechanism of over temperature alert. Once alert is set, if the temperature
+ * goes below this threshold, the alert is cleared.
+ * Note that temperature_threshold_lo must be at least 5 degrees lower
+ * than temperature_threshold_hi.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, temperature_threshold_lo, 0x10, 0, 16);
+
 #define MLXSW_REG_MTMP_SENSOR_NAME_SIZE 8
 
 /* reg_mtmp_sensor_name
@@ -4593,12 +4631,20 @@ MLXSW_ITEM_BUF(reg, mtmp, sensor_name, 0x18, MLXSW_REG_MTMP_SENSOR_NAME_SIZE);
 
 static inline void mlxsw_reg_mtmp_pack(char *payload, u8 sensor_index,
 				       bool max_temp_enable,
-				       bool max_temp_reset)
+				       bool max_temp_reset,
+				       enum mlxsw_reg_mtmp_tee_gen tee_gen,
+				       u16 temp_threshold_hi,
+				       u16 temp_threshold_lo)
 {
 	MLXSW_REG_ZERO(mtmp, payload);
 	mlxsw_reg_mtmp_sensor_index_set(payload, sensor_index);
 	mlxsw_reg_mtmp_mte_set(payload, max_temp_enable);
 	mlxsw_reg_mtmp_mtr_set(payload, max_temp_reset);
+	mlxsw_reg_mtmp_tee_set(payload, tee_gen);
+	mlxsw_reg_mtmp_temperature_threshold_hi_set(payload,
+				MLXSW_REG_MTMP_MC_TO_TEMP(temp_threshold_hi));
+	mlxsw_reg_mtmp_temperature_threshold_lo_set(payload,
+				MLXSW_REG_MTMP_MC_TO_TEMP(temp_threshold_lo));
 }
 
 static inline void mlxsw_reg_mtmp_unpack(char *payload, unsigned int *p_temp,
