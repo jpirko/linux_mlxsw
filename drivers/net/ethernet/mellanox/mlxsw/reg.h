@@ -5377,4 +5377,16 @@ MLXSW_ITEM32(reg, pude, admin_status, 0x00, 8, 4);
  */
 MLXSW_ITEM32(reg, pude, oper_status, 0x00, 0, 4);
 
+/* MTWE - Management Temperature Warning Event
+ * -------------------------------------------
+ * Reports over temperature warning.
+ */
+#define MLXSW_REG_MTWE_LEN 0x10
+
+/* reg_mtwe_sensor_warning
+ * Bit vector indicating which of the sensor reading is above threshold.
+ * Access: RO
+ */
+MLXSW_ITEM_BIT_ARRAY(reg, mtwe, sensor_warning, 0x0, 0x10, 1);
+
 #endif
