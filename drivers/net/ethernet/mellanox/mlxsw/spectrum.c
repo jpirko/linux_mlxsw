@@ -2697,53 +2697,6 @@ static void mlxsw_sp_pude_event_func(const struct mlxsw_reg_info *reg,
 	}
 }
 
-static struct mlxsw_event_listener mlxsw_sp_pude_event = {
-	.func = mlxsw_sp_pude_event_func,
-	.trap_id = MLXSW_TRAP_ID_PUDE,
-};
-
-static int mlxsw_sp_event_register(struct mlxsw_sp *mlxsw_sp,
-				   enum mlxsw_event_trap_id trap_id)
-{
-	struct mlxsw_event_listener *el;
-	char hpkt_pl[MLXSW_REG_HPKT_LEN];
-	int err;
-
-	switch (trap_id) {
-	case MLXSW_TRAP_ID_PUDE:
-		el = &mlxsw_sp_pude_event;
-		break;
-	}
-	err = mlxsw_core_event_listener_register(mlxsw_sp->core, el, mlxsw_sp);
-	if (err)
-		return err;
-
-	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_FORWARD, trap_id,
-			    MLXSW_REG_HTGT_TRAP_GROUP_EMAD, false);
-	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
-	if (err)
-		goto err_event_trap_set;
-
-	return 0;
-
-err_event_trap_set:
-	mlxsw_core_event_listener_unregister(mlxsw_sp->core, el, mlxsw_sp);
-	return err;
-}
-
-static void mlxsw_sp_event_unregister(struct mlxsw_sp *mlxsw_sp,
-				      enum mlxsw_event_trap_id trap_id)
-{
-	struct mlxsw_event_listener *el;
-
-	switch (trap_id) {
-	case MLXSW_TRAP_ID_PUDE:
-		el = &mlxsw_sp_pude_event;
-		break;
-	}
-	mlxsw_core_event_listener_unregister(mlxsw_sp->core, el, mlxsw_sp);
-}
-
 static void mlxsw_sp_rx_listener_no_mark_func(struct sk_buff *skb,
 					      u8 local_port, void *priv)
 {
@@ -2776,14 +2729,31 @@ static void mlxsw_sp_rx_listener_mark_func(struct sk_buff *skb, u8 local_port,
 	return mlxsw_sp_rx_listener_no_mark_func(skb, local_port, priv);
 }
 
+#define MLXSW_SP_EVENTL(_func, _trap_id)				\
+	{	.u.event_listener =					\
+		{							\
+			.func = _func,					\
+			.trap_id = MLXSW_TRAP_ID_##_trap_id,		\
+		},							\
+		.trap_id = MLXSW_TRAP_ID_##_trap_id,			\
+		.action = MLXSW_REG_HPKT_ACTION_FORWARD,		\
+		.trap_group = MLXSW_REG_HTGT_TRAP_GROUP_EMAD,		\
+		.is_ctrl = false,					\
+		.is_event = true,					\
+	}
+
 #define MLXSW_SP_RXL(_func, _trap_id, _action, _is_ctrl)		\
-	{								\
-		.func = _func,						\
-		.local_port = MLXSW_PORT_DONT_CARE,			\
+	{	.u.rx_listener =					\
+		{							\
+			.func = _func,					\
+			.local_port = MLXSW_PORT_DONT_CARE,		\
+			.trap_id = MLXSW_TRAP_ID_##_trap_id,		\
+		},							\
 		.trap_id = MLXSW_TRAP_ID_##_trap_id,			\
 		.action = MLXSW_REG_HPKT_ACTION_##_action,		\
 		.trap_group = MLXSW_REG_HTGT_TRAP_GROUP_RX,		\
 		.is_ctrl = _is_ctrl,					\
+		.is_event = false,					\
 	}
 
 #define MLXSW_SP_RXL_NO_MARK(_trap_id, _action, _is_ctrl)		   \
@@ -2794,7 +2764,8 @@ static void mlxsw_sp_rx_listener_mark_func(struct sk_buff *skb, u8 local_port,
 	MLXSW_SP_RXL(mlxsw_sp_rx_listener_mark_func, _trap_id, _action,	\
 		     _is_ctrl)
 
-static const struct mlxsw_rx_listener mlxsw_sp_rx_listener[] = {
+static const struct mlxsw_listener mlxsw_sp_listener[] = {
+	MLXSW_SP_EVENTL(mlxsw_sp_pude_event_func, PUDE),
 	MLXSW_SP_RXL_NO_MARK(FDB_MC, TRAP_TO_CPU, false),
 	/* Traps for specific L2 packet types, not trapped as FDB MC */
 	MLXSW_SP_RXL_NO_MARK(STP, TRAP_TO_CPU, true),
@@ -2831,6 +2802,32 @@ static void mlxsw_sp_one_trap_fini(struct mlxsw_sp *mlxsw_sp, int trap_id)
 	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
 }
 
+static int mlxsw_sp_listener_register(struct mlxsw_sp *mlxsw_sp,
+				      const struct mlxsw_listener *listener)
+{
+	if (listener->is_event)
+		return mlxsw_core_event_listener_register(mlxsw_sp->core,
+						&listener->u.event_listener,
+						mlxsw_sp);
+	else
+		return mlxsw_core_rx_listener_register(mlxsw_sp->core,
+						&listener->u.rx_listener,
+						mlxsw_sp);
+}
+
+static void mlxsw_sp_listener_unregister(struct mlxsw_sp *mlxsw_sp,
+				  const struct mlxsw_listener *listener)
+{
+	if (listener->is_event)
+		mlxsw_core_event_listener_unregister(mlxsw_sp->core,
+						     &listener->u.event_listener,
+						     mlxsw_sp);
+	else
+		mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
+						  &listener->u.rx_listener,
+						  mlxsw_sp);
+}
+
 static int mlxsw_sp_traps_init(struct mlxsw_sp *mlxsw_sp)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
@@ -2848,34 +2845,28 @@ static int mlxsw_sp_traps_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		return err;
 
-	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_rx_listener); i++) {
-		err = mlxsw_core_rx_listener_register(mlxsw_sp->core,
-						      &mlxsw_sp_rx_listener[i],
-						      mlxsw_sp);
+	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_listener); i++) {
+		err = mlxsw_sp_listener_register(mlxsw_sp,
+						 &mlxsw_sp_listener[i]);
 		if (err)
-			goto err_rx_listener_register;
+			goto err_listener_register;
 
-		mlxsw_reg_hpkt_pack(hpkt_pl, mlxsw_sp_rx_listener[i].action,
-				    mlxsw_sp_rx_listener[i].trap_id,
-				    mlxsw_sp_rx_listener[i].trap_group,
-				    mlxsw_sp_rx_listener[i].is_ctrl);
+		mlxsw_reg_hpkt_pack(hpkt_pl, mlxsw_sp_listener[i].action,
+				    mlxsw_sp_listener[i].trap_id,
+				    mlxsw_sp_listener[i].trap_group,
+				    mlxsw_sp_listener[i].is_ctrl);
 		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
 		if (err)
-			goto err_rx_trap_set;
+			goto err_trap_set;
 	}
 	return 0;
 
-err_rx_trap_set:
-	mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
-					  &mlxsw_sp_rx_listener[i],
-					  mlxsw_sp);
-err_rx_listener_register:
+err_trap_set:
+	mlxsw_sp_listener_unregister(mlxsw_sp, &mlxsw_sp_listener[i]);
+err_listener_register:
 	for (i--; i >= 0; i--) {
-		mlxsw_sp_one_trap_fini(mlxsw_sp,
-				       mlxsw_sp_rx_listener[i].trap_id);
-		mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
-						  &mlxsw_sp_rx_listener[i],
-						  mlxsw_sp);
+		mlxsw_sp_one_trap_fini(mlxsw_sp, mlxsw_sp_listener[i].trap_id);
+		mlxsw_sp_listener_unregister(mlxsw_sp, &mlxsw_sp_listener[i]);
 	}
 	return err;
 }
@@ -2884,12 +2875,9 @@ static void mlxsw_sp_traps_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_rx_listener); i++) {
-		mlxsw_sp_one_trap_fini(mlxsw_sp,
-				       mlxsw_sp_rx_listener[i].trap_id);
-		mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
-						  &mlxsw_sp_rx_listener[i],
-						  mlxsw_sp);
+	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_listener); i++) {
+		mlxsw_sp_one_trap_fini(mlxsw_sp, mlxsw_sp_listener[i].trap_id);
+		mlxsw_sp_listener_unregister(mlxsw_sp, &mlxsw_sp_listener[i]);
 	}
 }
 
@@ -3019,16 +3007,10 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		return err;
 	}
 
-	err = mlxsw_sp_event_register(mlxsw_sp, MLXSW_TRAP_ID_PUDE);
-	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Failed to register for PUDE events\n");
-		return err;
-	}
-
 	err = mlxsw_sp_traps_init(mlxsw_sp);
 	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Failed to set traps for RX\n");
-		goto err_rx_listener_register;
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to set traps\n");
+		return err;
 	}
 
 	err = mlxsw_sp_flood_init(mlxsw_sp);
@@ -3088,8 +3070,6 @@ err_lag_init:
 err_buffers_init:
 err_flood_init:
 	mlxsw_sp_traps_fini(mlxsw_sp);
-err_rx_listener_register:
-	mlxsw_sp_event_unregister(mlxsw_sp, MLXSW_TRAP_ID_PUDE);
 	return err;
 }
 
@@ -3104,7 +3084,6 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_lag_fini(mlxsw_sp);
 	mlxsw_sp_buffers_fini(mlxsw_sp);
 	mlxsw_sp_traps_fini(mlxsw_sp);
-	mlxsw_sp_event_unregister(mlxsw_sp, MLXSW_TRAP_ID_PUDE);
 	WARN_ON(!list_empty(&mlxsw_sp->vfids.list));
 	WARN_ON(!list_empty(&mlxsw_sp->fids));
 }

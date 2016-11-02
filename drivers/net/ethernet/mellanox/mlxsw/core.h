@@ -81,15 +81,24 @@ struct mlxsw_rx_listener {
 	void (*func)(struct sk_buff *skb, u8 local_port, void *priv);
 	u8 local_port;
 	u16 trap_id;
-	enum mlxsw_reg_hpkt_action action;
-	u8 trap_group;
-	bool is_ctrl; /* should go via control buffer or not */
 };
 
 struct mlxsw_event_listener {
 	void (*func)(const struct mlxsw_reg_info *reg,
 		     char *payload, void *priv);
 	enum mlxsw_event_trap_id trap_id;
+};
+
+struct mlxsw_listener {
+	u16 trap_id;
+	union {
+		struct mlxsw_rx_listener rx_listener;
+		struct mlxsw_event_listener event_listener;
+	} u;
+	enum mlxsw_reg_hpkt_action action;
+	u8 trap_group;
+	bool is_ctrl; /* should go via control buffer or not */
+	bool is_event;
 };
 
 int mlxsw_core_rx_listener_register(struct mlxsw_core *mlxsw_core,
