@@ -1570,6 +1570,9 @@ static const struct mlxsw_rx_listener mlxsw_sx_rx_listener[] = {
 	},
 };
 
+#define MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_RX	0x14
+#define MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_CTRL	0x13
+
 static int mlxsw_sx_traps_init(struct mlxsw_sx *mlxsw_sx)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
@@ -1577,12 +1580,24 @@ static int mlxsw_sx_traps_init(struct mlxsw_sx *mlxsw_sx)
 	int i;
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_RX);
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_RX,
+			    MLXSW_REG_HTGT_INVALID_POLICER,
+			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
+			    MLXSW_REG_HTGT_DEFAULT_TC);
+	mlxsw_reg_htgt_local_path_rdq_set(htgt_pl,
+					MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_RX);
+
 	err = mlxsw_reg_write(mlxsw_sx->core, MLXSW_REG(htgt), htgt_pl);
 	if (err)
 		return err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_CTRL);
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_CTRL,
+			    MLXSW_REG_HTGT_INVALID_POLICER,
+			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
+			    MLXSW_REG_HTGT_DEFAULT_TC);
+	mlxsw_reg_htgt_local_path_rdq_set(htgt_pl,
+					MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_CTRL);
+
 	err = mlxsw_reg_write(mlxsw_sx->core, MLXSW_REG(htgt), htgt_pl);
 	if (err)
 		return err;
@@ -1709,13 +1724,21 @@ static int mlxsw_sx_flood_init(struct mlxsw_sx *mlxsw_sx)
 	return mlxsw_reg_write(mlxsw_sx->core, MLXSW_REG(sgcr), sgcr_pl);
 }
 
+#define MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_EMAD	0x15
+
 static int mlxsw_sx_emad_traps_set(struct mlxsw_core *mlxsw_core)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD,
+			    MLXSW_REG_HTGT_INVALID_POLICER,
+			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
+			    MLXSW_REG_HTGT_DEFAULT_TC);
+	mlxsw_reg_htgt_swid_set(htgt_pl, MLXSW_PORT_SWID_ALL_SWIDS);
+	mlxsw_reg_htgt_local_path_rdq_set(htgt_pl,
+					MLXSW_SX_REG_HTGT_LOCAL_PATH_RDQ_EMAD);
 	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
 	if (err)
 		return err;

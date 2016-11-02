@@ -2828,20 +2828,46 @@ static void mlxsw_sp_listener_unregister(struct mlxsw_sp *mlxsw_sp,
 						  mlxsw_sp);
 }
 
-static int mlxsw_sp_traps_init(struct mlxsw_sp *mlxsw_sp)
+static int mlxsw_sp_trap_groups_set(struct mlxsw_core *mlxsw_core)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
+	int max_trap_groups;
+	u8 priority, tc;
+	int i, err;
+
+	if (!MLXSW_CORE_RES_VALID(mlxsw_core, MAX_TRAP_GROUPS))
+		return -EIO;
+
+	max_trap_groups = MLXSW_CORE_RES_GET(mlxsw_core, MAX_TRAP_GROUPS);
+
+	for (i = 0; i < max_trap_groups; i++) {
+		switch (i) {
+		case MLXSW_REG_HTGT_TRAP_GROUP_EMAD:
+		case MLXSW_REG_HTGT_TRAP_GROUP_RX:
+		case MLXSW_REG_HTGT_TRAP_GROUP_CTRL:
+			priority = MLXSW_REG_HTGT_DEFAULT_PRIORITY;
+			tc = MLXSW_REG_HTGT_DEFAULT_TC;
+			break;
+		default:
+			continue;
+		}
+		mlxsw_reg_htgt_pack(htgt_pl, i, MLXSW_REG_HTGT_INVALID_POLICER,
+				    priority, tc);
+		err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static int mlxsw_sp_traps_init(struct mlxsw_sp *mlxsw_sp)
+{
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int i;
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_RX);
-	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(htgt), htgt_pl);
-	if (err)
-		return err;
-
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_CTRL);
-	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(htgt), htgt_pl);
+	err = mlxsw_sp_trap_groups_set(mlxsw_sp->core);
 	if (err)
 		return err;
 
@@ -2968,7 +2994,10 @@ static int mlxsw_sp_emad_traps_set(struct mlxsw_core *mlxsw_core)
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD,
+			    MLXSW_REG_HTGT_INVALID_POLICER,
+			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
+			    MLXSW_REG_HTGT_DEFAULT_TC);
 	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
 	if (err)
 		return err;

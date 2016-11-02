@@ -457,13 +457,21 @@ static void mlxsw_sib_event_unregister(struct mlxsw_sib *mlxsw_sib,
 	mlxsw_core_event_listener_unregister(mlxsw_sib->core, el, mlxsw_sib);
 }
 
+#define MLXSW_SIB_REG_HTGT_LOCAL_PATH_RDQ_EMAD     0x15
+
 static int mlxsw_sib_emad_traps_set(struct mlxsw_core *mlxsw_core)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD,
+			    MLXSW_REG_HTGT_INVALID_POLICER,
+			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
+			    MLXSW_REG_HTGT_DEFAULT_TC);
+	mlxsw_reg_htgt_swid_set(htgt_pl, MLXSW_PORT_SWID_ALL_SWIDS);
+	mlxsw_reg_htgt_local_path_rdq_set(htgt_pl,
+				MLXSW_SIB_REG_HTGT_LOCAL_PATH_RDQ_EMAD);
 	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
 	if (err)
 		return err;
