@@ -2822,6 +2822,15 @@ static const struct mlxsw_rx_listener mlxsw_sp_rx_listener[] = {
 	MLXSW_SP_RXL_NO_MARK(HOST_MISS_IPV4, TRAP_TO_CPU, false),
 };
 
+static void mlxsw_sp_one_trap_fini(struct mlxsw_sp *mlxsw_sp, int trap_id)
+{
+	char hpkt_pl[MLXSW_REG_HPKT_LEN];
+
+	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD, trap_id,
+			    0, false);
+	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
+}
+
 static int mlxsw_sp_traps_init(struct mlxsw_sp *mlxsw_sp)
 {
 	char htgt_pl[MLXSW_REG_HTGT_LEN];
@@ -2862,11 +2871,8 @@ err_rx_trap_set:
 					  mlxsw_sp);
 err_rx_listener_register:
 	for (i--; i >= 0; i--) {
-		mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
-				    mlxsw_sp_rx_listener[i].trap_id,
-				    mlxsw_sp_rx_listener[i].trap_group, false);
-		mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
-
+		mlxsw_sp_one_trap_fini(mlxsw_sp,
+				       mlxsw_sp_rx_listener[i].trap_id);
 		mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
 						  &mlxsw_sp_rx_listener[i],
 						  mlxsw_sp);
@@ -2876,15 +2882,11 @@ err_rx_listener_register:
 
 static void mlxsw_sp_traps_fini(struct mlxsw_sp *mlxsw_sp)
 {
-	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_rx_listener); i++) {
-		mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
-				    mlxsw_sp_rx_listener[i].trap_id,
-				    mlxsw_sp_rx_listener[i].trap_group, false);
-		mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(hpkt), hpkt_pl);
-
+		mlxsw_sp_one_trap_fini(mlxsw_sp,
+				       mlxsw_sp_rx_listener[i].trap_id);
 		mlxsw_core_rx_listener_unregister(mlxsw_sp->core,
 						  &mlxsw_sp_rx_listener[i],
 						  mlxsw_sp);
