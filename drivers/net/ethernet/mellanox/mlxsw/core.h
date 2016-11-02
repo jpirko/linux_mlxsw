@@ -82,6 +82,8 @@ struct mlxsw_rx_listener {
 	u8 local_port;
 	u16 trap_id;
 	enum mlxsw_reg_hpkt_action action;
+	u8 trap_group;
+	bool is_ctrl; /* should go via control buffer or not */
 };
 
 struct mlxsw_event_listener {
