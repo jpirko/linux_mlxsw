@@ -3032,12 +3032,6 @@ MLXSW_ITEM32(reg, htgt, swid, 0x00, 24, 8);
  */
 MLXSW_ITEM32(reg, htgt, type, 0x00, 8, 4);
 
-enum mlxsw_reg_htgt_trap_group {
-	MLXSW_REG_HTGT_TRAP_GROUP_EMAD,
-	MLXSW_REG_HTGT_TRAP_GROUP_RX,
-	MLXSW_REG_HTGT_TRAP_GROUP_CTRL,
-};
-
 /* reg_htgt_trap_group
  * Trap group number. User defined number specifying which trap groups
  * should be forwarded to the CPU. The mapping between trap IDs and trap
@@ -3216,8 +3210,7 @@ enum {
 MLXSW_ITEM32(reg, hpkt, ctrl, 0x04, 16, 2);
 
 static inline void mlxsw_reg_hpkt_pack(char *payload, u8 action, u16 trap_id,
-				       enum mlxsw_reg_htgt_trap_group trap_group,
-				       bool is_ctrl)
+				       u8 trap_group, bool is_ctrl)
 {
 	MLXSW_REG_ZERO(hpkt, payload);
 	mlxsw_reg_hpkt_ack_set(payload, MLXSW_REG_HPKT_ACK_NOT_REQUIRED);

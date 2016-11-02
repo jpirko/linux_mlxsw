@@ -409,6 +409,7 @@ static void mlxsw_sib_pude_event_func(const struct mlxsw_reg_info *reg,
 	mlxsw_sib_pude_ib_event_func(mlxsw_sib_port, status);
 }
 
+#define MLXSW_SIB_TRAP_GROUP_EMAD 0
 static struct mlxsw_event_listener mlxsw_sib_pude_event = {
 	.func = mlxsw_sib_pude_event_func,
 	.trap_id = MLXSW_TRAP_ID_PUDE,
@@ -432,7 +433,7 @@ static int mlxsw_sib_event_register(struct mlxsw_sib *mlxsw_sib,
 		return err;
 
 	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_FORWARD, trap_id,
-			    MLXSW_REG_HTGT_TRAP_GROUP_EMAD, false);
+			    MLXSW_SIB_TRAP_GROUP_EMAD, false);
 	err = mlxsw_reg_write(mlxsw_sib->core, MLXSW_REG(hpkt), hpkt_pl);
 	if (err)
 		goto err_event_trap_set;
@@ -465,7 +466,7 @@ static int mlxsw_sib_emad_traps_set(struct mlxsw_core *mlxsw_core)
 	char hpkt_pl[MLXSW_REG_HPKT_LEN];
 	int err;
 
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD,
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_SIB_TRAP_GROUP_EMAD,
 			    MLXSW_REG_HTGT_INVALID_POLICER,
 			    MLXSW_REG_HTGT_DEFAULT_PRIORITY,
 			    MLXSW_REG_HTGT_DEFAULT_TC);
@@ -478,7 +479,7 @@ static int mlxsw_sib_emad_traps_set(struct mlxsw_core *mlxsw_core)
 
 	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_TRAP_TO_CPU,
 			    MLXSW_TRAP_ID_ETHEMAD,
-			    MLXSW_REG_HTGT_TRAP_GROUP_EMAD, false);
+			    MLXSW_SIB_TRAP_GROUP_EMAD, false);
 	return mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
 }
 
@@ -488,7 +489,7 @@ static void mlxsw_sib_emad_traps_unset(struct mlxsw_core *mlxsw_core)
 
 	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
 			    MLXSW_TRAP_ID_ETHEMAD,
-			    MLXSW_REG_HTGT_TRAP_GROUP_EMAD, false);
+			    MLXSW_SIB_TRAP_GROUP_EMAD, false);
 	mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
 }
 
