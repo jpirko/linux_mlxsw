@@ -216,6 +216,8 @@ struct mlxsw_driver {
 	void (*fini)(struct mlxsw_core *mlxsw_core);
 	int (*port_type_set)(struct mlxsw_core *mlxsw_core, u8 local_port,
 			     enum devlink_port_type new_type);
+	int (*emad_traps_set)(struct mlxsw_core *mlxsw_core);
+	void (*emad_traps_unset)(struct mlxsw_core *mlxsw_core);
 	int (*port_split)(struct mlxsw_core *mlxsw_core, u8 local_port,
 			  unsigned int count);
 	int (*port_unsplit)(struct mlxsw_core *mlxsw_core, u8 local_port);

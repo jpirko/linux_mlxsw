@@ -1702,6 +1702,31 @@ static int mlxsw_sx_flood_init(struct mlxsw_sx *mlxsw_sx)
 	return mlxsw_reg_write(mlxsw_sx->core, MLXSW_REG(sgcr), sgcr_pl);
 }
 
+static int mlxsw_sx_emad_traps_set(struct mlxsw_core *mlxsw_core)
+{
+	char htgt_pl[MLXSW_REG_HTGT_LEN];
+	char hpkt_pl[MLXSW_REG_HPKT_LEN];
+	int err;
+
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
+	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
+	if (err)
+		return err;
+
+	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_TRAP_TO_CPU,
+			    MLXSW_TRAP_ID_ETHEMAD);
+	return mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
+}
+
+static void mlxsw_sx_emad_traps_unset(struct mlxsw_core *mlxsw_core)
+{
+	char hpkt_pl[MLXSW_REG_HPKT_LEN];
+
+	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
+			    MLXSW_TRAP_ID_ETHEMAD);
+	mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
+}
+
 static int mlxsw_sx_init(struct mlxsw_core *mlxsw_core,
 			 const struct mlxsw_bus_info *mlxsw_bus_info)
 {
@@ -1801,6 +1826,8 @@ static struct mlxsw_driver mlxsw_sx_driver = {
 	.priv_size		= sizeof(struct mlxsw_sx),
 	.init			= mlxsw_sx_init,
 	.fini			= mlxsw_sx_fini,
+	.emad_traps_set		= mlxsw_sx_emad_traps_set,
+	.emad_traps_unset	= mlxsw_sx_emad_traps_unset,
 	.txhdr_construct	= mlxsw_sx_txhdr_construct,
 	.txhdr_len		= MLXSW_TXHDR_LEN,
 	.profile		= &mlxsw_sx_config_profile,

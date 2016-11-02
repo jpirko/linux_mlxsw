@@ -456,6 +456,31 @@ static void mlxsw_sib_event_unregister(struct mlxsw_sib *mlxsw_sib,
 	mlxsw_core_event_listener_unregister(mlxsw_sib->core, el, mlxsw_sib);
 }
 
+static int mlxsw_sib_emad_traps_set(struct mlxsw_core *mlxsw_core)
+{
+	char htgt_pl[MLXSW_REG_HTGT_LEN];
+	char hpkt_pl[MLXSW_REG_HPKT_LEN];
+	int err;
+
+	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
+	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
+	if (err)
+		return err;
+
+	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_TRAP_TO_CPU,
+			    MLXSW_TRAP_ID_ETHEMAD);
+	return mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
+}
+
+static void mlxsw_sib_emad_traps_unset(struct mlxsw_core *mlxsw_core)
+{
+	char hpkt_pl[MLXSW_REG_HPKT_LEN];
+
+	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
+			    MLXSW_TRAP_ID_ETHEMAD);
+	mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
+}
+
 static int mlxsw_sib_init(struct mlxsw_core *mlxsw_core,
 			  const struct mlxsw_bus_info *mlxsw_bus_info)
 {
@@ -516,6 +541,8 @@ static struct mlxsw_driver mlxsw_sib_driver = {
 	.txhdr_construct	= mlxsw_sib_tx_v1_hdr_construct,
 	.txhdr_len		= MLXSW_TXHDR_LEN,
 	.profile		= &mlxsw_sib_config_profile,
+	.emad_traps_set		= &mlxsw_sib_emad_traps_set,
+	.emad_traps_unset	= &mlxsw_sib_emad_traps_unset,
 };
 
 static struct mlxsw_driver mlxsw_sib2_driver = {
@@ -526,6 +553,8 @@ static struct mlxsw_driver mlxsw_sib2_driver = {
 	.txhdr_construct	= mlxsw_sib_tx_v1_hdr_construct,
 	.txhdr_len		= MLXSW_TXHDR_LEN,
 	.profile		= &mlxsw_sib_config_profile,
+	.emad_traps_set		= &mlxsw_sib_emad_traps_set,
+	.emad_traps_unset	= &mlxsw_sib_emad_traps_unset,
 };
 
 static const struct pci_device_id mlxsw_sib_pci_id_table[] = {

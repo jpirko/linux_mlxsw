@@ -577,22 +577,6 @@ static const struct mlxsw_rx_listener mlxsw_emad_rx_listener = {
 	.trap_id = MLXSW_TRAP_ID_ETHEMAD,
 };
 
-static int mlxsw_emad_traps_set(struct mlxsw_core *mlxsw_core)
-{
-	char htgt_pl[MLXSW_REG_HTGT_LEN];
-	char hpkt_pl[MLXSW_REG_HPKT_LEN];
-	int err;
-
-	mlxsw_reg_htgt_pack(htgt_pl, MLXSW_REG_HTGT_TRAP_GROUP_EMAD);
-	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(htgt), htgt_pl);
-	if (err)
-		return err;
-
-	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_TRAP_TO_CPU,
-			    MLXSW_TRAP_ID_ETHEMAD);
-	return mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
-}
-
 static int mlxsw_emad_init(struct mlxsw_core *mlxsw_core)
 {
 	u64 tid;
@@ -615,7 +599,7 @@ static int mlxsw_emad_init(struct mlxsw_core *mlxsw_core)
 	if (err)
 		return err;
 
-	err = mlxsw_emad_traps_set(mlxsw_core);
+	err = mlxsw_core->driver->emad_traps_set(mlxsw_core);
 	if (err)
 		goto err_emad_trap_set;
 
@@ -632,13 +616,8 @@ err_emad_trap_set:
 
 static void mlxsw_emad_fini(struct mlxsw_core *mlxsw_core)
 {
-	char hpkt_pl[MLXSW_REG_HPKT_LEN];
-
 	mlxsw_core->emad.use_emad = false;
-	mlxsw_reg_hpkt_pack(hpkt_pl, MLXSW_REG_HPKT_ACTION_DISCARD,
-			    MLXSW_TRAP_ID_ETHEMAD);
-	mlxsw_reg_write(mlxsw_core, MLXSW_REG(hpkt), hpkt_pl);
-
+	mlxsw_core->driver->emad_traps_unset(mlxsw_core);
 	mlxsw_core_rx_listener_unregister(mlxsw_core,
 					  &mlxsw_emad_rx_listener,
 					  mlxsw_core);
