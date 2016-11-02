@@ -2766,15 +2766,9 @@ static void mlxsw_sp_rx_listener_mark_func(struct sk_buff *skb, u8 local_port,
 
 static const struct mlxsw_listener mlxsw_sp_listener[] = {
 	MLXSW_SP_EVENTL(mlxsw_sp_pude_event_func, PUDE),
-	MLXSW_SP_RXL_NO_MARK(FDB_MC, TRAP_TO_CPU, false),
-	/* Traps for specific L2 packet types, not trapped as FDB MC */
 	MLXSW_SP_RXL_NO_MARK(STP, TRAP_TO_CPU, true),
 	MLXSW_SP_RXL_NO_MARK(LACP, TRAP_TO_CPU, true),
-	MLXSW_SP_RXL_NO_MARK(EAPOL, TRAP_TO_CPU, true),
 	MLXSW_SP_RXL_NO_MARK(LLDP, TRAP_TO_CPU, true),
-	MLXSW_SP_RXL_NO_MARK(MMRP, TRAP_TO_CPU, true),
-	MLXSW_SP_RXL_NO_MARK(MVRP, TRAP_TO_CPU, true),
-	MLXSW_SP_RXL_NO_MARK(RPVST, TRAP_TO_CPU, true),
 	MLXSW_SP_RXL_MARK(DHCP, MIRROR_TO_CPU, false),
 	MLXSW_SP_RXL_MARK(IGMP_QUERY, MIRROR_TO_CPU, false),
 	MLXSW_SP_RXL_NO_MARK(IGMP_V1_REPORT, TRAP_TO_CPU, false),
@@ -2783,7 +2777,6 @@ static const struct mlxsw_listener mlxsw_sp_listener[] = {
 	MLXSW_SP_RXL_NO_MARK(IGMP_V3_REPORT, TRAP_TO_CPU, false),
 	MLXSW_SP_RXL_MARK(ARPBC, MIRROR_TO_CPU, false),
 	MLXSW_SP_RXL_MARK(ARPUC, MIRROR_TO_CPU, false),
-	/* L3 traps */
 	MLXSW_SP_RXL_NO_MARK(MTUERROR, TRAP_TO_CPU, false),
 	MLXSW_SP_RXL_NO_MARK(TTLERROR, TRAP_TO_CPU, false),
 	MLXSW_SP_RXL_NO_MARK(LBERROR, TRAP_TO_CPU, false),
@@ -2791,6 +2784,7 @@ static const struct mlxsw_listener mlxsw_sp_listener[] = {
 	MLXSW_SP_RXL_NO_MARK(IP2ME, TRAP_TO_CPU, false),
 	MLXSW_SP_RXL_NO_MARK(RTR_INGRESS0, TRAP_TO_CPU, false),
 	MLXSW_SP_RXL_NO_MARK(HOST_MISS_IPV4, TRAP_TO_CPU, false),
+	MLXSW_SP_RXL_MARK(BGP_IPV4, TRAP_TO_CPU, false),
 };
 
 static void mlxsw_sp_one_trap_fini(struct mlxsw_sp *mlxsw_sp, int trap_id)
