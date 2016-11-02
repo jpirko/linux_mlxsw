@@ -22,6 +22,7 @@
 #include <linux/byteorder/generic.h>
 #include <linux/cache.h>
 #include <linux/compiler.h>
+#include <linux/cpumask.h>
 #include <linux/errno.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
@@ -116,6 +117,26 @@ static int batadv_interface_release(struct net_device *dev)
 	return 0;
 }
 
+/**
+ * batadv_sum_counter - Sum the cpu-local counters for index 'idx'
+ * @bat_priv: the bat priv with all the soft interface information
+ * @idx: index of counter to sum up
+ *
+ * Return: sum of all cpu-local counters
+ */
+static u64 batadv_sum_counter(struct batadv_priv *bat_priv,  size_t idx)
+{
+	u64 *counters, sum = 0;
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		counters = per_cpu_ptr(bat_priv->bat_counters, cpu);
+		sum += counters[idx];
+	}
+
+	return sum;
+}
+
 static struct net_device_stats *batadv_interface_stats(struct net_device *dev)
 {
 	struct batadv_priv *bat_priv = netdev_priv(dev);
@@ -154,6 +175,17 @@ static int batadv_interface_set_mac_addr(struct net_device *dev, void *p)
 				    BATADV_NULL_IFINDEX, BATADV_NO_MARK);
 	}
 	rcu_read_unlock();
+
+	return 0;
+}
+
+static int batadv_interface_change_mtu(struct net_device *dev, int new_mtu)
+{
+	/* check ranges */
+	if ((new_mtu < 68) || (new_mtu > batadv_hardif_min_mtu(dev)))
+		return -EINVAL;
+
+	dev->mtu = new_mtu;
 
 	return 0;
 }
@@ -909,6 +941,7 @@ static const struct net_device_ops batadv_netdev_ops = {
 	.ndo_vlan_rx_add_vid = batadv_interface_add_vid,
 	.ndo_vlan_rx_kill_vid = batadv_interface_kill_vid,
 	.ndo_set_mac_address = batadv_interface_set_mac_addr,
+	.ndo_change_mtu = batadv_interface_change_mtu,
 	.ndo_set_rx_mode = batadv_interface_set_rx_mode,
 	.ndo_start_xmit = batadv_interface_tx,
 	.ndo_validate_addr = eth_validate_addr,
@@ -975,7 +1008,6 @@ struct net_device *batadv_softif_create(struct net *net, const char *name)
 	dev_net_set(soft_iface, net);
 
 	soft_iface->rtnl_link_ops = &batadv_link_ops;
-	soft_iface->max_mtu = batadv_hardif_min_mtu(soft_iface);
 
 	ret = register_netdevice(soft_iface);
 	if (ret < 0) {

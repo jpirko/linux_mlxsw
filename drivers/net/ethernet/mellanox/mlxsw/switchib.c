@@ -533,7 +533,11 @@ static const struct pci_device_id mlxsw_sib_pci_id_table[] = {
 	{0, },
 };
 
+<<<<<<< HEAD
 struct pci_driver mlxsw_sib_pci_driver = {
+=======
+static struct pci_driver mlxsw_sib_pci_driver = {
+>>>>>>> 4564fdd39ccf6f2a6b61dfb00e62550a9f9d224b
 	.name = mlxsw_sib_driver_name,
 	.id_table = mlxsw_sib_pci_id_table,
 };
@@ -543,7 +547,11 @@ static const struct pci_device_id mlxsw_sib2_pci_id_table[] = {
 	{0, },
 };
 
+<<<<<<< HEAD
 struct pci_driver mlxsw_sib2_pci_driver = {
+=======
+static struct pci_driver mlxsw_sib2_pci_driver = {
+>>>>>>> 4564fdd39ccf6f2a6b61dfb00e62550a9f9d224b
 	.name = mlxsw_sib2_driver_name,
 	.id_table = mlxsw_sib2_pci_id_table,
 };

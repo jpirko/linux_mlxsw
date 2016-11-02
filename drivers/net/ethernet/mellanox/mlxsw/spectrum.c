@@ -2223,6 +2223,7 @@ static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	dev = alloc_etherdev(sizeof(struct mlxsw_sp_port));
 	if (!dev)
 		return -ENOMEM;
+	SET_NETDEV_DEV(dev, mlxsw_sp->bus_info->dev);
 	mlxsw_sp_port = netdev_priv(dev);
 	mlxsw_sp_port->dev = dev;
 	mlxsw_sp_port->mlxsw_sp = mlxsw_sp;
@@ -4697,7 +4698,11 @@ static const struct pci_device_id mlxsw_sp_pci_id_table[] = {
 	{0, },
 };
 
+<<<<<<< HEAD
 struct pci_driver mlxsw_sp_pci_driver = {
+=======
+static struct pci_driver mlxsw_sp_pci_driver = {
+>>>>>>> 4564fdd39ccf6f2a6b61dfb00e62550a9f9d224b
 	.name = mlxsw_sp_driver_name,
 	.id_table = mlxsw_sp_pci_id_table,
 };
