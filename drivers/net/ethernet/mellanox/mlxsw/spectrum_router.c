@@ -1872,6 +1872,9 @@ static void mlxsw_sp_router_fib_flush(struct mlxsw_sp *mlxsw_sp)
 	struct mlxsw_sp_vr *vr;
 	int i;
 
+	if (mlxsw_sp->router.aborted)
+		return;
+	dev_warn(mlxsw_sp->bus_info->dev, "FIB abort triggered. Note that FIB entries are no longer being offloaded to this device.\n");
 	for (i = 0; i < MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_VRS); i++) {
 		vr = &mlxsw_sp->router.vrs[i];
 
