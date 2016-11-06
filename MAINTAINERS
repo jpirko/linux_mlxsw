@@ -5732,6 +5732,13 @@ W:	https://linuxtv.org
 S:	Maintained
 F:	drivers/media/radio/radio-gemtek*
 
+GENERIC ACTUATOR SUPPORT
+M:	Jiri Pirko <jiri@resnulli.us>
+L:	linux-kernel@vger.kernel.org
+S:	Maintained
+F:	drivers/actuator/
+F:	include/linux/actuator.h
+
 GENERIC GPIO I2C DRIVER
 M:	Haavard Skinnemoen <hskinnemoen@gmail.com>
 S:	Supported

@@ -1,0 +1,15 @@
+menuconfig ACTUATOR
+	tristate "Generic actuator support"
+	depends on NET
+	---help---
+	  This provides a support for generic actuator devices. For example
+	  all sorts of linear and rotary actuators.
+
+	  If you want this support, you should say Y here.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called actuator.
+
+if ACTUATOR
+
+endif
