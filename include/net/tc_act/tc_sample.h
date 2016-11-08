@@ -14,9 +14,13 @@ struct tcf_sample {
 	u8			eth_dst[ETH_ALEN];
 	u8			eth_src[ETH_ALEN];
 	u16			eth_type;
+	u32			sampler_id;
+	u32			seq;
 	struct list_head	tcfm_list;
 };
 #define to_sample(a) ((struct tcf_sample *)a)
+#define TC_SAMPLE_SW_ID(id) ((id << 1) + 0)
+#define TC_SAMPLE_HW_ID(id) ((id << 1) + 1)
 
 static inline bool is_tcf_sample(const struct tc_action *a)
 {
@@ -60,6 +64,11 @@ static inline void tcf_sample_eth_dst_addr(const struct tc_action *a, u8 *dst)
 static inline void tcf_sample_eth_src_addr(const struct tc_action *a, u8 *src)
 {
 	ether_addr_copy(src, to_sample(a)->eth_src);
+}
+
+static inline u32 tcf_sample_sampler_id(const struct tc_action *a)
+{
+	return to_sample(a)->sampler_id;
 }
 
 #endif /* __NET_TC_SAMPLE_H */
