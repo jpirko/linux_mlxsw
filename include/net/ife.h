@@ -17,7 +17,8 @@ int ife_tlv_meta_encode(void *skbdata, u16 attrtype, u16 dlen,
 void *ife_tlv_meta_next(void *skbdata);
 
 struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
-				    int in_ifindex, int out_ifindex);
+				    int in_ifindex, int out_ifindex,
+				    u32 sampler_id, u32 seq);
 
 #if !IS_ENABLED(CONFIG_NET_IFE)
 
@@ -50,7 +51,7 @@ static inline void *ife_tlv_meta_next(void *skbdata)
 
 static inline struct ethhdr *
 ife_packet_info_pack(struct sk_buff *skb, int orig_size, int in_ifindex,
-		     int out_ifindex)
+		     int out_ifindex, u32 sampler_id, u32 seq)
 {
 	return NULL;
 }
