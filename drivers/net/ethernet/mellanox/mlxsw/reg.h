@@ -4518,6 +4518,44 @@ static inline void mlxsw_reg_mfsm_pack(char *payload, u8 tacho)
 	mlxsw_reg_mfsm_tacho_set(payload, tacho);
 }
 
+/* MFSL - Management Fan Speed Limit Register
+ * ------------------------------------------
+ * The Fan Speed Limit register is used to configure the fan speed
+ * event / interrupt notification mechanism. Fan speed threshold are
+ * defined for both under-speed and over-speed.
+ */
+#define MLXSW_REG_MFSL_ID 0x9004
+#define MLXSW_REG_MFSL_LEN 0x0C
+
+MLXSW_REG_DEFINE(mfsl, MLXSW_REG_MFSL_ID, MLXSW_REG_MFSL_LEN);
+
+/* reg_mfsl_tacho
+ * Fan tachometer index.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mfsl, tacho, 0x00, 24, 4);
+
+/* reg_mfsl_tach_min
+ * Tachometer minimum value (minimum RPM).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mfsl, tach_min, 0x04, 0, 16);
+
+/* reg_mfsl_tach_max
+ * Tachometer maximum value (maximum RPM).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mfsl, tach_max, 0x08, 0, 16);
+
+static inline void mlxsw_reg_mfsl_pack(char *payload, u8 tacho,
+				       u16 tach_min, u16 tach_max)
+{
+	MLXSW_REG_ZERO(mfsl, payload);
+	mlxsw_reg_mfsl_tacho_set(payload, tacho);
+	mlxsw_reg_mfsl_tach_min_set(payload, tach_min);
+	mlxsw_reg_mfsl_tach_max_set(payload, tach_max);
+}
+
 /* MTCAP - Management Temperature Capabilities
  * -------------------------------------------
  * This register exposes the capabilities of the device and
@@ -5312,6 +5350,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(mfcr),
 	MLXSW_REG(mfsc),
 	MLXSW_REG(mfsm),
+	MLXSW_REG(mfsl),
 	MLXSW_REG(mtcap),
 	MLXSW_REG(mtmp),
 	MLXSW_REG(mpat),
