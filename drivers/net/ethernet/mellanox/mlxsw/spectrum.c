@@ -269,17 +269,18 @@ static struct mlxsw_sp_span_entry
 	struct mlxsw_sp_span_entry *span_entry;
 
 	span_entry = mlxsw_sp_span_entry_find(port);
-	if (span_entry) {
-		span_entry->ref_count++;
-		return span_entry;
-	}
+	if (!span_entry)
+		span_entry = mlxsw_sp_span_entry_create(port);
 
-	return mlxsw_sp_span_entry_create(port);
+	span_entry->ref_count++;
+	return span_entry;
 }
 
 static int mlxsw_sp_span_entry_put(struct mlxsw_sp *mlxsw_sp,
 				   struct mlxsw_sp_span_entry *span_entry)
 {
+	WARN_ON(!span_entry->ref_count);
+
 	if (--span_entry->ref_count == 0)
 		mlxsw_sp_span_entry_destroy(mlxsw_sp, span_entry);
 	return 0;
