@@ -139,7 +139,8 @@ int ife_tlv_meta_encode(void *skbdata, u16 attrtype, u16 dlen, const void *dval)
 EXPORT_SYMBOL_GPL(ife_tlv_meta_encode);
 
 struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
-				    int in_ifindex, int out_ifindex)
+				    int in_ifindex, int out_ifindex,
+				    u32 sampler_id, u32 seq)
 {
 	int curr_size;
 	void *ifetlv;
@@ -148,7 +149,9 @@ struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
 	curr_size = skb->len;
 
 	metalen = nla_total_size(sizeof(orig_size)) +
-		  nla_total_size(sizeof(curr_size));
+		  nla_total_size(sizeof(curr_size)) +
+		  nla_total_size(sizeof(sampler_id)) +
+		  nla_total_size(sizeof(seq));
 
 	if (in_ifindex)
 		metalen += nla_total_size(sizeof(in_ifindex));
@@ -159,6 +162,8 @@ struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
 	out_ifindex = htonl(out_ifindex);
 	orig_size = htonl(orig_size);
 	curr_size = htonl(curr_size);
+	sampler_id = htonl(sampler_id);
+	seq = htonl(seq);
 
 	ifetlv = ife_encode(skb, metalen);
 	if (!ifetlv)
@@ -178,6 +183,11 @@ struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
 
 	ifetlv += ife_tlv_meta_encode(ifetlv, IFE_META_SIZE,
 				      sizeof(curr_size), &curr_size);
+
+	ifetlv += ife_tlv_meta_encode(ifetlv, IFE_META_SAMPLER_ID,
+				      sizeof(sampler_id), &sampler_id);
+
+	ifetlv += ife_tlv_meta_encode(ifetlv, IFE_META_SEQ, sizeof(seq), &seq);
 
 	return (struct ethhdr *) skb->data;
 }

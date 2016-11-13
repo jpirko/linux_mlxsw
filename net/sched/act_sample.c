@@ -27,6 +27,7 @@
 
 #define SAMPLE_TAB_MASK     7
 static int sample_net_id;
+static u32 samplers;
 static struct tc_action_ops act_sample_ops;
 
 static const struct nla_policy sample_policy[TCA_SAMPLE_MAX + 1] = {
@@ -77,6 +78,7 @@ static int tcf_sample_init(struct net *net, struct nlattr *nla,
 	s->rate = nla_get_u32(tb[TCA_SAMPLE_RATE]);
 	s->mark = nla_get_u32(tb[TCA_SAMPLE_MARK]);
 	s->eth_type = nla_get_u16(tb[TCA_SAMPLE_ETH_TYPE]);
+	s->sampler_id = samplers++;
 
 	s->truncate = tb[TCA_SAMPLE_TRUNC_SIZE];
 	if (tb[TCA_SAMPLE_TRUNC_SIZE])
@@ -117,6 +119,7 @@ static int tcf_sample(struct sk_buff *skb, const struct tc_action *a,
 	struct tcf_sample *s = to_sample(a);
 	static struct ethhdr *ethhdr;
 	struct sk_buff *skb2;
+	u32 sampler_id;
 	int orig_size;
 	int retval;
 	u32 at;
@@ -144,8 +147,12 @@ static int tcf_sample(struct sk_buff *skb, const struct tc_action *a,
 			skb_push(skb2, skb2->mac_len);
 
 		orig_size = skb->len + skb->dev->hard_header_len;
+		sampler_id = TC_SAMPLE_SW_ID(s->sampler_id);
+
 		ethhdr = ife_packet_info_pack(skb2, orig_size,
-					      skb->dev->ifindex, 0);
+					      skb->dev->ifindex, 0,
+					      sampler_id, s->seq++);
+
 		if (!ethhdr)
 			goto out;
 
@@ -266,6 +273,7 @@ static struct pernet_operations sample_net_ops = {
 
 static int __init sample_init_module(void)
 {
+	samplers = 0;
 	return tcf_register_action(&act_sample_ops, &sample_net_ops);
 }
 
