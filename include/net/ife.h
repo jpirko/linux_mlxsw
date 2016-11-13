@@ -18,6 +18,9 @@ int ife_tlv_meta_encode(void *skbdata, u16 attrtype, u16 dlen,
 
 void *ife_tlv_meta_next(void *skbdata);
 
+struct ethhdr *ife_packet_info_pack(struct sk_buff *skb, int orig_size,
+				    int in_ifindex, int out_ifindex);
+
 #else
 
 static inline void *ife_encode(struct sk_buff *skb, u16 metalen)
@@ -43,6 +46,13 @@ static inline int ife_tlv_meta_encode(void *skbdata, u16 attrtype, u16 dlen,
 }
 
 static inline void *ife_tlv_meta_next(void *skbdata)
+{
+	return NULL;
+}
+
+static inline struct ethhdr *
+ife_packet_info_pack(struct sk_buff *skb, int orig_size, int in_ifindex,
+		     int out_ifindex)
 {
 	return NULL;
 }
