@@ -2048,6 +2048,7 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 
 	mlxsw_sp->fib_nb.notifier_call = mlxsw_sp_router_fib_event;
 	register_fib_notifier(&mlxsw_sp->fib_nb);
+	fib_notifier_dump(&mlxsw_sp->fib_nb);
 	return 0;
 
 err_neigh_init:
