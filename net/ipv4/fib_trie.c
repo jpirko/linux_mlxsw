@@ -1569,16 +1569,16 @@ int fib_table_delete(struct net *net, struct fib_table *tb,
 	if (!fa_to_delete)
 		return -ESRCH;
 
+	if (!plen)
+		tb->tb_num_default--;
+
+	fib_remove_alias(t, tp, l, fa_to_delete);
+
 	call_fib_entry_notifiers(net, FIB_EVENT_ENTRY_DEL, key, plen,
 				 fa_to_delete->fa_info, tos, cfg->fc_type,
 				 tb->tb_id, 0);
 	rtmsg_fib(RTM_DELROUTE, htonl(key), fa_to_delete, plen, tb->tb_id,
 		  &cfg->fc_nlinfo, 0);
-
-	if (!plen)
-		tb->tb_num_default--;
-
-	fib_remove_alias(t, tp, l, fa_to_delete);
 
 	if (fa_to_delete->fa_state & FA_S_ACCESSED)
 		rt_cache_flush(cfg->fc_nlinfo.nl_net);
@@ -1810,12 +1810,12 @@ int fib_table_flush(struct net *net, struct fib_table *tb)
 				continue;
 			}
 
+			hlist_del_rcu(&fa->fa_list);
 			call_fib_entry_notifiers(net, FIB_EVENT_ENTRY_DEL,
 						 n->key,
 						 KEYLENGTH - fa->fa_slen,
 						 fi, fa->fa_tos, fa->fa_type,
 						 tb->tb_id, 0);
-			hlist_del_rcu(&fa->fa_list);
 			fib_release_info(fa->fa_info);
 			alias_free_mem_rcu(fa);
 			found++;
