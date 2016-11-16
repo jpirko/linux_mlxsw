@@ -2806,6 +2806,7 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	rocker->fib_nb.notifier_call = rocker_router_fib_event;
 	register_fib_notifier(&rocker->fib_nb);
+	fib_notifier_dump(&rocker->fib_nb);
 
 	dev_info(&pdev->dev, "Rocker switch with id %*phN\n",
 		 (int)sizeof(rocker->hw.id), &rocker->hw.id);
