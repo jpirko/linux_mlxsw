@@ -1839,6 +1839,12 @@ int mlxsw_core_schedule_dw(struct delayed_work *dwork, unsigned long delay)
 }
 EXPORT_SYMBOL(mlxsw_core_schedule_dw);
 
+void mlxsw_core_flush_wq(void)
+{
+	flush_workqueue(mlxsw_wq);
+}
+EXPORT_SYMBOL(mlxsw_core_flush_wq);
+
 static int __init mlxsw_core_module_init(void)
 {
 	int err;
