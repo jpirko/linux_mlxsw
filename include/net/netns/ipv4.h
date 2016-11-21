@@ -136,5 +136,7 @@ struct netns_ipv4 {
 	int sysctl_fib_multipath_use_neigh;
 #endif
 	atomic_t	rt_genid;
+
+	atomic_t	fib_seq;
 };
 #endif
