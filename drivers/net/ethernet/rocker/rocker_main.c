@@ -2803,6 +2803,9 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_alloc_ordered_workqueue;
 	}
 
+	rocker->fib_nb.notifier_call = rocker_router_fib_event;
+	register_fib_notifier(&rocker->fib_nb);
+
 	rocker->hw.id = rocker_read64(rocker, SWITCH_ID);
 
 	err = rocker_probe_ports(rocker);
@@ -2811,15 +2814,13 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_probe_ports;
 	}
 
-	rocker->fib_nb.notifier_call = rocker_router_fib_event;
-	register_fib_notifier(&rocker->fib_nb);
-
 	dev_info(&pdev->dev, "Rocker switch with id %*phN\n",
 		 (int)sizeof(rocker->hw.id), &rocker->hw.id);
 
 	return 0;
 
 err_probe_ports:
+	unregister_fib_notifier(&rocker->fib_nb);
 	destroy_workqueue(rocker->rocker_wq);
 err_alloc_ordered_workqueue:
 	free_irq(rocker_msix_vector(rocker, ROCKER_MSIX_VEC_EVENT), rocker);
@@ -2847,9 +2848,9 @@ static void rocker_remove(struct pci_dev *pdev)
 {
 	struct rocker *rocker = pci_get_drvdata(pdev);
 
+	rocker_remove_ports(rocker);
 	unregister_fib_notifier(&rocker->fib_nb);
 	rocker_write32(rocker, CONTROL, ROCKER_CONTROL_RESET);
-	rocker_remove_ports(rocker);
 	destroy_workqueue(rocker->rocker_wq);
 	free_irq(rocker_msix_vector(rocker, ROCKER_MSIX_VEC_EVENT), rocker);
 	free_irq(rocker_msix_vector(rocker, ROCKER_MSIX_VEC_CMD), rocker);
