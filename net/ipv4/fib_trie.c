@@ -86,6 +86,67 @@
 
 static ATOMIC_NOTIFIER_HEAD(fib_chain);
 
+static int call_fib_notifier(struct notifier_block *nb, struct net *net,
+			     enum fib_event_type event_type,
+			     struct fib_notifier_info *info)
+{
+	info->net = net;
+	return nb->notifier_call(nb, event_type, info);
+}
+
+static void fib_rules_notify(struct net *net, struct notifier_block *nb,
+			     enum fib_event_type event_type)
+{
+#ifdef CONFIG_IP_MULTIPLE_TABLES
+	struct fib_notifier_info info;
+
+	if (net->ipv4.fib_has_custom_rules)
+		call_fib_notifier(nb, net, event_type, &info);
+#endif
+}
+
+static void fib_notify(struct net *net, struct notifier_block *nb,
+		       enum fib_event_type event_type);
+
+static int call_fib_entry_notifier(struct notifier_block *nb, struct net *net,
+				   enum fib_event_type event_type, u32 dst,
+				   int dst_len, struct fib_info *fi,
+				   u8 tos, u8 type, u32 tb_id, u32 nlflags)
+{
+	struct fib_entry_notifier_info info = {
+		.dst = dst,
+		.dst_len = dst_len,
+		.fi = fi,
+		.tos = tos,
+		.type = type,
+		.tb_id = tb_id,
+		.nlflags = nlflags,
+	};
+	return call_fib_notifier(nb, net, event_type, &info.info);
+}
+
+int fib_notifier_dump(struct notifier_block *nb)
+{
+	struct net *net;
+	int err = 0;
+
+	rcu_read_lock();
+	for_each_net_rcu(net) {
+		int fib_seq = atomic_read(&net->ipv4.fib_seq);
+
+		fib_rules_notify(net, nb, FIB_EVENT_RULE_ADD);
+		fib_notify(net, nb, FIB_EVENT_ENTRY_ADD);
+		if (atomic_read(&net->ipv4.fib_seq) != fib_seq) {
+			err = -EAGAIN;
+			goto out_unlock;
+		}
+	}
+out_unlock:
+	rcu_read_unlock();
+	return err;
+}
+EXPORT_SYMBOL(fib_notifier_dump);
+
 int register_fib_notifier(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&fib_chain, nb);
@@ -1833,6 +1894,62 @@ int fib_table_flush(struct net *net, struct fib_table *tb)
 
 	pr_debug("trie_flush found=%d\n", found);
 	return found;
+}
+
+static void fib_leaf_notify(struct net *net, struct key_vector *l,
+			    struct fib_table *tb, struct notifier_block *nb,
+			    enum fib_event_type event_type)
+{
+	struct fib_alias *fa;
+
+	hlist_for_each_entry_rcu(fa, &l->leaf, fa_list) {
+		struct fib_info *fi = fa->fa_info;
+
+		if (!fi)
+			continue;
+
+		/* local and main table can share the same trie,
+		 * so don't notify twice for the same entry.
+		 */
+		if (tb->tb_id != fa->tb_id)
+			continue;
+
+		call_fib_entry_notifier(nb, net, event_type, l->key,
+					KEYLENGTH - fa->fa_slen, fi, fa->fa_tos,
+					fa->fa_type, fa->tb_id, 0);
+	}
+}
+
+static void fib_table_notify(struct net *net, struct fib_table *tb,
+			     struct notifier_block *nb,
+			     enum fib_event_type event_type)
+{
+	struct trie *t = (struct trie *)tb->tb_data;
+	struct key_vector *l, *tp = t->kv;
+	t_key key = 0;
+
+	while ((l = leaf_walk_rcu(&tp, key)) != NULL) {
+		fib_leaf_notify(net, l, tb, nb, event_type);
+
+		key = l->key + 1;
+		/* stop in case of wrap around */
+		if (key < l->key)
+			break;
+	}
+}
+
+static void fib_notify(struct net *net, struct notifier_block *nb,
+		       enum fib_event_type event_type)
+{
+	unsigned int h;
+
+	for (h = 0; h < FIB_TABLE_HASHSZ; h++) {
+		struct hlist_head *head = &net->ipv4.fib_table_hash[h];
+		struct fib_table *tb;
+
+		hlist_for_each_entry_rcu(tb, head, tb_hlist)
+			fib_table_notify(net, tb, nb, event_type);
+	}
 }
 
 static void __trie_free_rcu(struct rcu_head *head)
