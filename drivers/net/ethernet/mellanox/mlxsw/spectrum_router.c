@@ -1759,6 +1759,7 @@ static void mlxsw_sp_router_probe_unresolved_nexthops(struct work_struct *work)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry;
 	struct mlxsw_sp_router *router;
+	unsigned long interval;
 
 	router = container_of(work, struct mlxsw_sp_router,
 			      nexthop_probe_dw.work);
@@ -1777,8 +1778,8 @@ static void mlxsw_sp_router_probe_unresolved_nexthops(struct work_struct *work)
 			neigh_event_send(neigh_entry->key.n, NULL);
 	rtnl_unlock();
 
-	mlxsw_core_schedule_dw(&router->nexthop_probe_dw,
-			       MLXSW_SP_UNRESOLVED_NH_PROBE_INTERVAL);
+	interval = msecs_to_jiffies(MLXSW_SP_UNRESOLVED_NH_PROBE_INTERVAL);
+	mlxsw_core_schedule_dw(&router->nexthop_probe_dw, interval);
 }
 
 static void
