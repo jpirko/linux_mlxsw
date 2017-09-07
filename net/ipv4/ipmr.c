@@ -320,6 +320,16 @@ static unsigned int ipmr_rules_seq_read(struct net *net)
 }
 #endif
 
+bool ipmr_rule_default(const struct fib_rule *rule)
+{
+#if IS_ENABLED(CONFIG_FIB_RULES)
+	return fib_rule_matchall(rule) && rule->table == RT_TABLE_DEFAULT;
+#else
+	return true;
+#endif
+}
+EXPORT_SYMBOL(ipmr_rule_default);
+
 static inline int ipmr_hash_cmp(struct rhashtable_compare_arg *arg,
 				const void *ptr)
 {
