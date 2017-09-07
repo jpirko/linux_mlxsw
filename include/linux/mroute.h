@@ -93,6 +93,7 @@ struct mr_table {
  */
 enum {
 	MFC_STATIC = BIT(0),
+	MFC_OFFLOAD = BIT(1),
 };
 
 struct mfc_cache_cmp_arg {
