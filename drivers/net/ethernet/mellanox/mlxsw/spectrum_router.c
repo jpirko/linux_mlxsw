@@ -2085,8 +2085,8 @@ struct mlxsw_sp_nexthop_group {
 #define nh_rif	nexthops[0].rif
 };
 
-static void mlxsw_sp_nexthop_counter_alloc(struct mlxsw_sp *mlxsw_sp,
-					   struct mlxsw_sp_nexthop *nh)
+void mlxsw_sp_nexthop_counter_alloc(struct mlxsw_sp *mlxsw_sp,
+				    struct mlxsw_sp_nexthop *nh)
 {
 	struct devlink *devlink;
 
@@ -2101,8 +2101,8 @@ static void mlxsw_sp_nexthop_counter_alloc(struct mlxsw_sp *mlxsw_sp,
 	nh->counter_valid = true;
 }
 
-static void mlxsw_sp_nexthop_counter_free(struct mlxsw_sp *mlxsw_sp,
-					  struct mlxsw_sp_nexthop *nh)
+void mlxsw_sp_nexthop_counter_free(struct mlxsw_sp *mlxsw_sp,
+				   struct mlxsw_sp_nexthop *nh)
 {
 	if (!nh->counter_valid)
 		return;
@@ -2448,8 +2448,8 @@ static int mlxsw_sp_adj_index_mass_update(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
-static int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
-				   struct mlxsw_sp_nexthop *nh)
+int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
+			    struct mlxsw_sp_nexthop *nh)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry = nh->neigh_entry;
 	char ratr_pl[MLXSW_REG_RATR_LEN];
