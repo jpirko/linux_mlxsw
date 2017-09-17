@@ -23,4 +23,15 @@ menuconfig ACTUATOR_USB2LIN
 	  This support can also be built as a module.  If so, the module
 	  will be called usb2lin.
 
+menuconfig ACTUATOR_LAC
+	tristate "Actuonix Linear Actuator Control Board support"
+	depends on USB
+	---help---
+	  This provides a support for Actuonix Linear Actuator Control Boards.
+
+	  If you want this support, you should say Y here.
+
+	  This support can also be built as a module.  If so, the module
+	  will be called lac.
+
 endif
