@@ -696,6 +696,14 @@ config LEDS_NIC78BX
 	  To compile this driver as a module, choose M here: the module
 	  will be called leds-nic78bx.
 
+config LEDS_LEDNICE
+	tristate "LED support for lednice generic USB led device"
+	depends on LEDS_CLASS
+	depends on USB
+	help
+	  This option enables support for the lednice generic USB led device
+	  through USB.
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 
