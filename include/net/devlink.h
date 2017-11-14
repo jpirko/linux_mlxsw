@@ -26,6 +26,7 @@ struct devlink {
 	struct list_head port_list;
 	struct list_head sb_list;
 	struct list_head dpipe_table_list;
+	struct list_head resource_list;
 	struct devlink_dpipe_headers *dpipe_headers;
 	const struct devlink_ops *ops;
 	struct device *dev;
@@ -224,6 +225,45 @@ struct devlink_dpipe_headers {
 	unsigned int headers_count;
 };
 
+/**
+ * struct devlink_resource_ops - resource ops
+ * @occ_get - get the occupied size
+ * @size_validate - validate the size of the resource before update, reload
+ *                  is needed for changes to take place
+ */
+struct devlink_resource_ops {
+	u64 (*occ_get)(struct devlink *devlink);
+	int (*size_validate)(struct devlink *devlink, u64 size,
+			     struct list_head *resource_list,
+			     struct netlink_ext_ack *extack);
+};
+
+/**
+ * struct devlink_resource - devlink resource
+ * @name - name of the resource
+ * @size - size of the resource
+ * @size_new - updated size of the resource, reload is needed
+ * @id - id, per devlink instance
+ * @reload_required - reload is required for new configuration to apply
+ * @parent - parent resource
+ * @list - parent list
+ * @resource_list - list of child resources
+ * @resource_ops - resource ops
+ */
+struct devlink_resource {
+	const char *name;
+	u64 size;
+	u64 size_new;
+	u64 id;
+	bool reload_required;
+	struct devlink_resource *parent;
+	struct list_head list;
+	struct list_head resource_list;
+	struct devlink_resource_ops *resource_ops;
+};
+
+#define DEVLINK_RESOURCE_ID_PARENT_TOP 0
+
 struct devlink_ops {
 	int (*port_type_set)(struct devlink_port *devlink_port,
 			     enum devlink_port_type port_type);
@@ -332,6 +372,20 @@ int devlink_dpipe_match_put(struct sk_buff *skb,
 extern struct devlink_dpipe_header devlink_dpipe_header_ethernet;
 extern struct devlink_dpipe_header devlink_dpipe_header_ipv4;
 extern struct devlink_dpipe_header devlink_dpipe_header_ipv6;
+
+int devlink_resource_register(struct devlink *devlink,
+			      const char *resource_name,
+			      bool top_hierarchy,
+			      bool reload_required,
+			      u64 resource_size,
+			      u64 resource_id,
+			      u64 parent_resource_id,
+			      struct devlink_resource_ops *resource_ops);
+void devlink_resources_unregister(struct devlink *devlink,
+				  struct devlink_resource *resource);
+int devlink_resource_size_get(struct devlink *devlink,
+			      u64 resource_id,
+			      u64 *p_resource_size);
 
 #else
 
@@ -467,6 +521,32 @@ devlink_dpipe_match_put(struct sk_buff *skb,
 			struct devlink_dpipe_match *match)
 {
 	return 0;
+}
+
+static inline int
+devlink_resource_register(struct devlink *devlink,
+			  const char *resource_name,
+			  bool top_hierarchy,
+			  bool reload_required,
+			  u64 resource_size,
+			  u64 resource_id,
+			  u64 parent_resource_id,
+			  struct devlink_resource_ops *resource_ops)
+{
+	return 0;
+}
+
+static inline void
+devlink_resources_unregister(struct devlink *devlink,
+			     struct devlink_resource *resource)
+{
+}
+
+static inline int
+devlink_resource_size_get(struct devlink *devlink, u64 resource_id,
+			  u64 *p_resource_size)
+{
+	return -EINVAL;
 }
 
 #endif
