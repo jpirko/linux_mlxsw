@@ -66,6 +66,8 @@
 #define MLXSW_SP_KVD_LINEAR_SIZE 98304 /* entries */
 #define MLXSW_SP_KVD_GRANULARITY 128
 
+#define MLXSW_SP_PREFIX "spectrum: "
+
 struct mlxsw_sp_port;
 struct mlxsw_sp_rif;
 
