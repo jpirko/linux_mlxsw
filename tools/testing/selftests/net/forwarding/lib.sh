@@ -220,6 +220,48 @@ vrf_destroy()
 	ip link del dev $vrf_name
 }
 
+__addr_add_del()
+{
+	local if_name=$1
+	local add_del=$2
+	shift
+	shift
+	local array=("${@}")
+
+	for addrstr in "${array[@]}"
+	do
+		ip address $add_del $addrstr dev $if_name
+	done
+}
+
+simple_if_init()
+{
+	local if_name=$1
+	shift
+	local array=("${@}")
+	local vrf_name="v$if_name"
+
+	vrf_create $vrf_name
+	ip link set dev $if_name master $vrf_name
+	ip link set dev $vrf_name up
+	ip link set dev $if_name up
+
+	__addr_add_del $if_name add ${array[@]}
+}
+
+simple_if_fini()
+{
+	local if_name=$1
+	shift
+	local array=("${@}")
+	local vrf_name="v$if_name"
+
+	__addr_add_del $if_name del ${array[@]}
+
+	ip link set dev $if_name down
+	vrf_destroy $vrf_name
+}
+
 link_stats_tx_packets_get()
 {
        local if_name=$1
