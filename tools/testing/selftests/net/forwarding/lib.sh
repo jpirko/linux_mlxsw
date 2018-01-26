@@ -177,10 +177,31 @@ vrf_cleanup()
 	ip -4 rule del pref 32765
 }
 
+__last_tb_id=0
+declare -A __TB_IDS
+
+__vrf_td_id_assign()
+{
+	local vrf_name=$1
+
+	__last_tb_id=$((__last_tb_id + 1))
+	__TB_IDS[$vrf_name]=$__last_tb_id
+	return $__last_tb_id
+}
+
+__vrf_td_id_lookup()
+{
+	local vrf_name=$1
+
+	return ${__TB_IDS[$vrf_name]}
+}
+
 vrf_create()
 {
 	local vrf_name=$1
-	local tb_id=$2
+
+	__vrf_td_id_assign $vrf_name
+	local tb_id=$?
 
 	ip link add dev $vrf_name type vrf table $tb_id
 	ip -4 route add table $tb_id unreachable default metric 4278198272
@@ -190,7 +211,9 @@ vrf_create()
 vrf_destroy()
 {
 	local vrf_name=$1
-	local tb_id=$2
+
+	__vrf_td_id_lookup $vrf_name
+	local tb_id=$?
 
 	ip -6 route del table $tb_id unreachable default metric 4278198272
 	ip -4 route del table $tb_id unreachable default metric 4278198272
