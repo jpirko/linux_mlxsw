@@ -10,10 +10,16 @@ tcflags="skip_hw"
 h1_init()
 {
 	simple_if_init $h1 192.0.2.1/24
+
+	ip link add link $h1 name $h1.10 type vlan id 10
+	simple_if_init $h1.10 198.51.100.1/24
 }
 
 h1_fini()
 {
+	simple_if_fini $h1.10 198.51.100.1/24
+	ip link del $h1.10
+
 	simple_if_fini $h1 192.0.2.1/24
 }
 
@@ -34,12 +40,28 @@ switch_init()
 	simple_if_init $swp1 192.0.2.2/24
 	tc qdisc add dev $swp1 clsact
 
+	ip link add link $swp1 name $swp1.10 type vlan id 10
+	simple_if_init $swp1.10 198.51.100.2/24
+	tc qdisc add dev $swp1.10 clsact
+
+	ip link add link $swp1 name $swp1.20 type vlan id 20
+	simple_if_init $swp1.20 198.51.100.2/24
+	tc qdisc add dev $swp1.20 clsact
+
 	simple_if_init $swp2 192.0.2.1/24
 }
 
 switch_fini()
 {
 	simple_if_fini $swp2 192.0.2.1/24
+
+	tc qdisc del dev $swp1.20 clsact
+	simple_if_fini $swp1.20 198.51.100.2/24
+	ip link del $swp1.20
+
+	tc qdisc del dev $swp1.10 clsact
+	simple_if_fini $swp1.10 198.51.100.2/24
+	ip link del $swp1.10
 
 	tc qdisc del dev $swp1 clsact
 	simple_if_fini $swp1 192.0.2.2/24
@@ -135,6 +157,36 @@ gact_trap_test()
 	log_test "trap ($tcflags)"
 }
 
+vlan_match_and_modify_test()
+{
+	RET=0
+
+	tc filter add dev $swp1.10 ingress protocol ip pref 1 handle 101 flower \
+		skip_hw dst_ip 198.51.100.2 action drop
+	tc filter add dev $swp1.20 ingress protocol ip pref 1 handle 101 flower \
+		skip_hw dst_ip 198.51.100.2 action drop
+	tc filter add dev $swp1 ingress protocol 802.1Q pref 1 handle 101 flower \
+		$tcflags vlan 10 action vlan modify id 20
+
+	mausezahn $h1.10 -c 1 -p 64 -a $h1_10mac -b $swp1_10mac \
+		  -A 198.51.100.1 -B 198.51.100.2 -t ip -q
+
+	tc_check_packets "dev $swp1 ingress" 101 1
+	check_err $? "did not match the vlan modify rule"
+
+	tc_check_packets "dev $swp1.10 ingress" 101 1
+	check_fail $? "did match on incorrect interface (unmodified packet)"
+
+	tc_check_packets "dev $swp1.20 ingress" 101 1
+	check_err $? "did not match incoming redirected vlan modified packet"
+
+	tc filter del dev $swp1 ingress protocol 802.1Q pref 1 handle 101 flower
+	tc filter del dev $swp1.20 ingress protocol ip pref 1 handle 101 flower
+	tc filter del dev $swp1.10 ingress protocol ip pref 1 handle 101 flower
+
+	log_test "vlan match and modify ($tcflags)"
+}
+
 setup_prepare()
 {
 	h1=${NETIFS[p1]}
@@ -161,6 +213,8 @@ setup_prepare()
 	h1_init
 	h2_init
 	switch_init
+
+	swp1_10mac=$(mac_get $swp1.10)
 }
 
 cleanup()
@@ -187,6 +241,7 @@ setup_wait
 
 gact_drop_and_ok_test
 mirred_egress_redirect_test
+vlan_match_and_modify_test
 
 tc_offload_check
 if [[ $? -ne 0 ]]; then
@@ -196,6 +251,7 @@ else
 	gact_drop_and_ok_test
 	mirred_egress_redirect_test
 	gact_trap_test
+	vlan_match_and_modify_test
 fi
 
 exit $EXIT_STATUS
