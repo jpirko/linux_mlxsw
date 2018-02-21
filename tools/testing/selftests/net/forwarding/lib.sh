@@ -113,6 +113,13 @@ log_test()
 	return 0
 }
 
+log_info()
+{
+	local msg=$1
+
+	echo "INFO: $msg"
+}
+
 setup_wait()
 {
 	for i in $(eval echo {1..$NUM_NETIFS}); do
@@ -173,6 +180,13 @@ vrf_destroy()
 	ip -6 route del table $tb_id unreachable default metric 4278198272
 	ip -4 route del table $tb_id unreachable default metric 4278198272
 	ip link del dev $vrf_name
+}
+
+link_stats_tx_packets_get()
+{
+       local if_name=$1
+
+       ip -j -s link show dev $if_name | jq '.[]["stats64"]["tx"]["packets"]'
 }
 
 bridge_ageing_time_get()
