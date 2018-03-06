@@ -3,7 +3,6 @@
  */
 
 #include <linux/mroute_base.h>
-
 /* Sets everything common except 'dev', since that is done under locking */
 void vif_device_init(struct vif_device *v,
 		     struct net_device *dev,
