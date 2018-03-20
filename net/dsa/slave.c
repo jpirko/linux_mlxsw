@@ -20,6 +20,7 @@
 #include <net/rtnetlink.h>
 #include <net/pkt_cls.h>
 #include <net/tc_act/tc_mirred.h>
+#include <net/devlink.h>
 #include <linux/if_bridge.h>
 #include <linux/netpoll.h>
 #include <linux/ptp_classify.h>
@@ -735,10 +736,7 @@ static int dsa_slave_get_phys_port_name(struct net_device *dev,
 {
 	struct dsa_port *dp = dsa_slave_to_port(dev);
 
-	if (snprintf(name, len, "p%d", dp->index) >= len)
-		return -EINVAL;
-
-	return 0;
+	return devlink_port_get_phys_port_name(&dp->devlink_port, name, len);
 }
 
 static struct dsa_mall_tc_entry *
