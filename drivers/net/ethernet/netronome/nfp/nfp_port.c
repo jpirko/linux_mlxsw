@@ -34,6 +34,7 @@
 #include <linux/lockdep.h>
 #include <linux/netdevice.h>
 #include <net/switchdev.h>
+#include <net/devlink.h>
 
 #include "nfpcore/nfp_cpp.h"
 #include "nfpcore/nfp_nsp.h"
@@ -160,40 +161,13 @@ struct nfp_eth_table_port *nfp_port_get_eth_port(struct nfp_port *port)
 int
 nfp_port_get_phys_port_name(struct net_device *netdev, char *name, size_t len)
 {
-	struct nfp_eth_table_port *eth_port;
 	struct nfp_port *port;
-	int n;
 
 	port = nfp_port_from_netdev(netdev);
 	if (!port)
 		return -EOPNOTSUPP;
 
-	switch (port->type) {
-	case NFP_PORT_PHYS_PORT:
-		eth_port = __nfp_port_get_eth_port(port);
-		if (!eth_port)
-			return -EOPNOTSUPP;
-
-		if (!eth_port->is_split)
-			n = snprintf(name, len, "p%d", eth_port->label_port);
-		else
-			n = snprintf(name, len, "p%ds%d", eth_port->label_port,
-				     eth_port->label_subport);
-		break;
-	case NFP_PORT_PF_PORT:
-		n = snprintf(name, len, "pf%d", port->pf_id);
-		break;
-	case NFP_PORT_VF_PORT:
-		n = snprintf(name, len, "pf%dvf%d", port->pf_id, port->vf_id);
-		break;
-	default:
-		return -EOPNOTSUPP;
-	}
-
-	if (n >= len)
-		return -EINVAL;
-
-	return 0;
+	return devlink_port_get_phys_port_name(&port->dl_port, name, len);
 }
 
 /**
