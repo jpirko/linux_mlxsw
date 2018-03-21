@@ -281,6 +281,8 @@ const struct net_device_ops nfp_repr_netdev_ops = {
 
 static void nfp_repr_clean(struct nfp_repr *repr)
 {
+	if (repr->port)
+		nfp_devlink_port_unregister(repr->port);
 	unregister_netdev(repr->netdev);
 	nfp_app_repr_clean(repr->app, repr->netdev);
 	dst_release((struct dst_entry *)repr->dst);
@@ -341,8 +343,14 @@ int nfp_repr_init(struct nfp_app *app, struct net_device *netdev,
 
 	/* This is incorrect - the id has to be figured out differently */
 	port->eth_id = cmsg_port_id;
+	err = nfp_devlink_port_register(app, port);
+	if (err)
+		goto err_netdev_clean;
+
 	return 0;
 
+err_netdev_clean:
+	unregister_netdev(netdev);
 err_repr_clean:
 	nfp_app_repr_clean(app, netdev);
 err_clean:
