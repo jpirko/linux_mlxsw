@@ -428,10 +428,9 @@ static int nfp_flower_vnic_alloc(struct nfp_app *app, struct nfp_net *nn,
 		goto err_invalid_port;
 	}
 
-	eth_hw_addr_random(nn->dp.netdev);
 	netif_keep_dst(nn->dp.netdev);
 
-	return 0;
+	return nfp_app_nic_vnic_alloc(app, nn, id);
 
 err_invalid_port:
 	nn->port = nfp_port_alloc(app, NFP_PORT_INVALID, nn->dp.netdev);
