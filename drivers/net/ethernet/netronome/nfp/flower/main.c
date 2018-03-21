@@ -267,6 +267,7 @@ nfp_flower_spawn_vnic_reprs(struct nfp_app *app,
 				app->pf->vf_cfg_mem + i * NFP_NET_CFG_BAR_SZ;
 		}
 
+		SET_NETDEV_DEV(repr, &priv->nn->pdev->dev);
 		eth_hw_addr_random(repr);
 
 		port_id = nfp_flower_cmsg_pcie_port(nfp_pcie, vnic_type,
