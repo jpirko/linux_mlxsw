@@ -339,6 +339,8 @@ int nfp_repr_init(struct nfp_app *app, struct net_device *netdev,
 	if (err)
 		goto err_repr_clean;
 
+	/* This is incorrect - the id has to be figured out differently */
+	port->eth_id = cmsg_port_id;
 	return 0;
 
 err_repr_clean:
