@@ -1,0 +1,50 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+
+NUM_NETIFS=4
+source ../../../../net/forwarding/lib.sh
+source ../../../../net/forwarding/tc_common.sh
+source devlink_lib_spectrum.sh
+
+current_test=""
+
+cleanup()
+{
+	pre_cleanup
+	if [ ! -z $current_test ]; then
+		${current_test}_cleanup
+	fi
+	devlink_sp_size_kvd_to_default
+}
+
+devlink_sp_read_kvd_defaults
+trap cleanup EXIT
+
+for current_test in router; do
+	source ${current_test}_scale.sh
+	for profile in $KVD_PROFILES; do
+		RET=0
+		devlink_sp_resource_kvd_profile_set $profile
+		if [[ $RET -gt 0 ]]; then
+			log_test "'$current_test' [$profile] setting"
+			continue
+		fi
+
+		for should_fail in 0 1; do
+			RET=0
+			target=$(${current_test}_get_target "$should_fail")
+			${current_test}_setup_prepare
+			setup_wait
+			${current_test}_test "$target" "$should_fail"
+			${current_test}_cleanup
+			if [[ "$should_fail" -eq 0 ]]; then
+				log_test "'$current_test' [$profile] $target"
+			else
+				log_test "'$current_test' [$profile] overflow $target"
+			fi
+		done
+	done
+done
+current_test=""
+
+exit "$RET"
