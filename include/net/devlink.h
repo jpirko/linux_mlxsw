@@ -29,6 +29,7 @@ struct devlink {
 	struct list_head resource_list;
 	struct devlink_dpipe_headers *dpipe_headers;
 	struct list_head region_list;
+	u32 snapshot_id;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -427,6 +428,7 @@ struct devlink_region *devlink_region_create(struct devlink *devlink,
 					     u32 region_max_snapshots,
 					     u64 region_size);
 void devlink_region_destroy(struct devlink_region *region);
+u32 devlink_region_shapshot_id_get(struct devlink *devlink);
 
 #else
 
@@ -609,6 +611,12 @@ devlink_region_create(struct devlink *devlink,
 static inline void
 devlink_region_destroy(struct devlink_region *region)
 {
+}
+
+static inline u32
+devlink_region_shapshot_id_get(struct devlink *devlink)
+{
+	return 0;
 }
 
 #endif
