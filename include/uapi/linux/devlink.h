@@ -78,6 +78,9 @@ enum devlink_command {
 	 */
 	DEVLINK_CMD_RELOAD,
 
+	DEVLINK_CMD_REGION_GET,
+	DEVLINK_CMD_REGION_SET,
+
 	/* add new commands above here */
 	__DEVLINK_CMD_MAX,
 	DEVLINK_CMD_MAX = __DEVLINK_CMD_MAX - 1
@@ -223,6 +226,9 @@ enum devlink_attr {
 	DEVLINK_ATTR_RESOURCE_OCC,		/* u64 */
 	DEVLINK_ATTR_DPIPE_TABLE_RESOURCE_ID,	/* u64 */
 	DEVLINK_ATTR_DPIPE_TABLE_RESOURCE_UNITS,/* u64 */
+
+	DEVLINK_ATTR_REGION_NAME,		/* string */
+	DEVLINK_ATTR_REGION_SIZE,		/* u32 */
 
 	/* add new attributes above here, update the policy in devlink.c */
 
