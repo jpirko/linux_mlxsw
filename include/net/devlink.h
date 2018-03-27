@@ -28,6 +28,7 @@ struct devlink {
 	struct list_head dpipe_table_list;
 	struct list_head resource_list;
 	struct devlink_dpipe_headers *dpipe_headers;
+	struct list_head region_list;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -294,6 +295,8 @@ struct devlink_resource {
 
 #define DEVLINK_RESOURCE_ID_PARENT_TOP 0
 
+struct devlink_region;
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -419,6 +422,11 @@ int devlink_resource_size_get(struct devlink *devlink,
 int devlink_dpipe_table_resource_set(struct devlink *devlink,
 				     const char *table_name, u64 resource_id,
 				     u64 resource_units);
+struct devlink_region *devlink_region_create(struct devlink *devlink,
+					     const char *region_name,
+					     u32 region_max_snapshots,
+					     u64 region_size);
+void devlink_region_destroy(struct devlink_region *region);
 
 #else
 
@@ -587,6 +595,20 @@ devlink_dpipe_table_resource_set(struct devlink *devlink,
 				 u64 resource_units)
 {
 	return -EOPNOTSUPP;
+}
+
+static inline struct devlink_region *
+devlink_region_create(struct devlink *devlink,
+		      const char *region_name,
+		      u32 region_max_snapshots,
+		      u64 region_size)
+{
+	return NULL;
+}
+
+static inline void
+devlink_region_destroy(struct devlink_region *region)
+{
 }
 
 #endif
