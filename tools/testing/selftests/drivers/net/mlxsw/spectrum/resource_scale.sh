@@ -20,7 +20,8 @@ cleanup()
 devlink_sp_read_kvd_defaults
 trap cleanup EXIT
 
-for current_test in router; do
+ALL_TESTS="router"
+for current_test in ${TESTS:-$ALL_TESTS}; do
 	source ${current_test}_scale.sh
 
 	num_netifs_var=${current_test^^}_NUM_NETIFS
