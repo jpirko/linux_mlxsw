@@ -22,6 +22,10 @@ trap cleanup EXIT
 
 for current_test in router; do
 	source ${current_test}_scale.sh
+
+	num_netifs_var=${current_test^^}_NUM_NETIFS
+	num_netifs=${!num_netifs_var:-$NUM_NETIFS}
+
 	for profile in $KVD_PROFILES; do
 		RET=0
 		devlink_sp_resource_kvd_profile_set $profile
@@ -34,7 +38,7 @@ for current_test in router; do
 			RET=0
 			target=$(${current_test}_get_target "$should_fail")
 			${current_test}_setup_prepare
-			setup_wait
+			setup_wait $num_netifs
 			${current_test}_test "$target" "$should_fail"
 			${current_test}_cleanup
 			if [[ "$should_fail" -eq 0 ]]; then
