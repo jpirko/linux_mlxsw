@@ -65,19 +65,10 @@ router_setup_prepare()
 router_offload_validate()
 {
 	local route_count=$1
-	local should_fail=$2
 	local offloaded_count
 
 	offloaded_count=$(ip route | grep -o 'offload' | wc -l)
-
-	if ([[ $offloaded_count -lt $route_count ]] && \
-	    [[ $should_fail -eq 0 ]]) ||
-	   ([[ $offloaded_count -ge $route_count ]] && \
-	    [[ $should_fail -eq 1 ]]); then
-		return 1
-	else
-		return 0
-	fi
+	[[ $offloaded_count -ge $route_count ]]
 }
 
 router_routes_create()
@@ -124,8 +115,8 @@ router_test()
 
 	router_routes_create $route_count
 
-	router_offload_validate $route_count $should_fail
-	check_err $? "Offload mismatch"
+	router_offload_validate $route_count
+	check_err_fail $should_fail $? "Offload of $route_count routes"
 	if [[ $RET -ne 0 ]] || [[ $should_fail -eq 1 ]]; then
 		return
 	fi
