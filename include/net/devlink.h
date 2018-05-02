@@ -350,6 +350,11 @@ struct devlink_param_item {
 	bool driver_init_value_valid;
 };
 
+#define DEVLINK_PARAM_GENERIC_INT_ERR_RESET_NAME "internal_error_reset"
+#define DEVLINK_PARAM_GENERIC_MAX_MACS_NAME "max_macs"
+#define DEVLINK_PARAM_GENERIC_INT_ERR_RESET_TYPE DEVLINK_PARAM_TYPE_BOOL
+#define DEVLINK_PARAM_GENERIC_MAX_MACS_TYPE DEVLINK_PARAM_TYPE_U32
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -492,6 +497,28 @@ int devlink_param_get_driver_init_value(struct devlink *devlink,
 int devlink_param_set_driver_init_value(struct devlink *devlink,
 					const char *param_name,
 					union devlink_param_value init_val);
+extern const struct devlink_param devlink_param_generic[];
+
+#define DEVLINK_PARAM_GENERIC(id, _modes, _getter, _setter, _validate)	\
+{									\
+	.name = DEVLINK_PARAM_GENERIC_##id##_NAME,			\
+	.type = DEVLINK_PARAM_GENERIC_##id##_TYPE,			\
+	.generic = true,						\
+	.config_modes = _modes,						\
+	.getter = _getter,						\
+	.setter = _setter,						\
+	.validate = _validate,						\
+}
+
+#define DEVLINK_PARAM_DRIVER(_name, _type, _modes, _getter, _setter, _validate)	\
+{									\
+	.name = _name,							\
+	.type = _type,							\
+	.config_modes = _modes,						\
+	.getter = _getter,						\
+	.setter = _setter,						\
+	.validate = _validate,						\
+}
 
 #else
 

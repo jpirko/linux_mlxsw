@@ -2587,7 +2587,18 @@ static int devlink_nl_cmd_reload(struct sk_buff *skb, struct genl_info *info)
 	return devlink->ops->reload(devlink);
 }
 
-const struct devlink_param devlink_param_generic[] = {};
+const struct devlink_param devlink_param_generic[] = {
+	{
+		.name = DEVLINK_PARAM_GENERIC_INT_ERR_RESET_NAME,
+		.type = DEVLINK_PARAM_GENERIC_INT_ERR_RESET_TYPE,
+	},
+	{
+		.name = DEVLINK_PARAM_GENERIC_MAX_MACS_NAME,
+		.type = DEVLINK_PARAM_GENERIC_MAX_MACS_TYPE,
+	},
+
+};
+EXPORT_SYMBOL(devlink_param_generic);
 
 #define DEVLINK_PARAM_GENERIC_MAX ARRAY_SIZE(devlink_param_generic)
 
