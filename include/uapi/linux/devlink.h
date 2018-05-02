@@ -132,6 +132,15 @@ enum devlink_eswitch_encap_mode {
 	DEVLINK_ESWITCH_ENCAP_MODE_BASIC,
 };
 
+enum devlink_config_mode {
+	DEVLINK_CONFIG_MODE_RUNTIME,
+	DEVLINK_CONFIG_MODE_DRIVER_INIT,
+	DEVLINK_CONFIG_MODE_PERMANENT,
+
+	__DEVLINK_CONFIG_MODE_MAX,
+	DEVLINK_CONFIG_MODE_MAX = __DEVLINK_CONFIG_MODE_MAX - 1
+};
+
 enum devlink_attr {
 	/* don't change the order or add anything between, this is ABI! */
 	DEVLINK_ATTR_UNSPEC,
