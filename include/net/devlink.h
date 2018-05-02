@@ -486,6 +486,12 @@ int devlink_params_register(struct devlink *devlink,
 void devlink_params_unregister(struct devlink *devlink,
 			       const struct devlink_param *params,
 			       size_t params_count);
+int devlink_param_get_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value *init_val);
+int devlink_param_set_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value init_val);
 
 #else
 
@@ -681,6 +687,20 @@ void devlink_params_unregister(struct devlink *devlink,
 			       size_t params_count)
 {
 
+}
+
+int devlink_param_get_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value *init_val);
+{
+	return -EOPNOTSUPP;
+}
+
+int devlink_param_set_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value init_val);
+{
+	return -EOPNOTSUPP;
 }
 
 #endif

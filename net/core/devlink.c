@@ -2646,6 +2646,15 @@ static int devlink_param_get(struct devlink *devlink,
 	return param->getter(devlink, ctx);
 }
 
+static int devlink_param_set(struct devlink *devlink,
+			     struct devlink_param *param,
+			     struct devlink_param_gsetter_ctx *ctx)
+{
+	if (!param->setter)
+		return -EOPNOTSUPP;
+	return param->setter(devlink, ctx);
+}
+
 static int
 devlink_param_type_to_nla_type(enum devlink_param_type param_type)
 {
@@ -2838,6 +2847,87 @@ out:
 	return msg->len;
 }
 
+static int devlink_config_mode_get_first(struct devlink_param *param,
+					 enum devlink_config_mode *mode)
+{
+	int first_bit;
+
+	first_bit = ffs(param->config_modes);
+	if (first_bit == 0)
+		return -EINVAL;
+	*mode = first_bit - 1;
+	return 0;
+}
+
+static int
+devlink_param_type_get_from_info(struct genl_info *info,
+				 enum devlink_param_type *param_type)
+{
+	if (!info->attrs[DEVLINK_ATTR_PARAM_TYPE])
+		return -EINVAL;
+
+	switch (nla_get_u8(info->attrs[DEVLINK_ATTR_PARAM_TYPE])) {
+	case NLA_U8:
+		*param_type = DEVLINK_PARAM_TYPE_U8;
+		break;
+	case NLA_U32:
+		*param_type = DEVLINK_PARAM_TYPE_U32;
+		break;
+	case NLA_S8:
+		*param_type = DEVLINK_PARAM_TYPE_S8;
+		break;
+	case NLA_S32:
+		*param_type = DEVLINK_PARAM_TYPE_S32;
+		break;
+	case NLA_STRING:
+		*param_type = DEVLINK_PARAM_TYPE_STRING;
+		break;
+	case NLA_FLAG:
+		*param_type = DEVLINK_PARAM_TYPE_BOOL;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+devlink_param_value_get_from_info(struct devlink_param *param,
+				  struct genl_info *info,
+				  union devlink_param_value *value)
+{
+	if (param->type != DEVLINK_PARAM_TYPE_BOOL &&
+	    !info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA])
+		return -EINVAL;
+
+	switch (param->type) {
+	case DEVLINK_PARAM_TYPE_U8:
+		value->vu8 = nla_get_u8(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]);
+		break;
+	case DEVLINK_PARAM_TYPE_U32:
+		value->vu32 = nla_get_u32(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]);
+		break;
+	case DEVLINK_PARAM_TYPE_S8:
+		value->vs8 = nla_get_s8(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]);
+		break;
+	case DEVLINK_PARAM_TYPE_S32:
+		value->vs32 = nla_get_s32(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]);
+		break;
+	case DEVLINK_PARAM_TYPE_STRING:
+		if (nla_len(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]) >
+			    DEVLINK_PARAM_MAX_STRING_VALUE)
+			return -EINVAL;
+		value->vstr = nla_data(info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA]);
+		break;
+	case DEVLINK_PARAM_TYPE_BOOL:
+		value->vbool = info->attrs[DEVLINK_ATTR_PARAM_VALUE_DATA] ?
+				true : false;
+		break;
+	}
+	return 0;
+}
+
 static struct devlink_param_item *
 devlink_param_get_from_info(struct devlink *devlink,
 			    struct genl_info *info)
@@ -2876,6 +2966,61 @@ static int devlink_nl_cmd_param_get_doit(struct sk_buff *skb,
 	}
 
 	return genlmsg_reply(msg, info);
+}
+
+static int devlink_nl_cmd_param_set_doit(struct sk_buff *skb,
+					 struct genl_info *info)
+{
+	struct devlink *devlink = info->user_ptr[0];
+	enum devlink_param_type param_type;
+	struct devlink_param_gsetter_ctx ctx;
+	enum devlink_config_mode config_mode;
+	struct devlink_param_item *param_item;
+	struct devlink_param *param;
+	union devlink_param_value value;
+	int err = 0;
+
+	param_item = devlink_param_get_from_info(devlink, info);
+	if (!param_item)
+		return -EINVAL;
+	param = param_item->param;
+	err = devlink_param_type_get_from_info(info, &param_type);
+	if (err)
+		return err;
+	if (param_type != param->type)
+		return -EINVAL;
+	err = devlink_param_value_get_from_info(param, info, &value);
+	if (err)
+		return err;
+	if (param->validate) {
+		err = param->validate(devlink, &value);
+		if (err)
+			return err;
+	}
+
+	if (info->attrs[DEVLINK_ATTR_PARAM_VALUE_MODE]) {
+		config_mode = nla_get_u8(info->attrs[DEVLINK_ATTR_PARAM_VALUE_MODE]);
+		if (!devlink_config_mode_is_supported(param, config_mode))
+			return -EOPNOTSUPP;
+	} else {
+		if (devlink_config_mode_get_first(param, &config_mode))
+			return -EOPNOTSUPP;
+	}
+
+	if (config_mode == DEVLINK_CONFIG_MODE_DRIVER_INIT) {
+		param_item->driver_init_value = value;
+		param_item->driver_init_value_valid = true;
+	} else {
+		if (!param->setter)
+			return -EOPNOTSUPP;
+		ctx.val = value;
+		ctx.config_mode = config_mode;
+		err = devlink_param_set(devlink, param, &ctx);
+		if (err)
+			return err;
+	}
+
+	return 0;
 }
 
 static int devlink_param_register_one(struct devlink *devlink,
@@ -2945,6 +3090,9 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_DPIPE_TABLE_COUNTERS_ENABLED] = { .type = NLA_U8 },
 	[DEVLINK_ATTR_RESOURCE_ID] = { .type = NLA_U64},
 	[DEVLINK_ATTR_RESOURCE_SIZE] = { .type = NLA_U64},
+	[DEVLINK_ATTR_PARAM_NAME] = { .type = NLA_NUL_STRING },
+	[DEVLINK_ATTR_PARAM_TYPE] = { .type = NLA_U8 },
+	[DEVLINK_ATTR_PARAM_VALUE_MODE] = { .type = NLA_U8 },
 };
 
 static const struct genl_ops devlink_nl_ops[] = {
@@ -3134,6 +3282,13 @@ static const struct genl_ops devlink_nl_ops[] = {
 		.policy = devlink_nl_policy,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
 		/* can be retrieved by unprivileged users */
+	},
+	{
+		.cmd = DEVLINK_CMD_PARAM_SET,
+		.doit = devlink_nl_cmd_param_set_doit,
+		.policy = devlink_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
 	},
 };
 
@@ -3788,6 +3943,76 @@ void devlink_params_unregister(struct devlink *devlink,
 	mutex_unlock(&devlink->lock);
 }
 EXPORT_SYMBOL_GPL(devlink_params_unregister);
+
+/**
+ *	devlink_param_get_driver_init_value - get configuration parameter
+ *					      value for driver initializing
+ *
+ *	@devlink: devlink
+ *	@param_name: parameter name
+ *	@init_val: value of parameter in driver-init configuration mode
+ *
+ *	This function should be used by the driver to get driver-init
+ *	configuration for initialization after reload command.
+ */
+int devlink_param_get_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value *init_val)
+{
+	struct devlink_param_item *param_item;
+
+	if (!devlink->ops || !devlink->ops->reload)
+		return -EOPNOTSUPP;
+
+	param_item = devlink_param_find_by_name(&devlink->param_list,
+						param_name);
+	if (!param_item)
+		return -EINVAL;
+
+	if (!param_item->driver_init_value_valid ||
+	    !devlink_config_mode_is_supported(param_item->param,
+					      DEVLINK_CONFIG_MODE_DRIVER_INIT))
+		return -EOPNOTSUPP;
+
+	*init_val = param_item->driver_init_value;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devlink_param_get_driver_init_value);
+
+/**
+ *	devlink_param_set_driver_init_value - set value of configuration
+ *					      parameter for driver-init
+ *					      configuration mode
+ *
+ *	@devlink: devlink
+ *	@param_name: parameter name
+ *	@init_val: value of parameter to set for driver-init configuration mode
+ *
+ *	This function should be used by the driver to set driver-init
+ *	configuration mode default value.
+ */
+int devlink_param_set_driver_init_value(struct devlink *devlink,
+					const char *param_name,
+					union devlink_param_value init_val)
+{
+	struct devlink_param_item *param_item;
+
+	param_item = devlink_param_find_by_name(&devlink->param_list,
+						param_name);
+	if (!param_item)
+		return -EINVAL;
+
+	if (!devlink_config_mode_is_supported(param_item->param,
+					      DEVLINK_CONFIG_MODE_DRIVER_INIT))
+		return -EOPNOTSUPP;
+
+	param_item->driver_init_value = init_val;
+	param_item->driver_init_value_valid = true;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devlink_param_set_driver_init_value);
 
 static int __init devlink_module_init(void)
 {
