@@ -3840,8 +3840,43 @@ static int mlx4_devlink_port_type_set(struct devlink_port *devlink_port,
 	return __set_port_type(info, mlx4_port_type);
 }
 
+static void mlx4_devlink_param_load_init_values(struct devlink *devlink)
+{
+	union devlink_param_value saved_value;
+
+	if (!devlink_param_get_driver_init_value(devlink, "internal_err_reset",
+						 &saved_value))
+		mlx4_internal_err_reset = saved_value.vbool;
+	if (!devlink_param_get_driver_init_value(devlink, "max_macs",
+						 &saved_value))
+		log_num_mac = order_base_2(saved_value.vu32);
+	if (!devlink_param_get_driver_init_value(devlink, "enable_64b_cqe_eqe",
+						 &saved_value))
+		enable_64b_cqe_eqe = saved_value.vbool;
+	if (!devlink_param_get_driver_init_value(devlink, "enable_4k_uar",
+						 &saved_value))
+		enable_4k_uar = saved_value.vbool;
+}
+
+static int mlx4_devlink_reload(struct devlink *devlink)
+{
+	struct mlx4_priv *priv = devlink_priv(devlink);
+	struct mlx4_dev *dev = &priv->dev;
+	struct mlx4_dev_persistent *persist = dev->persist;
+	int err;
+
+	if (persist->num_vfs)
+		mlx4_warn(persist->dev, "Reload performed on PF, will cause reset on operating Virtual Functions\n");
+	err = mlx4_restart_one(persist->pdev, true, devlink);
+	if (err)
+		mlx4_err(persist->dev, "mlx4_restart_one failed, ret=%d\n", err);
+
+	return err;
+}
+
 static const struct devlink_ops mlx4_devlink_ops = {
 	.port_type_set	= mlx4_devlink_port_type_set,
+	.reload		= mlx4_devlink_reload,
 };
 
 static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -4052,7 +4087,7 @@ static int restore_current_port_types(struct mlx4_dev *dev,
 	return err;
 }
 
-int mlx4_restart_one(struct pci_dev *pdev)
+int mlx4_restart_one(struct pci_dev *pdev, bool reload, struct devlink *devlink)
 {
 	struct mlx4_dev_persistent *persist = pci_get_drvdata(pdev);
 	struct mlx4_dev	 *dev  = persist->dev;
@@ -4065,6 +4100,8 @@ int mlx4_restart_one(struct pci_dev *pdev)
 	memcpy(nvfs, dev->persist->nvfs, sizeof(dev->persist->nvfs));
 
 	mlx4_unload_one(pdev);
+	if (reload)
+		mlx4_devlink_param_load_init_values(devlink);
 	err = mlx4_load_one(pdev, pci_dev_data, total_vfs, nvfs, priv, 1);
 	if (err) {
 		mlx4_err(dev, "%s: ERROR: mlx4_load_one failed, pci_name=%s, err=%d\n",
