@@ -130,11 +130,12 @@ static int mlxsw_sp2_kvdl_part_alloc(struct mlxsw_sp2_kvdl_part *part,
 static int mlxsw_sp2_kvdl_rec_del(struct mlxsw_sp *mlxsw_sp, u8 res_type,
 				  u16 size, u32 kvdl_index)
 {
-	char iedr_pl[MLXSW_REG_IEDR_LEN];
+//	char iedr_pl[MLXSW_REG_IEDR_LEN];
 
-	mlxsw_reg_iedr_pack(iedr_pl);
-	mlxsw_reg_iedr_rec_pack(iedr_pl, 0, res_type, size, kvdl_index);
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(iedr), iedr_pl);
+//	mlxsw_reg_iedr_pack(iedr_pl);
+//	mlxsw_reg_iedr_rec_pack(iedr_pl, 0, res_type, size, kvdl_index);
+//	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(iedr), iedr_pl);
+	return 0;
 }
 
 static void mlxsw_sp2_kvdl_part_free(struct mlxsw_sp *mlxsw_sp,

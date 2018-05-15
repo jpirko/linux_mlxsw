@@ -2828,12 +2828,12 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	dev->netdev_ops = &mlxsw_sp_port_netdev_ops;
 	dev->ethtool_ops = &mlxsw_sp_port_ethtool_ops;
 
-	err = mlxsw_sp_port_module_map(mlxsw_sp_port, module, width, lane);
-	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to map module\n",
-			mlxsw_sp_port->local_port);
-		goto err_port_module_map;
-	}
+//	err = mlxsw_sp_port_module_map(mlxsw_sp_port, module, width, lane);
+//	if (err) {
+//		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to map module\n",
+//			mlxsw_sp_port->local_port);
+//		goto err_port_module_map;
+//	}
 
 	err = mlxsw_sp_port_swid_set(mlxsw_sp_port, 0);
 	if (err) {
@@ -2895,12 +2895,12 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		goto err_port_buffers_init;
 	}
 
-	err = mlxsw_sp_port_ets_init(mlxsw_sp_port);
-	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to initialize ETS\n",
-			mlxsw_sp_port->local_port);
-		goto err_port_ets_init;
-	}
+//	err = mlxsw_sp_port_ets_init(mlxsw_sp_port);
+//	if (err) {
+//		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to initialize ETS\n",
+//			mlxsw_sp_port->local_port);
+//		goto err_port_ets_init;
+//	}
 
 	/* ETS and buffers must be initialized before DCB. */
 	err = mlxsw_sp_port_dcb_init(mlxsw_sp_port);
@@ -2945,6 +2945,10 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				mlxsw_sp_port, dev, mlxsw_sp_port->split,
 				module);
 	mlxsw_core_schedule_dw(&mlxsw_sp_port->periodic_hw_stats.update_dw, 0);
+
+
+	netdev_info(mlxsw_sp_port->dev, "link up\n");
+	netif_carrier_on(mlxsw_sp_port->dev);
 	return 0;
 
 err_register_netdev:
@@ -2958,7 +2962,7 @@ err_port_qdiscs_init:
 err_port_fids_init:
 	mlxsw_sp_port_dcb_fini(mlxsw_sp_port);
 err_port_dcb_init:
-err_port_ets_init:
+//err_port_ets_init:
 err_port_buffers_init:
 err_port_admin_status_set:
 err_port_mtu_set:
@@ -3043,15 +3047,18 @@ static int mlxsw_sp_ports_create(struct mlxsw_sp *mlxsw_sp)
 
 		err = mlxsw_sp_port_module_info_get(mlxsw_sp, i, &module,
 						    &width, &lane);
+		printk("mlxsw_sp_port_module_info_get module %u, width %u, lane %u\n", module, width, lane);
 		if (err)
 			goto err_port_module_info_get;
 		if (!width)
 			continue;
+		printk("local_port %d, module %u\n", i, module);
 		mlxsw_sp->port_to_module[i] = module;
 		err = mlxsw_sp_port_create(mlxsw_sp, i, false,
 					   module, width, lane);
 		if (err)
 			goto err_port_create;
+		printk("port %d created\n", i);
 	}
 	return 0;
 
@@ -3675,11 +3682,11 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_buffers_init;
 	}
 
-	err = mlxsw_sp_lag_init(mlxsw_sp);
-	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Failed to initialize LAG\n");
-		goto err_lag_init;
-	}
+//	err = mlxsw_sp_lag_init(mlxsw_sp);
+//	if (err) {
+//		dev_err(mlxsw_sp->bus_info->dev, "Failed to initialize LAG\n");
+//		goto err_lag_init;
+//	}
 
 	/* Initialize SPAN before router and switchdev, so that those components
 	 * can call mlxsw_sp_span_respin().
@@ -3762,8 +3769,8 @@ err_counter_pool_init:
 err_switchdev_init:
 	mlxsw_sp_span_fini(mlxsw_sp);
 err_span_init:
-	mlxsw_sp_lag_fini(mlxsw_sp);
-err_lag_init:
+//	mlxsw_sp_lag_fini(mlxsw_sp);
+//err_lag_init:
 	mlxsw_sp_buffers_fini(mlxsw_sp);
 err_buffers_init:
 	mlxsw_sp_traps_fini(mlxsw_sp);
@@ -3817,7 +3824,7 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_counter_pool_fini(mlxsw_sp);
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
 	mlxsw_sp_span_fini(mlxsw_sp);
-	mlxsw_sp_lag_fini(mlxsw_sp);
+//	mlxsw_sp_lag_fini(mlxsw_sp);
 	mlxsw_sp_buffers_fini(mlxsw_sp);
 	mlxsw_sp_traps_fini(mlxsw_sp);
 	mlxsw_sp_fids_fini(mlxsw_sp);
@@ -4743,7 +4750,7 @@ static int mlxsw_sp_netdevice_event(struct notifier_block *nb,
 			mlxsw_sp_span_entry_invalidate(mlxsw_sp, span_entry);
 	}
 	mlxsw_sp_span_respin(mlxsw_sp);
-
+/*
 	if (mlxsw_sp_netdev_is_ipip_ol(mlxsw_sp, dev))
 		err = mlxsw_sp_netdevice_ipip_ol_event(mlxsw_sp, dev,
 						       event, ptr);
@@ -4751,13 +4758,15 @@ static int mlxsw_sp_netdevice_event(struct notifier_block *nb,
 		err = mlxsw_sp_netdevice_ipip_ul_event(mlxsw_sp, dev,
 						       event, ptr);
 	else if (event == NETDEV_CHANGEADDR || event == NETDEV_CHANGEMTU)
+*/
+	if (event == NETDEV_CHANGEADDR || event == NETDEV_CHANGEMTU)
 		err = mlxsw_sp_netdevice_router_port_event(dev);
 	else if (mlxsw_sp_is_vrf_event(event, ptr))
 		err = mlxsw_sp_netdevice_vrf_event(dev, event, ptr);
 	else if (mlxsw_sp_port_dev_check(dev))
 		err = mlxsw_sp_netdevice_port_event(dev, dev, event, ptr);
-	else if (netif_is_lag_master(dev))
-		err = mlxsw_sp_netdevice_lag_event(dev, event, ptr);
+//	else if (netif_is_lag_master(dev))
+//		err = mlxsw_sp_netdevice_lag_event(dev, event, ptr);
 	else if (is_vlan_dev(dev))
 		err = mlxsw_sp_netdevice_vlan_event(dev, event, ptr);
 

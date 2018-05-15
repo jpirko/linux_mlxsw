@@ -88,11 +88,11 @@ static int mlxsw_sp2_acl_tcam_init(struct mlxsw_sp *mlxsw_sp, void *priv,
 	enc_actions = mlxsw_afa_block_cur_set(afa_block);
 
 	for (i = 0; i < tcam->kvdl_count; i++) {
-		mlxsw_reg_pefa_pack(pefa_pl, tcam->kvdl_index + i,
-				    true, enc_actions);
-		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pefa), pefa_pl);
-		if (err)
-			goto err_pefa_write;
+//		mlxsw_reg_pefa_pack(pefa_pl, tcam->kvdl_index + i,
+//				    true, enc_actions);
+//		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pefa), pefa_pl);
+//		if (err)
+//			goto err_pefa_write;
 	}
 	mlxsw_reg_pgcr_pack(pgcr_pl, tcam->kvdl_index);
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pgcr), pgcr_pl);

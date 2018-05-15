@@ -488,6 +488,7 @@ static void mlxsw_pci_cq_pre_init(struct mlxsw_pci *mlxsw_pci,
 	if (q->u.cq.v == MLXSW_PCI_CQE_V2 &&
 	    q->num < mlxsw_pci->num_sdq_cqs)
 		q->u.cq.v = MLXSW_PCI_CQE_V1;
+	printk("q %u, v%u\n", q->num, q->u.cq.v);
 }
 
 static int mlxsw_pci_cq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
@@ -979,6 +980,8 @@ static int mlxsw_pci_aqs_init(struct mlxsw_pci *mlxsw_pci, char *mbox)
 	num_eqs = mlxsw_cmd_mbox_query_aq_cap_max_num_eqs_get(mbox);
 	eq_log2sz = mlxsw_cmd_mbox_query_aq_cap_log_max_eq_sz_get(mbox);
 
+	printk("num_sdqs %u, num_rdqs %u, num_cqs %u, num_cqs %u, num_eqs %u\n", num_sdqs, num_rdqs, num_cqs, num_cqs, num_eqs);
+	num_rdqs = 36;
 	if (num_sdqs + num_rdqs > num_cqs ||
 	    num_cqs > MLXSW_PCI_CQS_MAX || num_eqs != MLXSW_PCI_EQS_COUNT) {
 		dev_err(&pdev->dev, "Unsupported number of queues\n");
@@ -1026,7 +1029,7 @@ static int mlxsw_pci_aqs_init(struct mlxsw_pci *mlxsw_pci, char *mbox)
 	}
 
 	/* We have to poll in command interface until queues are initialized */
-	mlxsw_pci->cmd.nopoll = true;
+	//mlxsw_pci->cmd.nopoll = true;
 	return 0;
 
 err_rdqs_init:
@@ -1408,6 +1411,7 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 		mlxsw_cmd_mbox_query_fw_fw_rev_minor_get(mbox);
 	mlxsw_pci->bus_info.fw_rev.subminor =
 		mlxsw_cmd_mbox_query_fw_fw_rev_subminor_get(mbox);
+	printk("fw %u.%u.%u\n", mlxsw_pci->bus_info.fw_rev.major, mlxsw_pci->bus_info.fw_rev.minor, mlxsw_pci->bus_info.fw_rev.subminor);
 
 	if (mlxsw_cmd_mbox_query_fw_cmd_interface_rev_get(mbox) != 1) {
 		dev_err(&pdev->dev, "Unsupported cmd interface revision ID queried from hw\n");
@@ -1450,6 +1454,7 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 		dev_err(&pdev->dev, "Invalid supported CQE version combination reported\n");
 		goto err_cqe_v_check;
 	}
+	printk("max v %u\n", mlxsw_pci->max_cqe_ver);
 
 	err = mlxsw_pci_config_profile(mlxsw_pci, mbox, profile, res);
 	if (err)

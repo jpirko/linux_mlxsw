@@ -3537,7 +3537,7 @@ static int mlxsw_sp_nexthop4_type_init(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_ipip_entry *ipip_entry;
 	struct mlxsw_sp_rif *rif;
 	int err;
-
+/*
 	ipip_entry = mlxsw_sp_ipip_entry_find_by_ol_dev(mlxsw_sp, dev);
 	if (ipip_entry) {
 		ipip_ops = mlxsw_sp->router->ipip_ops_arr[ipip_entry->ipipt];
@@ -3548,6 +3548,7 @@ static int mlxsw_sp_nexthop4_type_init(struct mlxsw_sp *mlxsw_sp,
 			return 0;
 		}
 	}
+*/
 
 	nh->type = MLXSW_SP_NEXTHOP_TYPE_ETH;
 	rif = mlxsw_sp_rif_find_by_dev(mlxsw_sp, dev);
@@ -3661,9 +3662,11 @@ static void mlxsw_sp_nexthop_rif_update(struct mlxsw_sp *mlxsw_sp,
 		case MLXSW_SP_NEXTHOP_TYPE_ETH:
 			removing = false;
 			break;
+			/*
 		case MLXSW_SP_NEXTHOP_TYPE_IPIP:
 			removing = !mlxsw_sp_ipip_netdev_ul_up(rif->dev);
 			break;
+			*/
 		default:
 			WARN_ON(1);
 			continue;
@@ -3700,8 +3703,9 @@ static void mlxsw_sp_nexthop_rif_gone_sync(struct mlxsw_sp *mlxsw_sp,
 static bool mlxsw_sp_fi_is_gateway(const struct mlxsw_sp *mlxsw_sp,
 				   const struct fib_info *fi)
 {
-	return fi->fib_nh->nh_scope == RT_SCOPE_LINK ||
-	       mlxsw_sp_nexthop4_ipip_type(mlxsw_sp, fi->fib_nh, NULL);
+	return fi->fib_nh->nh_scope == RT_SCOPE_LINK;
+//	return fi->fib_nh->nh_scope == RT_SCOPE_LINK ||
+//	       mlxsw_sp_nexthop4_ipip_type(mlxsw_sp, fi->fib_nh, NULL);
 }
 
 static struct mlxsw_sp_nexthop_group *
@@ -4138,6 +4142,7 @@ mlxsw_sp_fib4_entry_type_set(struct mlxsw_sp *mlxsw_sp,
 
 	switch (fen_info->type) {
 	case RTN_LOCAL:
+		/*
 		ipip_entry = mlxsw_sp_ipip_entry_find_by_decap(mlxsw_sp, dev,
 						 MLXSW_SP_L3_PROTO_IPV4, dip);
 		if (ipip_entry && ipip_entry->ol_dev->flags & IFF_UP) {
@@ -4146,6 +4151,7 @@ mlxsw_sp_fib4_entry_type_set(struct mlxsw_sp *mlxsw_sp,
 							     fib_entry,
 							     ipip_entry);
 		}
+		*/
 		/* fall through */
 	case RTN_BROADCAST:
 		fib_entry->type = MLXSW_SP_FIB_ENTRY_TYPE_TRAP;
@@ -4839,6 +4845,7 @@ static int mlxsw_sp_nexthop6_type_init(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_rif *rif;
 	int err;
 
+	/*
 	ipip_entry = mlxsw_sp_ipip_entry_find_by_ol_dev(mlxsw_sp, dev);
 	if (ipip_entry) {
 		ipip_ops = mlxsw_sp->router->ipip_ops_arr[ipip_entry->ipipt];
@@ -4849,6 +4856,7 @@ static int mlxsw_sp_nexthop6_type_init(struct mlxsw_sp *mlxsw_sp,
 			return 0;
 		}
 	}
+	*/
 
 	nh->type = MLXSW_SP_NEXTHOP_TYPE_ETH;
 	rif = mlxsw_sp_rif_find_by_dev(mlxsw_sp, dev);
@@ -4905,8 +4913,9 @@ static void mlxsw_sp_nexthop6_fini(struct mlxsw_sp *mlxsw_sp,
 static bool mlxsw_sp_rt6_is_gateway(const struct mlxsw_sp *mlxsw_sp,
 				    const struct fib6_info *rt)
 {
-	return rt->fib6_flags & RTF_GATEWAY ||
-	       mlxsw_sp_nexthop6_ipip_type(mlxsw_sp, rt, NULL);
+	return rt->fib6_flags & RTF_GATEWAY;
+//	return rt->fib6_flags & RTF_GATEWAY ||
+//	       mlxsw_sp_nexthop6_ipip_type(mlxsw_sp, rt, NULL);
 }
 
 static struct mlxsw_sp_nexthop_group *
@@ -6046,9 +6055,10 @@ mlxsw_sp_dev_rif_type(const struct mlxsw_sp *mlxsw_sp,
 		      const struct net_device *dev)
 {
 	enum mlxsw_sp_fid_type type;
-
+/*
 	if (mlxsw_sp_netdev_ipip_type(mlxsw_sp, dev, NULL))
 		return MLXSW_SP_RIF_TYPE_IPIP_LB;
+		*/
 
 	/* Otherwise RIF type is derived from the type of the underlying FID. */
 	if (is_vlan_dev(dev) && netif_is_bridge_master(vlan_dev_real_dev(dev)))
@@ -6177,9 +6187,9 @@ mlxsw_sp_rif_create(struct mlxsw_sp *mlxsw_sp,
 	if (ops->setup)
 		ops->setup(rif, params);
 
-	err = ops->configure(rif);
-	if (err)
-		goto err_configure;
+//	err = ops->configure(rif);
+//	if (err)
+//		goto err_configure;
 
 	for (i = 0; i < MLXSW_SP_L3_PROTO_MAX; i++) {
 		err = mlxsw_sp_mr_rif_add(vr->mr_table[i], rif);
@@ -6195,7 +6205,7 @@ mlxsw_sp_rif_create(struct mlxsw_sp *mlxsw_sp,
 err_mr_rif_add:
 	for (i--; i >= 0; i--)
 		mlxsw_sp_mr_rif_del(vr->mr_table[i], rif);
-	ops->deconfigure(rif);
+//	ops->deconfigure(rif);
 err_configure:
 	if (fid)
 		mlxsw_sp_fid_put(fid);
@@ -6223,7 +6233,7 @@ void mlxsw_sp_rif_destroy(struct mlxsw_sp_rif *rif)
 	mlxsw_sp_rif_counters_free(rif);
 	for (i = 0; i < MLXSW_SP_L3_PROTO_MAX; i++)
 		mlxsw_sp_mr_rif_del(vr->mr_table[i], rif);
-	ops->deconfigure(rif);
+//	ops->deconfigure(rif);
 	if (fid)
 		/* Loopback RIFs are not associated with a FID. */
 		mlxsw_sp_fid_put(fid);
@@ -7221,9 +7231,9 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_rifs_init;
 
-	err = mlxsw_sp_ipips_init(mlxsw_sp);
-	if (err)
-		goto err_ipips_init;
+//	err = mlxsw_sp_ipips_init(mlxsw_sp);
+//	if (err)
+//		goto err_ipips_init;
 
 	err = rhashtable_init(&mlxsw_sp->router->nexthop_ht,
 			      &mlxsw_sp_nexthop_ht_params);
@@ -7258,9 +7268,9 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_register_netevent_notifier;
 
-	err = mlxsw_sp_mp_hash_init(mlxsw_sp);
-	if (err)
-		goto err_mp_hash_init;
+//	err = mlxsw_sp_mp_hash_init(mlxsw_sp);
+//	if (err)
+//		goto err_mp_hash_init;
 
 	err = mlxsw_sp_dscp_init(mlxsw_sp);
 	if (err)
@@ -7276,7 +7286,7 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 
 err_register_fib_notifier:
 err_dscp_init:
-err_mp_hash_init:
+//err_mp_hash_init:
 	unregister_netevent_notifier(&mlxsw_sp->router->netevent_nb);
 err_register_netevent_notifier:
 	mlxsw_sp_neigh_fini(mlxsw_sp);
@@ -7291,8 +7301,8 @@ err_lpm_init:
 err_nexthop_group_ht_init:
 	rhashtable_destroy(&mlxsw_sp->router->nexthop_ht);
 err_nexthop_ht_init:
-	mlxsw_sp_ipips_fini(mlxsw_sp);
-err_ipips_init:
+//	mlxsw_sp_ipips_fini(mlxsw_sp);
+//err_ipips_init:
 	mlxsw_sp_rifs_fini(mlxsw_sp);
 err_rifs_init:
 	__mlxsw_sp_router_fini(mlxsw_sp);
@@ -7311,7 +7321,7 @@ void mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 	mlxsw_sp_lpm_fini(mlxsw_sp);
 	rhashtable_destroy(&mlxsw_sp->router->nexthop_group_ht);
 	rhashtable_destroy(&mlxsw_sp->router->nexthop_ht);
-	mlxsw_sp_ipips_fini(mlxsw_sp);
+//	mlxsw_sp_ipips_fini(mlxsw_sp);
 	mlxsw_sp_rifs_fini(mlxsw_sp);
 	__mlxsw_sp_router_fini(mlxsw_sp);
 	kfree(mlxsw_sp->router);

@@ -55,10 +55,10 @@ static int mlxsw_sp_act_kvdl_set_add(void *priv, u32 *p_kvdl_index,
 				  1, &kvdl_index);
 	if (err)
 		return err;
-	mlxsw_reg_pefa_pack(pefa_pl, kvdl_index, ca, enc_actions);
-	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pefa), pefa_pl);
-	if (err)
-		goto err_pefa_write;
+//	mlxsw_reg_pefa_pack(pefa_pl, kvdl_index, ca, enc_actions);
+//	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pefa), pefa_pl);
+//	if (err)
+//		goto err_pefa_write;
 	*p_kvdl_index = kvdl_index;
 	return 0;
 
