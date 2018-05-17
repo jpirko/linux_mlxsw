@@ -162,22 +162,50 @@ const struct devlink_ops nfp_devlink_ops = {
 	.eswitch_mode_get	= nfp_devlink_eswitch_mode_get,
 };
 
-int nfp_devlink_port_register(struct nfp_app *app, struct nfp_port *port)
+static int nfp_devlink_port_attrs_set(struct nfp_port *port)
 {
 	struct nfp_eth_table_port eth_port;
+	int ret;
+
+	switch (port->type) {
+	case NFP_PORT_PHYS_PORT:
+		rtnl_lock();
+		ret = nfp_devlink_fill_eth_port(port, &eth_port);
+		rtnl_unlock();
+		if (ret)
+			return ret;
+
+		devlink_port_attrs_set(&port->dl_port,
+				       DEVLINK_PORT_FLAVOUR_PHYSICAL,
+				       eth_port.label_port,
+				       eth_port.is_split,
+				       eth_port.label_subport);
+		break;
+	case NFP_PORT_PF_PORT:
+		devlink_port_attrs_set(&port->dl_port,
+				       DEVLINK_PORT_FLAVOUR_PF_REP,
+				       port->pf_id, false, 0);
+		break;
+	case NFP_PORT_VF_PORT:
+		devlink_port_attrs_set(&port->dl_port,
+				       DEVLINK_PORT_FLAVOUR_VF_REP,
+				       port->vf_id, false, 0);
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+int nfp_devlink_port_register(struct nfp_app *app, struct nfp_port *port)
+{
 	struct devlink *devlink;
 	int ret;
 
-	rtnl_lock();
-	ret = nfp_devlink_fill_eth_port(port, &eth_port);
-	rtnl_unlock();
+	devlink_port_type_eth_set(&port->dl_port, port->netdev);
+	ret = nfp_devlink_port_attrs_set(port);
 	if (ret)
 		return ret;
-
-	devlink_port_type_eth_set(&port->dl_port, port->netdev);
-	devlink_port_attrs_set(&port->dl_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
-			       eth_port.label_port, eth_port.is_split,
-			       eth_port.label_subport);
 
 	devlink = priv_to_devlink(app->pf);
 
