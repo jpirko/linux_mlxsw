@@ -140,6 +140,14 @@ enum devlink_port_flavour {
 	DEVLINK_PORT_FLAVOUR_DSA, /* Distributed switch architecture
 				   * interconnect port.
 				   */
+	DEVLINK_PORT_FLAVOUR_PF_REP, /* Port represents a SR-IOV physical
+				      *	function counterpart port of
+				      *	embedded switch.
+				      */
+	DEVLINK_PORT_FLAVOUR_VF_REP, /* Port represents a SR-IOV virtual
+				      *	function counterpart port of
+				      *	embedded switch.
+				      */
 };
 
 enum devlink_attr {
