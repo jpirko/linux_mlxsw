@@ -3033,6 +3033,12 @@ int devlink_port_get_phys_port_name(struct devlink_port *devlink_port,
 			n = snprintf(name, len, "p%us%u", attrs->port_number,
 				     attrs->split_subport_number);
 		break;
+	case DEVLINK_PORT_FLAVOUR_PF_REP:
+		n = snprintf(name, len, "pf%d", attrs->port_number);
+		break;
+	case DEVLINK_PORT_FLAVOUR_VF_REP:
+		n = snprintf(name, len, "vf%d", attrs->port_number);
+		break;
 	case DEVLINK_PORT_FLAVOUR_CPU:
 	case DEVLINK_PORT_FLAVOUR_DSA:
 		/* As CPU and DSA ports do not have a netdevice associated
