@@ -238,6 +238,8 @@ struct tcf_result {
 	};
 };
 
+struct tcf_chain;
+
 struct tcf_proto_ops {
 	struct list_head	head;
 	char			kind[IFNAMSIZ];
@@ -253,7 +255,7 @@ struct tcf_proto_ops {
 	int			(*change)(struct net *net, struct sk_buff *,
 					struct tcf_proto*, unsigned long,
 					u32 handle, struct nlattr **,
-					void **, bool,
+					void **, bool, void *tmplt_priv,
 					struct netlink_ext_ack *);
 	int			(*delete)(struct tcf_proto *tp, void *arg,
 					  bool *last,
@@ -263,10 +265,18 @@ struct tcf_proto_ops {
 					     tc_setup_cb_t *cb, void *cb_priv,
 					     struct netlink_ext_ack *extack);
 	void			(*bind_class)(void *, u32, unsigned long);
+	void *			(*tmplt_create)(struct net *net,
+						struct tcf_chain *chain,
+						struct nlattr **tca,
+						struct netlink_ext_ack *extack);
+	void			(*tmplt_destroy)(void *tmplt_priv);
 
 	/* rtnetlink specific */
 	int			(*dump)(struct net*, struct tcf_proto*, void *,
 					struct sk_buff *skb, struct tcmsg*);
+	int			(*tmplt_dump)(struct sk_buff *skb,
+					      struct net *net,
+					      void *tmplt_priv);
 
 	struct module		*owner;
 };
@@ -305,6 +315,8 @@ struct tcf_chain {
 	struct tcf_block *block;
 	u32 index; /* chain index */
 	unsigned int refcnt;
+	const struct tcf_proto_ops *tmplt_ops;
+	void *tmplt_priv;
 };
 
 struct tcf_block {

@@ -168,7 +168,7 @@ static int basic_set_parms(struct net *net, struct tcf_proto *tp,
 static int basic_change(struct net *net, struct sk_buff *in_skb,
 			struct tcf_proto *tp, unsigned long base, u32 handle,
 			struct nlattr **tca, void **arg, bool ovr,
-			struct netlink_ext_ack *extack)
+			void *tmplt_priv, struct netlink_ext_ack *extack)
 {
 	int err;
 	struct basic_head *head = rtnl_dereference(tp->root);
