@@ -135,9 +135,11 @@ struct net_device *br_fdb_find_port(const struct net_device *br_dev,
 		return NULL;
 
 	br = netdev_priv(br_dev);
+	spin_lock_bh(&br->hash_lock);
 	f = br_fdb_find(br, addr, vid);
 	if (f && f->dst)
 		dev = f->dst->dev;
+	spin_unlock_bh(&br->hash_lock);
 
 	return dev;
 }
