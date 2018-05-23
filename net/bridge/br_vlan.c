@@ -268,6 +268,10 @@ static int __vlan_add(struct net_bridge_vlan *v, u16 flags)
 			goto out_filt;
 		v->brvlan = masterv;
 		v->stats = masterv->stats;
+	} else {
+		err = br_switchdev_port_obj_add(dev, v->vid, flags);
+		if (err && err != -EOPNOTSUPP)
+			goto out;
 	}
 
 	/* Add the dev mac and count the vlan only if it's usable */
@@ -303,6 +307,8 @@ out_filt:
 			br_vlan_put_master(masterv);
 			v->brvlan = NULL;
 		}
+	} else {
+		br_switchdev_port_obj_del(dev, v->vid);
 	}
 
 	goto out;
@@ -328,6 +334,11 @@ static int __vlan_del(struct net_bridge_vlan *v)
 		err = __vlan_vid_del(p->dev, p->br, v->vid);
 		if (err)
 			goto out;
+	} else {
+		err = br_switchdev_port_obj_del(v->br->dev, v->vid);
+		if (err && err != -EOPNOTSUPP)
+			goto out;
+		err = 0;
 	}
 
 	if (br_vlan_should_use(v)) {
@@ -605,6 +616,9 @@ int br_vlan_add(struct net_bridge *br, u16 vid, u16 flags, bool *changed)
 			vg->num_vlans++;
 			*changed = true;
 		}
+		ret = br_switchdev_port_obj_add(br->dev, vid, flags);
+		if (ret && ret != -EOPNOTSUPP)
+			return ret;
 		if (__vlan_add_flags(vlan, flags))
 			*changed = true;
 
