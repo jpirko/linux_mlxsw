@@ -459,7 +459,8 @@ enum mlxsw_sp_acl_profile {
 struct mlxsw_sp_acl_profile_ops {
 	size_t ruleset_priv_size;
 	int (*ruleset_add)(struct mlxsw_sp *mlxsw_sp,
-			   void *priv, void *ruleset_priv);
+			   void *priv, void *ruleset_priv,
+			   struct mlxsw_afk_element_usage *tmplt_elusage);
 	void (*ruleset_del)(struct mlxsw_sp *mlxsw_sp, void *ruleset_priv);
 	int (*ruleset_bind)(struct mlxsw_sp *mlxsw_sp, void *ruleset_priv,
 			    struct mlxsw_sp_port *mlxsw_sp_port,
@@ -514,7 +515,8 @@ mlxsw_sp_acl_ruleset_lookup(struct mlxsw_sp *mlxsw_sp,
 struct mlxsw_sp_acl_ruleset *
 mlxsw_sp_acl_ruleset_get(struct mlxsw_sp *mlxsw_sp,
 			 struct mlxsw_sp_acl_block *block, u32 chain_index,
-			 enum mlxsw_sp_acl_profile profile);
+			 enum mlxsw_sp_acl_profile profile,
+			 struct mlxsw_afk_element_usage *tmplt_elusage);
 void mlxsw_sp_acl_ruleset_put(struct mlxsw_sp *mlxsw_sp,
 			      struct mlxsw_sp_acl_ruleset *ruleset);
 u16 mlxsw_sp_acl_ruleset_group_id(struct mlxsw_sp_acl_ruleset *ruleset);
@@ -594,6 +596,12 @@ void mlxsw_sp_flower_destroy(struct mlxsw_sp *mlxsw_sp,
 int mlxsw_sp_flower_stats(struct mlxsw_sp *mlxsw_sp,
 			  struct mlxsw_sp_acl_block *block,
 			  struct tc_cls_flower_offload *f);
+int mlxsw_sp_flower_tmplt_create(struct mlxsw_sp *mlxsw_sp,
+				 struct mlxsw_sp_acl_block *block,
+				 struct tc_cls_flower_offload *f);
+void mlxsw_sp_flower_tmplt_destroy(struct mlxsw_sp *mlxsw_sp,
+				   struct mlxsw_sp_acl_block *block,
+				   struct tc_cls_flower_offload *f);
 
 /* spectrum_qdisc.c */
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port);
