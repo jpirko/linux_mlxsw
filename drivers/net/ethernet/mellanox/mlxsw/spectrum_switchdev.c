@@ -1133,6 +1133,31 @@ err_port_vlan_set:
 	return err;
 }
 
+static int
+mlxsw_sp_br_ban_rif_pvid_change(struct mlxsw_sp *mlxsw_sp,
+				struct net_device *br_dev,
+				const struct switchdev_obj_port_vlan *vlan)
+{
+	bool flag_pvid = vlan->flags & BRIDGE_VLAN_INFO_PVID;
+	u16 npvid = flag_pvid ? vlan->vid_begin : 0;
+	struct mlxsw_sp_rif *rif;
+	struct mlxsw_sp_fid *fid;
+	u16 pvid;
+
+	rif = mlxsw_sp_rif_find_by_dev(mlxsw_sp, br_dev);
+	if (!rif)
+		return 0;
+
+	fid = mlxsw_sp_rif_fid(rif);
+	pvid = mlxsw_sp_fid_8021q_vid(fid);
+	if (pvid != npvid) {
+		netdev_err(br_dev, "can't remove PVID, it's used by router interface\n");
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
 static int mlxsw_sp_port_vlans_add(struct mlxsw_sp_port *mlxsw_sp_port,
 				   const struct switchdev_obj_port_vlan *vlan,
 				   struct switchdev_trans *trans)
@@ -1144,8 +1169,17 @@ static int mlxsw_sp_port_vlans_add(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp_bridge_port *bridge_port;
 	u16 vid;
 
-	if (netif_is_bridge_master(orig_dev))
-		return -EOPNOTSUPP;
+	if (netif_is_bridge_master(orig_dev)) {
+		int err = 0;
+
+		if ((vlan->flags & BRIDGE_VLAN_INFO_BRENTRY) &&
+		    switchdev_trans_ph_prepare(trans))
+			err = mlxsw_sp_br_ban_rif_pvid_change(mlxsw_sp,
+							      orig_dev, vlan);
+		if (!err)
+			err = -EOPNOTSUPP;
+		return err;
+	}
 
 	if (switchdev_trans_ph_prepare(trans))
 		return 0;
