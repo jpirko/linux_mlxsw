@@ -93,6 +93,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
+#include <net/ethlink.h>
 #include <linux/notifier.h>
 #include <linux/skbuff.h>
 #include <linux/bpf.h>
@@ -7507,6 +7508,7 @@ static void rollback_registered_many(struct list_head *head)
 
 		dev_xdp_uninstall(dev);
 
+
 		/* Notify protocols, that we are about to destroy
 		 * this device. They should clean all the things.
 		 */
@@ -7528,6 +7530,8 @@ static void rollback_registered_many(struct list_head *head)
 
 		if (skb)
 			rtmsg_ifinfo_send(skb, dev, GFP_KERNEL);
+
+		ethlink_notify_del(dev);
 
 		/* Notifier chain MUST detach us all upper devices. */
 		WARN_ON(netdev_has_any_upper_dev(dev));
@@ -8079,6 +8083,8 @@ int register_netdevice(struct net_device *dev)
 	if (!dev->rtnl_link_ops ||
 	    dev->rtnl_link_state == RTNL_LINK_INITIALIZED)
 		rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U, GFP_KERNEL);
+
+	ethlink_notify_new(dev);
 
 out:
 	return ret;
@@ -8724,6 +8730,8 @@ int dev_change_net_namespace(struct net_device *dev, struct net *net, const char
 	rtmsg_ifinfo_newnet(RTM_DELLINK, dev, ~0U, GFP_KERNEL, &new_nsid,
 			    new_ifindex);
 
+	ethlink_notify_del(dev);
+
 	/*
 	 *	Flush the unicast and multicast chains
 	 */
@@ -8757,6 +8765,8 @@ int dev_change_net_namespace(struct net_device *dev, struct net *net, const char
 	 *	device is fully setup before sending notifications.
 	 */
 	rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U, GFP_KERNEL);
+
+	ethlink_notify_new(dev);
 
 	synchronize_net();
 	err = 0;
