@@ -75,8 +75,8 @@
 #include "../mlxfw/mlxfw.h"
 
 #define MLXSW_FWREV_MAJOR 13
-#define MLXSW_FWREV_MINOR 1620
-#define MLXSW_FWREV_SUBMINOR 192
+#define MLXSW_FWREV_MINOR 1700
+#define MLXSW_FWREV_SUBMINOR 168
 #define MLXSW_FWREV_MINOR_TO_BRANCH(minor) ((minor) / 100)
 
 #define MLXSW_SP_FW_FILENAME \
