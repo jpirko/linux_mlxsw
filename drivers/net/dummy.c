@@ -38,6 +38,7 @@
 #include <linux/net_tstamp.h>
 #include <net/rtnetlink.h>
 #include <linux/u64_stats_sync.h>
+#include <net/ethlink.h>
 
 #define DRV_NAME	"dummy"
 #define DRV_VERSION	"1.0"
@@ -148,6 +149,9 @@ static const struct ethtool_ops dummy_ethtool_ops = {
 	.get_ts_info		= dummy_get_ts_info,
 };
 
+static const struct ethlink_ops dummy_ethlink_ops = {
+};
+
 static void dummy_setup(struct net_device *dev)
 {
 	ether_setup(dev);
@@ -155,6 +159,7 @@ static void dummy_setup(struct net_device *dev)
 	/* Initialize the device structure. */
 	dev->netdev_ops = &dummy_netdev_ops;
 	dev->ethtool_ops = &dummy_ethtool_ops;
+	dev->ethlink_ops = &dummy_ethlink_ops;
 	dev->needs_free_netdev = true;
 
 	/* Fill in device structure with ethernet-generic values. */

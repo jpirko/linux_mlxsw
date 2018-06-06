@@ -77,6 +77,7 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <linux/uaccess.h>
+#include <net/ethlink.h>
 
 /* These identify the driver base version and may not be removed. */
 static char version[] =
@@ -1596,6 +1597,9 @@ static const struct ethtool_ops cp_ethtool_ops = {
 	.set_link_ksettings	= cp_set_link_ksettings,
 };
 
+static const struct ethlink_ops cp_ethlink_ops = {
+};
+
 static int cp_ioctl (struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	struct cp_private *cp = netdev_priv(dev);
@@ -1987,6 +1991,7 @@ static int cp_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev->netdev_ops = &cp_netdev_ops;
 	netif_napi_add(dev, &cp->napi, cp_rx_poll, 16);
 	dev->ethtool_ops = &cp_ethtool_ops;
+	dev->ethlink_ops = &cp_ethlink_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
 
 	dev->features |= NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_TSO |
