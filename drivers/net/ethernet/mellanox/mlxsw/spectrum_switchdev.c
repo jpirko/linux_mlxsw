@@ -1105,7 +1105,10 @@ mlxsw_sp_bridge_port_vlan_add(struct mlxsw_sp_port *mlxsw_sp_port,
 	u16 old_pvid = mlxsw_sp_port->pvid;
 	int err;
 
-	mlxsw_sp_port_vlan = mlxsw_sp_port_vlan_get(mlxsw_sp_port, vid);
+	mlxsw_sp_port_vlan = mlxsw_sp_port_vlan_find_by_vid(mlxsw_sp_port, vid);
+	if (!mlxsw_sp_port_vlan)
+		mlxsw_sp_port_vlan = mlxsw_sp_port_vlan_create(mlxsw_sp_port,
+							       vid);
 	if (IS_ERR(mlxsw_sp_port_vlan))
 		return PTR_ERR(mlxsw_sp_port_vlan);
 
