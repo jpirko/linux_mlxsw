@@ -142,6 +142,23 @@ enum devlink_port_flavour {
 				   */
 };
 
+enum devlink_param_cmode {
+	DEVLINK_PARAM_CMODE_RUNTIME_BIT,
+	DEVLINK_PARAM_CMODE_DRIVERINIT_BIT,
+	DEVLINK_PARAM_CMODE_PERMANENT_BIT,
+
+	/* Add new configuration modes above and add mask #define below */
+	__DEVLINK_PARAM_CMODE_MAX,
+	DEVLINK_PARAM_CMODE_MAX = __DEVLINK_PARAM_CMODE_MAX - 1
+};
+
+#define __DEVLINK_PARAM_CMODE_BIT(bit)	(1UL << (bit))
+#define __DEVLINK_PARAM_CMODE(cmode)	__DEVLINK_PARAM_CMODE_BIT(DEVLINK_PARAM_CMODE_##cmode##_BIT)
+
+#define DEVLINK_PARAM_CMODE_RUNTIME	__DEVLINK_PARAM_CMODE(RUNTIME)
+#define DEVLINK_PARAM_CMODE_DRIVERINIT	__DEVLINK_PARAM_CMODE(DRIVERINIT)
+#define DEVLINK_PARAM_CMODE_PERMANENT	__DEVLINK_PARAM_CMODE(PERMANENT)
+
 enum devlink_attr {
 	/* don't change the order or add anything between, this is ABI! */
 	DEVLINK_ATTR_UNSPEC,
