@@ -1131,7 +1131,7 @@ static void mlxsw_sp_port_vlan_flush(struct mlxsw_sp_port *mlxsw_sp_port)
 		mlxsw_sp_port_vlan_put(mlxsw_sp_port_vlan);
 }
 
-static struct mlxsw_sp_port_vlan *
+struct mlxsw_sp_port_vlan *
 mlxsw_sp_port_vlan_create(struct mlxsw_sp_port *mlxsw_sp_port, u16 vid)
 {
 	struct mlxsw_sp_port_vlan *mlxsw_sp_port_vlan;
