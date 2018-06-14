@@ -254,7 +254,9 @@ mlxsw_sp_span_entry_lag(struct net_device *lag_dev)
 	struct list_head *iter;
 
 	netdev_for_each_lower_dev(lag_dev, dev, iter)
-		if ((dev->flags & IFF_UP) && mlxsw_sp_port_dev_check(dev))
+		if ((dev->flags & IFF_UP) &&
+		    netif_carrier_ok(dev) &&
+		    mlxsw_sp_port_dev_check(dev))
 			return dev;
 
 	return NULL;
