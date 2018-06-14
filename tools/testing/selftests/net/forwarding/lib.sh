@@ -206,20 +206,27 @@ log_info()
 	echo "INFO: $msg"
 }
 
+setup_wait_dev()
+{
+	local dev=$1; shift
+
+	while true; do
+		ip link show dev $dev up \
+			| grep 'state UP' &> /dev/null
+		if [[ $? -ne 0 ]]; then
+			sleep 1
+		else
+			break
+		fi
+	done
+}
+
 setup_wait()
 {
 	local num_netifs=${1:-$NUM_NETIFS}
 
 	for ((i = 1; i <= num_netifs; ++i)); do
-		while true; do
-			ip link show dev ${NETIFS[p$i]} up \
-				| grep 'state UP' &> /dev/null
-			if [[ $? -ne 0 ]]; then
-				sleep 1
-			else
-				break
-			fi
-		done
+		setup_wait_dev ${NETIFS[p$i]}
 	done
 
 	# Make sure links are ready.
