@@ -328,6 +328,9 @@ struct devlink_param_gset_ctx {
  *       configuration modes
  * @set: set parameter value, used for runtime and permanent
  *       configuration modes
+ * @validate: validate input value is applicable (within value range, etc.)
+ *            This function may also modify the data to the closest valid
+ *            one (such as roundup to power of 2)
  *
  * This struct should be used by the driver to fill the data for
  * a parameter it registers.
@@ -342,6 +345,8 @@ struct devlink_param {
 		   struct devlink_param_gset_ctx *ctx);
 	int (*set)(struct devlink *devlink,
 		   struct devlink_param_gset_ctx *ctx);
+	int (*validate)(struct devlink *devlink,
+			union devlink_param_value *val);
 };
 
 struct devlink_param_item {
