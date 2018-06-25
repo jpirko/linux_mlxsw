@@ -1346,6 +1346,19 @@ static int team_port_del(struct team *team, struct net_device *port_dev)
 	return 0;
 }
 
+bool team_port_dev_txable(const struct net_device *port_dev)
+{
+	struct team_port *port;
+	bool txable;
+
+	rcu_read_lock();
+	port = team_port_get_rcu(port_dev);
+	txable = port ? team_port_txable(port) : false;
+	rcu_read_unlock();
+
+	return txable;
+}
+EXPORT_SYMBOL(team_port_dev_txable);
 
 /*****************
  * Net device ops

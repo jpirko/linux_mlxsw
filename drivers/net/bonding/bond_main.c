@@ -1349,6 +1349,20 @@ void bond_lower_state_changed(struct slave *slave)
 	netdev_lower_state_changed(slave->dev, &info);
 }
 
+bool bond_is_active_slave_dev(const struct net_device *slave_dev)
+{
+	struct slave *slave;
+	bool active;
+
+	rcu_read_lock();
+	slave = bond_slave_get_rcu(slave_dev);
+	active = bond_is_active_slave(slave);
+	rcu_read_unlock();
+
+	return active;
+}
+EXPORT_SYMBOL(bond_is_active_slave_dev);
+
 /* enslave device <slave> to bond device <master> */
 int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev,
 		 struct netlink_ext_ack *extack)
