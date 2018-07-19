@@ -62,6 +62,7 @@
 #include <net/ipv6.h>
 #include <net/fib_notifier.h>
 #include <net/switchdev.h>
+#include <net/mpls.h>
 
 #include "spectrum.h"
 #include "core.h"
@@ -73,6 +74,7 @@
 #include "spectrum_mr_tcam.h"
 #include "spectrum_router.h"
 #include "spectrum_span.h"
+#include "spectrum_mpls.h"
 
 struct mlxsw_sp_rif {
 	struct list_head nexthop_list;
@@ -5557,6 +5559,7 @@ struct mlxsw_sp_fib_event_work {
 		struct fib_nh_notifier_info fnh_info;
 		struct mfc_entry_notifier_info men_info;
 		struct vif_entry_notifier_info ven_info;
+		struct mpls_route_entry_notifier_info mpls_info;
 	};
 	struct mlxsw_sp *mlxsw_sp;
 	unsigned long event;
@@ -5803,6 +5806,74 @@ static int mlxsw_sp_router_fib_rule_event(unsigned long event,
 	return err;
 }
 
+static void mlxsw_sp_router_mpls_event_work(struct work_struct *work)
+{
+	struct mlxsw_sp_fib_event_work *fib_work =
+		container_of(work, struct mlxsw_sp_fib_event_work, work);
+	struct mpls_route_entry_notifier_info *mpls_info;
+	struct mlxsw_sp *mlxsw_sp = fib_work->mlxsw_sp;
+	bool replace;
+	int err;
+
+	/* Protect internal structures from changes */
+	rtnl_lock();
+	mpls_info = &fib_work->mpls_info;
+	switch (fib_work->event) {
+	case FIB_EVENT_ENTRY_REPLACE: /* Fall through */
+	case FIB_EVENT_ENTRY_ADD:
+		replace = fib_work->event == FIB_EVENT_ENTRY_REPLACE;
+		err = mlxsw_sp_fib_mpls_add(mlxsw_sp, mpls_info->rt,
+					    mpls_info->index, replace);
+		if (err)
+			mlxsw_sp_router_fib_abort(mlxsw_sp);
+
+		/* Take reference on mpls_info to prevent it from being
+		 * freed while work is queued. Release it afterwards.
+		 */
+		mpls_rt_put(mpls_info->rt);
+		break;
+	case FIB_EVENT_ENTRY_DEL:
+		mlxsw_sp_fib_mpls_del(mlxsw_sp, mpls_info->index);
+		mpls_rt_put(mpls_info->rt);
+		break;
+	}
+	rtnl_unlock();
+	kfree(fib_work);
+}
+
+static int
+mlxsw_sp_router_mpls_can_offload(struct mlxsw_sp_fib_event_work *fib_work)
+{
+	struct mpls_route *rt = fib_work->mpls_info.rt;
+	int err = 0;
+
+	if (rt->rt_nhn > 64)
+		err = -EINVAL;
+
+	return err;
+}
+
+static int
+mlxsw_sp_router_mpls_event(struct mlxsw_sp_fib_event_work *fib_work,
+			   struct fib_notifier_info *info)
+{
+	int err;
+
+	switch (fib_work->event) {
+	case FIB_EVENT_ENTRY_REPLACE: /* fall through */
+	case FIB_EVENT_ENTRY_ADD: /* fall through */
+	case FIB_EVENT_ENTRY_DEL:
+		memcpy(&fib_work->mpls_info, info, sizeof(fib_work->mpls_info));
+		err = mlxsw_sp_router_mpls_can_offload(fib_work);
+		if (err)
+			return err;
+		mpls_rt_hold(fib_work->mpls_info.rt);
+		break;
+	}
+
+	return 0;
+}
+
 /* Called with rcu_read_lock() */
 static int mlxsw_sp_router_fib_event(struct notifier_block *nb,
 				     unsigned long event, void *ptr)
@@ -5815,7 +5886,7 @@ static int mlxsw_sp_router_fib_event(struct notifier_block *nb,
 	if (!net_eq(info->net, &init_net) ||
 	    (info->family != AF_INET && info->family != AF_INET6 &&
 	     info->family != RTNL_FAMILY_IPMR &&
-	     info->family != RTNL_FAMILY_IP6MR))
+	     info->family != RTNL_FAMILY_IP6MR && info->family != AF_MPLS))
 		return NOTIFY_DONE;
 
 	router = container_of(nb, struct mlxsw_sp_router, fib_nb);
@@ -5857,11 +5928,21 @@ static int mlxsw_sp_router_fib_event(struct notifier_block *nb,
 		INIT_WORK(&fib_work->work, mlxsw_sp_router_fibmr_event_work);
 		mlxsw_sp_router_fibmr_event(fib_work, info);
 		break;
+	case AF_MPLS:
+		INIT_WORK(&fib_work->work, mlxsw_sp_router_mpls_event_work);
+		err = mlxsw_sp_router_mpls_event(fib_work, info);
+		if (err)
+			goto err_router_mpls_event;
+		break;
 	}
 
 	mlxsw_core_schedule_work(&fib_work->work);
 
 	return NOTIFY_DONE;
+
+err_router_mpls_event:
+	kfree(fib_work);
+	return NOTIFY_BAD;
 }
 
 struct mlxsw_sp_rif *
@@ -7351,6 +7432,10 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_neigh_init;
 
+	err = mlxsw_sp_mpls_init(mlxsw_sp);
+	if (err)
+		goto err_mpls_init;
+
 	mlxsw_sp->router->netevent_nb.notifier_call =
 		mlxsw_sp_router_netevent_event;
 	err = register_netevent_notifier(&mlxsw_sp->router->netevent_nb);
@@ -7378,6 +7463,8 @@ err_dscp_init:
 err_mp_hash_init:
 	unregister_netevent_notifier(&mlxsw_sp->router->netevent_nb);
 err_register_netevent_notifier:
+	mlxsw_sp_mpls_fini(mlxsw_sp);
+err_mpls_init:
 	mlxsw_sp_neigh_fini(mlxsw_sp);
 err_neigh_init:
 	mlxsw_sp_vrs_fini(mlxsw_sp);
@@ -7404,6 +7491,7 @@ void mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	unregister_fib_notifier(&mlxsw_sp->router->fib_nb);
 	unregister_netevent_notifier(&mlxsw_sp->router->netevent_nb);
+	mlxsw_sp_mpls_fini(mlxsw_sp);
 	mlxsw_sp_neigh_fini(mlxsw_sp);
 	mlxsw_sp_vrs_fini(mlxsw_sp);
 	mlxsw_sp_mr_fini(mlxsw_sp);
