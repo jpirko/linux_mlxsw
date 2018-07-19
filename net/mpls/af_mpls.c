@@ -93,17 +93,6 @@ bool mpls_output_possible(const struct net_device *dev)
 }
 EXPORT_SYMBOL_GPL(mpls_output_possible);
 
-static u8 *__mpls_nh_via(struct mpls_route *rt, struct mpls_nh *nh)
-{
-	return (u8 *)nh + rt->rt_via_offset;
-}
-
-static const u8 *mpls_nh_via(const struct mpls_route *rt,
-			     const struct mpls_nh *nh)
-{
-	return __mpls_nh_via((struct mpls_route *)rt, (struct mpls_nh *)nh);
-}
-
 static unsigned int mpls_nh_header_size(const struct mpls_nh *nh)
 {
 	/* The size of the layer 2.5 labels to be added for this route */
