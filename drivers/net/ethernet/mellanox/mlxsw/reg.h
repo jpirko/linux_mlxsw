@@ -6956,6 +6956,53 @@ mlxsw_reg_mpilm_pack(char *payload, enum mlxsw_reg_mpilm_op op, u32 label_id,
 	mlxsw_reg_mpilm_trap_id_set(payload, trap_id);
 }
 
+/* MPIBE - MPLS ILM Bulk ECMP Register
+ * -----------------------------------
+ * The register enables updating the ECMP section in the action for multiple ILM
+ * entries in a single operation
+ */
+#define MLXSW_REG_MPIBE_ID 0x8803
+#define MLXSW_REG_MPIBE_LEN 0x28
+
+MLXSW_REG_DEFINE(mpibe, MLXSW_REG_MPIBE_ID, MLXSW_REG_MPIBE_LEN);
+
+/* reg_mpibe_nhlfe_ptr
+ * NHLFE entry pointer which is used for matching on the existing Index
+ * entries in the ILM table.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mpibe, nhlfe_ptr, 0x10, 0, 24);
+
+/* reg_mpibe_ecmp_size
+ * ECMP size used for matching on the existing entries in the ILM Index
+ * table.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mpibe, ecmp_size, 0x14, 0, 13);
+
+/* reg_mpibe_new_nhlfe_ptr
+ * New NHLFE pointer.
+ * Access: WO
+ */
+MLXSW_ITEM32(reg, mpibe, new_nhlfe_ptr, 0x20, 0, 24);
+
+/* reg_mpibe_ecmp_size
+ * New ECMP pointer.
+ * Access: WO
+ */
+MLXSW_ITEM32(reg, mpibe, new_ecmp_size, 0x24, 0, 13);
+
+static inline void
+mlxsw_reg_mpibe_pack(char *payload, u32 adjacency_index, u16 ecmp_size,
+		     u32 new_adjacency_index, u16 new_ecmp_size)
+{
+	MLXSW_REG_ZERO(mpibe, payload);
+	mlxsw_reg_mpibe_nhlfe_ptr_set(payload, adjacency_index);
+	mlxsw_reg_mpibe_ecmp_size_set(payload, ecmp_size);
+	mlxsw_reg_mpibe_new_nhlfe_ptr_set(payload, new_adjacency_index);
+	mlxsw_reg_mpibe_new_ecmp_size_set(payload, new_ecmp_size);
+}
+
 /* MPNHLFE - MPLS NHLFE Table Register
  * -----------------------------------
  * The register is used to configure the NHLFE table.
@@ -8604,6 +8651,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(rmft2),
 	MLXSW_REG(mpgcr),
 	MLXSW_REG(mpilm),
+	MLXSW_REG(mpibe),
 	MLXSW_REG(mpnhlfe),
 	MLXSW_REG(mfcr),
 	MLXSW_REG(mfsc),
