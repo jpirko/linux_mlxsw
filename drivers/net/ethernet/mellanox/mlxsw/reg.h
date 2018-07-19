@@ -4618,6 +4618,12 @@ enum {
  */
 MLXSW_ITEM32(reg, ritr, op, 0x00, 20, 2);
 
+/* reg_ritr_mpls
+ * MPLS routing enable - enables routing of packets coming from MPLS tunnel
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, ritr, mpls, 0x00, 19, 1);
+
 /* reg_ritr_rif
  * Router interface index. A pointer to the Router Interface Table.
  * Access: Index
@@ -4666,6 +4672,15 @@ MLXSW_ITEM32(reg, ritr, ipv6_mc_fe, 0x04, 26, 1);
  * Access: RW
  */
 MLXSW_ITEM32(reg, ritr, lb_en, 0x04, 24, 1);
+
+/* reg_ritr_mpls_fe
+ * MPLS routing Forwarding enable - enables routing of MPLS
+ * traffic on the router interface. When disabled, forwarding is
+ * blocked but local traffic (traps and IP to me) will be enabled
+ * This field may be modified for an existing RIF.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, ritr, mpls_fe, 0x04, 19, 1);
 
 /* reg_ritr_virtual_router
  * Virtual router ID associated with the router interface.
@@ -4898,12 +4913,14 @@ static inline void mlxsw_reg_ritr_pack(char *payload, bool enable,
 	mlxsw_reg_ritr_ipv6_mc_set(payload, 1);
 	mlxsw_reg_ritr_type_set(payload, type);
 	mlxsw_reg_ritr_op_set(payload, op);
+	mlxsw_reg_ritr_mpls_set(payload, 1);
 	mlxsw_reg_ritr_rif_set(payload, rif);
 	mlxsw_reg_ritr_ipv4_fe_set(payload, 1);
 	mlxsw_reg_ritr_ipv6_fe_set(payload, 1);
 	mlxsw_reg_ritr_ipv4_mc_fe_set(payload, 1);
 	mlxsw_reg_ritr_ipv6_mc_fe_set(payload, 1);
 	mlxsw_reg_ritr_lb_en_set(payload, 1);
+	mlxsw_reg_ritr_mpls_fe_set(payload, 1);
 	mlxsw_reg_ritr_virtual_router_set(payload, vr_id);
 	mlxsw_reg_ritr_mtu_set(payload, mtu);
 }
