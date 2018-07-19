@@ -6796,6 +6796,84 @@ mlxsw_reg_rmft2_ipv6_pack(char *payload, bool v, u16 offset, u16 virtual_router,
 	mlxsw_reg_rmft2_sip6_mask_memcpy_to(payload, (void *)&sip6_mask);
 }
 
+/* MPGCR - MPLS General Configuration Register
+ * -------------------------------------------
+ * The MPGCR is used for setting up the MPLS configuration.
+ */
+#define MLXSW_REG_MPGCR_ID 0x8801
+#define MLXSW_REG_MPGCR_LEN 0x24
+
+MLXSW_REG_DEFINE(mpgcr, MLXSW_REG_MPGCR_ID, MLXSW_REG_MPGCR_LEN);
+
+/* reg_mpgcr_et_8848_en
+ * Enables MPLS packets with Ethertype of 0x8848 to enter LSR.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, et_8848_en, 0x00, 29, 1);
+
+/* reg_mpgcr_et_8847_en
+ * Enables MPLS packets with Ethertype of 0x8847 to enter LSR.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, et_8847_en, 0x00, 28, 1);
+
+enum mlxsw_reg_mgpcr_ler_exp_rw {
+	MLXSW_REG_MGPCR_LER_EXP_RW_DISABLE = 0x02,
+	MLXSW_REG_MGPCR_LER_EXP_RW_ENABLE = 0x03,
+};
+
+/* reg_mpgcr_ler_exp_rw
+ * Ingress LER EXP Re-write Enable
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, ler_exp_rw, 0x00, 20, 2);
+
+enum mlxsw_reg_mgpcr_lsr_egress_ttl {
+	/* Reserved */
+	MLXSW_REG_MGPCR_LSR_EGRESS_TTL_RES = 0x00,
+	/* The TTL is taken from the popped label */
+	MLXSW_REG_MGPCR_LSR_EGRESS_TTL_POP = 0x01,
+};
+
+/* reg_mpgcr_lsr_egress_ttl
+ * Configures how the TTL of the exposed label is set at LSR.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, lsr_egress_ttl, 0x04, 16, 2);
+
+/* reg_mpgcr_hrlsn
+ * High Reserved Label ID Space Number Label IDs from 0 to hrlsn are
+ * accepted.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, hrlsn, 0x0C, 0, 8);
+
+/* reg_mpgcr_label_id_min
+ * Label IDs from label_id_min to label_id_max are accepted.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, label_id_min, 0x10, 0, 20);
+
+/* reg_mpgcr_label_id_max
+ * Label IDs from label_id_min to label_id_max are accepted.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpgcr, label_id_max, 0x14, 0, 20);
+
+static inline void
+mlxsw_reg_mpgcr_pack(char *payload, u32 hrlsn, u32 label_id_max)
+{
+	MLXSW_REG_ZERO(mpgcr, payload);
+	mlxsw_reg_mpgcr_et_8848_en_set(payload, 1);
+	mlxsw_reg_mpgcr_et_8847_en_set(payload, 1);
+	mlxsw_reg_mpgcr_ler_exp_rw_set(payload,
+				       MLXSW_REG_MGPCR_LER_EXP_RW_DISABLE);
+	mlxsw_reg_mpgcr_lsr_egress_ttl_set(payload,
+					   MLXSW_REG_MGPCR_LSR_EGRESS_TTL_POP);
+	mlxsw_reg_mpgcr_hrlsn_set(payload, hrlsn);
+	mlxsw_reg_mpgcr_label_id_max_set(payload, label_id_max);
+}
+
 /* MFCR - Management Fan Control Register
  * --------------------------------------
  * This register controls the settings of the Fan Speed PWM mechanism.
@@ -8303,6 +8381,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(rigr2),
 	MLXSW_REG(recr2),
 	MLXSW_REG(rmft2),
+	MLXSW_REG(mpgcr),
 	MLXSW_REG(mfcr),
 	MLXSW_REG(mfsc),
 	MLXSW_REG(mfsm),
