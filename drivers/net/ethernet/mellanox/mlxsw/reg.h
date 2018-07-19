@@ -6874,6 +6874,88 @@ mlxsw_reg_mpgcr_pack(char *payload, u32 hrlsn, u32 label_id_max)
 	mlxsw_reg_mpgcr_label_id_max_set(payload, label_id_max);
 }
 
+/* MPILM - MPLS ILM Register
+ * -------------------------
+ * The register is used to configure and query the MPLS ILM table.
+ */
+#define MLXSW_REG_MPILM_ID 0x8802
+#define MLXSW_REG_MPILM_LEN 0x18
+
+MLXSW_REG_DEFINE(mpilm, MLXSW_REG_MPILM_ID, MLXSW_REG_MPILM_LEN);
+
+enum mlxsw_reg_mpilm_op {
+	MLXSW_REG_MPILM_OP_READ_WRITE = 0x00,
+	MLXSW_REG_MPILM_OP_DELETE = 0x03
+};
+
+/* reg_mpilm_op
+ * Operation.
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, mpilm, op, 0x00, 28, 3);
+
+/* reg_mpilm_label_id
+ * Label ID.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mpilm, label_id, 0x04, 0, 20);
+
+/* reg_mpilm_nhlfe_ptr
+ * NHLFE entry pointer. Points to the NHLFE table. When using ECMP,
+ * points to the first entry in the ECMP list. For Spectrum, the
+ * index is to the KVD linear.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpilm, nhlfe_ptr, 0x08, 0, 24);
+
+/* reg_mpilm_npop
+ * Number of labels to pop from the label stack.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpilm, npop, 0x0C, 24, 2);
+
+/* reg_mpilm_ecmp_size
+ * The amount of sequential entries starting from the nhlfe_ptr
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpilm, ecmp_size, 0x0C, 0, 13);
+
+enum mlxsw_reg_mpilm_trap_action {
+	MLXSW_REG_MPILM_TRAP_ACTION_NOP = 0x00,
+	MLXSW_REG_MPILM_TRAP_ACTION_TRAP = 0x01,
+	MLXSW_REG_MPILM_TRAP_ACTION_MIRROR_TO_CPU = 0x02,
+	MLXSW_REG_MPILM_TRAP_ACTION_MIRROR = 0x03,
+	MLXSW_REG_MPILM_TRAP_ACTION_DISCARD_ERROR = 0x04,
+};
+
+/* reg_mpilm_trap_action
+ * Trap action
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpilm, trap_action, 0x10, 28, 4);
+
+/* reg_mpilm_trap_id
+ * Trap ID to be reported to CPU.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpilm, trap_id, 0x10, 0, 9);
+
+static inline void
+mlxsw_reg_mpilm_pack(char *payload, enum mlxsw_reg_mpilm_op op, u32 label_id,
+		     enum mlxsw_reg_mpilm_trap_action trap_action, u16 trap_id,
+		     u32 adjacency_index, u8 ecmp_size, u8 npop)
+{
+	MLXSW_REG_ZERO(mpilm, payload);
+	mlxsw_reg_mpilm_op_set(payload, op);
+	mlxsw_reg_mpilm_label_id_set(payload, label_id);
+	mlxsw_reg_mpilm_nhlfe_ptr_set(payload, adjacency_index);
+	mlxsw_reg_mpilm_ecmp_size_set(payload, ecmp_size);
+
+	mlxsw_reg_mpilm_npop_set(payload, npop);
+	mlxsw_reg_mpilm_trap_action_set(payload, trap_action);
+	mlxsw_reg_mpilm_trap_id_set(payload, trap_id);
+}
+
 /* MFCR - Management Fan Control Register
  * --------------------------------------
  * This register controls the settings of the Fan Speed PWM mechanism.
@@ -8382,6 +8464,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(recr2),
 	MLXSW_REG(rmft2),
 	MLXSW_REG(mpgcr),
+	MLXSW_REG(mpilm),
 	MLXSW_REG(mfcr),
 	MLXSW_REG(mfsc),
 	MLXSW_REG(mfsm),
