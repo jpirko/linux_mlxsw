@@ -538,23 +538,59 @@ static void mpls_notify_route(struct net *net, unsigned index,
 		rtmsg_lfib(event, index, rt, nlh, net, portid, nlm_flags);
 }
 
-static void mpls_route_update(struct net *net, unsigned index,
-			      struct mpls_route *new,
-			      const struct nl_info *info)
+static int
+call_mpls_route_update_notifiers(struct net *net, unsigned index,
+				 struct mpls_route *old,
+				 struct mpls_route *new)
+{
+	struct mpls_route_entry_notifier_info info = {
+		.info = {
+			.family = AF_MPLS,
+			.net = net,
+		},
+		.index = index,
+	};
+	enum fib_event_type type;
+
+	if (new && !old) {
+		type = FIB_EVENT_ENTRY_ADD;
+		info.rt = new;
+	} else if (!new && old) {
+		type = FIB_EVENT_ENTRY_DEL;
+		info.rt = old;
+	} else if (new && old) {
+		type = FIB_EVENT_ENTRY_REPLACE;
+		info.rt = new;
+	}
+
+	ASSERT_RTNL();
+	return call_fib_notifiers(net, type, &info.info);
+}
+
+static int mpls_route_update(struct net *net, unsigned index,
+			     struct mpls_route *new,
+			     const struct nl_info *info)
 {
 	struct mpls_route __rcu **platform_label;
 	struct mpls_route *rt;
+	int err;
 
 	ASSERT_RTNL();
 
 	platform_label = rtnl_dereference(net->mpls.platform_label);
 	rt = rtnl_dereference(platform_label[index]);
+	err = call_mpls_route_update_notifiers(net, index, rt, new);
+	if (err)
+		return err;
+
 	rcu_assign_pointer(platform_label[index], new);
 
 	mpls_notify_route(net, index, rt, new, info);
 
 	/* If we removed a route free it now */
 	mpls_rt_put(rt);
+
+	return 0;
 }
 
 static unsigned find_free_label(struct net *net)
@@ -1026,7 +1062,11 @@ static int mpls_route_add(struct mpls_route_config *cfg,
 	if (err)
 		goto freert;
 
-	mpls_route_update(net, index, rt, &cfg->rc_nlinfo);
+	err = mpls_route_update(net, index, rt, &cfg->rc_nlinfo);
+	if (err) {
+		NL_SET_ERR_MSG(extack, "Route update failed");
+		goto freert;
+	}
 
 	return 0;
 
