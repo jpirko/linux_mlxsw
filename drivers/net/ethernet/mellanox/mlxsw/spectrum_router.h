@@ -164,6 +164,7 @@ struct mlxsw_sp_nexthop_group_ops {
 enum mlxsw_sp_nexthop_group_type {
 	MLXSW_SP_NEXTHOP_GROUP_TYPE_IPV4,
 	MLXSW_SP_NEXTHOP_GROUP_TYPE_IPV6,
+	MLXSW_SP_NEXTHOP_GROUP_TYPE_MPLS,
 };
 
 struct mlxsw_sp_nexthop_group {
