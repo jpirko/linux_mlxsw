@@ -6956,6 +6956,145 @@ mlxsw_reg_mpilm_pack(char *payload, enum mlxsw_reg_mpilm_op op, u32 label_id,
 	mlxsw_reg_mpilm_trap_id_set(payload, trap_id);
 }
 
+/* MPNHLFE - MPLS NHLFE Table Register
+ * -----------------------------------
+ * The register is used to configure the NHLFE table.
+ */
+#define MLXSW_REG_MPNHLFE_ID 0x8804
+#define MLXSW_REG_MPNHLFE_LEN 0x50
+
+MLXSW_REG_DEFINE(mpnhlfe, MLXSW_REG_MPNHLFE_ID, MLXSW_REG_MPNHLFE_LEN);
+
+/* reg_mpnhlfe_ca
+ * Clear activity.
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, mpnhlfe, ca, 0x00, 31, 1);
+
+/* reg_mpnhlfe_a
+ * Activity.
+ * Access: RO
+ */
+MLXSW_ITEM32(reg, mpnhlfe, a, 0x00, 16, 1);
+
+/* reg_mpnhlfe_v
+ * Valid indication.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, v, 0x04, 31, 1);
+
+/* reg_mpnhlfe_nhlfe_ptr
+ * Index in the NHLFE table. For spectrum, the index is to the KVD linear.
+ * Access: RO
+ */
+MLXSW_ITEM32(reg, mpnhlfe, nhlfe_ptr, 0x04, 0, 24);
+
+enum mlxsw_reg_mpnhlfe_forward_action {
+	/* Forward to Ethernet */
+	MLXSW_REG_MPNHLFE_FORWARD_ACTION_ETHERNET = 0x00,
+	/* Forward to IP Router */
+	MLXSW_REG_MPNHLFE_FORWARD_ACTION_IP_ROUTER = 0x01,
+	/* Continue Lookups. If there is another label then lookup ILM,
+	 * else Forward to IP Router
+	 */
+	MLXSW_REG_MPNHLFE_FORWARD_ACTION_CONT_LOOKUP = 0x02,
+	/* Next NHLFE */
+	MLXSW_REG_MPNHLFE_FORWARD_ACTION_NEXT = 0x03,
+};
+
+/* reg_mpnhlfe_forward_action
+ * NHLFE action.
+ * Access: RO
+ */
+MLXSW_ITEM32(reg, mpnhlfe, forward_action, 0x08, 0, 4);
+
+/* reg_mpnhlfe_trap_action
+ * Trap action.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, trap_action, 0x0C, 28, 4);
+
+/* reg_mpnhlfe_trap_id
+ * Trap action.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, trap_id, 0x0C, 0, 9);
+
+enum mlxsw_sp_mpnhlfe_label_action {
+	MLXSW_SP_MPNHLFE_LABEL_ACTION_NO_PHP = 0x00,
+	MLXSW_SP_MPNHLFE_LABEL_ACTION_PHP = 0x01,
+	MLXSW_SP_MPNHLFE_LABEL_ACTION_PUSH = 0x02,
+};
+
+/* reg_mpnhlfe_label_action
+ * Label action.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, label_action, 0x34, 24, 3);
+
+/* reg_mpnhlfe_label_id
+ * Label id.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, label_id, 0x34, 0, 20);
+
+/* reg_mpnhlfe_dmac
+ * Destincation MAC of the next hop.
+ * Access: RW
+ */
+MLXSW_ITEM_BUF(reg, mpnhlfe, dmac, 0x3A, 6);
+
+/* reg_mpnhlfe_egress_router_interface
+ * Egress router interface.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, erif, 0x40, 0, 16);
+
+/* reg_mpnhlfe_next_nhlfe
+ * NHLFE entry pointer.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, next_nhlfe, 0x40, 0, 24);
+
+/* reg_mpnhlfe_ecmp_size
+ * Mount of sequential entries from the next_nhlfe
+ * pointer (the number of ECMPs).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mpnhlfe, ecmp_size, 0x44, 0, 13);
+
+static inline void
+mlxsw_reg_mpnhlfe_next_pack(char *payload, u32 label_id, u32 adjacency_index,
+			    u32 adjacency_index_next, u32 ecmp_size)
+{
+	MLXSW_REG_ZERO(mpnhlfe, payload);
+	mlxsw_reg_mpnhlfe_v_set(payload, 1);
+	mlxsw_reg_mpnhlfe_nhlfe_ptr_set(payload, adjacency_index);
+	mlxsw_reg_mpnhlfe_forward_action_set(payload,
+					     MLXSW_REG_MPNHLFE_FORWARD_ACTION_NEXT);
+	mlxsw_reg_mpnhlfe_label_action_set(payload,
+					   MLXSW_SP_MPNHLFE_LABEL_ACTION_PUSH);
+	mlxsw_reg_mpnhlfe_label_id_set(payload, label_id);
+	mlxsw_reg_mpnhlfe_next_nhlfe_set(payload, adjacency_index_next);
+	mlxsw_reg_mpnhlfe_ecmp_size_set(payload, ecmp_size);
+}
+
+static inline void
+mlxsw_reg_mpnhlfe_pack(char *payload, u32 label_id, const char *mac,
+		       u32 adjacency_index, u16 rif)
+{
+	MLXSW_REG_ZERO(mpnhlfe, payload);
+	mlxsw_reg_mpnhlfe_v_set(payload, 1);
+	mlxsw_reg_mpnhlfe_nhlfe_ptr_set(payload, adjacency_index);
+	mlxsw_reg_mpnhlfe_forward_action_set(payload,
+					     MLXSW_REG_MPNHLFE_FORWARD_ACTION_ETHERNET);
+	mlxsw_reg_mpnhlfe_label_action_set(payload,
+					   MLXSW_SP_MPNHLFE_LABEL_ACTION_PUSH);
+	mlxsw_reg_mpnhlfe_label_id_set(payload, label_id);
+	mlxsw_reg_mpnhlfe_erif_set(payload, rif);
+	mlxsw_reg_mpnhlfe_dmac_memcpy_to(payload, mac);
+}
+
 /* MFCR - Management Fan Control Register
  * --------------------------------------
  * This register controls the settings of the Fan Speed PWM mechanism.
@@ -8465,6 +8604,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(rmft2),
 	MLXSW_REG(mpgcr),
 	MLXSW_REG(mpilm),
+	MLXSW_REG(mpnhlfe),
 	MLXSW_REG(mfcr),
 	MLXSW_REG(mfsc),
 	MLXSW_REG(mfsm),
