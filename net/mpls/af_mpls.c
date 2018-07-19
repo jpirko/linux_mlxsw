@@ -513,15 +513,16 @@ static struct mpls_route *mpls_rt_alloc(u8 num_nh, u8 max_alen, u8 max_labels)
 	rt->rt_nhn_alive = num_nh;
 	rt->rt_nh_size = nh_size;
 	rt->rt_via_offset = MPLS_NH_VIA_OFF(max_labels);
+	refcount_set(&rt->refcount, 1);
 
 	return rt;
 }
 
-static void mpls_rt_free(struct mpls_route *rt)
+void mpls_rt_free(struct mpls_route *rt)
 {
-	if (rt)
-		kfree_rcu(rt, rt_rcu);
+	kfree_rcu(rt, rt_rcu);
 }
+EXPORT_SYMBOL(mpls_rt_free);
 
 static void mpls_notify_route(struct net *net, unsigned index,
 			      struct mpls_route *old, struct mpls_route *new,
@@ -553,7 +554,7 @@ static void mpls_route_update(struct net *net, unsigned index,
 	mpls_notify_route(net, index, rt, new, info);
 
 	/* If we removed a route free it now */
-	mpls_rt_free(rt);
+	mpls_rt_put(rt);
 }
 
 static unsigned find_free_label(struct net *net)
@@ -1018,7 +1019,6 @@ static int mpls_route_add(struct mpls_route_config *cfg,
 	rt->rt_protocol = cfg->rc_protocol;
 	rt->rt_payload_type = cfg->rc_payload_type;
 	rt->rt_ttl_propagate = cfg->rc_ttl_propagate;
-
 	if (cfg->rc_mp)
 		err = mpls_nh_build_multi(cfg, rt, max_labels, extack);
 	else
@@ -1031,7 +1031,7 @@ static int mpls_route_add(struct mpls_route_config *cfg,
 	return 0;
 
 freert:
-	mpls_rt_free(rt);
+	mpls_rt_put(rt);
 errout:
 	return err;
 }
@@ -2343,8 +2343,8 @@ static int resize_platform_label_table(struct net *net, size_t limit)
 
 	rtnl_unlock();
 
-	mpls_rt_free(rt2);
-	mpls_rt_free(rt0);
+	mpls_rt_put(rt2);
+	mpls_rt_put(rt0);
 
 	if (old) {
 		synchronize_rcu();
@@ -2353,7 +2353,7 @@ static int resize_platform_label_table(struct net *net, size_t limit)
 	return 0;
 
 nort2:
-	mpls_rt_free(rt0);
+	mpls_rt_put(rt0);
 nort0:
 	kvfree(labels);
 nolabels:
@@ -2471,7 +2471,7 @@ static void mpls_net_exit(struct net *net)
 		struct mpls_route *rt = rtnl_dereference(platform_label[index]);
 		RCU_INIT_POINTER(platform_label[index], NULL);
 		mpls_notify_route(net, index, rt, NULL, NULL);
-		mpls_rt_free(rt);
+		mpls_rt_put(rt);
 	}
 	rtnl_unlock();
 

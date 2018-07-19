@@ -70,6 +70,7 @@ struct mpls_route { /* next hop label forwarding entry */
 	u8			rt_nh_size;
 	u8			rt_via_offset;
 	u8			rt_reserved1;
+	refcount_t		refcount;
 	struct mpls_nh		rt_nh[0];
 };
 
@@ -118,6 +119,25 @@ static inline const u8 *mpls_nh_via(const struct mpls_route *rt,
 				    const struct mpls_nh *nh)
 {
 	return __mpls_nh_via((struct mpls_route *)rt, (struct mpls_nh *)nh);
+}
+
+#if IS_ENABLED(CONFIG_MPLS_ROUTING)
+void mpls_rt_free(struct mpls_route *rt);
+#else
+static inline void mpls_rt_free(struct mpls_route *rt)
+{
+}
+#endif
+
+static inline void mpls_rt_put(struct mpls_route *rt)
+{
+	if (rt && refcount_dec_and_test(&rt->refcount))
+		mpls_rt_free(rt);
+}
+
+static inline void mpls_rt_hold(struct mpls_route *rt)
+{
+	refcount_inc(&rt->refcount);
 }
 
 #endif
