@@ -2825,29 +2825,6 @@ static int mlxsw_sp_adj_index_mass_update_vr(struct mlxsw_sp *mlxsw_sp,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(raleu), raleu_pl);
 }
 
-static int mlxsw_sp_adj_index_mass_update(struct mlxsw_sp *mlxsw_sp,
-					  struct mlxsw_sp_nexthop_group *nh_grp,
-					  u32 old_adj_index, u16 old_ecmp_size)
-{
-	struct mlxsw_sp_fib_entry *fib_entry;
-	struct mlxsw_sp_fib *fib = NULL;
-	int err;
-
-	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
-		if (fib == fib_entry->fib_node->fib)
-			continue;
-		fib = fib_entry->fib_node->fib;
-		err = mlxsw_sp_adj_index_mass_update_vr(mlxsw_sp, fib,
-							old_adj_index,
-							old_ecmp_size,
-							nh_grp->adj_index,
-							nh_grp->ecmp_size);
-		if (err)
-			return err;
-	}
-	return 0;
-}
-
 static int __mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 				     struct mlxsw_sp_nexthop *nh)
 {
@@ -2908,85 +2885,6 @@ static int mlxsw_sp_nexthop_ipip_update(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	return 0;
-}
-
-static int
-mlxsw_sp_nexthop_group_update(struct mlxsw_sp *mlxsw_sp,
-			      struct mlxsw_sp_nexthop_group *nh_grp,
-			      bool reallocate)
-{
-	u32 adj_index = nh_grp->adj_index; /* base */
-	struct mlxsw_sp_nexthop *nh;
-	int i;
-	int err;
-
-	for (i = 0; i < nh_grp->count; i++) {
-		nh = &nh_grp->nexthops[i];
-
-		if (!nh->should_offload) {
-			nh->offloaded = 0;
-			continue;
-		}
-
-		if (nh->update || reallocate) {
-			switch (nh->type) {
-			case MLXSW_SP_NEXTHOP_TYPE_ETH:
-				err = mlxsw_sp_nexthop_update
-					    (mlxsw_sp, adj_index, nh);
-				break;
-			case MLXSW_SP_NEXTHOP_TYPE_IPIP:
-				err = mlxsw_sp_nexthop_ipip_update
-					    (mlxsw_sp, adj_index, nh);
-				break;
-			}
-			if (err)
-				return err;
-			nh->update = 0;
-			nh->offloaded = 1;
-		}
-		adj_index += nh->num_adj_entries;
-	}
-	return 0;
-}
-
-static bool
-mlxsw_sp_fib_node_entry_is_first(const struct mlxsw_sp_fib_node *fib_node,
-				 const struct mlxsw_sp_fib_entry *fib_entry);
-
-static int
-mlxsw_sp_nexthop_fib_entries_update(struct mlxsw_sp *mlxsw_sp,
-				    struct mlxsw_sp_nexthop_group *nh_grp)
-{
-	struct mlxsw_sp_fib_entry *fib_entry;
-	int err;
-
-	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
-		if (!mlxsw_sp_fib_node_entry_is_first(fib_entry->fib_node,
-						      fib_entry))
-			continue;
-		err = mlxsw_sp_fib_entry_update(mlxsw_sp, fib_entry);
-		if (err)
-			return err;
-	}
-	return 0;
-}
-
-static void
-mlxsw_sp_fib_entry_offload_refresh(struct mlxsw_sp_fib_entry *fib_entry,
-				   enum mlxsw_reg_ralue_op op, int err);
-
-static void
-mlxsw_sp_nexthop_fib_entries_refresh(struct mlxsw_sp_nexthop_group *nh_grp)
-{
-	enum mlxsw_reg_ralue_op op = MLXSW_REG_RALUE_OP_WRITE_WRITE;
-	struct mlxsw_sp_fib_entry *fib_entry;
-
-	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
-		if (!mlxsw_sp_fib_node_entry_is_first(fib_entry->fib_node,
-						      fib_entry))
-			continue;
-		mlxsw_sp_fib_entry_offload_refresh(fib_entry, op, 0);
-	}
 }
 
 static void mlxsw_sp_adj_grp_size_round_up(u16 *p_adj_grp_size)
@@ -3092,11 +2990,137 @@ mlxsw_sp_nexthop_group_rebalance(struct mlxsw_sp_nexthop_group *nh_grp)
 	}
 }
 
+static int
+mlxsw_sp_nexthop_group_ip_group_update(struct mlxsw_sp *mlxsw_sp,
+				       struct mlxsw_sp_nexthop_group *nh_grp,
+				       bool reallocate)
+{
+	u32 adj_index = nh_grp->adj_index; /* base */
+	struct mlxsw_sp_nexthop *nh;
+	int i;
+	int err;
+
+	for (i = 0; i < nh_grp->count; i++) {
+		nh = &nh_grp->nexthops[i];
+
+		if (!nh->should_offload) {
+			nh->offloaded = 0;
+			continue;
+		}
+
+		if (nh->update || reallocate) {
+			switch (nh->type) {
+			case MLXSW_SP_NEXTHOP_TYPE_ETH:
+				err = mlxsw_sp_nexthop_update
+					    (mlxsw_sp, adj_index, nh);
+				break;
+			case MLXSW_SP_NEXTHOP_TYPE_IPIP:
+				err = mlxsw_sp_nexthop_ipip_update
+					    (mlxsw_sp, adj_index, nh);
+				break;
+			}
+			if (err)
+				return err;
+			nh->update = 0;
+			nh->offloaded = 1;
+		}
+		adj_index += nh->num_adj_entries;
+	}
+	return 0;
+}
+
+static bool
+mlxsw_sp_fib_node_entry_is_first(const struct mlxsw_sp_fib_node *fib_node,
+				 const struct mlxsw_sp_fib_entry *fib_entry);
+
+static int
+mlxsw_sp_nexthop_group_ip_fib_update(struct mlxsw_sp *mlxsw_sp,
+				     struct mlxsw_sp_nexthop_group *nh_grp)
+{
+	struct mlxsw_sp_fib_entry *fib_entry;
+	int err;
+
+	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
+		if (!mlxsw_sp_fib_node_entry_is_first(fib_entry->fib_node,
+						      fib_entry))
+			continue;
+		err = mlxsw_sp_fib_entry_update(mlxsw_sp, fib_entry);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static int
+mlxsw_sp_nexthop_group_ip_adj_index_mass_update(struct mlxsw_sp *mlxsw_sp,
+						struct mlxsw_sp_nexthop_group *nh_grp,
+						u32 old_adj_index, u16 old_ecmp_size)
+{
+	struct mlxsw_sp_fib_entry *fib_entry;
+	struct mlxsw_sp_fib *fib = NULL;
+	int err;
+
+	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
+		if (fib == fib_entry->fib_node->fib)
+			continue;
+		fib = fib_entry->fib_node->fib;
+		err = mlxsw_sp_adj_index_mass_update_vr(mlxsw_sp, fib,
+							old_adj_index,
+							old_ecmp_size,
+							nh_grp->adj_index,
+							nh_grp->ecmp_size);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
+static void
+mlxsw_sp_fib_entry_offload_refresh(struct mlxsw_sp_fib_entry *fib_entry,
+				   enum mlxsw_reg_ralue_op op, int err);
+
+static int
+mlxsw_sp_nexthop_group_ip_fib_refresh(struct mlxsw_sp_nexthop_group *nh_grp)
+{
+	enum mlxsw_reg_ralue_op op = MLXSW_REG_RALUE_OP_WRITE_WRITE;
+	struct mlxsw_sp_fib_entry *fib_entry;
+
+	list_for_each_entry(fib_entry, &nh_grp->fib_list, nexthop_group_node) {
+		if (!mlxsw_sp_fib_node_entry_is_first(fib_entry->fib_node,
+						      fib_entry))
+			continue;
+		mlxsw_sp_fib_entry_offload_refresh(fib_entry, op, 0);
+	}
+	return 0;
+}
+
+static void
+mlxsw_sp_nexthop_group_ip_adj_group_size_update(struct mlxsw_sp_nexthop_group *nh_grp)
+{
+	nh_grp->adj_group_size = nh_grp->sum_norm_weight;
+}
+
+static void
+mlxsw_sp_nexthop_group_ip_ecmp_size_update(struct mlxsw_sp_nexthop_group *nh_grp)
+{
+	nh_grp->ecmp_size = nh_grp->adj_group_size;
+}
+
+static const struct mlxsw_sp_nexthop_group_ops mlxsw_sp_nexthop_group_ip_ops = {
+	.group_update		= mlxsw_sp_nexthop_group_ip_group_update,
+	.fib_update		= mlxsw_sp_nexthop_group_ip_fib_update,
+	.adj_index_mass_update  = mlxsw_sp_nexthop_group_ip_adj_index_mass_update,
+	.fib_refresh            = mlxsw_sp_nexthop_group_ip_fib_refresh,
+	.adj_group_size_update	= mlxsw_sp_nexthop_group_ip_adj_group_size_update,
+	.ecmp_size_update	= mlxsw_sp_nexthop_group_ip_ecmp_size_update,
+};
+
 void
 mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 			       struct mlxsw_sp_nexthop_group *nh_grp)
 {
-	u16 ecmp_size, old_ecmp_size;
+	const struct mlxsw_sp_nexthop_group_ops *ops = nh_grp->ops;
+	u16 old_ecmp_size;
 	struct mlxsw_sp_nexthop *nh;
 	bool offload_change = false;
 	u32 adj_index;
@@ -3106,7 +3130,7 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 	int err;
 
 	if (!nh_grp->gateway) {
-		mlxsw_sp_nexthop_fib_entries_update(mlxsw_sp, nh_grp);
+		ops->fib_update(mlxsw_sp, nh_grp);
 		return;
 	}
 
@@ -3123,7 +3147,7 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 		/* Nothing was added or removed, so no need to reallocate. Just
 		 * update MAC on existing adjacency indexes.
 		 */
-		err = mlxsw_sp_nexthop_group_update(mlxsw_sp, nh_grp, false);
+		err = ops->group_update(mlxsw_sp, nh_grp, false);
 		if (err) {
 			dev_warn(mlxsw_sp->bus_info->dev, "Failed to update neigh MAC in adjacency table.\n");
 			goto set_trap;
@@ -3137,14 +3161,14 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 		 */
 		goto set_trap;
 
-	ecmp_size = nh_grp->sum_norm_weight;
-	err = mlxsw_sp_fix_adj_grp_size(mlxsw_sp, &ecmp_size);
+	ops->adj_group_size_update(nh_grp);
+	err = mlxsw_sp_fix_adj_grp_size(mlxsw_sp, &nh_grp->adj_group_size);
 	if (err)
 		/* No valid allocation size available. */
 		goto set_trap;
 
 	err = mlxsw_sp_kvdl_alloc(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ,
-				  ecmp_size, &adj_index);
+				  nh_grp->adj_group_size, &adj_index);
 	if (err) {
 		/* We ran out of KVD linear space, just set the
 		 * trap and let everything flow through kernel.
@@ -3157,9 +3181,9 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 	old_ecmp_size = nh_grp->ecmp_size;
 	nh_grp->adj_index_valid = 1;
 	nh_grp->adj_index = adj_index;
-	nh_grp->ecmp_size = ecmp_size;
+	ops->ecmp_size_update(nh_grp);
 	mlxsw_sp_nexthop_group_rebalance(nh_grp);
-	err = mlxsw_sp_nexthop_group_update(mlxsw_sp, nh_grp, true);
+	err = ops->group_update(mlxsw_sp, nh_grp, true);
 	if (err) {
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to update neigh MAC in adjacency table.\n");
 		goto set_trap;
@@ -3169,7 +3193,7 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 		/* The trap was set for fib entries, so we have to call
 		 * fib entry update to unset it and use adjacency index.
 		 */
-		err = mlxsw_sp_nexthop_fib_entries_update(mlxsw_sp, nh_grp);
+		err = ops->fib_update(mlxsw_sp, nh_grp);
 		if (err) {
 			dev_warn(mlxsw_sp->bus_info->dev, "Failed to add adjacency index to fib entries.\n");
 			goto set_trap;
@@ -3177,8 +3201,8 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 		return;
 	}
 
-	err = mlxsw_sp_adj_index_mass_update(mlxsw_sp, nh_grp,
-					     old_adj_index, old_ecmp_size);
+	err = ops->adj_index_mass_update(mlxsw_sp, nh_grp,
+					 old_adj_index, old_ecmp_size);
 	mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ,
 			   old_ecmp_size, old_adj_index);
 	if (err) {
@@ -3187,7 +3211,7 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	/* Offload state within the group changed, so update the flags. */
-	mlxsw_sp_nexthop_fib_entries_refresh(nh_grp);
+	ops->fib_refresh(nh_grp);
 
 	return;
 
@@ -3198,7 +3222,7 @@ set_trap:
 		nh = &nh_grp->nexthops[i];
 		nh->offloaded = 0;
 	}
-	err = mlxsw_sp_nexthop_fib_entries_update(mlxsw_sp, nh_grp);
+	err = ops->fib_update(mlxsw_sp, nh_grp);
 	if (err)
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to set traps for fib entries.\n");
 	if (old_adj_index_valid)
@@ -3582,6 +3606,7 @@ mlxsw_sp_nexthop4_group_create(struct mlxsw_sp *mlxsw_sp, struct fib_info *fi)
 	if (!nh_grp)
 		return ERR_PTR(-ENOMEM);
 	nh_grp->priv = fi;
+	nh_grp->ops = &mlxsw_sp_nexthop_group_ip_ops;
 	INIT_LIST_HEAD(&nh_grp->fib_list);
 	nh_grp->neigh_tbl = &arp_tbl;
 
@@ -4781,6 +4806,7 @@ mlxsw_sp_nexthop6_group_create(struct mlxsw_sp *mlxsw_sp,
 	if (!nh_grp)
 		return ERR_PTR(-ENOMEM);
 	INIT_LIST_HEAD(&nh_grp->fib_list);
+	nh_grp->ops = &mlxsw_sp_nexthop_group_ip_ops;
 #if IS_ENABLED(CONFIG_IPV6)
 	nh_grp->neigh_tbl = &nd_tbl;
 #endif

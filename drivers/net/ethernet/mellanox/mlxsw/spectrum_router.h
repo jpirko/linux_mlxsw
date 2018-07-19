@@ -146,6 +146,20 @@ struct mlxsw_sp_nexthop {
 	bool counter_valid;
 };
 
+struct mlxsw_sp_nexthop_group_ops {
+	int (*group_update)(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_nexthop_group *nh_grp,
+			    bool reallocate);
+	int (*fib_update)(struct mlxsw_sp *mlxsw_sp,
+			  struct mlxsw_sp_nexthop_group *nh_grp);
+	int (*adj_index_mass_update)(struct mlxsw_sp *mlxsw_sp,
+				     struct mlxsw_sp_nexthop_group *nh_grp,
+				     u32 old_adj_index, u16 old_ecmp_size);
+	int (*fib_refresh)(struct mlxsw_sp_nexthop_group *nh_grp);
+	void (*adj_group_size_update)(struct mlxsw_sp_nexthop_group *nh_grp);
+	void (*ecmp_size_update)(struct mlxsw_sp_nexthop_group *nh_grp);
+};
+
 struct mlxsw_sp_nexthop_group {
 	void *priv;
 	struct rhash_head ht_node;
@@ -157,6 +171,8 @@ struct mlxsw_sp_nexthop_group {
 	u16 ecmp_size;
 	u16 count;
 	int sum_norm_weight;
+	u16 adj_group_size;
+	const struct mlxsw_sp_nexthop_group_ops *ops;
 	struct mlxsw_sp_nexthop nexthops[0];
 #define nh_rif	nexthops[0].rif
 };
