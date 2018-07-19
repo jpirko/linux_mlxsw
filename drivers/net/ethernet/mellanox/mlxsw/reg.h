@@ -6563,6 +6563,9 @@ enum {
 	MLXSW_REG_RECR2_IPV6_NEXT_HEADER		= 53,
 	/* IPv6 Flow Label */
 	MLXSW_REG_RECR2_IPV6_FLOW_LABEL			= 57,
+	/* MPLS Labels */
+	MLXSW_REG_RECR2_MPLS_LABEL0			= 68,
+	MLXSW_REG_RECR2_MPLS_LABEL5			= 73,
 	/* TCP/UDP Source Port */
 	MLXSW_REG_RECR2_TCP_UDP_SPORT			= 74,
 	/* TCP/UDP Destination Port */
@@ -6613,6 +6616,16 @@ static inline void mlxsw_reg_recr2_ipv6_dip_enable(char *payload)
 
 	i = MLXSW_REG_RECR2_IPV6_DIP8;
 	for (; i <= MLXSW_REG_RECR2_IPV6_DIP15; i++)
+		mlxsw_reg_recr2_outer_header_fields_enable_set(payload, i,
+							       true);
+}
+
+static inline void mlxsw_reg_recr2_mpls_label_enable(char *payload)
+{
+	int i;
+
+	for (i = MLXSW_REG_RECR2_MPLS_LABEL0;
+	     i <= MLXSW_REG_RECR2_MPLS_LABEL5; i++)
 		mlxsw_reg_recr2_outer_header_fields_enable_set(payload, i,
 							       true);
 }
