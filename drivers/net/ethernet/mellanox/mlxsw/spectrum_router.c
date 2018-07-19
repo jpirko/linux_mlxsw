@@ -7312,6 +7312,7 @@ static void mlxsw_sp_mp4_hash_init(char *recr2_pl)
 	mlxsw_sp_mp_hash_header_set(recr2_pl, MLXSW_REG_RECR2_IPV4_EN_TCP_UDP);
 	mlxsw_reg_recr2_ipv4_sip_enable(recr2_pl);
 	mlxsw_reg_recr2_ipv4_dip_enable(recr2_pl);
+	mlxsw_reg_recr2_mpls_label_enable(recr2_pl);
 	if (only_l3)
 		return;
 	mlxsw_sp_mp_hash_header_set(recr2_pl, MLXSW_REG_RECR2_TCP_UDP_EN_IPV4);
@@ -7329,6 +7330,7 @@ static void mlxsw_sp_mp6_hash_init(char *recr2_pl)
 	mlxsw_sp_mp_hash_header_set(recr2_pl, MLXSW_REG_RECR2_IPV6_EN_TCP_UDP);
 	mlxsw_reg_recr2_ipv6_sip_enable(recr2_pl);
 	mlxsw_reg_recr2_ipv6_dip_enable(recr2_pl);
+	mlxsw_reg_recr2_mpls_label_enable(recr2_pl);
 	mlxsw_sp_mp_hash_field_set(recr2_pl, MLXSW_REG_RECR2_IPV6_NEXT_HEADER);
 	if (only_l3) {
 		mlxsw_sp_mp_hash_field_set(recr2_pl,
