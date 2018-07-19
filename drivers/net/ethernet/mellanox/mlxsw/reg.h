@@ -4492,6 +4492,12 @@ MLXSW_ITEM32(reg, rgcr, ipv4_en, 0x00, 31, 1);
  */
 MLXSW_ITEM32(reg, rgcr, ipv6_en, 0x00, 30, 1);
 
+/* reg_rgcr_mpls_en
+ * MPLS router enable.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, rgcr, mpls_en, 0x00, 29, 1);
+
 /* reg_rgcr_max_router_interfaces
  * Defines the maximum number of active router interfaces for all virtual
  * routers.
@@ -4537,11 +4543,12 @@ MLXSW_ITEM32(reg, rgcr, pcp_rw, 0x18, 16, 2);
 MLXSW_ITEM32(reg, rgcr, activity_dis, 0x20, 0, 8);
 
 static inline void mlxsw_reg_rgcr_pack(char *payload, bool ipv4_en,
-				       bool ipv6_en)
+				       bool ipv6_en, bool mpls_en)
 {
 	MLXSW_REG_ZERO(rgcr, payload);
 	mlxsw_reg_rgcr_ipv4_en_set(payload, ipv4_en);
 	mlxsw_reg_rgcr_ipv6_en_set(payload, ipv6_en);
+	mlxsw_reg_rgcr_mpls_en_set(payload, mpls_en);
 }
 
 /* RITR - Router Interface Table Register
