@@ -38,6 +38,148 @@
 #include "spectrum.h"
 #include "reg.h"
 
+struct mlxsw_sp_fib;
+struct mlxsw_sp_vr;
+struct mlxsw_sp_lpm_tree;
+struct mlxsw_sp_rif_ops;
+
+struct mlxsw_sp_router {
+	struct mlxsw_sp *mlxsw_sp;
+	struct mlxsw_sp_rif **rifs;
+	struct mlxsw_sp_vr *vrs;
+	struct rhashtable neigh_ht;
+	struct rhashtable nexthop_group_ht;
+	struct rhashtable nexthop_ht;
+	struct list_head nexthop_list;
+	struct {
+		/* One tree for each protocol: IPv4 and IPv6 */
+		struct mlxsw_sp_lpm_tree *proto_trees[2];
+		struct mlxsw_sp_lpm_tree *trees;
+		unsigned int tree_count;
+	} lpm;
+	struct {
+		struct delayed_work dw;
+		unsigned long interval;	/* ms */
+	} neighs_update;
+	struct delayed_work nexthop_probe_dw;
+#define MLXSW_SP_UNRESOLVED_NH_PROBE_INTERVAL 5000 /* ms */
+	struct list_head nexthop_neighs_list;
+	struct list_head ipip_list;
+	bool aborted;
+	struct notifier_block fib_nb;
+	struct notifier_block netevent_nb;
+	const struct mlxsw_sp_rif_ops **rif_ops_arr;
+	const struct mlxsw_sp_ipip_ops **ipip_ops_arr;
+	struct rhashtable mpls_ht;
+};
+
+struct mlxsw_sp_nexthop_group;
+struct mlxsw_sp_fib_node;
+
+enum mlxsw_sp_fib_entry_type {
+	MLXSW_SP_FIB_ENTRY_TYPE_REMOTE,
+	MLXSW_SP_FIB_ENTRY_TYPE_LOCAL,
+	MLXSW_SP_FIB_ENTRY_TYPE_TRAP,
+
+	/* This is a special case of local delivery, where a packet should be
+	 * decapsulated on reception. Note that there is no corresponding ENCAP,
+	 * because that's a type of next hop, not of FIB entry. (There can be
+	 * several next hops in a REMOTE entry, and some of them may be
+	 * encapsulating entries.)
+	 */
+	MLXSW_SP_FIB_ENTRY_TYPE_IPIP_DECAP,
+};
+
+struct mlxsw_sp_fib_entry_decap {
+	struct mlxsw_sp_ipip_entry *ipip_entry;
+	u32 tunnel_index;
+};
+
+struct mlxsw_sp_fib_entry {
+	struct list_head list;
+	struct mlxsw_sp_fib_node *fib_node;
+	enum mlxsw_sp_fib_entry_type type;
+	struct list_head nexthop_group_node;
+	struct mlxsw_sp_nexthop_group *nh_group;
+	struct mlxsw_sp_fib_entry_decap decap; /* Valid for decap entries. */
+};
+
+enum mlxsw_sp_nexthop_type {
+	MLXSW_SP_NEXTHOP_TYPE_ETH,
+	MLXSW_SP_NEXTHOP_TYPE_IPIP,
+};
+
+struct mlxsw_sp_nexthop_key {
+	struct fib_nh *fib_nh;
+};
+
+struct mlxsw_sp_nexthop {
+	struct list_head neigh_list_node; /* member of neigh entry list */
+	struct list_head rif_list_node;
+	struct list_head router_list_node;
+	struct mlxsw_sp_nexthop_group *nh_grp; /* pointer back to the group
+						* this belongs to
+						*/
+	struct rhash_head ht_node;
+	struct mlxsw_sp_nexthop_key key;
+	unsigned char gw_addr[sizeof(struct in6_addr)];
+	int ifindex;
+	int nh_weight;
+	int norm_nh_weight;
+	int num_adj_entries;
+	struct mlxsw_sp_rif *rif;
+	u8 should_offload:1, /* set indicates this neigh is connected and
+			      * should be put to KVD linear area of this group.
+			      */
+	   offloaded:1, /* set in case the neigh is actually put into
+			 * KVD linear area of this group.
+			 */
+	   update:1; /* set indicates that MAC of this neigh should be
+		      * updated in HW
+		      */
+	enum mlxsw_sp_nexthop_type type;
+	union {
+		struct mlxsw_sp_neigh_entry *neigh_entry;
+		struct mlxsw_sp_ipip_entry *ipip_entry;
+	};
+	unsigned int counter_index;
+	bool counter_valid;
+};
+
+struct mlxsw_sp_nexthop_group {
+	void *priv;
+	struct rhash_head ht_node;
+	struct list_head fib_list; /* list of fib entries that use this group */
+	struct neigh_table *neigh_tbl;
+	u8 adj_index_valid:1,
+	   gateway:1; /* routes using the group use a gateway */
+	u32 adj_index;
+	u16 ecmp_size;
+	u16 count;
+	int sum_norm_weight;
+	struct mlxsw_sp_nexthop nexthops[0];
+#define nh_rif	nexthops[0].rif
+};
+
+struct mlxsw_sp_neigh_key {
+	struct neighbour *n;
+};
+
+struct mlxsw_sp_neigh_entry {
+	struct list_head rif_list_node;
+	struct rhash_head ht_node;
+	struct mlxsw_sp_neigh_key key;
+	u16 rif;
+	bool connected;
+	unsigned char ha[ETH_ALEN];
+	struct list_head nexthop_list; /* list of nexthops using
+					* this neigh entry
+					*/
+	struct list_head nexthop_neighs_list_node;
+	unsigned int counter_index;
+	bool counter_valid;
+};
+
 enum mlxsw_sp_l3proto {
 	MLXSW_SP_L3_PROTO_IPV4,
 	MLXSW_SP_L3_PROTO_IPV6,
@@ -148,5 +290,23 @@ static inline bool mlxsw_sp_l3addr_eq(const union mlxsw_sp_l3addr *addr1,
 {
 	return !memcmp(addr1, addr2, sizeof(*addr1));
 }
+
+void
+mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
+			       struct mlxsw_sp_nexthop_group *nh_grp);
+struct mlxsw_sp_rif *
+mlxsw_sp_rif_find_by_dev(const struct mlxsw_sp *mlxsw_sp,
+			 const struct net_device *dev);
+void mlxsw_sp_nexthop_rif_init(struct mlxsw_sp_nexthop *nh,
+			       struct mlxsw_sp_rif *rif);
+void mlxsw_sp_nexthop_rif_fini(struct mlxsw_sp_nexthop *nh);
+int mlxsw_sp_nexthop_neigh_init(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_nexthop *nh);
+int mlxsw_sp_nexthop_insert(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_nexthop *nh);
+void mlxsw_sp_nexthop_remove(struct mlxsw_sp *mlxsw_sp,
+			     struct mlxsw_sp_nexthop *nh);
+void mlxsw_sp_nexthop_type_fini(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_nexthop *nh);
 
 #endif /* _MLXSW_ROUTER_H_*/
