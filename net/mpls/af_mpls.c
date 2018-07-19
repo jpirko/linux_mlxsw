@@ -1941,6 +1941,8 @@ static int mpls_dump_route(struct sk_buff *skb, u32 portid, u32 seq, int event,
 			rtm->rtm_flags |= RTNH_F_LINKDOWN;
 		if (nh->nh_flags & RTNH_F_DEAD)
 			rtm->rtm_flags |= RTNH_F_DEAD;
+		if (nh->nh_flags & RTNH_F_OFFLOAD)
+			rtm->rtm_flags |= RTNH_F_OFFLOAD;
 	} else {
 		struct rtnexthop *rtnh;
 		struct nlattr *mp;
@@ -1969,6 +1971,8 @@ static int mpls_dump_route(struct sk_buff *skb, u32 portid, u32 seq, int event,
 				rtnh->rtnh_flags |= RTNH_F_DEAD;
 				dead++;
 			}
+			if (nh->nh_flags & RTNH_F_OFFLOAD)
+				rtnh->rtnh_flags |= RTNH_F_OFFLOAD;
 
 			if (nh->nh_labels && nla_put_labels(skb, RTA_NEWDST,
 							    nh->nh_labels,
