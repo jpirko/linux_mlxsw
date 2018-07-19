@@ -128,6 +128,7 @@ struct mlxsw_sp_nexthop {
 	int norm_nh_weight;
 	int num_adj_entries;
 	struct mlxsw_sp_rif *rif;
+	struct neigh_table *neigh_tbl;
 	u8 should_offload:1, /* set indicates this neigh is connected and
 			      * should be put to KVD linear area of this group.
 			      */
@@ -160,11 +161,16 @@ struct mlxsw_sp_nexthop_group_ops {
 	void (*ecmp_size_update)(struct mlxsw_sp_nexthop_group *nh_grp);
 };
 
+enum mlxsw_sp_nexthop_group_type {
+	MLXSW_SP_NEXTHOP_GROUP_TYPE_IPV4,
+	MLXSW_SP_NEXTHOP_GROUP_TYPE_IPV6,
+};
+
 struct mlxsw_sp_nexthop_group {
 	void *priv;
 	struct rhash_head ht_node;
 	struct list_head fib_list; /* list of fib entries that use this group */
-	struct neigh_table *neigh_tbl;
+	enum mlxsw_sp_nexthop_group_type group_type;
 	u8 adj_index_valid:1,
 	   gateway:1; /* routes using the group use a gateway */
 	u32 adj_index;
