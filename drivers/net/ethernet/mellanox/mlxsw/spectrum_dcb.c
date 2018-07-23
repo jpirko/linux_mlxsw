@@ -318,6 +318,26 @@ mlxsw_sp_port_dcb_app_prio_dscp_map(struct mlxsw_sp_port *mlxsw_sp_port,
 	return have_dscp;
 }
 
+static void dump_dscp(struct dcb_ieee_app_prio_map prio_map,
+		      struct dcb_ieee_app_dscp_map dscp_map)
+{
+	char buf[1024];
+	char *ptr;
+	int i;
+
+	ptr = buf;
+	buf[0] = 0;
+	for (i = 0; i < ARRAY_SIZE(prio_map.map); ++i)
+		ptr += sprintf(ptr, " %u", (int)prio_map.map[i]);
+	printk(KERN_WARNING " prio map %s\n", buf);
+
+	ptr = buf;
+	buf[0] = 0;
+	for (i = 0; i < ARRAY_SIZE(dscp_map.map); ++i)
+		ptr += sprintf(ptr, " %u", dscp_map.map[i]);
+	printk(KERN_WARNING " dscp map %s\n", buf);
+}
+
 static int
 mlxsw_sp_port_dcb_app_update_qpts(struct mlxsw_sp_port *mlxsw_sp_port,
 				  enum mlxsw_reg_qpts_trust_state ts)
@@ -325,6 +345,7 @@ mlxsw_sp_port_dcb_app_update_qpts(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char qpts_pl[MLXSW_REG_QPTS_LEN];
 
+ 	printk(KERN_WARNING "Will switch to trust %u\n", ts); // xxx
 	mlxsw_reg_qpts_pack(qpts_pl, mlxsw_sp_port->local_port, ts);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpts), qpts_pl);
 }
@@ -336,8 +357,13 @@ mlxsw_sp_port_dcb_app_update_qrwe(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char qrwe_pl[MLXSW_REG_QRWE_LEN];
 
+ 	printk(KERN_WARNING "Rewrite PCP %u DSCP %u\n",
+ 	       false, rewrite_dscp); // xxx
 	mlxsw_reg_qrwe_pack(qrwe_pl, mlxsw_sp_port->local_port,
 			    false, rewrite_dscp);
+
+ 	print_hex_dump(KERN_ALERT, "QRWE: ", DUMP_PREFIX_ADDRESS,
+ 		       16, 4, qrwe_pl, sizeof qrwe_pl, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qrwe), qrwe_pl);
 }
 
@@ -379,6 +405,9 @@ mlxsw_sp_port_dcb_app_update_qpdpm(struct mlxsw_sp_port *mlxsw_sp_port,
 	mlxsw_reg_qpdpm_pack(qpdpm_pl, mlxsw_sp_port->local_port);
 	for (i = 0; i < ARRAY_SIZE(map->map); ++i)
 		mlxsw_reg_qpdpm_dscp_pack(qpdpm_pl, i, map->map[i]);
+
+ 	print_hex_dump(KERN_ALERT, "QPDPM: ", DUMP_PREFIX_ADDRESS,
+ 		       16, 4, qpdpm_pl, sizeof qpdpm_pl, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpdpm), qpdpm_pl);
 }
 
@@ -393,6 +422,9 @@ mlxsw_sp_port_dcb_app_update_qpdsm(struct mlxsw_sp_port *mlxsw_sp_port,
 	mlxsw_reg_qpdsm_pack(qpdsm_pl, mlxsw_sp_port->local_port);
 	for (i = 0; i < ARRAY_SIZE(map->map); ++i)
 		mlxsw_reg_qpdsm_prio_pack(qpdsm_pl, i, map->map[i]);
+
+ 	print_hex_dump(KERN_ALERT, "QPDSM: ", DUMP_PREFIX_ADDRESS,
+ 		       16, 4, qpdsm_pl, sizeof qpdsm_pl, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpdsm), qpdsm_pl);
 }
 
@@ -404,6 +436,9 @@ mlxsw_sp_port_dcb_app_update_qpdp(struct mlxsw_sp_port *mlxsw_sp_port,
 	char qpdp_pl[MLXSW_REG_QPDP_LEN];
 
 	mlxsw_reg_qpdp_pack(qpdp_pl, mlxsw_sp_port->local_port, default_prio);
+
+ 	print_hex_dump(KERN_ALERT, "QPDP: ", DUMP_PREFIX_ADDRESS,
+ 		       16, 4, qpdp_pl, sizeof qpdp_pl, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpdp), qpdp_pl);
 }
 
@@ -443,6 +478,7 @@ static int mlxsw_sp_port_dcb_app_update(struct mlxsw_sp_port *mlxsw_sp_port)
 		return err;
 	}
 
+	dump_dscp(prio_map, dscp_map);
 	err = mlxsw_sp_port_dcb_toggle_trust(mlxsw_sp_port,
 					     MLXSW_REG_QPTS_TRUST_STATE_DSCP);
 	if (err) {
@@ -455,6 +491,7 @@ static int mlxsw_sp_port_dcb_app_update(struct mlxsw_sp_port *mlxsw_sp_port)
 		return err;
 	}
 
+ 	printk(KERN_WARNING " port default %u\n", default_prio);
 	err = mlxsw_sp_port_dcb_app_update_qpdp(mlxsw_sp_port, default_prio);
 	if (err) {
 		netdev_err(mlxsw_sp_port->dev, "Couldn't configure default port priority\n");
@@ -469,6 +506,9 @@ static int mlxsw_sp_dcbnl_ieee_setapp(struct net_device *dev,
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	int err;
+
+	printk(KERN_WARNING "mlxsw_sp_dcbnl_ieee_setapp %s %u,%u,%u\n",
+	       dev->name, app->priority, app->selector, app->protocol);
 
 	err = mlxsw_sp_dcbnl_app_validate(dev, app);
 	if (err)
@@ -494,6 +534,9 @@ static int mlxsw_sp_dcbnl_ieee_delapp(struct net_device *dev,
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	int err;
+
+	printk(KERN_WARNING "mlxsw_sp_dcbnl_ieee_delapp %s %u,%u,%u\n",
+	       dev->name, app->priority, app->selector, app->protocol);
 
 	err = dcb_ieee_delapp(dev, app);
 	if (err)
@@ -720,6 +763,11 @@ int mlxsw_sp_port_dcb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 		goto err_port_pfc_init;
 
 	mlxsw_sp_port->dcb.trust_state = MLXSW_REG_QPTS_TRUST_STATE_PCP;
+
+	printk(KERN_WARNING "ifindex=%u\n", mlxsw_sp_port->dev->ifindex);
+	printk(KERN_WARNING "xxx wipe the map on device unregister");
+	// xxx maybe the DCBNL module should listen to device events and do it
+	// on its own
 	mlxsw_sp_port->dev->dcbnl_ops = &mlxsw_sp_dcbnl_ops;
 
 	return 0;

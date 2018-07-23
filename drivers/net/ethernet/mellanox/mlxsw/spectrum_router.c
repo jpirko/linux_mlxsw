@@ -7391,6 +7391,7 @@ static int __mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp)
 		return -EIO;
 	max_rifs = MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_RIFS);
 
+	printk(KERN_WARNING "usp=%d\n", usp);
 	mlxsw_reg_rgcr_pack(rgcr_pl, true, true);
 	mlxsw_reg_rgcr_max_router_interfaces_set(rgcr_pl, max_rifs);
 	mlxsw_reg_rgcr_usp_set(rgcr_pl, usp);

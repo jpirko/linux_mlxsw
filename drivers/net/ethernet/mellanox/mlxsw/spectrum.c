@@ -2823,6 +2823,8 @@ static int mlxsw_sp_port_tc_mc_mode_set(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char qtctm_pl[MLXSW_REG_QTCTM_LEN];
 
+	printk(KERN_WARNING "changing %s MC-awareness to %d\n",
+	       mlxsw_sp_port->dev->name, enable);
 	mlxsw_reg_qtctm_pack(qtctm_pl, mlxsw_sp_port->local_port, enable);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qtctm), qtctm_pl);
 }
