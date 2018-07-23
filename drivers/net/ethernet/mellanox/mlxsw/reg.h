@@ -3160,6 +3160,39 @@ static inline void mlxsw_reg_qpcr_pack(char *payload, u16 pid,
 	mlxsw_reg_qpcr_cbs_set(payload, cbs);
 }
 
+/* QPDP - QoS Port Default Priority Register
+ * -----------------------------------------
+ * This register controls the port default Switch Priority and Color. The
+ * default Switch Priority and Color are used for frames where the trust state
+ * uses default values.
+ */
+#define MLXSW_REG_QPDP_ID 0x4007
+#define MLXSW_REG_QPDP_LEN 0x08
+
+MLXSW_REG_DEFINE(qpdp, MLXSW_REG_QPDP_ID, MLXSW_REG_QPDP_LEN);
+
+/* reg_qpdp_local_port
+ * Local port number.
+ * Access: Index
+ *
+ * Note: Supported for data packets from CPU port.
+ */
+MLXSW_ITEM32(reg, qpdp, local_port, 0x00, 16, 8);
+
+/* reg_qpdp_switch_prio
+ * Default port Switch Priority (default 0).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, qpdp, switch_prio, 0x04, 0, 4);
+
+static inline void mlxsw_reg_qpdp_pack(char *payload, u8 local_port,
+				       u8 switch_prio)
+{
+	MLXSW_REG_ZERO(qpdp, payload);
+	mlxsw_reg_qpdp_local_port_set(payload, local_port);
+	mlxsw_reg_qpdp_switch_prio_set(payload, switch_prio);
+}
+
 /* QTCT - QoS Switch Traffic Class Table
  * -------------------------------------
  * Configures the mapping between the packet switch priority and the
@@ -8757,6 +8790,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(iedr),
 	MLXSW_REG(qpts),
 	MLXSW_REG(qpcr),
+	MLXSW_REG(qpdp),
 	MLXSW_REG(qtct),
 	MLXSW_REG(qeec),
 	MLXSW_REG(qrwe),
