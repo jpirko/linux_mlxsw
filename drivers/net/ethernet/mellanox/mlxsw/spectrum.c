@@ -2830,6 +2830,186 @@ static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	return 0;
 }
 
+static u8
+mlxsw_sp_port_dcb_app_default_prio(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	u8 prio_mask;
+
+	prio_mask = dcb_ieee_getapp_default_prio_mask(mlxsw_sp_port->dev);
+	if (prio_mask)
+		/* Take the highest configured priority. */
+		return fls(prio_mask) - 1;
+
+	return 0;
+}
+
+static void
+mlxsw_sp_port_dcb_app_dscp_prio_map(struct mlxsw_sp_port *mlxsw_sp_port,
+				    u8 default_prio,
+				    struct dcb_ieee_app_dscp_map *map)
+{
+	int i;
+
+	dcb_ieee_getapp_dscp_prio_mask_map(mlxsw_sp_port->dev, map);
+	for (i = 0; i < ARRAY_SIZE(map->map); ++i) {
+		if (map->map[i])
+			map->map[i] = fls(map->map[i]) - 1;
+		else
+			map->map[i] = default_prio;
+	}
+}
+
+static bool
+mlxsw_sp_port_dcb_app_prio_dscp_map(struct mlxsw_sp_port *mlxsw_sp_port,
+				    struct dcb_ieee_app_prio_map *map)
+{
+	bool have_dscp = false;
+	int i;
+
+	dcb_ieee_getapp_prio_dscp_mask_map(mlxsw_sp_port->dev, map);
+	for (i = 0; i < ARRAY_SIZE(map->map); ++i) {
+		if (map->map[i]) {
+			map->map[i] = fls64(map->map[i]) - 1;
+			have_dscp = true;
+		}
+	}
+
+	return have_dscp;
+}
+
+static int
+mlxsw_sp_port_dcb_app_update_qpts(struct mlxsw_sp_port *mlxsw_sp_port,
+				  enum mlxsw_reg_qpts_trust_state ts)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char qpts_pl[MLXSW_REG_QPTS_LEN];
+
+	mlxsw_reg_qpts_pack(qpts_pl, mlxsw_sp_port->local_port, ts);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpts), qpts_pl);
+}
+
+static int
+mlxsw_sp_port_dcb_app_update_qrwe(struct mlxsw_sp_port *mlxsw_sp_port,
+				  bool rewrite_dscp)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char qrwe_pl[MLXSW_REG_QRWE_LEN];
+
+	mlxsw_reg_qrwe_pack(qrwe_pl, mlxsw_sp_port->local_port,
+			    false, rewrite_dscp);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qrwe), qrwe_pl);
+}
+
+static int
+mlxsw_sp_port_dcb_toggle_trust(struct mlxsw_sp_port *mlxsw_sp_port,
+			       enum mlxsw_reg_qpts_trust_state ts)
+{
+	bool rewrite_dscp = ts == MLXSW_REG_QPTS_TRUST_STATE_DSCP;
+	int err;
+
+	if (mlxsw_sp_port->dcb.trust_state == ts)
+		return 0;
+
+	err = mlxsw_sp_port_dcb_app_update_qpts(mlxsw_sp_port, ts);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_port_dcb_app_update_qrwe(mlxsw_sp_port, rewrite_dscp);
+	if (err)
+		goto err_update_qrwe;
+
+	mlxsw_sp_port->dcb.trust_state = ts;
+	return 0;
+
+err_update_qrwe:
+	mlxsw_sp_port_dcb_app_update_qpts(mlxsw_sp_port,
+					  mlxsw_sp_port->dcb.trust_state);
+	return err;
+}
+
+static int
+mlxsw_sp_port_dcb_app_update_qpdpm(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct dcb_ieee_app_dscp_map *map)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char qpdpm_pl[MLXSW_REG_QPDPM_LEN];
+	short int i;
+
+	mlxsw_reg_qpdpm_pack(qpdpm_pl, mlxsw_sp_port->local_port);
+	for (i = 0; i < ARRAY_SIZE(map->map); ++i)
+		mlxsw_reg_qpdpm_dscp_pack(qpdpm_pl, i, map->map[i]);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpdpm), qpdpm_pl);
+}
+
+static int
+mlxsw_sp_port_dcb_app_update_qpdsm(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct dcb_ieee_app_prio_map *map)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char qpdsm_pl[MLXSW_REG_QPDSM_LEN];
+	short int i;
+
+	mlxsw_reg_qpdsm_pack(qpdsm_pl, mlxsw_sp_port->local_port);
+	for (i = 0; i < ARRAY_SIZE(map->map); ++i)
+		mlxsw_reg_qpdsm_prio_pack(qpdsm_pl, i, map->map[i]);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qpdsm), qpdsm_pl);
+}
+
+int mlxsw_sp_port_dcb_app_update(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	struct dcb_ieee_app_prio_map prio_map;
+	struct dcb_ieee_app_dscp_map dscp_map;
+	bool have_dscp = false;
+	u8 default_prio;
+	int err;
+
+	default_prio = mlxsw_sp_port_dcb_app_default_prio(mlxsw_sp_port);
+	have_dscp = mlxsw_sp_port_dcb_app_prio_dscp_map(mlxsw_sp_port,
+							&prio_map);
+
+	if (!have_dscp) {
+		err = mlxsw_sp_port_dcb_toggle_trust(mlxsw_sp_port,
+					MLXSW_REG_QPTS_TRUST_STATE_PCP);
+		if (err) {
+			netdev_err(mlxsw_sp_port->dev, "Couldn't switch to trust L2\n");
+			return err;
+		}
+	}
+
+	if (have_dscp) {
+		mlxsw_sp_port_dcb_app_dscp_prio_map(mlxsw_sp_port, default_prio,
+						    &dscp_map);
+		err = mlxsw_sp_port_dcb_app_update_qpdpm(mlxsw_sp_port,
+							 &dscp_map);
+		if (err) {
+			netdev_err(mlxsw_sp_port->dev, "Couldn't configure priority map\n");
+			return err;
+		}
+
+		err = mlxsw_sp_port_dcb_app_update_qpdsm(mlxsw_sp_port,
+							 &prio_map);
+		if (err) {
+			netdev_err(mlxsw_sp_port->dev, "Couldn't configure DSCP rewrite map\n");
+			return err;
+		}
+
+		err = mlxsw_sp_port_dcb_toggle_trust(mlxsw_sp_port,
+					MLXSW_REG_QPTS_TRUST_STATE_DSCP);
+		if (err) {
+			/* A failure to set trust DSCP means that the QPDPM and
+			 * QPDSM maps installed above are not in effect. And
+			 * since we are here attempting to set trust DSCP, we
+			 * couldn't have attempted to switch trust to PCP. Thus
+			 * no cleanup is necessary.
+			 */
+			netdev_err(mlxsw_sp_port->dev, "Couldn't switch to trust L3\n");
+			return err;
+		}
+	}
+
+	return 0;
+}
+
 static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				bool split, u8 module, u8 width, u8 lane)
 {

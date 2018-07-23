@@ -1,6 +1,6 @@
 /*
  * drivers/net/ethernet/mellanox/mlxsw/spectrum_dcb.c
- * Copyright (c) 2016 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2016-2018 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2016 Ido Schimmel <idosch@mellanox.com>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -255,6 +255,94 @@ static int mlxsw_sp_dcbnl_ieee_setets(struct net_device *dev,
 	return 0;
 }
 
+static int mlxsw_sp_dcbnl_app_validate(struct net_device *dev,
+				       struct dcb_app *app)
+{
+	int prio;
+
+	if (app->priority >= 8) {
+		netdev_err(dev, "APP entry with priority value %u is invalid\n",
+			   app->priority);
+		return -EINVAL;
+	}
+
+	switch (app->selector) {
+	case IEEE_8021QAZ_APP_SEL_DSCP:
+		if (app->protocol >= 64) {
+			netdev_err(dev, "DSCP APP entry with protocol value %u is invalid\n",
+				   app->protocol);
+			return -EINVAL;
+		}
+
+		/* Warn about any DSCP APP entries with the same PID. */
+		prio = fls(dcb_ieee_getapp_mask(dev, app));
+		if (prio--) {
+			if (prio < app->priority)
+				netdev_warn(dev, "Choosing priority %d for DSCP %d in favor of previously-active value of %d\n",
+					    app->priority, app->protocol, prio);
+			else if (prio > app->priority)
+				netdev_warn(dev, "Ignoring new priority %d for DSCP %d in favor of current value of %d\n",
+					    app->priority, app->protocol, prio);
+		}
+		break;
+
+	case IEEE_8021QAZ_APP_SEL_ETHERTYPE:
+		if (app->protocol) {
+			netdev_err(dev, "EtherType APP entries with protocol value != 0 not supported\n");
+			return -EINVAL;
+		}
+		break;
+
+	default:
+		netdev_err(dev, "APP entries with selector %u not supported\n",
+			   app->selector);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int mlxsw_sp_dcbnl_ieee_setapp(struct net_device *dev,
+				      struct dcb_app *app)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	int err;
+
+	err = mlxsw_sp_dcbnl_app_validate(dev, app);
+	if (err)
+		return err;
+
+	err = dcb_ieee_setapp(dev, app);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_port_dcb_app_update(mlxsw_sp_port);
+	if (err)
+		goto err_update;
+
+	return 0;
+
+err_update:
+	dcb_ieee_delapp(dev, app);
+	return err;
+}
+
+static int mlxsw_sp_dcbnl_ieee_delapp(struct net_device *dev,
+				      struct dcb_app *app)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	int err;
+
+	err = dcb_ieee_delapp(dev, app);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_port_dcb_app_update(mlxsw_sp_port);
+	if (err)
+		netdev_err(dev, "Failed to update DCB APP configuration\n");
+	return 0;
+}
+
 static int mlxsw_sp_dcbnl_ieee_getmaxrate(struct net_device *dev,
 					  struct ieee_maxrate *maxrate)
 {
@@ -394,6 +482,8 @@ static const struct dcbnl_rtnl_ops mlxsw_sp_dcbnl_ops = {
 	.ieee_setmaxrate	= mlxsw_sp_dcbnl_ieee_setmaxrate,
 	.ieee_getpfc		= mlxsw_sp_dcbnl_ieee_getpfc,
 	.ieee_setpfc		= mlxsw_sp_dcbnl_ieee_setpfc,
+	.ieee_setapp		= mlxsw_sp_dcbnl_ieee_setapp,
+	.ieee_delapp		= mlxsw_sp_dcbnl_ieee_delapp,
 
 	.getdcbx		= mlxsw_sp_dcbnl_getdcbx,
 	.setdcbx		= mlxsw_sp_dcbnl_setdcbx,
@@ -467,6 +557,7 @@ int mlxsw_sp_port_dcb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	if (err)
 		goto err_port_pfc_init;
 
+	mlxsw_sp_port->dcb.trust_state = MLXSW_REG_QPTS_TRUST_STATE_PCP;
 	mlxsw_sp_port->dev->dcbnl_ops = &mlxsw_sp_dcbnl_ops;
 
 	return 0;
