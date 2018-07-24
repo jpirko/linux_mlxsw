@@ -3491,6 +3491,78 @@ mlxsw_reg_qpdsm_prio_pack(char *payload, unsigned short prio, u8 dscp)
 	mlxsw_reg_qpdsm_prio_entry_color2_dscp_set(payload, prio, dscp);
 }
 
+/* QPPM - QoS Priority to PCP Mapping Register
+ * -------------------------------------------
+ * This register configures the mapping from switch priority to PCP and DEI
+ * fields for tagged packets on the transmit port.
+ */
+#define MLXSW_REG_QPPM_ID 0x4012
+#define MLXSW_REG_QPPM_BASE_LEN 0x4 /* base length, without records */
+#define MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN 0x4 /* record length */
+#define MLXSW_REG_QPPM_PRIO_ENTRY_REC_MAX_COUNT 16
+#define MLXSW_REG_QPPM_LEN (MLXSW_REG_QPPM_BASE_LEN +			\
+			     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN *	\
+			     MLXSW_REG_QPPM_PRIO_ENTRY_REC_MAX_COUNT)
+
+MLXSW_REG_DEFINE(qppm, MLXSW_REG_QPPM_ID, MLXSW_REG_QPPM_LEN);
+
+/* reg_qppm_local_port
+ * Local Port. No support for CPU port.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, qppm, local_port, 0x00, 16, 8);
+
+/* reg_qppm_color0_e
+ * Enable update of the entry for color 0 and a given port.
+ * Access: WO
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color0_e,
+		     MLXSW_REG_QPPM_BASE_LEN, 31, 1,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
+/* reg_qppm_color0_pcp
+ * PCP field in the outer vlan tag of the packet
+ * Reserved when e = 0
+ * Access: RW
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color0_pcp,
+		     MLXSW_REG_QPPM_BASE_LEN, 24, 3,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
+/* reg_qppm_color1_e
+ * Enable update of the entry for color 1 and a given port.
+ * Access: WO
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color1_e,
+		     MLXSW_REG_QPPM_BASE_LEN, 23, 1,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
+/* reg_qppm_color1_pcp
+ * PCP field in the outer vlan tag of the packet
+ * Reserved when e = 0
+ * Access: RW
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color1_pcp,
+		     MLXSW_REG_QPPM_BASE_LEN, 16, 3,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
+/* reg_qppm_color2_e
+ * Enable update of the entry for color 2 and a given port.
+ * Access: WO
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color2_e,
+		     MLXSW_REG_QPPM_BASE_LEN, 15, 1,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
+/* reg_qppm_color2_pcp
+ * PCP field in the outer vlan tag of the packet
+ * Reserved when e = 0
+ * Access: RW
+ */
+MLXSW_ITEM32_INDEXED(reg, qppm, prio_entry_color2_pcp,
+		     MLXSW_REG_QPPM_BASE_LEN, 8, 3,
+		     MLXSW_REG_QPPM_PRIO_ENTRY_REC_LEN, 0x00, false);
+
 /* QPDPM - QoS Port DSCP to Priority Mapping Register
  * --------------------------------------------------
  * This register controls the mapping from DSCP field to
@@ -8795,6 +8867,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(qeec),
 	MLXSW_REG(qrwe),
 	MLXSW_REG(qpdsm),
+	MLXSW_REG(qppm),
 	MLXSW_REG(qpdpm),
 	MLXSW_REG(qtctm),
 	MLXSW_REG(pmlp),
