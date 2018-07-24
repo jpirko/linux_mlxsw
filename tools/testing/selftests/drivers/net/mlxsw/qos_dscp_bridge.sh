@@ -34,6 +34,8 @@ lib_dir=$(dirname $0)/../../../net/forwarding
 NUM_NETIFS=4
 source $lib_dir/lib.sh
 
+require_command lldptool
+
 h1_create()
 {
 	local dscp;
