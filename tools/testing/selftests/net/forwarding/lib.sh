@@ -15,6 +15,7 @@ PAUSE_ON_FAIL=${PAUSE_ON_FAIL:=no}
 PAUSE_ON_CLEANUP=${PAUSE_ON_CLEANUP:=no}
 NETIF_TYPE=${NETIF_TYPE:=veth}
 NETIF_CREATE=${NETIF_CREATE:=yes}
+PING_TIMEOUT=${PING_TIMEOUT:=5}
 
 relative_path="${BASH_SOURCE%/*}"
 if [[ "$relative_path" == "${BASH_SOURCE}" ]]; then
@@ -768,7 +769,8 @@ ping_do()
 	local vrf_name
 
 	vrf_name=$(master_name_get $if_name)
-	ip vrf exec $vrf_name $PING $dip -c 10 -i 0.1 -w 2 &> /dev/null
+	ip vrf exec $vrf_name \
+		$PING $dip -c 10 -i 0.1 -w $PING_TIMEOUT &> /dev/null
 }
 
 ping_test()
@@ -787,7 +789,8 @@ ping6_do()
 	local vrf_name
 
 	vrf_name=$(master_name_get $if_name)
-	ip vrf exec $vrf_name $PING6 $dip -c 10 -i 0.1 -w 2 &> /dev/null
+	ip vrf exec $vrf_name \
+		$PING6 $dip -c 10 -i 0.1 -w $PING_TIMEOUT &> /dev/null
 }
 
 ping6_test()
