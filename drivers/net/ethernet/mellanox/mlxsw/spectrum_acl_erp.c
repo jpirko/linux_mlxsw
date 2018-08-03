@@ -29,6 +29,8 @@ struct mlxsw_sp_acl_erp_core {
 
 struct mlxsw_sp_acl_erp_key {
 	char mask[MLXSW_REG_PTCEX_FLEX_KEY_BLOCKS_LEN];
+#define __MASK_LEN 0x38
+#define __MASK_IDX(i) (__MASK_LEN - (i) - 1)
 	bool ctcam;
 };
 
@@ -971,6 +973,179 @@ u8 mlxsw_sp_acl_erp_mask_erp_id(const struct mlxsw_sp_acl_erp_mask *erp_mask)
 	return erp->id;
 }
 
+struct mlxsw_sp_acl_erp_delta {
+	struct mlxsw_sp_acl_erp_key key;
+	u16 start;
+	u8 mask;
+};
+
+u16 mlxsw_sp_acl_erp_delta_start(const struct mlxsw_sp_acl_erp_delta *delta)
+{
+	return delta->start;
+}
+
+u8 mlxsw_sp_acl_erp_delta_mask(const struct mlxsw_sp_acl_erp_delta *delta)
+{
+	return delta->mask;
+}
+
+u8 mlxsw_sp_acl_erp_delta_value(const struct mlxsw_sp_acl_erp_delta *delta,
+				const char *enc_key)
+{
+	u16 start = delta->start;
+	u8 mask = delta->mask;
+	u16 tmp;
+
+	if (!mask)
+		return 0;
+
+	tmp = (unsigned char) enc_key[__MASK_IDX(start / 8)];
+	if (start / 8 + 1 < __MASK_LEN)
+		tmp |= (unsigned char) enc_key[__MASK_IDX(start / 8 + 1)] << 8;
+	tmp >>= start % 8;
+	tmp &= mask;
+	return tmp;
+}
+
+void mlxsw_sp_acl_erp_delta_clear(const struct mlxsw_sp_acl_erp_delta *delta,
+				  const char *enc_key)
+{
+	u16 start = delta->start;
+	u8 mask = delta->mask;
+	unsigned char *byte;
+	u16 tmp;
+
+	tmp = mask;
+	tmp <<= start % 8;
+	tmp = ~tmp;
+
+	byte = (unsigned char *) &enc_key[__MASK_IDX(start / 8)];
+	*byte &= tmp & 0xff;
+	if (start / 8 + 1 < __MASK_LEN) {
+		byte = (unsigned char *) &enc_key[__MASK_IDX(start / 8 + 1)];
+		*byte &= (tmp >> 8) & 0xff;
+	}
+}
+
+static const struct mlxsw_sp_acl_erp_delta
+mlxsw_sp_acl_erp_delta_default = {};
+
+const struct mlxsw_sp_acl_erp_delta *
+mlxsw_sp_acl_erp_delta(const struct mlxsw_sp_acl_erp_mask *erp_mask)
+{
+	struct objagg_obj *objagg_obj = (struct objagg_obj *) erp_mask;
+	const struct mlxsw_sp_acl_erp_delta *delta;
+
+	delta = objagg_obj_delta_priv(objagg_obj);
+	if (!delta)
+		delta = &mlxsw_sp_acl_erp_delta_default;
+	return delta;
+}
+
+static int
+mlxsw_sp_acl_erp_delta_fill(const struct mlxsw_sp_acl_erp_key *parent_key,
+			    const struct mlxsw_sp_acl_erp_key *key,
+			    u16 *delta_start, u8 *delta_mask)
+{
+	int offset = 0;
+	int si = -1;
+	u16 pmask;
+	u16 mask;
+	int i;
+
+	/* The difference between 2 masks can be up to 8 consecutive bits. */
+	for (i = 0; i < __MASK_LEN; i++) {
+		if (parent_key->mask[__MASK_IDX(i)] == key->mask[__MASK_IDX(i)])
+			continue;
+		if (si == -1)
+			si = i;
+		else if (si != i - 1)
+			return -EINVAL;
+	}
+	if (si == -1) {
+		/* The masks are the same, this cannot happen.
+		 * That means the caller is broken.
+		 */
+		WARN_ON(1);
+		*delta_start = 0;
+		*delta_mask = 0;
+		return 0;
+	}
+	pmask = (unsigned char) parent_key->mask[__MASK_IDX(si)];
+	mask = (unsigned char) key->mask[__MASK_IDX(si)];
+	if (si + 1 < __MASK_LEN) {
+		pmask |= (unsigned char) parent_key->mask[__MASK_IDX(si + 1)] << 8;
+		mask |= (unsigned char) key->mask[__MASK_IDX(si + 1)] << 8;
+	}
+
+	if ((pmask ^ mask) & pmask)
+		return -EINVAL;
+	mask &= ~pmask;
+	while (!(mask & (1 << offset)))
+		offset++;
+	while (!(mask & 1))
+		mask >>= 1;
+	if (mask & 0xff00)
+		return -EINVAL;
+
+	*delta_start = si * 8 + offset;
+	*delta_mask = mask;
+
+	return 0;
+}
+
+static void *mlxsw_sp_acl_erp_delta_create(void *priv, void *parent_obj,
+					   void *obj)
+{
+	struct mlxsw_sp_acl_erp_key *parent_key = parent_obj;
+	struct mlxsw_sp_acl_atcam_region *aregion = priv;
+	struct mlxsw_sp_acl_erp_key *key = obj;
+	struct mlxsw_sp_acl_erp_delta *delta;
+	u16 delta_start;
+	u8 delta_mask;
+	int err;
+
+	if (parent_key->ctcam || key->ctcam)
+		return ERR_PTR(-EINVAL);
+	err = mlxsw_sp_acl_erp_delta_fill(parent_key, obj,
+					  &delta_start, &delta_mask);
+	if (err)
+		return ERR_PTR(-EINVAL);
+
+	delta = kzalloc(sizeof(*delta), GFP_KERNEL);
+	if (!delta)
+		return ERR_PTR(-ENOMEM);
+	delta->start = delta_start;
+	delta->mask = delta_mask;
+
+	err = mlxsw_sp_acl_erp_table_inc(aregion->erp_table);
+	if (err)
+		goto err_table_inc;
+
+	memcpy(&delta->key, key, sizeof(*key));
+	err = mlxsw_sp_acl_erp_master_mask_set(aregion->erp_table, &delta->key);
+	if (err)
+		goto err_master_mask_set;
+
+	return delta;
+
+err_master_mask_set:
+	mlxsw_sp_acl_erp_table_dec(aregion->erp_table);
+err_table_inc:
+	kfree(delta);
+	return ERR_PTR(err);
+}
+
+static void mlxsw_sp_acl_erp_delta_destroy(void *priv, void *delta_priv)
+{
+	struct mlxsw_sp_acl_erp_delta *delta = delta_priv;
+	struct mlxsw_sp_acl_atcam_region *aregion = priv;
+
+	mlxsw_sp_acl_erp_master_mask_clear(aregion->erp_table, &delta->key);
+	mlxsw_sp_acl_erp_table_dec(aregion->erp_table);
+	kfree(delta);
+}
+
 static void *mlxsw_sp_acl_erp_root_create(void *priv, void *obj)
 {
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
@@ -989,6 +1164,8 @@ static void mlxsw_sp_acl_erp_root_destroy(void *priv, void *root_priv)
 
 static const struct objagg_ops mlxsw_sp_acl_erp_objagg_ops = {
 	.obj_size = sizeof(struct mlxsw_sp_acl_erp_key),
+	.delta_create = mlxsw_sp_acl_erp_delta_create,
+	.delta_destroy = mlxsw_sp_acl_erp_delta_destroy,
 	.root_create = mlxsw_sp_acl_erp_root_create,
 	.root_destroy = mlxsw_sp_acl_erp_root_destroy,
 };

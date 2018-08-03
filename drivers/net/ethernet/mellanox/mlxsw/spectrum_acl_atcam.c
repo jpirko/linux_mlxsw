@@ -380,7 +380,10 @@ mlxsw_sp_acl_atcam_region_entry_insert(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_acl_tcam_region *region = aregion->region;
 	u8 erp_id = mlxsw_sp_acl_erp_mask_erp_id(aentry->erp_mask);
+	const struct mlxsw_sp_acl_erp_delta *delta =
+			mlxsw_sp_acl_erp_delta(aentry->erp_mask);
 	struct mlxsw_sp_acl_atcam_lkey_id *lkey_id;
+	char *enc_key = aentry->ht_key.enc_key;
 	char ptce3_pl[MLXSW_REG_PTCE3_LEN];
 	u32 kvdl_index, priority;
 	int err;
@@ -397,9 +400,14 @@ mlxsw_sp_acl_atcam_region_entry_insert(struct mlxsw_sp *mlxsw_sp,
 	kvdl_index = mlxsw_afa_block_first_kvdl_index(rulei->act_block);
 	mlxsw_reg_ptce3_pack(ptce3_pl, true, MLXSW_REG_PTCE3_OP_WRITE_WRITE,
 			     priority, region->tcam_region_info,
-			     aentry->ht_key.enc_key, erp_id,
+			     enc_key, erp_id,
+			     mlxsw_sp_acl_erp_delta_start(delta),
+			     mlxsw_sp_acl_erp_delta_mask(delta),
+			     mlxsw_sp_acl_erp_delta_value(delta, enc_key),
 			     refcount_read(&lkey_id->refcnt) != 1, lkey_id->id,
 			     kvdl_index);
+	enc_key = mlxsw_reg_ptce3_flex2_key_blocks_data(ptce3_pl);
+	mlxsw_sp_acl_erp_delta_clear(delta, enc_key);
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ptce3), ptce3_pl);
 	if (err)
 		goto err_ptce3_write;
@@ -419,12 +427,20 @@ mlxsw_sp_acl_atcam_region_entry_remove(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_acl_atcam_lkey_id *lkey_id = aentry->lkey_id;
 	struct mlxsw_sp_acl_tcam_region *region = aregion->region;
 	u8 erp_id = mlxsw_sp_acl_erp_mask_erp_id(aentry->erp_mask);
+	const struct mlxsw_sp_acl_erp_delta *delta =
+			mlxsw_sp_acl_erp_delta(aentry->erp_mask);
+	char *enc_key = aentry->ht_key.enc_key;
 	char ptce3_pl[MLXSW_REG_PTCE3_LEN];
 
 	mlxsw_reg_ptce3_pack(ptce3_pl, false, MLXSW_REG_PTCE3_OP_WRITE_WRITE, 0,
-			     region->tcam_region_info, aentry->ht_key.enc_key,
-			     erp_id, refcount_read(&lkey_id->refcnt) != 1,
+			     region->tcam_region_info, enc_key, erp_id,
+			     mlxsw_sp_acl_erp_delta_start(delta),
+			     mlxsw_sp_acl_erp_delta_mask(delta),
+			     mlxsw_sp_acl_erp_delta_value(delta, enc_key),
+			     refcount_read(&lkey_id->refcnt) != 1,
 			     lkey_id->id, 0);
+	enc_key = mlxsw_reg_ptce3_flex2_key_blocks_data(ptce3_pl);
+	mlxsw_sp_acl_erp_delta_clear(delta, enc_key);
 	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ptce3), ptce3_pl);
 	aregion->ops->lkey_id_put(aregion, lkey_id);
 }
