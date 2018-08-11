@@ -99,6 +99,17 @@ static int mlxsw_sp_sb_pr_write(struct mlxsw_sp *mlxsw_sp, u8 pool,
 	return 0;
 }
 
+static int mlxsw_sp_sb_pr_write_infi(struct mlxsw_sp *mlxsw_sp, u8 pool,
+				     enum mlxsw_reg_sbxx_dir dir,
+				     enum mlxsw_reg_sbpr_mode mode)
+{
+	char sbpr_pl[MLXSW_REG_SBPR_LEN];
+
+	mlxsw_reg_sbpr_pack(sbpr_pl, pool, dir, mode, 0);
+	mlxsw_reg_sbpr_infi_size_set(sbpr_pl, true);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sbpr), sbpr_pl);
+}
+
 static int mlxsw_sp_sb_cm_write(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				u8 pg_buff, enum mlxsw_reg_sbxx_dir dir,
 				u32 min_buff, u32 max_buff, u8 pool)
@@ -120,6 +131,18 @@ static int mlxsw_sp_sb_cm_write(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		cm->pool = pool;
 	}
 	return 0;
+}
+
+static int mlxsw_sp_sb_cm_write_infi(struct mlxsw_sp *mlxsw_sp, u8 local_port,
+				     u8 pg_buff, enum mlxsw_reg_sbxx_dir dir,
+				     u32 min_buff, u8 pool)
+{
+	char sbcm_pl[MLXSW_REG_SBCM_LEN];
+
+	mlxsw_reg_sbcm_pack(sbcm_pl, local_port, pg_buff, dir,
+			    min_buff, 0, pool);
+	mlxsw_reg_sbcm_infi_max_set(sbcm_pl, true);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sbcm), sbcm_pl);
 }
 
 static int mlxsw_sp_sb_pm_write(struct mlxsw_sp *mlxsw_sp, u8 local_port,
@@ -292,6 +315,9 @@ static int __mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
+/* Pool used for MC traffic. */
+#define MLXSW_SP_SB_POOL_MC 15
+
 static int mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp)
 {
 	int err;
@@ -301,9 +327,16 @@ static int mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp)
 				     MLXSW_SP_SB_PRS_INGRESS_LEN);
 	if (err)
 		return err;
-	return __mlxsw_sp_sb_prs_init(mlxsw_sp, MLXSW_REG_SBXX_DIR_EGRESS,
-				      mlxsw_sp_sb_prs_egress,
-				      MLXSW_SP_SB_PRS_EGRESS_LEN);
+
+	err = __mlxsw_sp_sb_prs_init(mlxsw_sp, MLXSW_REG_SBXX_DIR_EGRESS,
+				     mlxsw_sp_sb_prs_egress,
+				     MLXSW_SP_SB_PRS_EGRESS_LEN);
+	if (err)
+		return err;
+
+	return mlxsw_sp_sb_pr_write_infi(mlxsw_sp, MLXSW_SP_SB_POOL_MC,
+					 MLXSW_REG_SBXX_DIR_EGRESS,
+					 MLXSW_REG_SBPR_MODE_STATIC);
 }
 
 #define MLXSW_SP_SB_CM(_min_buff, _max_buff, _pool)	\
@@ -404,7 +437,11 @@ static int __mlxsw_sp_sb_cms_init(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 
 		if (i == 8 && dir == MLXSW_REG_SBXX_DIR_INGRESS)
 			continue; /* PG number 8 does not exist, skip it */
+
 		cm = &cms[i];
+		if (!cm->min_buff && !cm->max_buff)
+			continue;
+
 		/* All pools are initialized using dynamic thresholds,
 		 * therefore 'max_buff' isn't specified in cells.
 		 */
@@ -420,6 +457,7 @@ static int __mlxsw_sp_sb_cms_init(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 static int mlxsw_sp_port_sb_cms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	int err;
+	int i;
 
 	err = __mlxsw_sp_sb_cms_init(mlxsw_sp_port->mlxsw_sp,
 				     mlxsw_sp_port->local_port,
@@ -428,11 +466,27 @@ static int mlxsw_sp_port_sb_cms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 				     MLXSW_SP_SB_CMS_INGRESS_LEN);
 	if (err)
 		return err;
-	return __mlxsw_sp_sb_cms_init(mlxsw_sp_port->mlxsw_sp,
-				      mlxsw_sp_port->local_port,
-				      MLXSW_REG_SBXX_DIR_EGRESS,
-				      mlxsw_sp_sb_cms_egress,
-				      MLXSW_SP_SB_CMS_EGRESS_LEN);
+
+	err = __mlxsw_sp_sb_cms_init(mlxsw_sp_port->mlxsw_sp,
+				     mlxsw_sp_port->local_port,
+				     MLXSW_REG_SBXX_DIR_EGRESS,
+				     mlxsw_sp_sb_cms_egress,
+				     MLXSW_SP_SB_CMS_EGRESS_LEN);
+	if (err)
+		return err;
+
+	/* Tie the MC TCs to MC pool with infinite max threshold. */
+	for (i = 0; i < MLXSW_SP_SB_TC_COUNT; ++i) {
+		err = mlxsw_sp_sb_cm_write_infi(mlxsw_sp_port->mlxsw_sp,
+						mlxsw_sp_port->local_port,
+						i + 8,
+						MLXSW_REG_SBXX_DIR_EGRESS,
+						0, MLXSW_SP_SB_POOL_MC);
+		if (err)
+			return err;
+	}
+
+	return 0;
 }
 
 static int mlxsw_sp_cpu_port_sb_cms_init(struct mlxsw_sp *mlxsw_sp)
@@ -488,6 +542,7 @@ static int __mlxsw_sp_port_sb_pms_init(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 
 static int mlxsw_sp_port_sb_pms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
+	u32 min_buf, max_buf;
 	int err;
 
 	err = __mlxsw_sp_port_sb_pms_init(mlxsw_sp_port->mlxsw_sp,
@@ -497,11 +552,23 @@ static int mlxsw_sp_port_sb_pms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 					  MLXSW_SP_SB_PMS_INGRESS_LEN);
 	if (err)
 		return err;
-	return __mlxsw_sp_port_sb_pms_init(mlxsw_sp_port->mlxsw_sp,
-					   mlxsw_sp_port->local_port,
-					   MLXSW_REG_SBXX_DIR_EGRESS,
-					   mlxsw_sp_sb_pms_egress,
-					   MLXSW_SP_SB_PMS_EGRESS_LEN);
+
+	err = __mlxsw_sp_port_sb_pms_init(mlxsw_sp_port->mlxsw_sp,
+					  mlxsw_sp_port->local_port,
+					  MLXSW_REG_SBXX_DIR_EGRESS,
+					  mlxsw_sp_sb_pms_egress,
+					  MLXSW_SP_SB_PMS_EGRESS_LEN);
+	if (err)
+		return err;
+
+	/* MC pool is in static mode, therefore maximum is in cells. */
+	min_buf = mlxsw_sp_bytes_cells(mlxsw_sp_port->mlxsw_sp, 10000);
+	max_buf = mlxsw_sp_bytes_cells(mlxsw_sp_port->mlxsw_sp, 90000);
+	return mlxsw_sp_sb_pm_write(mlxsw_sp_port->mlxsw_sp,
+				    mlxsw_sp_port->local_port,
+				    MLXSW_SP_SB_POOL_MC,
+				    MLXSW_REG_SBXX_DIR_EGRESS,
+				    min_buf, max_buf);
 }
 
 struct mlxsw_sp_sb_mm {
@@ -518,21 +585,21 @@ struct mlxsw_sp_sb_mm {
 	}
 
 static const struct mlxsw_sp_sb_mm mlxsw_sp_sb_mms[] = {
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
-	MLXSW_SP_SB_MM(20000, 0xff, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
 };
 
 #define MLXSW_SP_SB_MMS_LEN ARRAY_SIZE(mlxsw_sp_sb_mms)
