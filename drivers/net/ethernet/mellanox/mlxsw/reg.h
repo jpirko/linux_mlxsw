@@ -8465,12 +8465,19 @@ enum mlxsw_reg_sbpr_mode {
  */
 MLXSW_ITEM32(reg, sbpr, mode, 0x08, 0, 4);
 
-static inline void mlxsw_reg_sbpr_pack(char *payload, u8 pool,
+struct mlxsw_reg_pool {
+	u8 pool;
+};
+
+#define MLXSW_REG_POOL(pool) (struct mlxsw_reg_pool){pool}
+
+static inline void mlxsw_reg_sbpr_pack(char *payload,
+				       struct mlxsw_reg_pool reg_pool,
 				       enum mlxsw_reg_sbxx_dir dir,
 				       enum mlxsw_reg_sbpr_mode mode, u32 size)
 {
 	MLXSW_REG_ZERO(sbpr, payload);
-	mlxsw_reg_sbpr_pool_set(payload, pool);
+	mlxsw_reg_sbpr_pool_set(payload, reg_pool.pool);
 	mlxsw_reg_sbpr_dir_set(payload, dir);
 	mlxsw_reg_sbpr_mode_set(payload, mode);
 	mlxsw_reg_sbpr_size_set(payload, size);
@@ -8549,7 +8556,8 @@ MLXSW_ITEM32(reg, sbcm, pool, 0x24, 0, 4);
 
 static inline void mlxsw_reg_sbcm_pack(char *payload, u8 local_port, u8 pg_buff,
 				       enum mlxsw_reg_sbxx_dir dir,
-				       u32 min_buff, u32 max_buff, u8 pool)
+				       u32 min_buff, u32 max_buff,
+				       struct mlxsw_reg_pool reg_pool)
 {
 	MLXSW_REG_ZERO(sbcm, payload);
 	mlxsw_reg_sbcm_local_port_set(payload, local_port);
@@ -8557,7 +8565,7 @@ static inline void mlxsw_reg_sbcm_pack(char *payload, u8 local_port, u8 pg_buff,
 	mlxsw_reg_sbcm_dir_set(payload, dir);
 	mlxsw_reg_sbcm_min_buff_set(payload, min_buff);
 	mlxsw_reg_sbcm_max_buff_set(payload, max_buff);
-	mlxsw_reg_sbcm_pool_set(payload, pool);
+	mlxsw_reg_sbcm_pool_set(payload, reg_pool.pool);
 }
 
 /* SBPM - Shared Buffer Port Management Register
@@ -8631,13 +8639,14 @@ MLXSW_ITEM32(reg, sbpm, min_buff, 0x18, 0, 24);
  */
 MLXSW_ITEM32(reg, sbpm, max_buff, 0x1C, 0, 24);
 
-static inline void mlxsw_reg_sbpm_pack(char *payload, u8 local_port, u8 pool,
+static inline void mlxsw_reg_sbpm_pack(char *payload, u8 local_port,
+				       struct mlxsw_reg_pool reg_pool,
 				       enum mlxsw_reg_sbxx_dir dir, bool clr,
 				       u32 min_buff, u32 max_buff)
 {
 	MLXSW_REG_ZERO(sbpm, payload);
 	mlxsw_reg_sbpm_local_port_set(payload, local_port);
-	mlxsw_reg_sbpm_pool_set(payload, pool);
+	mlxsw_reg_sbpm_pool_set(payload, reg_pool.pool);
 	mlxsw_reg_sbpm_dir_set(payload, dir);
 	mlxsw_reg_sbpm_clr_set(payload, clr);
 	mlxsw_reg_sbpm_min_buff_set(payload, min_buff);
@@ -8694,13 +8703,14 @@ MLXSW_ITEM32(reg, sbmm, max_buff, 0x1C, 0, 24);
 MLXSW_ITEM32(reg, sbmm, pool, 0x24, 0, 4);
 
 static inline void mlxsw_reg_sbmm_pack(char *payload, u8 prio, u32 min_buff,
-				       u32 max_buff, u8 pool)
+				       u32 max_buff,
+				       struct mlxsw_reg_pool reg_pool)
 {
 	MLXSW_REG_ZERO(sbmm, payload);
 	mlxsw_reg_sbmm_prio_set(payload, prio);
 	mlxsw_reg_sbmm_min_buff_set(payload, min_buff);
 	mlxsw_reg_sbmm_max_buff_set(payload, max_buff);
-	mlxsw_reg_sbmm_pool_set(payload, pool);
+	mlxsw_reg_sbmm_pool_set(payload, reg_pool.pool);
 }
 
 /* SBSR - Shared Buffer Status Register
