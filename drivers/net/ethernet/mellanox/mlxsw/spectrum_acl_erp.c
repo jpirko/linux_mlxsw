@@ -59,6 +59,7 @@ struct mlxsw_sp_acl_erp_table {
 	unsigned int num_atcam_erps;
 	unsigned int num_max_atcam_erps;
 	unsigned int num_ctcam_erps;
+	unsigned int ref_count;
 	struct objagg *objagg;
 };
 
@@ -567,6 +568,27 @@ mlxsw_sp_acl_erp_region_master_mask_trans(struct mlxsw_sp_acl_erp_table *erp_tab
 }
 
 static int
+mlxsw_sp_acl_erp_table_inc(struct mlxsw_sp_acl_erp_table *erp_table)
+{
+	int err;
+
+	if (erp_table->ref_count == 1) {
+		err = mlxsw_sp_acl_erp_region_table_trans(erp_table);
+		if (err)
+			return err;
+	}
+	erp_table->ref_count++;
+	return 0;
+}
+
+static void
+mlxsw_sp_acl_erp_table_dec(struct mlxsw_sp_acl_erp_table *erp_table)
+{
+	if (--erp_table->ref_count == 1)
+		mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+}
+
+static int
 mlxsw_sp_acl_erp_region_erp_add(struct mlxsw_sp_acl_erp_table *erp_table,
 				struct mlxsw_sp_acl_erp *erp)
 {
@@ -626,30 +648,12 @@ mlxsw_sp_acl_erp_ctcam_table_ops_set(struct mlxsw_sp_acl_erp_table *erp_table)
 {
 	switch (erp_table->num_atcam_erps) {
 	case 2:
-		/* Keep using the eRP table, but correctly set the
-		 * operations pointer so that when an A-TCAM eRP is
-		 * deleted we will transition to use the master mask
-		 */
 		erp_table->ops = &erp_two_masks_ops;
 		break;
 	case 1:
-		/* We only kept the eRP table because we had C-TCAM
-		 * eRPs in use. Now that the last C-TCAM eRP is gone we
-		 * can stop using the table and transition to use the
-		 * master mask
-		 */
-		mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
 		erp_table->ops = &erp_single_mask_ops;
 		break;
 	case 0:
-		/* There are no more eRPs of any kind used by the region
-		 * so free its eRP table and transition to initial state
-		 */
-		mlxsw_sp_acl_erp_table_disable(erp_table);
-		mlxsw_sp_acl_erp_table_free(erp_table->erp_core,
-					    erp_table->num_max_atcam_erps,
-					    erp_table->aregion->type,
-					    erp_table->base_index);
 		erp_table->ops = &erp_no_mask_ops;
 		break;
 	default:
@@ -709,9 +713,9 @@ mlxsw_sp_acl_erp_ctcam_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	 * mask and thus not performing a lookup in the C-TCAM. This
 	 * can happen when two rules that only differ in priority - and
 	 * thus sharing the same key - are programmed. In this case
-	 * we transition the region to use an eRP table
+	 * we increment a reference and let the region use an eRP table.
 	 */
-	err = mlxsw_sp_acl_erp_region_table_trans(erp_table);
+	err = mlxsw_sp_acl_erp_table_inc(erp_table);
 	if (err)
 		return ERR_PTR(err);
 
@@ -724,7 +728,7 @@ mlxsw_sp_acl_erp_ctcam_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	return erp;
 
 err_erp_create:
-	mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+	mlxsw_sp_acl_erp_table_dec(erp_table);
 	return ERR_PTR(err);
 }
 
@@ -735,6 +739,7 @@ mlxsw_sp_acl_erp_ctcam_mask_destroy(struct mlxsw_sp_acl_erp *erp)
 
 	mlxsw_sp_acl_erp_region_ctcam_disable(erp_table);
 	mlxsw_sp_acl_erp_master_mask_clear(erp_table, erp);
+	mlxsw_sp_acl_erp_table_dec(erp_table);
 	erp_table->num_ctcam_erps--;
 	kfree(erp);
 
@@ -817,8 +822,10 @@ mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	if (key->ctcam)
 		return mlxsw_sp_acl_erp_ctcam_mask_create(erp_table, key);
 
-	/* Transition to use eRP table instead of master mask */
-	err = mlxsw_sp_acl_erp_region_table_trans(erp_table);
+	/* Increment reference and let the eRP table to be used
+	 * instead of master mask.
+	 */
+	err = mlxsw_sp_acl_erp_table_inc(erp_table);
 	if (err)
 		return ERR_PTR(err);
 
@@ -851,7 +858,7 @@ err_table_erp_add:
 err_erp_index_get:
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 err_erp_create:
-	mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+	mlxsw_sp_acl_erp_table_dec(erp_table);
 	return ERR_PTR(err);
 }
 
@@ -867,7 +874,7 @@ mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
 	mlxsw_sp_acl_erp_index_put(erp_table, erp->index);
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 	/* Transition to use master mask instead of eRP table */
-	mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+	mlxsw_sp_acl_erp_table_dec(erp_table);
 
 	erp_table->ops = &erp_single_mask_ops;
 }
@@ -877,17 +884,28 @@ mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 				   struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
+	int err;
 
 	if (key->ctcam)
 		return ERR_PTR(-EINVAL);
 
+	err = mlxsw_sp_acl_erp_table_inc(erp_table);
+	if (err)
+		return ERR_PTR(err);
+
 	erp = mlxsw_sp_acl_erp_generic_create(erp_table, key);
-	if (IS_ERR(erp))
-		return erp;
+	if (IS_ERR(erp)) {
+		err = PTR_ERR(erp);
+		goto err_erp_create;
+	}
 
 	erp_table->ops = &erp_single_mask_ops;
 
 	return erp;
+
+err_erp_create:
+	mlxsw_sp_acl_erp_table_dec(erp_table);
+	return ERR_PTR(err);
 }
 
 static void
@@ -895,6 +913,7 @@ mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
 				    struct mlxsw_sp_acl_erp *erp)
 {
 	mlxsw_sp_acl_erp_generic_destroy(erp);
+	mlxsw_sp_acl_erp_table_dec(erp_table);
 	erp_table->ops = &erp_no_mask_ops;
 }
 
