@@ -8336,8 +8336,15 @@ MLXSW_ITEM32(reg, sbpr, dir, 0x00, 24, 2);
  */
 MLXSW_ITEM32(reg, sbpr, pool, 0x00, 0, 4);
 
+/* reg_sbpr_infi_size
+ * Size is infinite.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, sbpr, infi_size, 0x04, 31, 1);
+
 /* reg_sbpr_size
  * Pool size in buffer cells.
+ * Reserved when infi_size = 1.
  * Access: RW
  */
 MLXSW_ITEM32(reg, sbpr, size, 0x04, 0, 24);

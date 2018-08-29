@@ -114,13 +114,22 @@ static struct mlxsw_sp_sb_pm *mlxsw_sp_sb_pm_get(struct mlxsw_sp *mlxsw_sp,
 	return &mlxsw_sp->sb->ports[local_port].pms[pool_index];
 }
 
+static void mlxsw_sp_sb_pr_update(struct mlxsw_sp *mlxsw_sp, u16 pool_index,
+				  enum mlxsw_reg_sbpr_mode mode, u32 size)
+{
+	struct mlxsw_sp_sb_pr *pr;
+
+	pr = mlxsw_sp_sb_pr_get(mlxsw_sp, pool_index);
+	pr->mode = mode;
+	pr->size = size;
+}
+
 static int mlxsw_sp_sb_pr_write(struct mlxsw_sp *mlxsw_sp, u16 pool_index,
 				enum mlxsw_reg_sbpr_mode mode, u32 size)
 {
 	const struct mlxsw_sp_sb_pool_des *des =
 		&mlxsw_sp_sb_pool_dess[pool_index];
 	char sbpr_pl[MLXSW_REG_SBPR_LEN];
-	struct mlxsw_sp_sb_pr *pr;
 	int err;
 
 	mlxsw_reg_sbpr_pack(sbpr_pl, des->pool, des->dir, mode, size);
@@ -128,9 +137,26 @@ static int mlxsw_sp_sb_pr_write(struct mlxsw_sp *mlxsw_sp, u16 pool_index,
 	if (err)
 		return err;
 
-	pr = mlxsw_sp_sb_pr_get(mlxsw_sp, pool_index);
-	pr->mode = mode;
-	pr->size = size;
+	mlxsw_sp_sb_pr_update(mlxsw_sp, pool_index, mode, size);
+	return 0;
+}
+
+static int mlxsw_sp_sb_pr_write_infi(struct mlxsw_sp *mlxsw_sp, u16 pool_index,
+				     enum mlxsw_reg_sbpr_mode mode)
+{
+	u32 size = mlxsw_sp_bytes_cells(mlxsw_sp, mlxsw_sp->sb->sb_size);
+	const struct mlxsw_sp_sb_pool_des *des =
+		&mlxsw_sp_sb_pool_dess[pool_index];
+	char sbpr_pl[MLXSW_REG_SBPR_LEN];
+	int err;
+
+	mlxsw_reg_sbpr_pack(sbpr_pl, des->pool, des->dir, mode, 0);
+	mlxsw_reg_sbpr_infi_size_set(sbpr_pl, true);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sbpr), sbpr_pl);
+	if (err)
+		return err;
+
+	mlxsw_sp_sb_pr_update(mlxsw_sp, pool_index, mode, size);
 	return 0;
 }
 
@@ -322,9 +348,15 @@ static int mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp,
 	int err;
 
 	for (i = 0; i < prs_len; i++) {
-		u32 size = mlxsw_sp_bytes_cells(mlxsw_sp, prs[i].size);
+		if (prs[i].size == -1U) {
+			err = mlxsw_sp_sb_pr_write_infi(mlxsw_sp, i,
+							prs[i].mode);
+		} else {
+			u32 size = mlxsw_sp_bytes_cells(mlxsw_sp, prs[i].size);
 
-		err = mlxsw_sp_sb_pr_write(mlxsw_sp, i, prs[i].mode, size);
+			err = mlxsw_sp_sb_pr_write(mlxsw_sp, i,
+						   prs[i].mode, size);
+		}
 		if (err)
 			return err;
 	}
