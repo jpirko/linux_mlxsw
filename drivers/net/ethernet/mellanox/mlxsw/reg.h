@@ -8416,6 +8416,12 @@ MLXSW_ITEM32(reg, sbcm, min_buff, 0x18, 0, 24);
 #define MLXSW_REG_SBXX_DYN_MAX_BUFF_MIN 1
 #define MLXSW_REG_SBXX_DYN_MAX_BUFF_MAX 14
 
+/* reg_sbcm_infi_max
+ * Max buffer is infinite.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, sbcm, infi_max, 0x1C, 31, 1);
+
 /* reg_sbcm_max_buff
  * When the pool associated to the port-pg/tclass is configured to
  * static, Maximum buffer size for the limiter configured in cells.
@@ -8425,6 +8431,7 @@ MLXSW_ITEM32(reg, sbcm, min_buff, 0x18, 0, 24);
  * 0: 0
  * i: (1/128)*2^(i-1), for i=1..14
  * 0xFF: Infinity
+ * Reserved when infi_max = 1.
  * Access: RW
  */
 MLXSW_ITEM32(reg, sbcm, max_buff, 0x1C, 0, 24);

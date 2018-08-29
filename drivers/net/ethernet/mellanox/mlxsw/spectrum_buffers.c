@@ -160,6 +160,23 @@ static int mlxsw_sp_sb_pr_write_infi(struct mlxsw_sp *mlxsw_sp, u16 pool_index,
 	return 0;
 }
 
+static void mlxsw_sp_sb_cm_update(struct mlxsw_sp *mlxsw_sp, u8 local_port,
+				  u8 pg_buff, u32 min_buff, u32 max_buff,
+				  u16 pool_index)
+{
+	const struct mlxsw_sp_sb_pool_des *des =
+		&mlxsw_sp_sb_pool_dess[pool_index];
+	struct mlxsw_sp_sb_cm *cm;
+
+	if (mlxsw_sp_sb_cm_have(pg_buff, des->dir)) {
+		cm = mlxsw_sp_sb_cm_get(mlxsw_sp, local_port, pg_buff,
+					des->dir);
+		cm->min_buff = min_buff;
+		cm->max_buff = max_buff;
+		cm->pool_index = pool_index;
+	}
+}
+
 static int mlxsw_sp_sb_cm_write(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				u8 pg_buff, u32 min_buff, u32 max_buff,
 				u16 pool_index)
@@ -174,15 +191,30 @@ static int mlxsw_sp_sb_cm_write(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sbcm), sbcm_pl);
 	if (err)
 		return err;
-	if (mlxsw_sp_sb_cm_have(pg_buff, des->dir)) {
-		struct mlxsw_sp_sb_cm *cm;
 
-		cm = mlxsw_sp_sb_cm_get(mlxsw_sp, local_port, pg_buff,
-					des->dir);
-		cm->min_buff = min_buff;
-		cm->max_buff = max_buff;
-		cm->pool_index = pool_index;
-	}
+	mlxsw_sp_sb_cm_update(mlxsw_sp, local_port, pg_buff,
+			      min_buff, max_buff, pool_index);
+	return 0;
+}
+
+static int mlxsw_sp_sb_cm_write_infi(struct mlxsw_sp *mlxsw_sp, u8 local_port,
+				     u8 pg_buff, u32 min_buff, u16 pool_index)
+{
+	u32 size = mlxsw_sp_bytes_cells(mlxsw_sp, mlxsw_sp->sb->sb_size);
+	const struct mlxsw_sp_sb_pool_des *des =
+		&mlxsw_sp_sb_pool_dess[pool_index];
+	char sbcm_pl[MLXSW_REG_SBCM_LEN];
+	int err;
+
+	mlxsw_reg_sbcm_pack(sbcm_pl, local_port, pg_buff, des->dir,
+			    min_buff, 0, des->pool);
+	mlxsw_reg_sbcm_infi_max_set(sbcm_pl, true);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sbcm), sbcm_pl);
+	if (err)
+		return err;
+
+	mlxsw_sp_sb_cm_update(mlxsw_sp, local_port, pg_buff,
+			      min_buff, size, pool_index);
 	return 0;
 }
 
@@ -469,9 +501,14 @@ static int __mlxsw_sp_sb_cms_init(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		 * therefore 'max_buff' isn't specified in cells.
 		 */
 		min_buff = mlxsw_sp_bytes_cells(mlxsw_sp, cm->min_buff);
-		err = mlxsw_sp_sb_cm_write(mlxsw_sp, local_port, i,
-					   min_buff, cm->max_buff,
-					   cm->pool_index);
+		if (cm->max_buff == -1U)
+			err = mlxsw_sp_sb_cm_write_infi(mlxsw_sp, local_port, i,
+							min_buff,
+							cm->pool_index);
+		else
+			err = mlxsw_sp_sb_cm_write(mlxsw_sp, local_port, i,
+						   min_buff, cm->max_buff,
+						   cm->pool_index);
 		if (err)
 			return err;
 	}
