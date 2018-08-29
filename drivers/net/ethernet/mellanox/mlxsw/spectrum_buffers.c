@@ -368,6 +368,7 @@ static const struct mlxsw_sp_sb_pr mlxsw_sp_sb_prs[] = {
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
+	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_STATIC, -1U),
 };
 
 #define MLXSW_SP_SB_PRS_LEN ARRAY_SIZE(mlxsw_sp_sb_prs)
@@ -426,14 +427,14 @@ static const struct mlxsw_sp_sb_cm mlxsw_sp_sb_cms_egress[] = {
 	MLXSW_SP_SB_CM(1500, 9, 4),
 	MLXSW_SP_SB_CM(1500, 9, 4),
 	MLXSW_SP_SB_CM(1500, 9, 4),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
-	MLXSW_SP_SB_CM(0, 140000, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
+	MLXSW_SP_SB_CM(0, -1U, 8),
 	MLXSW_SP_SB_CM(1, 0xff, 4),
 };
 
@@ -557,6 +558,7 @@ static const struct mlxsw_sp_sb_pm mlxsw_sp_sb_pms[] = {
 	MLXSW_SP_SB_PM(0, MLXSW_REG_SBXX_DYN_MAX_BUFF_MIN),
 	MLXSW_SP_SB_PM(0, MLXSW_REG_SBXX_DYN_MAX_BUFF_MIN),
 	MLXSW_SP_SB_PM(0, MLXSW_REG_SBXX_DYN_MAX_BUFF_MIN),
+	MLXSW_SP_SB_PM(10000, 90000),
 };
 
 #define MLXSW_SP_SB_PMS_LEN ARRAY_SIZE(mlxsw_sp_sb_pms)
