@@ -569,11 +569,16 @@ static int mlxsw_sp_port_sb_pms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 
 	for (i = 0; i < MLXSW_SP_SB_PMS_LEN; i++) {
 		const struct mlxsw_sp_sb_pm *pm = &mlxsw_sp_sb_pms[i];
+		u32 max_buff;
 		u32 min_buff;
 
 		min_buff = mlxsw_sp_bytes_cells(mlxsw_sp, pm->min_buff);
+		max_buff = pm->max_buff;
+		if (mlxsw_sp_sb_pr_get(mlxsw_sp, i)->mode ==
+		    MLXSW_REG_SBPR_MODE_STATIC)
+			max_buff = mlxsw_sp_bytes_cells(mlxsw_sp, max_buff);
 		err = mlxsw_sp_sb_pm_write(mlxsw_sp, mlxsw_sp_port->local_port,
-					   i, min_buff, pm->max_buff);
+					   i, min_buff, max_buff);
 		if (err)
 			return err;
 	}
@@ -626,8 +631,8 @@ static int mlxsw_sp_sb_mms_init(struct mlxsw_sp *mlxsw_sp)
 
 		mc = &mlxsw_sp_sb_mms[i];
 		des = &mlxsw_sp_sb_pool_dess[mc->pool_index];
-		/* All pools are initialized using dynamic thresholds,
-		 * therefore 'max_buff' isn't specified in cells.
+		/* All pools used by sb_mm's are initialized using dynamic
+		 * thresholds, therefore 'max_buff' isn't specified in cells.
 		 */
 		min_buff = mlxsw_sp_bytes_cells(mlxsw_sp, mc->min_buff);
 		mlxsw_reg_sbmm_pack(sbmm_pl, i, min_buff, mc->max_buff,
