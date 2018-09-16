@@ -3,10 +3,12 @@
 
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/refcount.h>
 #include <linux/list.h>
 #include <linux/rhashtable.h>
 #include <linux/objagg.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/objagg.h>
 
 struct objagg {
 	const struct objagg_ops *ops;
@@ -26,9 +28,9 @@ struct objagg_obj {
 		void *delta_priv; /* user delta private */
 		void *root_priv; /* user root private */
 	};
-	refcount_t refcount; /* counts number of users of this object
-			      * including nested objects.
-			      */
+	unsigned int refcount; /* counts number of users of this object
+				* including nested objects.
+				*/
 	unsigned long obj[0];
 };
 
@@ -89,7 +91,10 @@ static int objagg_obj_parent_assign(struct objagg *objagg,
 			 */
 			objagg_obj->parent = objagg_obj_cur;
 			objagg_obj->delta_priv = delta_priv;
-			refcount_inc(&objagg_obj->parent->refcount);
+			objagg_obj->parent->refcount++;
+			trace_objagg_obj_parent_assign(objagg, objagg_obj,
+						       objagg_obj->parent,
+						       objagg_obj->parent->refcount);
 			return 0;
 		}
 	}
@@ -99,6 +104,7 @@ static int objagg_obj_parent_assign(struct objagg *objagg,
 static void objagg_obj_parent_unassign(struct objagg *objagg,
 				       struct objagg_obj *objagg_obj)
 {
+	trace_objagg_obj_parent_unassign(objagg, objagg_obj);
 	objagg->ops->delta_destroy(objagg->priv, objagg_obj->delta_priv);
 	objagg_obj_put(objagg, objagg_obj->parent);
 }
@@ -108,12 +114,16 @@ static int objagg_obj_root_create(struct objagg *objagg,
 {
 	objagg_obj->root_priv = objagg->ops->root_create(objagg->priv,
 							 objagg_obj->obj);
-	return PTR_ERR_OR_ZERO(objagg_obj->root_priv);
+	if (IS_ERR(objagg_obj->root_priv))
+		return PTR_ERR(objagg_obj->root_priv);
+	trace_objagg_obj_root_create(objagg, objagg_obj);
+	return 0;
 }
 
 static void objagg_obj_root_destroy(struct objagg *objagg,
 				    struct objagg_obj *objagg_obj)
 {
+	trace_objagg_obj_root_destroy(objagg, objagg_obj);
 	objagg->ops->root_destroy(objagg->priv, objagg_obj->root_priv);
 }
 
@@ -149,15 +159,15 @@ struct objagg_obj *objagg_obj_get(struct objagg *objagg, void *obj)
 	 */
 	objagg_obj = objagg_obj_lookup(objagg, obj);
 	if (objagg_obj) {
-		refcount_inc(&objagg_obj->refcount);
-		return objagg_obj;
+		objagg_obj->refcount++;
+		goto done;
 	}
 
 	objagg_obj = kzalloc(sizeof(*objagg_obj) + objagg->ops->obj_size,
 			     GFP_KERNEL);
 	if (!objagg_obj)
 		return ERR_PTR(-ENOMEM);
-	refcount_set(&objagg_obj->refcount, 1);
+	objagg_obj->refcount = 1;
 	memcpy(objagg_obj->obj, obj, objagg->ops->obj_size);
 
 	err = objagg_obj_init(objagg, objagg_obj);
@@ -170,6 +180,8 @@ struct objagg_obj *objagg_obj_get(struct objagg *objagg, void *obj)
 		goto err_ht_insert;
 	list_add(&objagg_obj->list, &objagg->obj_list);
 
+done:
+	trace_objagg_obj_get(objagg, objagg_obj, objagg_obj->refcount);
 	return objagg_obj;
 
 err_ht_insert:
@@ -182,7 +194,9 @@ EXPORT_SYMBOL(objagg_obj_get);
 
 void objagg_obj_put(struct objagg *objagg, struct objagg_obj *objagg_obj)
 {
-	if (!refcount_dec_and_test(&objagg_obj->refcount))
+	--objagg_obj->refcount;
+	trace_objagg_obj_get(objagg, objagg_obj, objagg_obj->refcount);
+	if (objagg_obj->refcount)
 		return;
 	list_del(&objagg_obj->list);
 	rhashtable_remove_fast(&objagg->obj_ht, &objagg_obj->ht_node,
@@ -215,6 +229,7 @@ struct objagg *objagg_create(const struct objagg_ops *ops, void *priv)
 	if (err)
 		goto err_rhashtable_init;
 
+	trace_objagg_create(objagg);
 	return objagg;
 
 err_rhashtable_init:
@@ -225,6 +240,7 @@ EXPORT_SYMBOL(objagg_create);
 
 void objagg_destroy(struct objagg *objagg)
 {
+	trace_objagg_destroy(objagg);
 	WARN_ON(!list_empty(&objagg->obj_list));
 	rhashtable_destroy(&objagg->obj_ht);
 	kfree(objagg);
