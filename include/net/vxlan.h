@@ -217,6 +217,7 @@ struct vxlan_config {
 	unsigned int		addrmax;
 	bool			no_share;
 	enum ifla_vxlan_df	df;
+	u8			do_notify:1;
 };
 
 struct vxlan_dev_node {

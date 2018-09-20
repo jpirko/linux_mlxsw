@@ -935,7 +935,7 @@ static void vxlan_fdb_destroy(struct vxlan_dev *vxlan, struct vxlan_fdb *f,
 		    "delete %pM\n", f->eth_addr);
 
 	--vxlan->addrcnt;
-	if (do_notify)
+	if (do_notify && vxlan->cfg.do_notify)
 		list_for_each_entry(rd, &f->remotes, list)
 			vxlan_fdb_notify(vxlan, f, rd, RTM_DELNEIGH,
 					 swdev_notify);
@@ -3435,6 +3435,7 @@ static int __vxlan_dev_create(struct net *net, struct net_device *dev,
 	if (f)
 		vxlan_fdb_notify(vxlan, f, first_remote_rtnl(f), RTM_NEWNEIGH,
 				 true);
+	vxlan->cfg.do_notify = true;
 
 	list_add(&vxlan->next, &vn->vxlan_list);
 	return 0;
