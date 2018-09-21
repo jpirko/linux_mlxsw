@@ -3744,9 +3744,8 @@ static int vxlan_changelink(struct net_device *dev, struct nlattr *tb[],
 	struct vxlan_dev *vxlan = netdev_priv(dev);
 	struct vxlan_rdst *dst = &vxlan->default_dst;
 	unsigned long old_age_interval;
-	struct vxlan_rdst old_dst;
+	struct net_device *lowerdev;
 	struct vxlan_config conf;
-	struct vxlan_fdb *f = NULL;
 	int err;
 
 	err = vxlan_nl2conf(tb, data,
@@ -3755,9 +3754,8 @@ static int vxlan_changelink(struct net_device *dev, struct nlattr *tb[],
 		return err;
 
 	old_age_interval = vxlan->cfg.age_interval;
-	memcpy(&old_dst, dst, sizeof(struct vxlan_rdst));
-
-	err = vxlan_dev_configure(vxlan->net, dev, &conf, true, extack);
+	err = vxlan_config_validate(vxlan->net, &conf, &lowerdev,
+				    vxlan, extack);
 	if (err)
 		return err;
 
@@ -3765,36 +3763,34 @@ static int vxlan_changelink(struct net_device *dev, struct nlattr *tb[],
 		mod_timer(&vxlan->age_timer, jiffies);
 
 	/* handle default dst entry */
-	if (!vxlan_addr_equal(&dst->remote_ip, &old_dst.remote_ip)) {
+	if (!vxlan_addr_equal(&conf.remote_ip, &dst->remote_ip)) {
 		spin_lock_bh(&vxlan->hash_lock);
-		if (!vxlan_addr_any(&old_dst.remote_ip))
-			__vxlan_fdb_delete(vxlan, all_zeros_mac,
-					   old_dst.remote_ip,
-					   vxlan->cfg.dst_port,
-					   old_dst.remote_vni,
-					   old_dst.remote_vni,
-					   old_dst.remote_ifindex,
-					   true);
-
-		if (!vxlan_addr_any(&dst->remote_ip)) {
-			err = vxlan_fdb_create(vxlan, all_zeros_mac,
-					       &dst->remote_ip,
-					       NUD_REACHABLE | NUD_PERMANENT,
-					       vxlan->cfg.dst_port,
-					       dst->remote_vni,
-					       dst->remote_vni,
-					       dst->remote_ifindex,
-					       NTF_SELF, &f);
+		if (!vxlan_addr_any(&conf.remote_ip)) {
+			err = vxlan_fdb_update(vxlan, all_zeros_mac,
+					    &conf.remote_ip,
+					    NUD_REACHABLE | NUD_PERMANENT,
+					    NLM_F_APPEND | NLM_F_CREATE,
+					    vxlan->cfg.dst_port,
+					    conf.vni, conf.vni,
+					    conf.remote_ifindex,
+					    NTF_SELF, true);
 			if (err) {
 				spin_unlock_bh(&vxlan->hash_lock);
 				return err;
 			}
-			vxlan_fdb_notify(vxlan, f, first_remote_rtnl(f),
-					 RTM_NEWNEIGH, true);
 		}
+		if (!vxlan_addr_any(&dst->remote_ip))
+			__vxlan_fdb_delete(vxlan, all_zeros_mac,
+					   dst->remote_ip,
+					   vxlan->cfg.dst_port,
+					   dst->remote_vni,
+					   dst->remote_vni,
+					   dst->remote_ifindex,
+					   true);
 		spin_unlock_bh(&vxlan->hash_lock);
 	}
 
+	vxlan_config_apply(dev, &conf, lowerdev, vxlan->net, true);
 	return 0;
 }
 
