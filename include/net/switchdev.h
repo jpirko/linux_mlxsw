@@ -149,6 +149,7 @@ enum switchdev_notifier_type {
 
 struct switchdev_notifier_info {
 	struct net_device *dev;
+	struct netlink_ext_ack *extack;
 };
 
 struct switchdev_notifier_fdb_info {
@@ -170,6 +171,12 @@ static inline struct net_device *
 switchdev_notifier_info_to_dev(const struct switchdev_notifier_info *info)
 {
 	return info->dev;
+}
+
+static inline struct netlink_ext_ack *
+switchdev_notifier_info_to_extack(const struct switchdev_notifier_info *info)
+{
+	return info->extack;
 }
 
 #ifdef CONFIG_NET_SWITCHDEV
