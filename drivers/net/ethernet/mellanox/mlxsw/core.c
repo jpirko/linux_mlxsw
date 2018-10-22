@@ -1035,6 +1035,12 @@ int mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 			goto err_devlink_register;
 	}
 
+	if (mlxsw_driver->params_register && !reload) {
+		err = mlxsw_driver->params_register(mlxsw_core);
+		if (err)
+			goto err_register_params;
+	}
+
 	err = mlxsw_hwmon_init(mlxsw_core, mlxsw_bus_info, &mlxsw_core->hwmon);
 	if (err)
 		goto err_hwmon_init;
@@ -1057,6 +1063,9 @@ err_driver_init:
 err_thermal_init:
 	mlxsw_hwmon_fini(mlxsw_core->hwmon);
 err_hwmon_init:
+	if (mlxsw_driver->params_unregister && !reload)
+		mlxsw_driver->params_unregister(mlxsw_core);
+err_register_params:
 	if (!reload)
 		devlink_unregister(devlink);
 err_devlink_register:
@@ -1090,6 +1099,8 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 		mlxsw_core->driver->fini(mlxsw_core);
 	mlxsw_thermal_fini(mlxsw_core->thermal);
 	mlxsw_hwmon_fini(mlxsw_core->hwmon);
+	if (mlxsw_core->driver->params_unregister && !reload)
+		mlxsw_core->driver->params_unregister(mlxsw_core);
 	if (!reload)
 		devlink_unregister(devlink);
 	mlxsw_emad_fini(mlxsw_core);

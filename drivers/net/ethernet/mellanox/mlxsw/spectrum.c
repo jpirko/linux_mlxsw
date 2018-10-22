@@ -318,11 +318,21 @@ static int mlxsw_sp_fw_rev_validate(struct mlxsw_sp *mlxsw_sp)
 	const struct mlxsw_fw_rev *rev = &mlxsw_sp->bus_info->fw_rev;
 	const struct mlxsw_fw_rev *req_rev = mlxsw_sp->req_rev;
 	const char *fw_filename = mlxsw_sp->fw_filename;
+	union devlink_param_value value;
 	const struct firmware *firmware;
 	int err;
 
 	/* Don't check if driver does not require it */
 	if (!req_rev || !fw_filename)
+		return 0;
+
+	/* Don't check if devlink fw_version_check param is false */
+	err = devlink_param_driverinit_value_get(priv_to_devlink(mlxsw_sp->core),
+						 DEVLINK_PARAM_GENERIC_ID_FW_VERSION_CHECK,
+						 &value);
+	if (err)
+		return err;
+	if (!value.vbool)
 		return 0;
 
 	/* Validate driver & FW are compatible */
@@ -4147,6 +4157,37 @@ static int mlxsw_sp_kvd_sizes_get(struct mlxsw_core *mlxsw_core,
 	return 0;
 }
 
+static const struct devlink_param mlxsw_sp_devlink_params[] = {
+	DEVLINK_PARAM_GENERIC(FW_VERSION_CHECK,
+			      BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
+			      NULL, NULL, NULL),
+};
+
+static int mlxsw_sp_params_register(struct mlxsw_core *mlxsw_core)
+{
+	struct devlink *devlink = priv_to_devlink(mlxsw_core);
+	union devlink_param_value value;
+	int err;
+
+	err = devlink_params_register(devlink, mlxsw_sp_devlink_params,
+				      ARRAY_SIZE(mlxsw_sp_devlink_params));
+	if (err)
+		return err;
+
+	value.vbool = true;
+	devlink_param_driverinit_value_set(devlink,
+					   DEVLINK_PARAM_GENERIC_ID_FW_VERSION_CHECK,
+					   value);
+	return 0;
+}
+
+static void mlxsw_sp_params_unregister(struct mlxsw_core *mlxsw_core)
+{
+	devlink_params_unregister(priv_to_devlink(mlxsw_core),
+				  mlxsw_sp_devlink_params,
+				  ARRAY_SIZE(mlxsw_sp_devlink_params));
+}
+
 static struct mlxsw_driver mlxsw_sp1_driver = {
 	.kind				= mlxsw_sp1_driver_name,
 	.priv_size			= sizeof(struct mlxsw_sp),
@@ -4168,6 +4209,8 @@ static struct mlxsw_driver mlxsw_sp1_driver = {
 	.txhdr_construct		= mlxsw_sp_txhdr_construct,
 	.resources_register		= mlxsw_sp1_resources_register,
 	.kvd_sizes_get			= mlxsw_sp_kvd_sizes_get,
+	.params_register		= mlxsw_sp_params_register,
+	.params_unregister		= mlxsw_sp_params_unregister,
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp1_config_profile,
 	.res_query_enabled		= true,
@@ -4193,6 +4236,8 @@ static struct mlxsw_driver mlxsw_sp2_driver = {
 	.sb_occ_tc_port_bind_get	= mlxsw_sp_sb_occ_tc_port_bind_get,
 	.txhdr_construct		= mlxsw_sp_txhdr_construct,
 	.resources_register		= mlxsw_sp2_resources_register,
+	.params_register		= mlxsw_sp_params_register,
+	.params_unregister		= mlxsw_sp_params_unregister,
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.res_query_enabled		= true,
