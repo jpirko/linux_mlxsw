@@ -2708,6 +2708,11 @@ static const struct net_device_ops vxlan_netdev_raw_ops = {
 	.ndo_fill_metadata_dst	= vxlan_fill_metadata_dst,
 };
 
+static const struct switchdev_ops vxlan_switchdev_ops = {
+	.switchdev_port_obj_add	= switchdev_port_obj_add_notify,
+	.switchdev_port_obj_del	= switchdev_port_obj_del_notify,
+};
+
 /* Info for udev, that this is a virtual tunnel endpoint */
 static struct device_type vxlan_type = {
 	.name = "vxlan",
@@ -2788,6 +2793,7 @@ static void vxlan_ether_setup(struct net_device *dev)
 	dev->priv_flags &= ~IFF_TX_SKB_SHARING;
 	dev->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 	dev->netdev_ops = &vxlan_netdev_ether_ops;
+	SWITCHDEV_SET_OPS(dev, &vxlan_switchdev_ops);
 }
 
 static void vxlan_raw_setup(struct net_device *dev)
@@ -2798,6 +2804,7 @@ static void vxlan_raw_setup(struct net_device *dev)
 	dev->addr_len = 0;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 	dev->netdev_ops = &vxlan_netdev_raw_ops;
+	SWITCHDEV_SET_OPS(dev, &vxlan_switchdev_ops);
 }
 
 static const struct nla_policy vxlan_policy[IFLA_VXLAN_MAX + 1] = {
