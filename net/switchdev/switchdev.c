@@ -619,3 +619,36 @@ bool switchdev_port_same_parent_id(struct net_device *a,
 	return netdev_phys_item_id_same(&a_attr.u.ppid, &b_attr.u.ppid);
 }
 EXPORT_SYMBOL_GPL(switchdev_port_same_parent_id);
+
+static int switchdev_port_obj_notify(enum switchdev_notifier_type nt,
+				     struct net_device *dev,
+				     const struct switchdev_obj *obj,
+				     struct switchdev_trans *trans)
+{
+	int rc;
+
+	struct switchdev_notifier_port_obj_info obj_info = {
+		.obj = obj,
+		.trans = trans,
+	};
+
+	rc = call_switchdev_blocking_notifiers(nt, dev, &obj_info.info);
+	return notifier_to_errno(rc);
+}
+
+int switchdev_port_obj_add_notify(struct net_device *dev,
+				  const struct switchdev_obj *obj,
+				  struct switchdev_trans *trans)
+{
+	return switchdev_port_obj_notify(SWITCHDEV_PORT_OBJ_ADD,
+					 dev, obj, trans);
+}
+EXPORT_SYMBOL_GPL(switchdev_port_obj_add_notify);
+
+int switchdev_port_obj_del_notify(struct net_device *dev,
+				  const struct switchdev_obj *obj)
+{
+	return switchdev_port_obj_notify(SWITCHDEV_PORT_OBJ_DEL,
+					 dev, obj, NULL);
+}
+EXPORT_SYMBOL_GPL(switchdev_port_obj_del_notify);

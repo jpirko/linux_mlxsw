@@ -146,6 +146,9 @@ enum switchdev_notifier_type {
 	SWITCHDEV_FDB_DEL_TO_DEVICE,
 	SWITCHDEV_FDB_OFFLOADED,
 
+	SWITCHDEV_PORT_OBJ_ADD, /* Blocking. */
+	SWITCHDEV_PORT_OBJ_DEL, /* Blocking. */
+
 	SWITCHDEV_VXLAN_FDB_ADD_TO_BRIDGE,
 	SWITCHDEV_VXLAN_FDB_DEL_TO_BRIDGE,
 	SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE,
@@ -163,6 +166,12 @@ struct switchdev_notifier_fdb_info {
 	u16 vid;
 	u8 added_by_user:1,
 	   offloaded:1;
+};
+
+struct switchdev_notifier_port_obj_info {
+	struct switchdev_notifier_info info; /* must be first */
+	const struct switchdev_obj *obj;
+	struct switchdev_trans *trans;
 };
 
 static inline struct net_device *
@@ -199,6 +208,11 @@ void switchdev_port_fwd_mark_set(struct net_device *dev,
 
 bool switchdev_port_same_parent_id(struct net_device *a,
 				   struct net_device *b);
+int switchdev_port_obj_add_notify(struct net_device *dev,
+				  const struct switchdev_obj *obj,
+				  struct switchdev_trans *trans);
+int switchdev_port_obj_del_notify(struct net_device *dev,
+				  const struct switchdev_obj *obj);
 
 #define SWITCHDEV_SET_OPS(netdev, ops) ((netdev)->switchdev_ops = (ops))
 #else
@@ -272,6 +286,19 @@ static inline bool switchdev_port_same_parent_id(struct net_device *a,
 						 struct net_device *b)
 {
 	return false;
+}
+
+static inline int switchdev_port_obj_add_notify(struct net_device *dev,
+						const struct switchdev_obj *obj,
+						struct switchdev_trans *trans)
+{
+	return 0;
+}
+
+static inline int switchdev_port_obj_del_notify(struct net_device *dev,
+						const struct switchdev_obj *obj)
+{
+	return 0;
 }
 
 #define SWITCHDEV_SET_OPS(netdev, ops) do {} while (0)
