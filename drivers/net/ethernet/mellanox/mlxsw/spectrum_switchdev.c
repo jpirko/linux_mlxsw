@@ -2008,8 +2008,86 @@ mlxsw_sp_bridge_8021q_vxlan_join(struct mlxsw_sp_bridge_device *bridge_device,
 				 const struct net_device *vxlan_dev, u16 vid,
 				 struct netlink_ext_ack *extack)
 {
-	WARN_ON(1);
-	return -EINVAL;
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_lower_get(bridge_device->dev);
+	struct vxlan_dev *vxlan = netdev_priv(vxlan_dev);
+	struct mlxsw_sp_nve_params params = {
+		.type = MLXSW_SP_NVE_TYPE_VXLAN,
+		.vni = vxlan->cfg.vni,
+		.dev = vxlan_dev,
+	};
+	struct mlxsw_sp_fid *fid;
+	int err;
+
+	/* If the VLAN is 0, we need to find the VLAN that is configured as
+	 * PVID and egress untagged on the bridge port of the VxLAN device.
+	 * It is possible no such VLAN exists
+	 */
+	if (!vid) {
+		struct bridge_vlan_info vinfo;
+
+		err = br_vlan_get_pvid(vxlan_dev, &vid);
+		if (err || !vid)
+			return err;
+		err = br_vlan_get_info(vxlan_dev, vid, &vinfo);
+		if (err || !(vinfo.flags & BRIDGE_VLAN_INFO_UNTAGGED))
+			return err;
+	}
+
+	/* If no other port is member in the VLAN, then the FID does not exist.
+	 * NVE will be enabled on the FID once a port joins the VLAN
+	 */
+	fid = mlxsw_sp_fid_8021q_lookup(mlxsw_sp, vid);
+	if (!fid)
+		return 0;
+
+	if (mlxsw_sp_fid_vni_is_set(fid)) {
+		err = -EINVAL;
+		goto err_vni_exists;
+	}
+
+	err = mlxsw_sp_nve_fid_enable(mlxsw_sp, fid, &params, extack);
+	if (err)
+		goto err_nve_fid_enable;
+
+	/* The tunnel port does not hold a reference on the FID. Only
+	 * local ports and the router port
+	 */
+	mlxsw_sp_fid_put(fid);
+
+	return 0;
+
+err_nve_fid_enable:
+err_vni_exists:
+	mlxsw_sp_fid_put(fid);
+	return err;
+}
+
+static struct net_device *
+mlxsw_sp_bridge_8021q_vxlan_dev_find(struct net_device *br_dev, u16 vid)
+{
+	struct net_device *dev;
+	struct list_head *iter;
+
+	netdev_for_each_lower_dev(br_dev, dev, iter) {
+		struct bridge_vlan_info vinfo;
+		u16 pvid;
+		int err;
+
+		if (!netif_is_vxlan(dev))
+			continue;
+
+		err = br_vlan_get_pvid(dev, &pvid);
+		if (err || pvid != vid)
+			continue;
+
+		err = br_vlan_get_info(dev, vid, &vinfo);
+		if (err || !(vinfo.flags & BRIDGE_VLAN_INFO_UNTAGGED))
+			continue;
+
+		return dev;
+	}
+
+	return NULL;
 }
 
 static struct mlxsw_sp_fid *
@@ -2017,8 +2095,38 @@ mlxsw_sp_bridge_8021q_fid_get(struct mlxsw_sp_bridge_device *bridge_device,
 			      u16 vid)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_lower_get(bridge_device->dev);
+	struct net_device *vxlan_dev;
+	struct mlxsw_sp_fid *fid;
+	int err;
 
-	return mlxsw_sp_fid_8021q_get(mlxsw_sp, vid);
+	fid = mlxsw_sp_fid_8021q_get(mlxsw_sp, vid);
+	if (IS_ERR(fid))
+		return fid;
+
+	if (mlxsw_sp_fid_vni_is_set(fid))
+		return fid;
+
+	/* Find the VxLAN device that has the specified VLAN configured as
+	 * PVID and egress untagged. There can be at most one such device
+	 */
+	vxlan_dev = mlxsw_sp_bridge_8021q_vxlan_dev_find(bridge_device->dev,
+							 vid);
+	if (!vxlan_dev)
+		return fid;
+
+	if (!netif_running(vxlan_dev))
+		return fid;
+
+	err = mlxsw_sp_bridge_8021q_vxlan_join(bridge_device, vxlan_dev, vid,
+					       NULL);
+	if (err)
+		goto err_vxlan_join;
+
+	return fid;
+
+err_vxlan_join:
+	mlxsw_sp_fid_put(fid);
+	return ERR_PTR(err);
 }
 
 static struct mlxsw_sp_fid *
