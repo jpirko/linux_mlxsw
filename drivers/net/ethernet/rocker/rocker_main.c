@@ -2771,18 +2771,16 @@ static void rocker_switchdev_event_work(struct work_struct *work)
 }
 
 /* called under rcu_read_lock() */
-static int rocker_switchdev_event(struct notifier_block *unused,
-				  unsigned long event, void *ptr)
+static int rocker_switchdev_fdb_event_schedule(unsigned long event,
+				struct switchdev_notifier_fdb_info *fdb_info)
 {
-	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 	struct rocker_switchdev_event_work *switchdev_work;
-	struct switchdev_notifier_fdb_info *fdb_info = ptr;
 	struct rocker_port *rocker_port;
+	struct net_device *dev;
 
-	if (!rocker_port_dev_check(dev))
-		return NOTIFY_DONE;
-
+	dev = switchdev_notifier_info_to_dev(&fdb_info->info);
 	rocker_port = netdev_priv(dev);
+
 	switchdev_work = kzalloc(sizeof(*switchdev_work), GFP_ATOMIC);
 	if (WARN_ON(!switchdev_work))
 		return NOTIFY_BAD;
@@ -2790,25 +2788,33 @@ static int rocker_switchdev_event(struct notifier_block *unused,
 	INIT_WORK(&switchdev_work->work, rocker_switchdev_event_work);
 	switchdev_work->rocker_port = rocker_port;
 	switchdev_work->event = event;
+	memcpy(&switchdev_work->fdb_info, fdb_info,
+	       sizeof(switchdev_work->fdb_info));
+	switchdev_work->fdb_info.addr = kzalloc(ETH_ALEN, GFP_ATOMIC);
+	ether_addr_copy((u8 *)switchdev_work->fdb_info.addr,
+			fdb_info->addr);
+	/* Take a reference on the rocker device */
+	dev_hold(dev);
+
+	queue_work(rocker_port->rocker->rocker_owq,
+		   &switchdev_work->work);
+	return NOTIFY_DONE;
+}
+
+static int rocker_switchdev_event(struct notifier_block *unused,
+				  unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+
+	if (!rocker_port_dev_check(dev))
+		return NOTIFY_DONE;
 
 	switch (event) {
 	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* fall through */
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:
-		memcpy(&switchdev_work->fdb_info, ptr,
-		       sizeof(switchdev_work->fdb_info));
-		switchdev_work->fdb_info.addr = kzalloc(ETH_ALEN, GFP_ATOMIC);
-		ether_addr_copy((u8 *)switchdev_work->fdb_info.addr,
-				fdb_info->addr);
-		/* Take a reference on the rocker device */
-		dev_hold(dev);
-		break;
-	default:
-		kfree(switchdev_work);
-		return NOTIFY_DONE;
+		return rocker_switchdev_fdb_event_schedule(event, ptr);
 	}
 
-	queue_work(rocker_port->rocker->rocker_owq,
-		   &switchdev_work->work);
 	return NOTIFY_DONE;
 }
 
