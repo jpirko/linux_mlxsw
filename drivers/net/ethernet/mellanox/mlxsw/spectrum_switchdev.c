@@ -3244,6 +3244,7 @@ static void mlxsw_sp_fdb_fini(struct mlxsw_sp *mlxsw_sp)
 int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_bridge *bridge;
+	int err;
 
 	bridge = kzalloc(sizeof(*mlxsw_sp->bridge), GFP_KERNEL);
 	if (!bridge)
@@ -3256,7 +3257,15 @@ int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp)
 	bridge->bridge_8021q_ops = &mlxsw_sp_bridge_8021q_ops;
 	bridge->bridge_8021d_ops = &mlxsw_sp_bridge_8021d_ops;
 
-	return mlxsw_sp_fdb_init(mlxsw_sp);
+	err = mlxsw_sp_fdb_init(mlxsw_sp);
+	if (err)
+		goto err_fdb_init;
+
+	return 0;
+
+err_fdb_init:
+	kfree(mlxsw_sp->bridge);
+	return err;
 }
 
 void mlxsw_sp_switchdev_fini(struct mlxsw_sp *mlxsw_sp)
