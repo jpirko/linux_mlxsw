@@ -1548,15 +1548,44 @@ err_fdb_work_init:
 	return NOTIFY_BAD;
 }
 
+static int
+dsa_slave_switchdev_port_obj_event(unsigned long event, struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info)
+{
+	int err = -EOPNOTSUPP;
+
+	switch (event) {
+	case SWITCHDEV_PORT_OBJ_ADD:
+		err = dsa_slave_port_obj_add(dev, port_obj_info->obj,
+					     port_obj_info->trans);
+		break;
+	case SWITCHDEV_PORT_OBJ_DEL:
+		err = dsa_slave_port_obj_del(dev, port_obj_info->obj);
+		break;
+	}
+
+	if (!err)
+		port_obj_info->handled = true;
+	return notifier_from_errno(err);
+}
+
 static int dsa_slave_switchdev_event(struct notifier_block *unused,
 				     unsigned long event, void *ptr)
 {
 	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 
 	switch (event) {
+		/* Atomic events. */
 	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* fall through */
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:
 		return dsa_slave_switchdev_event_schedule(event, ptr, dev);
+
+		/* Blocking events. */
+	case SWITCHDEV_PORT_OBJ_ADD: /* fall through */
+	case SWITCHDEV_PORT_OBJ_DEL:
+		if (!dsa_slave_dev_check(dev))
+			break;
+		return dsa_slave_switchdev_port_obj_event(event, dev, ptr);
 	}
 
 	return NOTIFY_DONE;
@@ -1567,6 +1596,10 @@ static struct notifier_block dsa_slave_nb __read_mostly = {
 };
 
 static struct notifier_block dsa_slave_switchdev_notifier = {
+	.notifier_call = dsa_slave_switchdev_event,
+};
+
+static struct notifier_block dsa_slave_switchdev_blocking_notifier = {
 	.notifier_call = dsa_slave_switchdev_event,
 };
 
@@ -1582,8 +1615,15 @@ int dsa_slave_register_notifier(void)
 	if (err)
 		goto err_switchdev_nb;
 
+	err = register_switchdev_blocking_notifier(
+		&dsa_slave_switchdev_blocking_notifier);
+	if (err)
+		goto err_switchdev_blocking_nb;
+
 	return 0;
 
+err_switchdev_blocking_nb:
+	unregister_switchdev_notifier(&dsa_slave_switchdev_notifier);
 err_switchdev_nb:
 	unregister_netdevice_notifier(&dsa_slave_nb);
 	return err;
@@ -1592,6 +1632,11 @@ err_switchdev_nb:
 void dsa_slave_unregister_notifier(void)
 {
 	int err;
+
+	err = unregister_switchdev_blocking_notifier(
+		&dsa_slave_switchdev_blocking_notifier);
+	if (err)
+		pr_err("DSA: failed to unregister switchdev blocking notifier (%d)\n", err);
 
 	err = unregister_switchdev_notifier(&dsa_slave_switchdev_notifier);
 	if (err)
