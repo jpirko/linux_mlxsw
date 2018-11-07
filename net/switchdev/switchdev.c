@@ -619,3 +619,83 @@ bool switchdev_port_same_parent_id(struct net_device *a,
 	return netdev_phys_item_id_same(&a_attr.u.ppid, &b_attr.u.ppid);
 }
 EXPORT_SYMBOL_GPL(switchdev_port_same_parent_id);
+
+static int __switchdev_handle_port_obj_add(struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info,
+			bool (*pred)(const struct net_device *dev),
+			int (*add_cb)(struct net_device *dev,
+				      const struct switchdev_obj *obj,
+				      struct switchdev_trans *trans))
+{
+	struct net_device *lower_dev;
+	struct list_head *iter;
+	int err = -EOPNOTSUPP;
+
+	if (pred(dev))
+		return add_cb(dev, port_obj_info->obj, port_obj_info->trans);
+
+	/* Switch ports might be stacked under e.g. a LAG. */
+	netdev_for_each_lower_dev(dev, lower_dev, iter) {
+		err = __switchdev_handle_port_obj_add(lower_dev, port_obj_info,
+						      pred, add_cb);
+		if (err)
+			return err;
+	}
+
+	return err;
+}
+
+int switchdev_handle_port_obj_add(struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info,
+			bool (*pred)(const struct net_device *dev),
+			int (*add_cb)(struct net_device *dev,
+				      const struct switchdev_obj *obj,
+				      struct switchdev_trans *trans))
+{
+	int err;
+
+	err = __switchdev_handle_port_obj_add(dev, port_obj_info, pred, add_cb);
+	if (!err)
+		port_obj_info->handled = true;
+	return notifier_from_errno(err);
+}
+EXPORT_SYMBOL_GPL(switchdev_handle_port_obj_add);
+
+static int __switchdev_handle_port_obj_del(struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info,
+			bool (*pred)(const struct net_device *dev),
+			int (*del_cb)(struct net_device *dev,
+				      const struct switchdev_obj *obj))
+{
+	struct net_device *lower_dev;
+	struct list_head *iter;
+	int err = -EOPNOTSUPP;
+
+	if (pred(dev))
+		return del_cb(dev, port_obj_info->obj);
+
+	/* Switch ports might be stacked under e.g. a LAG. */
+	netdev_for_each_lower_dev(dev, lower_dev, iter) {
+		err = __switchdev_handle_port_obj_del(lower_dev, port_obj_info,
+						      pred, del_cb);
+		if (err)
+			return err;
+	}
+
+	return err;
+}
+
+int switchdev_handle_port_obj_del(struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info,
+			bool (*pred)(const struct net_device *dev),
+			int (*del_cb)(struct net_device *dev,
+				      const struct switchdev_obj *obj))
+{
+	int err;
+
+	err = __switchdev_handle_port_obj_del(dev, port_obj_info, pred, del_cb);
+	if (!err)
+		port_obj_info->handled = true;
+	return notifier_from_errno(err);
+}
+EXPORT_SYMBOL_GPL(switchdev_handle_port_obj_del);
