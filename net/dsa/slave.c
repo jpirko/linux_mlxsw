@@ -1519,10 +1519,9 @@ dsa_slave_switchdev_fdb_work_init(struct dsa_switchdev_event_work *
 }
 
 /* Called under rcu_read_lock() */
-static int dsa_slave_switchdev_event(struct notifier_block *unused,
-				     unsigned long event, void *ptr)
+static int dsa_slave_switchdev_event_schedule(unsigned long event, void *ptr,
+					      struct net_device *dev)
 {
-	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 	struct dsa_switchdev_event_work *switchdev_work;
 
 	if (!dsa_slave_dev_check(dev))
@@ -1537,17 +1536,9 @@ static int dsa_slave_switchdev_event(struct notifier_block *unused,
 	switchdev_work->dev = dev;
 	switchdev_work->event = event;
 
-	switch (event) {
-	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* fall through */
-	case SWITCHDEV_FDB_DEL_TO_DEVICE:
-		if (dsa_slave_switchdev_fdb_work_init(switchdev_work, ptr))
-			goto err_fdb_work_init;
-		dev_hold(dev);
-		break;
-	default:
-		kfree(switchdev_work);
-		return NOTIFY_DONE;
-	}
+	if (dsa_slave_switchdev_fdb_work_init(switchdev_work, ptr))
+		goto err_fdb_work_init;
+	dev_hold(dev);
 
 	dsa_schedule_work(&switchdev_work->work);
 	return NOTIFY_OK;
@@ -1555,6 +1546,20 @@ static int dsa_slave_switchdev_event(struct notifier_block *unused,
 err_fdb_work_init:
 	kfree(switchdev_work);
 	return NOTIFY_BAD;
+}
+
+static int dsa_slave_switchdev_event(struct notifier_block *unused,
+				     unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+
+	switch (event) {
+	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* fall through */
+	case SWITCHDEV_FDB_DEL_TO_DEVICE:
+		return dsa_slave_switchdev_event_schedule(event, ptr, dev);
+	}
+
+	return NOTIFY_DONE;
 }
 
 static struct notifier_block dsa_slave_nb __read_mostly = {
