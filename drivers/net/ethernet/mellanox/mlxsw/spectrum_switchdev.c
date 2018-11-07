@@ -3205,6 +3205,272 @@ static struct notifier_block mlxsw_sp_switchdev_notifier = {
 	.notifier_call = mlxsw_sp_switchdev_event,
 };
 
+static int
+mlxsw_sp_switchdev_vxlan_vlan_add(struct mlxsw_sp *mlxsw_sp,
+				  struct mlxsw_sp_bridge_device *bridge_device,
+				  const struct net_device *vxlan_dev, u16 vid,
+				  bool flag_untagged, bool flag_pvid)
+{
+	struct vxlan_dev *vxlan = netdev_priv(vxlan_dev);
+	__be32 vni = vxlan->cfg.vni;
+	struct mlxsw_sp_fid *fid;
+	u16 old_vid;
+	int err;
+
+	/* We cannot have the same VLAN as PVID and egress untagged on multiple
+	 * VxLAN devices. Note that we get this notification before the VLAN is
+	 * actually added to the bridge's database, so it is not possible for
+	 * the lookup function to return 'vxlan_dev'
+	 */
+	if (flag_untagged && flag_pvid &&
+	    mlxsw_sp_bridge_8021q_vxlan_dev_find(bridge_device->dev, vid))
+		return -EINVAL;
+
+	if (!netif_running(vxlan_dev))
+		return 0;
+
+	/* First case: FID is not associated with this VNI, but the new VLAN
+	 * is both PVID and egress untagged. Need to enable NVE on the FID, if
+	 * it exists
+	 */
+	fid = mlxsw_sp_fid_lookup_by_vni(mlxsw_sp, vni);
+	if (!fid) {
+		if (!flag_untagged || !flag_pvid)
+			return 0;
+		return mlxsw_sp_bridge_8021q_vxlan_join(bridge_device,
+							vxlan_dev, vid, NULL);
+	}
+
+	/* Second case: FID is associated with the VNI and the VLAN associated
+	 * with the FID is the same as the notified VLAN. This means the flags
+	 * (PVID / egress untagged) were toggled and that NVE should be
+	 * disabled on the FID
+	 */
+	old_vid = mlxsw_sp_fid_8021q_vid(fid);
+	if (vid == old_vid) {
+		if (WARN_ON(flag_untagged && flag_pvid)) {
+			mlxsw_sp_fid_put(fid);
+			return -EINVAL;
+		}
+		mlxsw_sp_bridge_vxlan_leave(mlxsw_sp, vxlan_dev);
+		mlxsw_sp_fid_put(fid);
+		return 0;
+	}
+
+	/* Third case: A new VLAN was configured on the VxLAN device, but this
+	 * VLAN is not PVID, so there is nothing to do.
+	 */
+	if (!flag_pvid) {
+		mlxsw_sp_fid_put(fid);
+		return 0;
+	}
+
+	/* Foruth case: Thew new VLAN is PVID, which means the VLAN currently
+	 * mapped to the VNI should be unmapped
+	 */
+	mlxsw_sp_bridge_vxlan_leave(mlxsw_sp, vxlan_dev);
+	mlxsw_sp_fid_put(fid);
+
+	/* Fifth case: The new VLAN is also egress untagged, which means the
+	 * VLAN needs to be mapped to the VNI
+	 */
+	if (!flag_untagged)
+		return 0;
+
+	err = mlxsw_sp_bridge_8021q_vxlan_join(bridge_device, vxlan_dev, vid,
+					       NULL);
+	if (err)
+		goto err_vxlan_join;
+
+	return 0;
+
+err_vxlan_join:
+	mlxsw_sp_bridge_8021q_vxlan_join(bridge_device, vxlan_dev, old_vid,
+					 NULL);
+	return err;
+}
+
+static void
+mlxsw_sp_switchdev_vxlan_vlan_del(struct mlxsw_sp *mlxsw_sp,
+				  struct mlxsw_sp_bridge_device *bridge_device,
+				  const struct net_device *vxlan_dev, u16 vid)
+{
+	struct vxlan_dev *vxlan = netdev_priv(vxlan_dev);
+	__be32 vni = vxlan->cfg.vni;
+	struct mlxsw_sp_fid *fid;
+
+	if (!netif_running(vxlan_dev))
+		return;
+
+	fid = mlxsw_sp_fid_lookup_by_vni(mlxsw_sp, vni);
+	if (!fid)
+		return;
+
+	/* A different VLAN than the one mapped to the VNI is deleted */
+	if (mlxsw_sp_fid_8021q_vid(fid) != vid)
+		goto out;
+
+	mlxsw_sp_bridge_vxlan_leave(mlxsw_sp, vxlan_dev);
+
+out:
+	mlxsw_sp_fid_put(fid);
+}
+
+static int
+mlxsw_sp_switchdev_vxlan_vlans_add(struct mlxsw_sp *mlxsw_sp,
+				   struct net_device *vxlan_dev,
+				   const struct switchdev_obj_port_vlan *vlan,
+				   struct switchdev_trans *trans)
+{
+	bool flag_untagged = vlan->flags & BRIDGE_VLAN_INFO_UNTAGGED;
+	bool flag_pvid = vlan->flags & BRIDGE_VLAN_INFO_PVID;
+	struct mlxsw_sp_bridge_device *bridge_device;
+	struct net_device *br_dev;
+	u16 vid;
+
+	if (switchdev_trans_ph_prepare(trans))
+		return 0;
+
+	br_dev = netdev_master_upper_dev_get(vxlan_dev);
+	if (!br_dev)
+		return -EINVAL;
+
+	bridge_device = mlxsw_sp_bridge_device_find(mlxsw_sp->bridge, br_dev);
+	if (!bridge_device)
+		return -EINVAL;
+
+	if (!bridge_device->vlan_enabled)
+		return 0;
+
+	for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++) {
+		int err;
+
+		err = mlxsw_sp_switchdev_vxlan_vlan_add(mlxsw_sp, bridge_device,
+							vxlan_dev, vid,
+							flag_untagged,
+							flag_pvid);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static void
+mlxsw_sp_switchdev_vxlan_vlans_del(struct mlxsw_sp *mlxsw_sp,
+				   struct net_device *vxlan_dev,
+				   const struct switchdev_obj_port_vlan *vlan)
+{
+	struct mlxsw_sp_bridge_device *bridge_device;
+	struct net_device *br_dev;
+	u16 vid;
+
+	br_dev = netdev_master_upper_dev_get(vxlan_dev);
+	if (!br_dev)
+		return;
+
+	bridge_device = mlxsw_sp_bridge_device_find(mlxsw_sp->bridge, br_dev);
+	if (!bridge_device)
+		return;
+
+	if (!bridge_device->vlan_enabled)
+		return;
+
+	for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++)
+		mlxsw_sp_switchdev_vxlan_vlan_del(mlxsw_sp, bridge_device,
+						  vxlan_dev, vid);
+}
+
+static int
+mlxsw_sp_switchdev_notifier_obj_add(struct mlxsw_sp *mlxsw_sp,
+				    struct switchdev_notifier_port_obj_info *
+				    obj_info)
+{
+	struct net_device *orig_dev = obj_info->obj->orig_dev;
+	struct switchdev_trans *trans = obj_info->trans;
+	const struct switchdev_obj_port_vlan *vlan;
+	int err = 0;
+
+	switch (obj_info->obj->id) {
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj_info->obj);
+		if (netif_is_vxlan(orig_dev))
+			err = mlxsw_sp_switchdev_vxlan_vlans_add(mlxsw_sp,
+								 orig_dev, vlan,
+								 trans);
+		break;
+	default:
+		break;
+	}
+
+	return err;
+}
+
+static void
+mlxsw_sp_switchdev_notifier_obj_del(struct mlxsw_sp *mlxsw_sp,
+				    struct switchdev_notifier_port_obj_info *
+				    obj_info)
+{
+	struct net_device *orig_dev = obj_info->obj->orig_dev;
+	const struct switchdev_obj_port_vlan *vlan;
+
+	switch (obj_info->obj->id) {
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj_info->obj);
+		if (netif_is_vxlan(orig_dev))
+			mlxsw_sp_switchdev_vxlan_vlans_del(mlxsw_sp, orig_dev,
+							   vlan);
+		break;
+	default:
+		break;
+	}
+}
+
+static int mlxsw_sp_switchdev_blocking_event(struct notifier_block *unused,
+					     unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+	struct switchdev_notifier_port_obj_info *obj_info;
+	struct switchdev_notifier_info *info = ptr;
+	struct mlxsw_sp *mlxsw_sp;
+	struct net_device *br_dev;
+	int err;
+
+	ASSERT_RTNL();
+
+	br_dev = netdev_master_upper_dev_get(dev);
+	if (!br_dev)
+		return NOTIFY_DONE;
+	if (!netif_is_bridge_master(br_dev))
+		return NOTIFY_DONE;
+	mlxsw_sp = mlxsw_sp_lower_get(br_dev);
+	if (!mlxsw_sp)
+		return NOTIFY_DONE;
+
+	switch (event) {
+	case SWITCHDEV_PORT_OBJ_ADD:
+		obj_info = container_of(info,
+					struct switchdev_notifier_port_obj_info,
+					info);
+		err = mlxsw_sp_switchdev_notifier_obj_add(mlxsw_sp, obj_info);
+		if (err)
+			return notifier_from_errno(err);
+		break;
+	case SWITCHDEV_PORT_OBJ_DEL:
+		obj_info = container_of(info,
+					struct switchdev_notifier_port_obj_info,
+					info);
+		mlxsw_sp_switchdev_notifier_obj_del(mlxsw_sp, obj_info);
+		break;
+	}
+
+	return 0;
+}
+
+static struct notifier_block mlxsw_sp_switchdev_blocking_notifier = {
+	.notifier_call = mlxsw_sp_switchdev_blocking_event,
+};
+
 u8
 mlxsw_sp_bridge_port_stp_state(struct mlxsw_sp_bridge_port *bridge_port)
 {
@@ -3243,6 +3509,7 @@ static void mlxsw_sp_fdb_fini(struct mlxsw_sp *mlxsw_sp)
 
 int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp)
 {
+	struct notifier_block *nb = &mlxsw_sp_switchdev_blocking_notifier;
 	struct mlxsw_sp_bridge *bridge;
 	int err;
 
@@ -3261,8 +3528,14 @@ int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_fdb_init;
 
+	err = register_switchdev_blocking_notifier(nb);
+	if (err)
+		goto err_register_notifier;
+
 	return 0;
 
+err_register_notifier:
+	mlxsw_sp_fdb_fini(mlxsw_sp);
 err_fdb_init:
 	kfree(mlxsw_sp->bridge);
 	return err;
@@ -3270,6 +3543,9 @@ err_fdb_init:
 
 void mlxsw_sp_switchdev_fini(struct mlxsw_sp *mlxsw_sp)
 {
+	struct notifier_block *nb = &mlxsw_sp_switchdev_blocking_notifier;
+
+	unregister_switchdev_blocking_notifier(nb);
 	mlxsw_sp_fdb_fini(mlxsw_sp);
 	WARN_ON(!list_empty(&mlxsw_sp->bridge->bridges_list));
 	kfree(mlxsw_sp->bridge);
