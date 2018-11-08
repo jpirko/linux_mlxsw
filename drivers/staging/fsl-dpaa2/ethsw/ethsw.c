@@ -1080,15 +1080,44 @@ err_addr_alloc:
 	return NOTIFY_BAD;
 }
 
+static int
+port_switchdev_port_obj_event(unsigned long event, struct net_device *netdev,
+			struct switchdev_notifier_port_obj_info *port_obj_info)
+{
+	int err = -EOPNOTSUPP;
+
+	switch (event) {
+	case SWITCHDEV_PORT_OBJ_ADD:
+		err = swdev_port_obj_add(netdev, port_obj_info->obj,
+					 port_obj_info->trans);
+		break;
+	case SWITCHDEV_PORT_OBJ_DEL:
+		err = swdev_port_obj_del(netdev, port_obj_info->obj);
+		break;
+	}
+
+	if (!err)
+		port_obj_info->handled = true;
+	return notifier_from_errno(err);
+}
+
 static int port_switchdev_event(struct notifier_block *unused,
 				unsigned long event, void *ptr)
 {
 	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 
 	switch (event) {
+		/* Atomit events. */
 	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* Fall through. */
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:
 		return port_switchdev_event_schedule(event, ptr, dev);
+
+		/* Blocking events. */
+	case SWITCHDEV_PORT_OBJ_ADD: /* Fall through. */
+	case SWITCHDEV_PORT_OBJ_DEL:
+		if (!ethsw_port_dev_check(dev))
+			break;
+		return port_switchdev_port_obj_event(event, dev, ptr);
 	}
 
 	return NOTIFY_DONE;
