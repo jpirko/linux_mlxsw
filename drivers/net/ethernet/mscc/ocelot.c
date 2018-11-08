@@ -1595,6 +1595,31 @@ struct notifier_block ocelot_netdevice_nb __read_mostly = {
 };
 EXPORT_SYMBOL(ocelot_netdevice_nb);
 
+static int ocelot_switchdev_event(struct notifier_block *unused,
+				  unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+
+	switch (event) {
+		/* Blocking events. */
+	case SWITCHDEV_PORT_OBJ_ADD:
+		return switchdev_handle_port_obj_add(dev, ptr,
+						     ocelot_netdevice_dev_check,
+						     ocelot_port_obj_add);
+	case SWITCHDEV_PORT_OBJ_DEL:
+		return switchdev_handle_port_obj_del(dev, ptr,
+						     ocelot_netdevice_dev_check,
+						     ocelot_port_obj_del);
+	}
+
+	return NOTIFY_DONE;
+}
+
+struct notifier_block ocelot_switchdev_blocking_nb __read_mostly = {
+	.notifier_call = ocelot_switchdev_event,
+};
+EXPORT_SYMBOL(ocelot_switchdev_blocking_nb);
+
 int ocelot_probe_port(struct ocelot *ocelot, u8 port,
 		      void __iomem *regs,
 		      struct phy_device *phy)
