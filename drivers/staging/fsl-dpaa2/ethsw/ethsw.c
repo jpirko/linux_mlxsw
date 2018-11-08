@@ -1040,10 +1040,9 @@ static void ethsw_switchdev_event_work(struct work_struct *work)
 }
 
 /* Called under rcu_read_lock() */
-static int port_switchdev_event(struct notifier_block *unused,
-				unsigned long event, void *ptr)
+static int port_switchdev_event_schedule(unsigned long event, void *ptr,
+					 struct net_device *dev)
 {
-	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 	struct ethsw_switchdev_event_work *switchdev_work;
 	struct switchdev_notifier_fdb_info *fdb_info = ptr;
 
@@ -1055,24 +1054,17 @@ static int port_switchdev_event(struct notifier_block *unused,
 	switchdev_work->dev = dev;
 	switchdev_work->event = event;
 
-	switch (event) {
-	case SWITCHDEV_FDB_ADD_TO_DEVICE:
-	case SWITCHDEV_FDB_DEL_TO_DEVICE:
-		memcpy(&switchdev_work->fdb_info, ptr,
-		       sizeof(switchdev_work->fdb_info));
-		switchdev_work->fdb_info.addr = kzalloc(ETH_ALEN, GFP_ATOMIC);
-		if (!switchdev_work->fdb_info.addr)
-			goto err_addr_alloc;
+	memcpy(&switchdev_work->fdb_info, ptr,
+	       sizeof(switchdev_work->fdb_info));
+	switchdev_work->fdb_info.addr = kzalloc(ETH_ALEN, GFP_ATOMIC);
+	if (!switchdev_work->fdb_info.addr)
+		goto err_addr_alloc;
 
-		ether_addr_copy((u8 *)switchdev_work->fdb_info.addr,
-				fdb_info->addr);
+	ether_addr_copy((u8 *)switchdev_work->fdb_info.addr,
+			fdb_info->addr);
 
-		/* Take a reference on the device to avoid being freed. */
-		dev_hold(dev);
-		break;
-	default:
-		return NOTIFY_DONE;
-	}
+	/* Take a reference on the device to avoid being freed. */
+	dev_hold(dev);
 
 	queue_work(ethsw_owq, &switchdev_work->work);
 
@@ -1081,6 +1073,20 @@ static int port_switchdev_event(struct notifier_block *unused,
 err_addr_alloc:
 	kfree(switchdev_work);
 	return NOTIFY_BAD;
+}
+
+static int port_switchdev_event(struct notifier_block *unused,
+				unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+
+	switch (event) {
+	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* Fall through. */
+	case SWITCHDEV_FDB_DEL_TO_DEVICE:
+		return port_switchdev_event_schedule(event, ptr, dev);
+	}
+
+	return NOTIFY_DONE;
 }
 
 static struct notifier_block port_switchdev_nb = {
