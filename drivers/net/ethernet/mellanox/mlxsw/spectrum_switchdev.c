@@ -41,6 +41,7 @@ struct mlxsw_sp_bridge {
 	DECLARE_BITMAP(mids_bitmap, MLXSW_SP_MID_MAX);
 	const struct mlxsw_sp_bridge_ops *bridge_8021q_ops;
 	const struct mlxsw_sp_bridge_ops *bridge_8021d_ops;
+	struct notifier_block switchdev_nb;
 };
 
 struct mlxsw_sp_bridge_device {
@@ -3114,10 +3115,6 @@ err_addr_alloc:
 	return NOTIFY_BAD;
 }
 
-static struct notifier_block mlxsw_sp_switchdev_notifier = {
-	.notifier_call = mlxsw_sp_switchdev_event,
-};
-
 u8
 mlxsw_sp_bridge_port_stp_state(struct mlxsw_sp_bridge_port *bridge_port)
 {
@@ -3135,7 +3132,8 @@ static int mlxsw_sp_fdb_init(struct mlxsw_sp *mlxsw_sp)
 		return err;
 	}
 
-	err = register_switchdev_notifier(&mlxsw_sp_switchdev_notifier);
+	bridge->switchdev_nb.notifier_call = mlxsw_sp_switchdev_event;
+	err = register_switchdev_notifier(&bridge->switchdev_nb);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to register switchdev notifier\n");
 		return err;
@@ -3150,7 +3148,7 @@ static int mlxsw_sp_fdb_init(struct mlxsw_sp *mlxsw_sp)
 static void mlxsw_sp_fdb_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	cancel_delayed_work_sync(&mlxsw_sp->bridge->fdb_notify.dw);
-	unregister_switchdev_notifier(&mlxsw_sp_switchdev_notifier);
+	unregister_switchdev_notifier(&mlxsw_sp->bridge->switchdev_nb);
 
 }
 
