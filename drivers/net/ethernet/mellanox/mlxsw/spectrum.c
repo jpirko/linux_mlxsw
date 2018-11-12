@@ -4352,9 +4352,9 @@ static int mlxsw_sp_lag_col_port_disable(struct mlxsw_sp_port *mlxsw_sp_port,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(slcor), slcor_pl);
 }
 
-static int mlxsw_sp_lag_index_get(struct mlxsw_sp *mlxsw_sp,
-				  struct net_device *lag_dev,
-				  u16 *p_lag_id)
+int mlxsw_sp_lag_index_get(struct mlxsw_sp *mlxsw_sp,
+			   struct net_device *lag_dev,
+			   u16 *p_lag_id)
 {
 	struct mlxsw_sp_upper *lag;
 	int free_lag_id = -1;

@@ -400,6 +400,9 @@ struct mlxsw_sp *mlxsw_sp_lower_get(struct net_device *dev);
 struct mlxsw_sp_port *mlxsw_sp_port_dev_lower_find(struct net_device *dev);
 struct mlxsw_sp_port *mlxsw_sp_port_lower_dev_hold(struct net_device *dev);
 void mlxsw_sp_port_dev_put(struct mlxsw_sp_port *mlxsw_sp_port);
+int mlxsw_sp_lag_index_get(struct mlxsw_sp *mlxsw_sp,
+			   struct net_device *lag_dev,
+			   u16 *p_lag_id);
 struct mlxsw_sp_port *mlxsw_sp_port_dev_lower_find_rcu(struct net_device *dev);
 
 /* spectrum_dcb.c */
