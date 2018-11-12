@@ -3040,25 +3040,13 @@ mlxsw_sp_switchdev_vxlan_work_prepare(struct mlxsw_sp_switchdev_event_work *
 	return 0;
 }
 
-/* Called under rcu_read_lock() */
-static int mlxsw_sp_switchdev_event(struct notifier_block *unused,
-				    unsigned long event, void *ptr)
+static int mlxsw_sp_switchdev_event_schedule(unsigned long event, void *ptr,
+					     struct net_device *dev)
 {
-	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 	struct mlxsw_sp_switchdev_event_work *switchdev_work;
 	struct switchdev_notifier_fdb_info *fdb_info;
 	struct switchdev_notifier_info *info = ptr;
-	struct net_device *br_dev;
 	int err;
-
-	/* Tunnel devices are not our uppers, so check their master instead */
-	br_dev = netdev_master_upper_dev_get_rcu(dev);
-	if (!br_dev)
-		return NOTIFY_DONE;
-	if (!netif_is_bridge_master(br_dev))
-		return NOTIFY_DONE;
-	if (!mlxsw_sp_port_dev_lower_find_rcu(br_dev))
-		return NOTIFY_DONE;
 
 	switchdev_work = kzalloc(sizeof(*switchdev_work), GFP_ATOMIC);
 	if (!switchdev_work)
@@ -3100,9 +3088,6 @@ static int mlxsw_sp_switchdev_event(struct notifier_block *unused,
 			goto err_vxlan_work_prepare;
 		dev_hold(dev);
 		break;
-	default:
-		kfree(switchdev_work);
-		return NOTIFY_DONE;
 	}
 
 	mlxsw_core_schedule_work(&switchdev_work->work);
@@ -3113,6 +3098,36 @@ err_vxlan_work_prepare:
 err_addr_alloc:
 	kfree(switchdev_work);
 	return NOTIFY_BAD;
+}
+
+/* Called under rcu_read_lock() */
+static int mlxsw_sp_switchdev_event(struct notifier_block *nb,
+				    unsigned long event, void *ptr)
+{
+	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+	struct net_device *br_dev;
+
+	/* Tunnel devices are not our uppers, so check their master instead */
+	br_dev = netdev_master_upper_dev_get_rcu(dev);
+	if (!br_dev)
+		return NOTIFY_DONE;
+	if (!netif_is_bridge_master(br_dev))
+		return NOTIFY_DONE;
+	if (!mlxsw_sp_port_dev_lower_find_rcu(br_dev))
+		return NOTIFY_DONE;
+
+	switch (event) {
+		/* Atomic events. */
+	case SWITCHDEV_FDB_ADD_TO_DEVICE: /* fall through */
+	case SWITCHDEV_FDB_DEL_TO_DEVICE: /* fall through */
+	case SWITCHDEV_FDB_ADD_TO_BRIDGE: /* fall through */
+	case SWITCHDEV_FDB_DEL_TO_BRIDGE: /* fall through */
+	case SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE: /* fall through */
+	case SWITCHDEV_VXLAN_FDB_DEL_TO_DEVICE:
+		return mlxsw_sp_switchdev_event_schedule(event, ptr, dev);
+	}
+
+	return NOTIFY_DONE;
 }
 
 u8
