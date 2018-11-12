@@ -42,6 +42,7 @@ struct mlxsw_sp_bridge {
 	const struct mlxsw_sp_bridge_ops *bridge_8021q_ops;
 	const struct mlxsw_sp_bridge_ops *bridge_8021d_ops;
 	struct notifier_block switchdev_nb;
+	struct notifier_block switchdev_blocking_nb;
 };
 
 struct mlxsw_sp_bridge_device {
@@ -3100,12 +3101,74 @@ err_addr_alloc:
 	return NOTIFY_BAD;
 }
 
+static int
+__mlxsw_sp_switchdev_port_obj_event(unsigned long event, struct net_device *dev,
+			struct switchdev_notifier_port_obj_info *port_obj_info)
+{
+	switch (event) {
+	case SWITCHDEV_PORT_OBJ_ADD:
+		return mlxsw_sp_port_obj_add(dev, port_obj_info->obj,
+					     port_obj_info->trans);
+	case SWITCHDEV_PORT_OBJ_DEL:
+		return mlxsw_sp_port_obj_del(dev, port_obj_info->obj);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static int
+mlxsw_sp_switchdev_port_obj_event(struct mlxsw_sp *mlxsw_sp,
+			unsigned long event, struct net_device *dev,
+			struct mlxsw_sp_port *mlxsw_sp_port,
+			struct switchdev_notifier_port_obj_info *port_obj_info)
+{
+	struct net_device *lower_dev;
+	struct list_head *iter;
+	u16 lag_id;
+	int err;
+
+	if (is_vlan_dev(dev))
+		dev = vlan_dev_real_dev(dev);
+
+	if (mlxsw_sp_port_dev_check(dev)) {
+		err = __mlxsw_sp_switchdev_port_obj_event(event, dev,
+							  port_obj_info);
+		if (err)
+			return err;
+	} else if (netif_is_lag_master(dev)) {
+		if  (!mlxsw_sp_lag_index_get(mlxsw_sp, dev, &lag_id))
+			return NOTIFY_DONE;
+		netdev_for_each_lower_dev(dev, lower_dev, iter) {
+			if (!mlxsw_sp_port_dev_check(dev))
+				continue;
+			err = __mlxsw_sp_switchdev_port_obj_event(event,
+								 lower_dev,
+								 port_obj_info);
+			if (err)
+				return err;
+		}
+
+	} else if (netif_is_bridge_master(dev)) {
+		err = __mlxsw_sp_switchdev_port_obj_event(event,
+							  mlxsw_sp_port->dev,
+							  port_obj_info);
+		if (err)
+			return err;
+	} else {
+		return NOTIFY_DONE;
+	}
+
+	port_obj_info->handled = true;
+	return NOTIFY_OK;
+}
+
 /* Called under rcu_read_lock() */
 static int mlxsw_sp_switchdev_event(struct notifier_block *nb,
 				    unsigned long event, void *ptr)
 {
 	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
 	struct mlxsw_sp_port *mlxsw_sp_port;
+	struct mlxsw_sp_bridge *bridge;
 	struct net_device *br_dev;
 
 	if (netif_is_bridge_master(dev)) {
@@ -3138,6 +3201,15 @@ static int mlxsw_sp_switchdev_event(struct notifier_block *nb,
 	case SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE: /* fall through */
 	case SWITCHDEV_VXLAN_FDB_DEL_TO_DEVICE:
 		return mlxsw_sp_switchdev_event_schedule(event, ptr, dev);
+
+		/* Blocking events. */
+	case SWITCHDEV_PORT_OBJ_ADD: /* fall through */
+	case SWITCHDEV_PORT_OBJ_DEL:
+		bridge = container_of(nb, struct mlxsw_sp_bridge,
+				      switchdev_blocking_nb);
+		return mlxsw_sp_switchdev_port_obj_event(bridge->mlxsw_sp,
+							 event, dev,
+							 mlxsw_sp_port, ptr);
 	}
 
 	return NOTIFY_DONE;
@@ -3167,17 +3239,29 @@ static int mlxsw_sp_fdb_init(struct mlxsw_sp *mlxsw_sp)
 		return err;
 	}
 
+	bridge->switchdev_blocking_nb.notifier_call = mlxsw_sp_switchdev_event;
+	err = register_switchdev_blocking_notifier(
+		&bridge->switchdev_blocking_nb);
+	if (err) {
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to register switchdev blocking notifier\n");
+		goto err_register_switchdev_blocking_notifier;
+	}
+
 	INIT_DELAYED_WORK(&bridge->fdb_notify.dw, mlxsw_sp_fdb_notify_work);
 	bridge->fdb_notify.interval = MLXSW_SP_DEFAULT_LEARNING_INTERVAL;
 	mlxsw_sp_fdb_notify_work_schedule(mlxsw_sp);
 	return 0;
+
+err_register_switchdev_blocking_notifier:
+	unregister_switchdev_notifier(&bridge->switchdev_nb);
+	return err;
 }
 
 static void mlxsw_sp_fdb_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	cancel_delayed_work_sync(&mlxsw_sp->bridge->fdb_notify.dw);
+	unregister_switchdev_notifier(&mlxsw_sp->bridge->switchdev_blocking_nb);
 	unregister_switchdev_notifier(&mlxsw_sp->bridge->switchdev_nb);
-
 }
 
 int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp)
