@@ -3105,16 +3105,29 @@ static int mlxsw_sp_switchdev_event(struct notifier_block *nb,
 				    unsigned long event, void *ptr)
 {
 	struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
+	struct mlxsw_sp_port *mlxsw_sp_port;
 	struct net_device *br_dev;
 
-	/* Tunnel devices are not our uppers, so check their master instead */
-	br_dev = netdev_master_upper_dev_get_rcu(dev);
-	if (!br_dev)
-		return NOTIFY_DONE;
-	if (!netif_is_bridge_master(br_dev))
-		return NOTIFY_DONE;
-	if (!mlxsw_sp_port_dev_lower_find_rcu(br_dev))
-		return NOTIFY_DONE;
+	if (netif_is_bridge_master(dev)) {
+		br_dev = dev;
+	} else {
+		/* Tunnel devices are not our uppers, so check their master
+		 * instead
+		 */
+		br_dev = netdev_master_upper_dev_get_rcu(dev);
+		if (!br_dev)
+			return NOTIFY_DONE;
+		if (!netif_is_bridge_master(br_dev))
+			return NOTIFY_DONE;
+	}
+
+	if (mlxsw_sp_port_dev_check(dev)) {
+		mlxsw_sp_port = netdev_priv(dev);
+	} else {
+		mlxsw_sp_port = mlxsw_sp_port_dev_lower_find_rcu(br_dev);
+		if (!mlxsw_sp_port)
+			return NOTIFY_DONE;
+	}
 
 	switch (event) {
 		/* Atomic events. */
