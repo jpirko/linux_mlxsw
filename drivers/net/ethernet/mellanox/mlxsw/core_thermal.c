@@ -431,7 +431,8 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 		if (pwm_active & BIT(i)) {
 			struct thermal_cooling_device *cdev;
 
-			cdev = thermal_cooling_device_register("Fan", thermal,
+			cdev = thermal_cooling_device_register("mlxsw_fan",
+							thermal,
 							&mlxsw_cooling_ops);
 			if (IS_ERR(cdev)) {
 				err = PTR_ERR(cdev);
