@@ -357,6 +357,26 @@ errout:
 		rtnl_set_sk_err(net, RTNLGRP_NEIGH, err);
 }
 
+static struct switchdev_notifier_vxlan_fdb_info
+vxlan_fdb_switchdev_notifier_info(const struct vxlan_dev *vxlan,
+				  const struct vxlan_fdb *fdb,
+				  const struct vxlan_rdst *rd)
+{
+	struct switchdev_notifier_vxlan_fdb_info fdb_info = {
+		.info.dev = vxlan->dev,
+		.remote_ip = rd->remote_ip,
+		.remote_port = rd->remote_port,
+		.remote_vni = rd->remote_vni,
+		.remote_ifindex = rd->remote_ifindex,
+		.vni = fdb->vni,
+		.offloaded = rd->offloaded,
+		.added_by_user = fdb->flags & NTF_VXLAN_ADDED_BY_USER,
+	};
+
+	memcpy(fdb_info.eth_addr, fdb->eth_addr, ETH_ALEN);
+	return fdb_info;
+}
+
 static void vxlan_fdb_switchdev_call_notifiers(struct vxlan_dev *vxlan,
 					       struct vxlan_fdb *fdb,
 					       struct vxlan_rdst *rd,
@@ -370,18 +390,7 @@ static void vxlan_fdb_switchdev_call_notifiers(struct vxlan_dev *vxlan,
 
 	notifier_type = adding ? SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE
 			       : SWITCHDEV_VXLAN_FDB_DEL_TO_DEVICE;
-
-	info = (struct switchdev_notifier_vxlan_fdb_info){
-		.remote_ip = rd->remote_ip,
-		.remote_port = rd->remote_port,
-		.remote_vni = rd->remote_vni,
-		.remote_ifindex = rd->remote_ifindex,
-		.vni = fdb->vni,
-		.offloaded = rd->offloaded,
-		.added_by_user = fdb->flags & NTF_VXLAN_ADDED_BY_USER,
-	};
-	memcpy(info.eth_addr, fdb->eth_addr, ETH_ALEN);
-
+	info = vxlan_fdb_switchdev_notifier_info(vxlan, fdb, rd);
 	call_switchdev_notifiers(notifier_type, vxlan->dev,
 				 &info.info);
 }
@@ -538,17 +547,7 @@ int vxlan_fdb_find_uc(struct net_device *dev, const u8 *mac, __be32 vni,
 	}
 
 	rdst = first_remote_rcu(f);
-
-	memset(fdb_info, 0, sizeof(*fdb_info));
-	fdb_info->info.dev = dev;
-	fdb_info->remote_ip = rdst->remote_ip;
-	fdb_info->remote_port = rdst->remote_port;
-	fdb_info->remote_vni = rdst->remote_vni;
-	fdb_info->remote_ifindex = rdst->remote_ifindex;
-	fdb_info->vni = vni;
-	fdb_info->offloaded = rdst->offloaded;
-	fdb_info->added_by_user = f->flags & NTF_VXLAN_ADDED_BY_USER;
-	ether_addr_copy(fdb_info->eth_addr, mac);
+	*fdb_info = vxlan_fdb_switchdev_notifier_info(vxlan, f, rdst);
 
 out:
 	rcu_read_unlock();
