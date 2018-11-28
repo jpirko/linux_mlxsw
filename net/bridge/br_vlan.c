@@ -214,7 +214,8 @@ static void nbp_vlan_rcu_free(struct rcu_head *rcu)
  * 4. same as 3 but with both master and brentry flags set so the entry
  *    will be used for filtering in both the port and the bridge
  */
-static int __vlan_add(struct net_bridge_vlan *v, u16 flags)
+static int __vlan_add(struct net_bridge_vlan *v, u16 flags,
+		      struct netlink_ext_ack *extack)
 {
 	struct net_bridge_vlan *masterv = NULL;
 	struct net_bridge_port *p = NULL;
@@ -249,7 +250,7 @@ static int __vlan_add(struct net_bridge_vlan *v, u16 flags)
 
 			err = br_vlan_add(br, v->vid,
 					  flags | BRIDGE_VLAN_INFO_BRENTRY,
-					  &changed, NULL);
+					  &changed, extack);
 			if (err)
 				goto out_filt;
 		}
@@ -664,7 +665,7 @@ int br_vlan_add(struct net_bridge *br, u16 vid, u16 flags, bool *changed,
 	vlan->br = br;
 	if (flags & BRIDGE_VLAN_INFO_BRENTRY)
 		refcount_set(&vlan->refcnt, 1);
-	ret = __vlan_add(vlan, flags);
+	ret = __vlan_add(vlan, flags, extack);
 	if (ret) {
 		free_percpu(vlan->stats);
 		kfree(vlan);
@@ -1149,7 +1150,7 @@ int nbp_vlan_add(struct net_bridge_port *port, u16 vid, u16 flags,
 
 	vlan->vid = vid;
 	vlan->port = port;
-	ret = __vlan_add(vlan, flags);
+	ret = __vlan_add(vlan, flags, extack);
 	if (ret)
 		kfree(vlan);
 	else
