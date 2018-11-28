@@ -525,7 +525,8 @@ int br_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 }
 
 static int br_vlan_info(struct net_bridge *br, struct net_bridge_port *p,
-			int cmd, struct bridge_vlan_info *vinfo, bool *changed)
+			int cmd, struct bridge_vlan_info *vinfo, bool *changed,
+			struct netlink_ext_ack *extack)
 {
 	bool curr_change;
 	int err = 0;
@@ -599,7 +600,8 @@ static int br_process_vlan_info(struct net_bridge *br,
 		       sizeof(struct bridge_vlan_info));
 		for (v = (*vinfo_last)->vid; v <= vinfo_curr->vid; v++) {
 			tmp_vinfo.vid = v;
-			err = br_vlan_info(br, p, cmd, &tmp_vinfo, changed);
+			err = br_vlan_info(br, p, cmd, &tmp_vinfo, changed,
+					   extack);
 			if (err)
 				break;
 		}
@@ -608,7 +610,7 @@ static int br_process_vlan_info(struct net_bridge *br,
 		return err;
 	}
 
-	return br_vlan_info(br, p, cmd, vinfo_curr, changed);
+	return br_vlan_info(br, p, cmd, vinfo_curr, changed, extack);
 }
 
 static int br_afspec(struct net_bridge *br,
