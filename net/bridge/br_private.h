@@ -876,7 +876,7 @@ int nbp_vlan_add(struct net_bridge_port *port, u16 vid, u16 flags,
 		 bool *changed);
 int nbp_vlan_delete(struct net_bridge_port *port, u16 vid);
 void nbp_vlan_flush(struct net_bridge_port *port);
-int nbp_vlan_init(struct net_bridge_port *port);
+int nbp_vlan_init(struct net_bridge_port *port, struct netlink_ext_ack *extack);
 int nbp_get_num_vlan_infos(struct net_bridge_port *p, u32 filter_mask);
 void br_vlan_get_stats(const struct net_bridge_vlan *v,
 		       struct br_vlan_stats *stats);

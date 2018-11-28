@@ -1065,7 +1065,7 @@ err_rhtbl:
 	goto out;
 }
 
-int nbp_vlan_init(struct net_bridge_port *p)
+int nbp_vlan_init(struct net_bridge_port *p, struct netlink_ext_ack *extack)
 {
 	struct switchdev_attr attr = {
 		.orig_dev = p->br->dev,
