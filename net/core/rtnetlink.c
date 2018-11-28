@@ -4320,7 +4320,8 @@ static int rtnl_bridge_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			goto out;
 		}
 
-		err = br_dev->netdev_ops->ndo_bridge_setlink(dev, nlh, flags);
+		err = br_dev->netdev_ops->ndo_bridge_setlink(dev, nlh, flags,
+							     extack);
 		if (err)
 			goto out;
 
@@ -4332,7 +4333,8 @@ static int rtnl_bridge_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			err = -EOPNOTSUPP;
 		else
 			err = dev->netdev_ops->ndo_bridge_setlink(dev, nlh,
-								  flags);
+								  flags,
+								  extack);
 		if (!err) {
 			flags &= ~BRIDGE_FLAGS_SELF;
 
