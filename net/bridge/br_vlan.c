@@ -150,7 +150,7 @@ static struct net_bridge_vlan *br_vlan_get_master(struct net_bridge *br, u16 vid
 		bool changed;
 
 		/* missing global ctx, create it now */
-		if (br_vlan_add(br, vid, 0, &changed))
+		if (br_vlan_add(br, vid, 0, &changed, NULL))
 			return NULL;
 		masterv = br_vlan_find(vg, vid);
 		if (WARN_ON(!masterv))
@@ -249,7 +249,7 @@ static int __vlan_add(struct net_bridge_vlan *v, u16 flags)
 
 			err = br_vlan_add(br, v->vid,
 					  flags | BRIDGE_VLAN_INFO_BRENTRY,
-					  &changed);
+					  &changed, NULL);
 			if (err)
 				goto out_filt;
 		}
@@ -634,7 +634,8 @@ err_flags:
  * Must be called with vid in range from 1 to 4094 inclusive.
  * changed must be true only if the vlan was created or updated
  */
-int br_vlan_add(struct net_bridge *br, u16 vid, u16 flags, bool *changed)
+int br_vlan_add(struct net_bridge *br, u16 vid, u16 flags, bool *changed,
+		struct netlink_ext_ack *extack)
 {
 	struct net_bridge_vlan_group *vg;
 	struct net_bridge_vlan *vlan;
@@ -947,7 +948,7 @@ int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid,
 				  BRIDGE_VLAN_INFO_PVID |
 				  BRIDGE_VLAN_INFO_UNTAGGED |
 				  BRIDGE_VLAN_INFO_BRENTRY,
-				  &vlchange);
+				  &vlchange, extack);
 		if (err)
 			goto out;
 		br_vlan_delete(br, old_pvid);
@@ -999,7 +1000,7 @@ err_port:
 				    BRIDGE_VLAN_INFO_PVID |
 				    BRIDGE_VLAN_INFO_UNTAGGED |
 				    BRIDGE_VLAN_INFO_BRENTRY,
-				    &vlchange);
+				    &vlchange, NULL);
 		br_vlan_delete(br, pvid);
 	}
 	goto out;
@@ -1048,7 +1049,7 @@ int br_vlan_init(struct net_bridge *br)
 	rcu_assign_pointer(br->vlgrp, vg);
 	ret = br_vlan_add(br, 1,
 			  BRIDGE_VLAN_INFO_PVID | BRIDGE_VLAN_INFO_UNTAGGED |
-			  BRIDGE_VLAN_INFO_BRENTRY, &changed);
+			  BRIDGE_VLAN_INFO_BRENTRY, &changed, NULL);
 	if (ret)
 		goto err_vlan_add;
 

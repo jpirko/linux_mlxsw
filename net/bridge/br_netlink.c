@@ -542,7 +542,7 @@ static int br_vlan_info(struct net_bridge *br, struct net_bridge_port *p,
 		} else {
 			vinfo->flags |= BRIDGE_VLAN_INFO_BRENTRY;
 			err = br_vlan_add(br, vinfo->vid, vinfo->flags,
-					  &curr_change);
+					  &curr_change, extack);
 		}
 		if (curr_change)
 			*changed = true;
