@@ -870,7 +870,8 @@ int br_vlan_set_stats(struct net_bridge *br, unsigned long val);
 int br_vlan_set_stats_per_port(struct net_bridge *br, unsigned long val);
 int br_vlan_init(struct net_bridge *br);
 int br_vlan_set_default_pvid(struct net_bridge *br, unsigned long val);
-int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid);
+int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid,
+			       struct netlink_ext_ack *extack);
 int nbp_vlan_add(struct net_bridge_port *port, u16 vid, u16 flags,
 		 bool *changed);
 int nbp_vlan_delete(struct net_bridge_port *port, u16 vid);

@@ -1109,7 +1109,7 @@ static int br_changelink(struct net_device *brdev, struct nlattr *tb[],
 	if (data[IFLA_BR_VLAN_DEFAULT_PVID]) {
 		__u16 defpvid = nla_get_u16(data[IFLA_BR_VLAN_DEFAULT_PVID]);
 
-		err = __br_vlan_set_default_pvid(br, defpvid);
+		err = __br_vlan_set_default_pvid(br, defpvid, extack);
 		if (err)
 			return err;
 	}

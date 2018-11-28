@@ -914,7 +914,8 @@ static void br_vlan_disable_default_pvid(struct net_bridge *br)
 	br->default_pvid = 0;
 }
 
-int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid)
+int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid,
+			       struct netlink_ext_ack *extack)
 {
 	const struct net_bridge_vlan *pvent;
 	struct net_bridge_vlan_group *vg;
@@ -1021,7 +1022,7 @@ int br_vlan_set_default_pvid(struct net_bridge *br, unsigned long val)
 		err = -EPERM;
 		goto out;
 	}
-	err = __br_vlan_set_default_pvid(br, pvid);
+	err = __br_vlan_set_default_pvid(br, pvid, NULL);
 out:
 	return err;
 }
