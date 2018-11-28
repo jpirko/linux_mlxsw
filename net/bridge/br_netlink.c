@@ -568,7 +568,8 @@ static int br_process_vlan_info(struct net_bridge *br,
 				struct net_bridge_port *p, int cmd,
 				struct bridge_vlan_info *vinfo_curr,
 				struct bridge_vlan_info **vinfo_last,
-				bool *changed)
+				bool *changed,
+				struct netlink_ext_ack *extack)
 {
 	if (!vinfo_curr->vid || vinfo_curr->vid >= VLAN_VID_MASK)
 		return -EINVAL;
@@ -644,7 +645,8 @@ static int br_afspec(struct net_bridge *br,
 				return -EINVAL;
 			vinfo_curr = nla_data(attr);
 			err = br_process_vlan_info(br, p, cmd, vinfo_curr,
-						   &vinfo_last, changed);
+						   &vinfo_last, changed,
+						   extack);
 			if (err)
 				return err;
 			break;
