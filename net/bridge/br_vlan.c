@@ -139,7 +139,9 @@ static int __vlan_vid_del(struct net_device *dev, struct net_bridge *br,
 /* Returns a master vlan, if it didn't exist it gets created. In all cases a
  * a reference is taken to the master vlan before returning.
  */
-static struct net_bridge_vlan *br_vlan_get_master(struct net_bridge *br, u16 vid)
+static struct net_bridge_vlan *
+br_vlan_get_master(struct net_bridge *br, u16 vid,
+		   struct netlink_ext_ack *extack)
 {
 	struct net_bridge_vlan_group *vg;
 	struct net_bridge_vlan *masterv;
@@ -150,7 +152,7 @@ static struct net_bridge_vlan *br_vlan_get_master(struct net_bridge *br, u16 vid
 		bool changed;
 
 		/* missing global ctx, create it now */
-		if (br_vlan_add(br, vid, 0, &changed, NULL))
+		if (br_vlan_add(br, vid, 0, &changed, extack))
 			return NULL;
 		masterv = br_vlan_find(vg, vid);
 		if (WARN_ON(!masterv))
@@ -255,7 +257,7 @@ static int __vlan_add(struct net_bridge_vlan *v, u16 flags,
 				goto out_filt;
 		}
 
-		masterv = br_vlan_get_master(br, v->vid);
+		masterv = br_vlan_get_master(br, v->vid, extack);
 		if (!masterv)
 			goto out_filt;
 		v->brvlan = masterv;
