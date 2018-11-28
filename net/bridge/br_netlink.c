@@ -613,7 +613,8 @@ static int br_process_vlan_info(struct net_bridge *br,
 static int br_afspec(struct net_bridge *br,
 		     struct net_bridge_port *p,
 		     struct nlattr *af_spec,
-		     int cmd, bool *changed)
+		     int cmd, bool *changed,
+		     struct netlink_ext_ack *extack)
 {
 	struct bridge_vlan_info *vinfo_curr = NULL;
 	struct bridge_vlan_info *vinfo_last = NULL;
@@ -898,7 +899,7 @@ int br_setlink(struct net_device *dev, struct nlmsghdr *nlh, u16 flags,
 	}
 
 	if (afspec)
-		err = br_afspec(br, p, afspec, RTM_SETLINK, &changed);
+		err = br_afspec(br, p, afspec, RTM_SETLINK, &changed, extack);
 
 	if (changed)
 		br_ifinfo_notify(RTM_NEWLINK, br, p);
@@ -924,7 +925,7 @@ int br_dellink(struct net_device *dev, struct nlmsghdr *nlh, u16 flags)
 	if (!p && !(dev->priv_flags & IFF_EBRIDGE))
 		return -EINVAL;
 
-	err = br_afspec(br, p, afspec, RTM_DELLINK, &changed);
+	err = br_afspec(br, p, afspec, RTM_DELLINK, &changed, NULL);
 	if (changed)
 		/* Send RTM_NEWLINK because userspace
 		 * expects RTM_NEWLINK for vlan dels
