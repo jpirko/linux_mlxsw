@@ -967,7 +967,7 @@ int __br_vlan_set_default_pvid(struct net_bridge *br, u16 pvid,
 		err = nbp_vlan_add(p, pvid,
 				   BRIDGE_VLAN_INFO_PVID |
 				   BRIDGE_VLAN_INFO_UNTAGGED,
-				   &vlchange);
+				   &vlchange, extack);
 		if (err)
 			goto err_port;
 		nbp_vlan_delete(p, old_pvid);
@@ -989,7 +989,7 @@ err_port:
 			nbp_vlan_add(p, old_pvid,
 				     BRIDGE_VLAN_INFO_PVID |
 				     BRIDGE_VLAN_INFO_UNTAGGED,
-				     &vlchange);
+				     &vlchange, NULL);
 		nbp_vlan_delete(p, pvid);
 	}
 
@@ -1098,7 +1098,7 @@ int nbp_vlan_init(struct net_bridge_port *p, struct netlink_ext_ack *extack)
 		ret = nbp_vlan_add(p, p->br->default_pvid,
 				   BRIDGE_VLAN_INFO_PVID |
 				   BRIDGE_VLAN_INFO_UNTAGGED,
-				   &changed);
+				   &changed, extack);
 		if (ret)
 			goto err_vlan_add;
 	}
@@ -1123,7 +1123,7 @@ err_vlan_enabled:
  * changed must be true only if the vlan was created or updated
  */
 int nbp_vlan_add(struct net_bridge_port *port, u16 vid, u16 flags,
-		 bool *changed)
+		 bool *changed, struct netlink_ext_ack *extack)
 {
 	struct net_bridge_vlan *vlan;
 	int ret;
