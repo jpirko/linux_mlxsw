@@ -80,7 +80,7 @@ static bool __vlan_add_flags(struct net_bridge_vlan *v, u16 flags)
 }
 
 static int __vlan_vid_add(struct net_device *dev, struct net_bridge *br,
-			  u16 vid, u16 flags)
+			  u16 vid, u16 flags, struct netlink_ext_ack *extack)
 {
 	int err;
 
@@ -242,7 +242,7 @@ static int __vlan_add(struct net_bridge_vlan *v, u16 flags,
 		 * This ensures tagged traffic enters the bridge when
 		 * promiscuous mode is disabled by br_manage_promisc().
 		 */
-		err = __vlan_vid_add(dev, br, v->vid, flags);
+		err = __vlan_vid_add(dev, br, v->vid, flags, extack);
 		if (err)
 			goto out;
 
