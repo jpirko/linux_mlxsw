@@ -3199,7 +3199,8 @@ mlxsw_sp_switchdev_vxlan_vlan_add(struct mlxsw_sp *mlxsw_sp,
 				  struct mlxsw_sp_bridge_device *bridge_device,
 				  const struct net_device *vxlan_dev, u16 vid,
 				  bool flag_untagged, bool flag_pvid,
-				  struct switchdev_trans *trans)
+				  struct switchdev_trans *trans,
+				  struct netlink_ext_ack *extack)
 {
 	struct vxlan_dev *vxlan = netdev_priv(vxlan_dev);
 	__be32 vni = vxlan->cfg.vni;
@@ -3231,7 +3232,7 @@ mlxsw_sp_switchdev_vxlan_vlan_add(struct mlxsw_sp *mlxsw_sp,
 		if (!flag_untagged || !flag_pvid)
 			return 0;
 		return mlxsw_sp_bridge_8021q_vxlan_join(bridge_device,
-							vxlan_dev, vid, NULL);
+							vxlan_dev, vid, extack);
 	}
 
 	/* Second case: FID is associated with the VNI and the VLAN associated
@@ -3271,7 +3272,7 @@ mlxsw_sp_switchdev_vxlan_vlan_add(struct mlxsw_sp *mlxsw_sp,
 		return 0;
 
 	err = mlxsw_sp_bridge_8021q_vxlan_join(bridge_device, vxlan_dev, vid,
-					       NULL);
+					       extack);
 	if (err)
 		goto err_vxlan_join;
 
@@ -3320,10 +3321,12 @@ mlxsw_sp_switchdev_vxlan_vlans_add(struct net_device *vxlan_dev,
 	bool flag_pvid = vlan->flags & BRIDGE_VLAN_INFO_PVID;
 	struct switchdev_trans *trans = port_obj_info->trans;
 	struct mlxsw_sp_bridge_device *bridge_device;
+	struct netlink_ext_ack *extack;
 	struct mlxsw_sp *mlxsw_sp;
 	struct net_device *br_dev;
 	u16 vid;
 
+	extack = switchdev_notifier_info_to_extack(&port_obj_info->info);
 	br_dev = netdev_master_upper_dev_get(vxlan_dev);
 	if (!br_dev)
 		return 0;
@@ -3347,7 +3350,8 @@ mlxsw_sp_switchdev_vxlan_vlans_add(struct net_device *vxlan_dev,
 		err = mlxsw_sp_switchdev_vxlan_vlan_add(mlxsw_sp, bridge_device,
 							vxlan_dev, vid,
 							flag_untagged,
-							flag_pvid, trans);
+							flag_pvid, trans,
+							extack);
 		if (err)
 			return err;
 	}
