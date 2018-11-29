@@ -594,7 +594,8 @@ bool br_should_learn(struct net_bridge_port *p, struct sk_buff *skb, u16 *vid)
 static int br_vlan_add_existing(struct net_bridge *br,
 				struct net_bridge_vlan_group *vg,
 				struct net_bridge_vlan *vlan,
-				u16 flags, bool *changed)
+				u16 flags, bool *changed,
+				struct netlink_ext_ack *extack)
 {
 	int err;
 
@@ -650,7 +651,8 @@ int br_vlan_add(struct net_bridge *br, u16 vid, u16 flags, bool *changed,
 	vg = br_vlan_group(br);
 	vlan = br_vlan_find(vg, vid);
 	if (vlan)
-		return br_vlan_add_existing(br, vg, vlan, flags, changed);
+		return br_vlan_add_existing(br, vg, vlan, flags, changed,
+					    extack);
 
 	vlan = kzalloc(sizeof(*vlan), GFP_KERNEL);
 	if (!vlan)
