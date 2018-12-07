@@ -6961,8 +6961,8 @@ static int mlxsw_sp_router_port_pre_changeaddr_event(struct mlxsw_sp_rif *rif,
 						   info->dev_addr, extack);
 }
 
-int mlxsw_sp_netdevice_router_port_event(struct net_device *dev,
-					 unsigned long event, void *ptr)
+int mlxsw_sp_router_port_event(struct net_device *dev,
+			       unsigned long event, void *ptr)
 {
 	struct mlxsw_sp *mlxsw_sp;
 	struct mlxsw_sp_rif *rif;
