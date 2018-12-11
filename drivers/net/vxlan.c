@@ -885,6 +885,8 @@ static int vxlan_fdb_update_existing(struct vxlan_dev *vxlan,
 	int rc = 0;
 	int err;
 
+	printk(KERN_WARNING "update_existing\n");
+
 	/* Do not allow an externally learned entry to take over an entry added
 	 * by the user.
 	 */
@@ -903,6 +905,7 @@ static int vxlan_fdb_update_existing(struct vxlan_dev *vxlan,
 	}
 
 	if ((flags & NLM_F_REPLACE)) {
+		printk(KERN_WARNING "replace\n");
 		/* Only change unicasts */
 		if (!(is_multicast_ether_addr(f->eth_addr) ||
 		      is_zero_ether_addr(f->eth_addr))) {
@@ -916,6 +919,7 @@ static int vxlan_fdb_update_existing(struct vxlan_dev *vxlan,
 	if ((flags & NLM_F_APPEND) &&
 	    (is_multicast_ether_addr(f->eth_addr) ||
 	     is_zero_ether_addr(f->eth_addr))) {
+		printk(KERN_WARNING "append\n");
 		rc = vxlan_fdb_append(f, ip, port, vni, ifindex, &rd);
 
 		if (rc < 0)
@@ -939,10 +943,13 @@ static int vxlan_fdb_update_existing(struct vxlan_dev *vxlan,
 	return 0;
 
 err_notify:
-	if ((flags & NLM_F_REPLACE) && rc)
+	if ((flags & NLM_F_REPLACE) && rc) {
+		printk(KERN_WARNING "rollback A\n");
 		*rd = oldrd;
-	else if ((flags & NLM_F_APPEND) && rc)
+	} else if ((flags & NLM_F_APPEND) && rc) {
+		printk(KERN_WARNING "rollback B\n");
 		list_del_rcu(&rd->list);
+	}
 	return err;
 }
 
@@ -958,6 +965,7 @@ static int vxlan_fdb_update_create(struct vxlan_dev *vxlan,
 	struct vxlan_fdb *f;
 	int rc;
 
+	printk(KERN_WARNING "create\n");
 	/* Disallow replace to add a multicast entry */
 	if ((flags & NLM_F_REPLACE) &&
 	    (is_multicast_ether_addr(mac) || is_zero_ether_addr(mac)))
@@ -977,6 +985,7 @@ static int vxlan_fdb_update_create(struct vxlan_dev *vxlan,
 	return 0;
 
 err_notify:
+	printk(KERN_WARNING "rollback C\n");
 	vxlan_fdb_destroy(vxlan, f, false, false);
 	return rc;
 }
@@ -4098,6 +4107,9 @@ vxlan_fdb_offloaded_set(struct net_device *dev,
 	struct vxlan_rdst *rdst;
 	struct vxlan_fdb *f;
 
+	printk(KERN_WARNING "vxlan_fdb_offloaded_set @%s %pM %pISc to %d\n",
+	       dev->name, fdb_info->eth_addr, &fdb_info->remote_ip,
+	       fdb_info->offloaded);
 	spin_lock_bh(&vxlan->hash_lock);
 
 	f = vxlan_find_mac(vxlan, fdb_info->eth_addr, fdb_info->vni);
