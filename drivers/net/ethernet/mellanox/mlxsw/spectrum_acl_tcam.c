@@ -174,6 +174,9 @@ struct mlxsw_sp_acl_tcam_group {
 };
 
 struct mlxsw_sp_acl_tcam_vregion {
+	struct mutex lock; /* Protects consistency of region, region2 pointers
+			    * and vchunk_list.
+			    */
 	struct mlxsw_sp_acl_tcam_region *region;
 	struct mlxsw_sp_acl_tcam_region *region2; /* Used during migration */
 	struct list_head list; /* Member of a TCAM group */
@@ -282,6 +285,7 @@ mlxsw_sp_acl_tcam_group_add(struct mlxsw_sp *mlxsw_sp,
 
 err_rhashtable_init:
 	mlxsw_sp_acl_tcam_group_id_put(tcam, group->id);
+	mutex_destroy(&group->lock);
 	return err;
 }
 
@@ -686,12 +690,7 @@ static void mlxsw_sp_acl_tcam_vregion_rehash_work(struct work_struct *work)
 		container_of(work, struct mlxsw_sp_acl_tcam_vregion,
 			     rehash_dw.work);
 
-	/* TODO: Take rtnl lock here as the rest of the code counts on it
-	 * now. Later, this should be replaced by per-vregion lock.
-	 */
-	rtnl_lock();
 	mlxsw_sp_acl_tcam_vregion_rehash(vregion->mlxsw_sp, vregion);
-	rtnl_unlock();
 	mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
 }
 
@@ -711,6 +710,7 @@ mlxsw_sp_acl_tcam_vregion_create(struct mlxsw_sp *mlxsw_sp,
 	if (!vregion)
 		return ERR_PTR(-ENOMEM);
 	INIT_LIST_HEAD(&vregion->vchunk_list);
+	mutex_init(&vregion->lock);
 	vregion->tcam = tcam;
 	vregion->mlxsw_sp = mlxsw_sp;
 	vregion->ref_count = 1;
@@ -767,6 +767,7 @@ mlxsw_sp_acl_tcam_vregion_destroy(struct mlxsw_sp *mlxsw_sp,
 		mlxsw_sp_acl_tcam_region_destroy(mlxsw_sp, vregion->region2);
 	mlxsw_sp_acl_tcam_region_destroy(mlxsw_sp, vregion->region);
 	mlxsw_afk_key_info_put(vregion->key_info);
+	mutex_destroy(&vregion->lock);
 	kfree(vregion);
 }
 
@@ -910,14 +911,17 @@ mlxsw_sp_acl_tcam_vchunk_create(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		goto err_rhashtable_insert;
 
+	mutex_lock(&vregion->lock);
 	vchunk->chunk = mlxsw_sp_acl_tcam_chunk_create(mlxsw_sp, vchunk,
 						       vchunk->vregion->region);
 	if (IS_ERR(vchunk->chunk)) {
+		mutex_unlock(&vregion->lock);
 		err = PTR_ERR(vchunk->chunk);
 		goto err_chunk_create;
 	}
 
 	list_add_tail(&vchunk->list, &vregion->vchunk_list);
+	mutex_unlock(&vregion->lock);
 
 	return vchunk;
 
@@ -935,12 +939,15 @@ static void
 mlxsw_sp_acl_tcam_vchunk_destroy(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_acl_tcam_vchunk *vchunk)
 {
+	struct mlxsw_sp_acl_tcam_vregion *vregion = vchunk->vregion;
 	struct mlxsw_sp_acl_tcam_group *group = vchunk->group;
 
+	mutex_lock(&vregion->lock);
 	list_del(&vchunk->list);
 	if (vchunk->chunk2)
 		mlxsw_sp_acl_tcam_chunk_destroy(mlxsw_sp, vchunk->chunk2);
 	mlxsw_sp_acl_tcam_chunk_destroy(mlxsw_sp, vchunk->chunk);
+	mutex_unlock(&vregion->lock);
 	rhashtable_remove_fast(&group->vchunk_ht, &vchunk->ht_node,
 			       mlxsw_sp_acl_tcam_vchunk_ht_params);
 	mlxsw_sp_acl_tcam_vregion_put(mlxsw_sp, vchunk->vregion);
@@ -1042,6 +1049,7 @@ static int mlxsw_sp_acl_tcam_ventry_add(struct mlxsw_sp *mlxsw_sp,
 					struct mlxsw_sp_acl_tcam_ventry *ventry,
 					struct mlxsw_sp_acl_rule_info *rulei)
 {
+	struct mlxsw_sp_acl_tcam_vregion *vregion;
 	struct mlxsw_sp_acl_tcam_vchunk *vchunk;
 	int err;
 
@@ -1052,14 +1060,19 @@ static int mlxsw_sp_acl_tcam_ventry_add(struct mlxsw_sp *mlxsw_sp,
 
 	ventry->vchunk = vchunk;
 	ventry->rulei = rulei;
+	vregion = vchunk->vregion;
+
+	mutex_lock(&vregion->lock);
 	ventry->entry = mlxsw_sp_acl_tcam_entry_create(mlxsw_sp, ventry,
 						       vchunk->chunk);
 	if (IS_ERR(ventry->entry)) {
+		mutex_unlock(&vregion->lock);
 		err = PTR_ERR(ventry->entry);
 		goto err_entry_create;
 	}
 
 	list_add_tail(&ventry->list, &vchunk->ventry_list);
+	mutex_unlock(&vregion->lock);
 
 	return 0;
 
@@ -1072,9 +1085,12 @@ static void mlxsw_sp_acl_tcam_ventry_del(struct mlxsw_sp *mlxsw_sp,
 					 struct mlxsw_sp_acl_tcam_ventry *ventry)
 {
 	struct mlxsw_sp_acl_tcam_vchunk *vchunk = ventry->vchunk;
+	struct mlxsw_sp_acl_tcam_vregion *vregion = vchunk->vregion;
 
+	mutex_lock(&vregion->lock);
 	list_del(&ventry->list);
 	mlxsw_sp_acl_tcam_entry_destroy(mlxsw_sp, ventry->entry);
+	mutex_unlock(&vregion->lock);
 	mlxsw_sp_acl_tcam_vchunk_put(mlxsw_sp, vchunk);
 }
 
@@ -1215,6 +1231,8 @@ mlxsw_sp_acl_tcam_vregion_migrate(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		goto err_group_region_attach;
 
+	mutex_lock(&vregion->lock);
+
 	err = mlxsw_sp_acl_tcam_vchunk_migrate_all(mlxsw_sp, vregion);
 	if (!vregion->failed_rollback) {
 		if (!err) {
@@ -1229,10 +1247,14 @@ mlxsw_sp_acl_tcam_vregion_migrate(struct mlxsw_sp *mlxsw_sp,
 			 */
 			unused_region = vregion->region2;
 		}
+		mutex_unlock(&vregion->lock);
 		vregion->region2 = NULL;
 		mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp, unused_region);
 		mlxsw_sp_acl_tcam_region_destroy(mlxsw_sp, unused_region);
+	} else {
+		mutex_unlock(&vregion->lock);
 	}
+
 	return err;
 
 err_group_region_attach:
