@@ -8,6 +8,7 @@
 #include <linux/list.h>
 #include <linux/rhashtable.h>
 #include <linux/netdevice.h>
+#include <linux/mutex.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/mlxsw.h>
 
@@ -162,6 +163,7 @@ struct mlxsw_sp_acl_tcam_pattern {
 struct mlxsw_sp_acl_tcam_group {
 	struct mlxsw_sp_acl_tcam *tcam;
 	u16 id;
+	struct mutex lock; /* guards region list updates */
 	struct list_head vregion_list;
 	unsigned int region_count;
 	struct rhashtable vchunk_ht;
@@ -264,6 +266,7 @@ mlxsw_sp_acl_tcam_group_add(struct mlxsw_sp *mlxsw_sp,
 		memcpy(&group->tmplt_elusage, tmplt_elusage,
 		       sizeof(group->tmplt_elusage));
 	}
+	mutex_init(&group->lock);
 	INIT_LIST_HEAD(&group->vregion_list);
 	err = mlxsw_sp_acl_tcam_group_id_get(tcam, &group->id);
 	if (err)
@@ -289,6 +292,7 @@ static void mlxsw_sp_acl_tcam_group_del(struct mlxsw_sp *mlxsw_sp,
 	rhashtable_destroy(&group->vchunk_ht);
 	mlxsw_sp_acl_tcam_group_id_put(tcam, group->id);
 	WARN_ON(!list_empty(&group->vregion_list));
+	mutex_destroy(&group->lock);
 }
 
 static int
@@ -353,10 +357,9 @@ mlxsw_sp_acl_tcam_vregion_max_prio(struct mlxsw_sp_acl_tcam_vregion *vregion)
 }
 
 static int
-mlxsw_sp_acl_tcam_group_region_attach(struct mlxsw_sp *mlxsw_sp,
-				      struct mlxsw_sp_acl_tcam_region *region)
+__mlxsw_sp_acl_tcam_group_region_attach(struct mlxsw_sp *mlxsw_sp,
+					struct mlxsw_sp_acl_tcam_group *group)
 {
-	struct mlxsw_sp_acl_tcam_group *group = region->vregion->group;
 	int err;
 
 	if (group->region_count == group->tcam->max_group_size)
@@ -370,14 +373,36 @@ mlxsw_sp_acl_tcam_group_region_attach(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
+static int
+mlxsw_sp_acl_tcam_group_region_attach(struct mlxsw_sp *mlxsw_sp,
+				      struct mlxsw_sp_acl_tcam_region *region)
+{
+	struct mlxsw_sp_acl_tcam_group *group = region->vregion->group;
+	int err;
+
+	mutex_lock(&group->lock);
+	err = __mlxsw_sp_acl_tcam_group_region_attach(mlxsw_sp, group);
+	mutex_unlock(&group->lock);
+	return err;
+}
+
+static void
+__mlxsw_sp_acl_tcam_group_region_detach(struct mlxsw_sp *mlxsw_sp,
+					struct mlxsw_sp_acl_tcam_group *group)
+{
+	group->region_count--;
+	mlxsw_sp_acl_tcam_group_update(mlxsw_sp, group);
+}
+
 static void
 mlxsw_sp_acl_tcam_group_region_detach(struct mlxsw_sp *mlxsw_sp,
 				      struct mlxsw_sp_acl_tcam_region *region)
 {
 	struct mlxsw_sp_acl_tcam_group *group = region->vregion->group;
 
-	group->region_count--;
-	mlxsw_sp_acl_tcam_group_update(mlxsw_sp, group);
+	mutex_lock(&group->lock);
+	__mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp, group);
+	mutex_unlock(&group->lock);
 }
 
 static int
@@ -389,6 +414,7 @@ mlxsw_sp_acl_tcam_group_vregion_attach(struct mlxsw_sp *mlxsw_sp,
 	struct list_head *pos;
 	int err;
 
+	mutex_lock(&group->lock);
 	/* Position the vregion inside the list according to priority */
 	list_for_each(pos, &group->vregion_list) {
 		vregion2 = list_entry(pos, typeof(*vregion2), list);
@@ -399,14 +425,16 @@ mlxsw_sp_acl_tcam_group_vregion_attach(struct mlxsw_sp *mlxsw_sp,
 	list_add_tail(&vregion->list, pos);
 	vregion->group = group;
 
-	err = mlxsw_sp_acl_tcam_group_region_attach(mlxsw_sp, vregion->region);
+	err = __mlxsw_sp_acl_tcam_group_region_attach(mlxsw_sp, group);
 	if (err)
 		goto err_region_attach;
 
+	mutex_unlock(&group->lock);
 	return 0;
 
 err_region_attach:
 	list_del(&vregion->list);
+	mutex_unlock(&group->lock);
 	return err;
 }
 
@@ -414,11 +442,14 @@ static void
 mlxsw_sp_acl_tcam_group_vregion_detach(struct mlxsw_sp *mlxsw_sp,
 				       struct mlxsw_sp_acl_tcam_vregion *vregion)
 {
+	struct mlxsw_sp_acl_tcam_group *group = vregion->group;
+
+	mutex_lock(&group->lock);
 	list_del(&vregion->list);
 	if (vregion->region2)
-		mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp,
-						      vregion->region2);
-	mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp, vregion->region);
+		__mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp, group);
+	__mlxsw_sp_acl_tcam_group_region_detach(mlxsw_sp, group);
+	mutex_unlock(&group->lock);
 }
 
 static struct mlxsw_sp_acl_tcam_vregion *
