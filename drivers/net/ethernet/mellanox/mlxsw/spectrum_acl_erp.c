@@ -1090,11 +1090,6 @@ mlxsw_sp_acl_erp_mask_get(struct mlxsw_sp_acl_atcam_region *aregion,
 	struct mlxsw_sp_acl_erp_key key;
 	struct objagg_obj *objagg_obj;
 
-	/* eRPs are allocated from a shared resource, but currently all
-	 * allocations are done under RTNL.
-	 */
-	ASSERT_RTNL();
-
 	memcpy(key.mask, mask, MLXSW_REG_PTCEX_FLEX_KEY_BLOCKS_LEN);
 	key.ctcam = ctcam;
 	objagg_obj = objagg_obj_get(aregion->erp_vtable->objagg, &key);
@@ -1120,7 +1115,6 @@ int mlxsw_sp_acl_erp_bf_insert(struct mlxsw_sp *mlxsw_sp,
 	const struct mlxsw_sp_acl_verp *verp = objagg_obj_root_priv(objagg_obj);
 	unsigned int erp_bank;
 
-	ASSERT_RTNL();
 	if (!mlxsw_sp_acl_erp_table_is_used(verp->erp_vtable))
 		return 0;
 
@@ -1154,13 +1148,11 @@ void mlxsw_sp_acl_erp_mask_aentry_add(struct mlxsw_sp_acl_erp_mask *erp_mask,
 	struct objagg_obj *objagg_obj = (struct objagg_obj *) erp_mask;
 	struct mlxsw_sp_acl_verp *verp = objagg_obj_root_priv(objagg_obj);
 
-	ASSERT_RTNL();
 	list_add(&aentry->list, &verp->entries_list);
 }
 
 void mlxsw_sp_acl_erp_mask_aentry_del(struct mlxsw_sp_acl_atcam_entry *aentry)
 {
-	ASSERT_RTNL();
 	list_del(&aentry->list);
 }
 
