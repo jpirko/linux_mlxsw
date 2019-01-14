@@ -804,6 +804,71 @@ static void mlxsw_sp_nve_fdb_clear_offload(struct mlxsw_sp *mlxsw_sp,
 	ops->fdb_clear_offload(nve_dev, vni);
 }
 
+static struct net_device *
+mlxsw_sp_nve_br_find_mlxsw_port(struct net_device *br_dev)
+{
+	struct net_device *dev;
+	struct list_head *iter;
+
+	netdev_for_each_lower_dev(br_dev, dev, iter)
+		if (mlxsw_sp_port_dev_lower_find(dev))
+			return dev;
+
+	return NULL;
+}
+
+static int mlxsw_sp_nve_get_mark(const struct net_device *nve_dev,
+				 int *p_offload_fwd_mark)
+{
+	struct net_device *bridge;
+	struct net_device *dev;
+	int err;
+
+	bridge = netdev_master_upper_dev_get((struct net_device *)nve_dev);
+	if (!bridge) {
+		/* The NVE device is already gone from the bridge. It is
+		 * therefore not necessary to clear the mark.
+		 */
+		*p_offload_fwd_mark = 0;
+		return 0;
+	}
+
+	if (WARN_ON(!netif_is_bridge_master(bridge)))
+		return -EINVAL;
+
+	dev = mlxsw_sp_nve_br_find_mlxsw_port(bridge);
+	if (WARN_ON(!dev))
+		return -EINVAL;
+
+	err = br_port_offload_fwd_mark_get(dev, p_offload_fwd_mark);
+	if (WARN_ON(err))
+		return err;
+
+	return 0;
+}
+
+static int mlxsw_sp_nve_br_mark_nve(const struct net_device *nve_dev)
+{
+	int offload_fwd_mark;
+	int err;
+
+	err = mlxsw_sp_nve_get_mark(nve_dev, &offload_fwd_mark);
+	if (err)
+		return err;
+
+	br_port_offload_fwd_mark_set(nve_dev, offload_fwd_mark);
+	return 0;
+}
+
+static void mlxsw_sp_nve_br_unmark_nve(const struct net_device *nve_dev)
+{
+	int offload_fwd_mark;
+
+	if (!WARN_ON(mlxsw_sp_nve_get_mark(nve_dev, &offload_fwd_mark))
+	    && offload_fwd_mark)
+		br_port_offload_fwd_mark_clear(nve_dev, offload_fwd_mark);
+}
+
 int mlxsw_sp_nve_fid_enable(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_fid *fid,
 			    struct mlxsw_sp_nve_params *params,
 			    struct netlink_ext_ack *extack)
@@ -841,6 +906,12 @@ int mlxsw_sp_nve_fid_enable(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_fid *fid,
 
 	nve->config = config;
 
+	err = mlxsw_sp_nve_br_mark_nve(params->dev);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Failed to set offload_fwd_mark at NVE device");
+		goto err_br_mark;
+	}
+
 	err = ops->fdb_replay(params->dev, params->vni);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to offload the FDB");
@@ -850,6 +921,8 @@ int mlxsw_sp_nve_fid_enable(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_fid *fid,
 	return 0;
 
 err_fdb_replay:
+	mlxsw_sp_nve_br_unmark_nve(params->dev);
+err_br_mark:
 	mlxsw_sp_fid_vni_clear(fid);
 err_fid_vni_set:
 	mlxsw_sp_nve_tunnel_fini(mlxsw_sp);
@@ -877,6 +950,8 @@ void mlxsw_sp_nve_fid_disable(struct mlxsw_sp *mlxsw_sp,
 
 	mlxsw_sp_nve_fdb_clear_offload(mlxsw_sp, fid, nve_dev, vni);
 	mlxsw_sp_fid_fdb_clear_offload(fid, nve_dev);
+
+	mlxsw_sp_nve_br_unmark_nve(nve_dev);
 
 	dev_put(nve_dev);
 
