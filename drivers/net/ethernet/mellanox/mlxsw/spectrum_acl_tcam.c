@@ -188,7 +188,9 @@ struct mlxsw_sp_acl_tcam_vregion {
 	struct list_head vchunk_list; /* List of vchunks under this vregion */
 	struct mlxsw_afk_key_info *key_info;
 	struct mlxsw_sp_acl_tcam *tcam;
-	struct delayed_work rehash_dw;
+	struct {
+		struct delayed_work dw;
+	} rehash;
 	struct mlxsw_sp *mlxsw_sp;
 	bool failed_rollback; /* Indicates failed rollback during migration */
 	unsigned int ref_count;
@@ -711,7 +713,7 @@ mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(struct mlxsw_sp_acl_tcam_vregion 
 
 	if (!interval)
 		return;
-	mlxsw_core_schedule_dw(&vregion->rehash_dw,
+	mlxsw_core_schedule_dw(&vregion->rehash.dw,
 			       msecs_to_jiffies(interval));
 }
 
@@ -723,7 +725,7 @@ static void mlxsw_sp_acl_tcam_vregion_rehash_work(struct work_struct *work)
 {
 	struct mlxsw_sp_acl_tcam_vregion *vregion =
 		container_of(work, struct mlxsw_sp_acl_tcam_vregion,
-			     rehash_dw.work);
+			     rehash.dw.work);
 
 	mlxsw_sp_acl_tcam_vregion_rehash(vregion->mlxsw_sp, vregion);
 	mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
@@ -772,7 +774,7 @@ mlxsw_sp_acl_tcam_vregion_create(struct mlxsw_sp *mlxsw_sp,
 
 	if (ops->region_rehash_hints_get) {
 		/* Create the delayed work for vregion periodic rehash */
-		INIT_DELAYED_WORK(&vregion->rehash_dw,
+		INIT_DELAYED_WORK(&vregion->rehash.dw,
 				  mlxsw_sp_acl_tcam_vregion_rehash_work);
 		mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
 	}
@@ -795,7 +797,7 @@ mlxsw_sp_acl_tcam_vregion_destroy(struct mlxsw_sp *mlxsw_sp,
 	const struct mlxsw_sp_acl_tcam_ops *ops = mlxsw_sp->acl_tcam_ops;
 
 	if (ops->region_rehash_hints_get)
-		cancel_delayed_work_sync(&vregion->rehash_dw);
+		cancel_delayed_work_sync(&vregion->rehash.dw);
 	list_del(&vregion->tlist);
 	mlxsw_sp_acl_tcam_vgroup_vregion_detach(mlxsw_sp, vregion);
 	if (vregion->region2)
@@ -833,9 +835,9 @@ int mlxsw_sp_acl_tcam_vregion_rehash_intrvl_set(struct mlxsw_sp *mlxsw_sp,
 	rtnl_lock();
 	list_for_each_entry(vregion, &tcam->vregion_list, tlist) {
 		if (val)
-			mlxsw_core_schedule_dw(&vregion->rehash_dw, 0);
+			mlxsw_core_schedule_dw(&vregion->rehash.dw, 0);
 		else
-			cancel_delayed_work_sync(&vregion->rehash_dw);
+			cancel_delayed_work_sync(&vregion->rehash.dw);
 	}
 	rtnl_unlock();
 	return 0;
