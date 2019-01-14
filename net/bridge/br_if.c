@@ -351,9 +351,9 @@ static void del_nbp(struct net_bridge_port *p)
 
 	nbp_update_port_count(br);
 
-	nbp_switchdev_mark_clear(p);
-
 	netdev_upper_dev_unlink(dev, br->dev);
+
+	nbp_switchdev_mark_clear(p);
 
 	dev->priv_flags &= ~IFF_BRIDGE_PORT;
 
@@ -626,11 +626,11 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 
 	dev->priv_flags |= IFF_BRIDGE_PORT;
 
-	err = netdev_master_upper_dev_link(dev, br->dev, NULL, NULL, extack);
+	err = nbp_switchdev_mark_set(p, extack);
 	if (err)
 		goto err5;
 
-	err = nbp_switchdev_mark_set(p, extack);
+	err = netdev_master_upper_dev_link(dev, br->dev, NULL, NULL, extack);
 	if (err)
 		goto err6;
 
@@ -691,9 +691,9 @@ err7:
 	list_del_rcu(&p->list);
 	br_fdb_delete_by_port(br, p, 0, 1);
 	nbp_update_port_count(br);
-	nbp_switchdev_mark_clear(p);
-err6:
 	netdev_upper_dev_unlink(dev, br->dev);
+err6:
+	nbp_switchdev_mark_clear(p);
 err5:
 	dev->priv_flags &= ~IFF_BRIDGE_PORT;
 	netdev_rx_handler_unregister(dev);
