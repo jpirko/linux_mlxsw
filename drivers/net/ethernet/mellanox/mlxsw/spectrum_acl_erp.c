@@ -48,6 +48,7 @@ struct mlxsw_sp_acl_verp {
 	u8 id;
 	DECLARE_BITMAP(mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN);
 	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
+	struct list_head entries_list;
 };
 
 struct mlxsw_sp_acl_erp_master_mask {
@@ -291,6 +292,8 @@ mlxsw_sp_acl_verp_generic_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	if (!verp)
 		return ERR_PTR(-ENOMEM);
 
+	INIT_LIST_HEAD(&verp->entries_list);
+
 	err = mlxsw_sp_acl_erp_id_get(erp_vtable, &verp->id);
 	if (err)
 		goto err_erp_id_get;
@@ -332,6 +335,7 @@ mlxsw_sp_acl_verp_generic_destroy(struct mlxsw_sp_acl_verp *verp)
 	erp_vtable->num_atcam_erps--;
 	mlxsw_sp_acl_erp_generic_destroy(verp->erp);
 	mlxsw_sp_acl_erp_id_put(erp_vtable, verp->id);
+	WARN_ON(!list_empty(&verp->entries_list));
 	kfree(verp);
 }
 
@@ -576,7 +580,7 @@ mlxsw_acl_erp_vtable_bf_add(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	struct mlxsw_sp_acl_atcam_entry *aentry;
 	int err;
 
-	list_for_each_entry(aentry, &aregion->entries_list, list) {
+	list_for_each_entry(aentry, &erp->verp->entries_list, list) {
 		err = mlxsw_sp_acl_bf_entry_add(aregion->region->mlxsw_sp,
 						erp_vtable->erp_core->bf,
 						aregion, erp_bank, aentry);
@@ -587,7 +591,7 @@ mlxsw_acl_erp_vtable_bf_add(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	return 0;
 
 bf_entry_add_err:
-	list_for_each_entry_continue_reverse(aentry, &aregion->entries_list,
+	list_for_each_entry_continue_reverse(aentry, &erp->verp->entries_list,
 					     list)
 		mlxsw_sp_acl_bf_entry_del(aregion->region->mlxsw_sp,
 					  erp_vtable->erp_core->bf,
@@ -603,7 +607,7 @@ mlxsw_acl_erp_vtable_bf_del(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	unsigned int erp_bank = mlxsw_sp_acl_erp_bank_get(erp);
 	struct mlxsw_sp_acl_atcam_entry *aentry;
 
-	list_for_each_entry_reverse(aentry, &aregion->entries_list, list)
+	list_for_each_entry_reverse(aentry, &erp->verp->entries_list, list)
 		mlxsw_sp_acl_bf_entry_del(aregion->region->mlxsw_sp,
 					  erp_vtable->erp_core->bf,
 					  aregion, erp_bank, aentry);
@@ -1119,6 +1123,22 @@ void mlxsw_sp_acl_erp_bf_remove(struct mlxsw_sp *mlxsw_sp,
 	mlxsw_sp_acl_bf_entry_del(mlxsw_sp,
 				  verp->erp_vtable->erp_core->bf,
 				  aregion, erp_bank, aentry);
+}
+
+void mlxsw_sp_acl_erp_mask_aentry_add(struct mlxsw_sp_acl_erp_mask *erp_mask,
+				      struct mlxsw_sp_acl_atcam_entry *aentry)
+{
+	struct objagg_obj *objagg_obj = (struct objagg_obj *) erp_mask;
+	struct mlxsw_sp_acl_verp *verp = objagg_obj_root_priv(objagg_obj);
+
+	ASSERT_RTNL();
+	list_add(&aentry->list, &verp->entries_list);
+}
+
+void mlxsw_sp_acl_erp_mask_aentry_del(struct mlxsw_sp_acl_atcam_entry *aentry)
+{
+	ASSERT_RTNL();
+	list_del(&aentry->list);
 }
 
 bool
