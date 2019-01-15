@@ -10,6 +10,7 @@
 #include <linux/objagg.h>
 #include <linux/rtnetlink.h>
 #include <linux/slab.h>
+#include <trace/events/mlxsw.h>
 
 #include "core.h"
 #include "reg.h"
@@ -1569,6 +1570,7 @@ static int mlxsw_sp_acl_erp_reorder(struct mlxsw_sp_acl_atcam_region *aregion,
 	int i;
 	int err;
 
+	trace_mlxsw_sp_acl_erp_reorder(erp_vtable->erp_core->mlxsw_sp, aregion);
 	erp_table = mlxsw_sp_acl_erp_table_create(erp_vtable);
 	if (IS_ERR(erp_table))
 		return PTR_ERR(erp_table);
@@ -1664,6 +1666,7 @@ mlxsw_sp_acl_erp_hints_check(struct mlxsw_sp *mlxsw_sp,
 	/* Very basic criterion for now. */
 	if (hstats->root_count < ostats->root_count) {
 		*p_rehash_needed = true;
+		trace_mlxsw_sp_acl_erp_rehash_needed(mlxsw_sp, aregion);
 		err = 0;
 	} else if (mlxsw_sp_acl_erp_reorder_possible(ostats)) {
 		/* If it is possible just to reorder the existing ERPs
@@ -1691,6 +1694,7 @@ mlxsw_sp_acl_erp_rehash_hints_get(struct mlxsw_sp_acl_atcam_region *aregion)
 	bool rehash_needed;
 	int err;
 
+	trace_mlxsw_sp_acl_erp_rehash_hints_get(mlxsw_sp, aregion);
 	hints = objagg_hints_get(aregion->erp_vtable->objagg,
 				 OBJAGG_OPT_ALGO_SIMPLE_GREEDY);
 	if (IS_ERR(hints)) {
