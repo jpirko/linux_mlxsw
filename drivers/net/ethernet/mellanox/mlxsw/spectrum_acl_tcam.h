@@ -156,7 +156,6 @@ struct mlxsw_sp_acl_atcam {
 
 struct mlxsw_sp_acl_atcam_region {
 	struct rhashtable entries_ht; /* A-TCAM only */
-	struct list_head entries_list; /* A-TCAM only */
 	struct mlxsw_sp_acl_ctcam_region cregion;
 	const struct mlxsw_sp_acl_atcam_region_ops *ops;
 	struct mlxsw_sp_acl_tcam_region *region;
@@ -270,6 +269,9 @@ void mlxsw_sp_acl_erp_bf_remove(struct mlxsw_sp *mlxsw_sp,
 				struct mlxsw_sp_acl_atcam_region *aregion,
 				struct mlxsw_sp_acl_erp_mask *erp_mask,
 				struct mlxsw_sp_acl_atcam_entry *aentry);
+void mlxsw_sp_acl_erp_mask_aentry_add(struct mlxsw_sp_acl_erp_mask *erp_mask,
+				      struct mlxsw_sp_acl_atcam_entry *aentry);
+void mlxsw_sp_acl_erp_mask_aentry_del(struct mlxsw_sp_acl_atcam_entry *aentry);
 void *
 mlxsw_sp_acl_erp_rehash_hints_get(struct mlxsw_sp_acl_atcam_region *aregion);
 void mlxsw_sp_acl_erp_rehash_hints_put(void *hints_priv);
