@@ -93,6 +93,68 @@ TRACE_EVENT(mlxsw_sp_acl_tcam_vregion_rehash_dis,
 		  __entry->mlxsw_sp, __entry->vregion)
 );
 
+struct mlxsw_sp_acl_atcam_region;
+
+TRACE_EVENT(mlxsw_sp_acl_erp_rehash_hints_get,
+	TP_PROTO(const struct mlxsw_sp *mlxsw_sp,
+		 const struct mlxsw_sp_acl_atcam_region *aregion),
+
+	TP_ARGS(mlxsw_sp, aregion),
+
+	TP_STRUCT__entry(
+		__field(const void *, mlxsw_sp)
+		__field(const void *, aregion)
+	),
+
+	TP_fast_assign(
+		__entry->mlxsw_sp = mlxsw_sp;
+		__entry->aregion = aregion;
+	),
+
+	TP_printk("mlxsw_sp %p, aregion %p",
+		  __entry->mlxsw_sp, __entry->aregion)
+);
+
+TRACE_EVENT(mlxsw_sp_acl_erp_rehash_needed,
+	TP_PROTO(const struct mlxsw_sp *mlxsw_sp,
+		 const struct mlxsw_sp_acl_atcam_region *aregion),
+
+	TP_ARGS(mlxsw_sp, aregion),
+
+	TP_STRUCT__entry(
+		__field(const void *, mlxsw_sp)
+		__field(const void *, aregion)
+	),
+
+	TP_fast_assign(
+		__entry->mlxsw_sp = mlxsw_sp;
+		__entry->aregion = aregion;
+	),
+
+	TP_printk("mlxsw_sp %p, aregion %p",
+		  __entry->mlxsw_sp, __entry->aregion)
+);
+
+TRACE_EVENT(mlxsw_sp_acl_erp_reorder,
+	TP_PROTO(const struct mlxsw_sp *mlxsw_sp,
+		 const struct mlxsw_sp_acl_atcam_region *aregion),
+
+	TP_ARGS(mlxsw_sp, aregion),
+
+	TP_STRUCT__entry(
+		__field(const void *, mlxsw_sp)
+		__field(const void *, aregion)
+	),
+
+	TP_fast_assign(
+		__entry->mlxsw_sp = mlxsw_sp;
+		__entry->aregion = aregion;
+	),
+
+	TP_printk("mlxsw_sp %p, aregion %p",
+		  __entry->mlxsw_sp, __entry->aregion)
+);
+
 #endif /* _MLXSW_TRACEPOINT_H */
 
 /* This part must be outside protection */
