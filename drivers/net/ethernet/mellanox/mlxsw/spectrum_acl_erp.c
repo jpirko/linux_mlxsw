@@ -459,16 +459,10 @@ mlxsw_sp_acl_erp_table_relocate(struct mlxsw_sp_acl_erp_table *erp_table)
 	list_for_each_entry(erp, &erp_table->atcam_erps_list, list) {
 		err = mlxsw_sp_acl_erp_table_erp_add(erp_table, erp);
 		if (err)
-			goto err_table_erp_add;
+			return err;
 	}
 
 	return 0;
-
-err_table_erp_add:
-	list_for_each_entry_continue_reverse(erp, &erp_table->atcam_erps_list,
-					     list)
-		mlxsw_sp_acl_erp_table_erp_del(erp);
-	return err;
 }
 
 static int
