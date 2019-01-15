@@ -41,7 +41,7 @@ struct mlxsw_sp_acl_erp {
 	u8 index;
 	DECLARE_BITMAP(mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN);
 	struct list_head list;
-	struct mlxsw_sp_acl_erp_table *erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
 };
 
 struct mlxsw_sp_acl_erp_master_mask {
@@ -50,14 +50,19 @@ struct mlxsw_sp_acl_erp_master_mask {
 };
 
 struct mlxsw_sp_acl_erp_table {
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
+	DECLARE_BITMAP(erp_index_bitmap, MLXSW_SP_ACL_ERP_MAX_PER_REGION);
+	unsigned long base_index;
+	struct list_head atcam_erps_list;
+};
+
+struct mlxsw_sp_acl_erp_vtable {
+	struct mlxsw_sp_acl_erp_table *erp_table;
 	struct mlxsw_sp_acl_erp_master_mask master_mask;
 	DECLARE_BITMAP(erp_id_bitmap, MLXSW_SP_ACL_ERP_MAX_PER_REGION);
-	DECLARE_BITMAP(erp_index_bitmap, MLXSW_SP_ACL_ERP_MAX_PER_REGION);
-	struct list_head atcam_erps_list;
 	struct mlxsw_sp_acl_erp_core *erp_core;
 	struct mlxsw_sp_acl_atcam_region *aregion;
-	const struct mlxsw_sp_acl_erp_table_ops *ops;
-	unsigned long base_index;
+	const struct mlxsw_sp_acl_erp_vtable_ops *ops;
 	unsigned int num_atcam_erps;
 	unsigned int num_max_atcam_erps;
 	unsigned int num_ctcam_erps;
@@ -65,87 +70,87 @@ struct mlxsw_sp_acl_erp_table {
 	struct objagg *objagg;
 };
 
-struct mlxsw_sp_acl_erp_table_ops {
+struct mlxsw_sp_acl_erp_vtable_ops {
 	struct mlxsw_sp_acl_erp *
-		(*erp_create)(struct mlxsw_sp_acl_erp_table *erp_table,
+		(*erp_create)(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			      struct mlxsw_sp_acl_erp_key *key);
-	void (*erp_destroy)(struct mlxsw_sp_acl_erp_table *erp_table,
+	void (*erp_destroy)(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			    struct mlxsw_sp_acl_erp *erp);
 };
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			     struct mlxsw_sp_acl_erp_key *key);
 static void
-mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			      struct mlxsw_sp_acl_erp *erp);
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    struct mlxsw_sp_acl_erp_key *key);
 static void
-mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				     struct mlxsw_sp_acl_erp *erp);
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				   struct mlxsw_sp_acl_erp_key *key);
 static void
-mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    struct mlxsw_sp_acl_erp *erp);
 static void
-mlxsw_sp_acl_erp_no_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_no_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				 struct mlxsw_sp_acl_erp *erp);
 
-static const struct mlxsw_sp_acl_erp_table_ops erp_multiple_masks_ops = {
+static const struct mlxsw_sp_acl_erp_vtable_ops erp_multiple_masks_ops = {
 	.erp_create = mlxsw_sp_acl_erp_mask_create,
 	.erp_destroy = mlxsw_sp_acl_erp_mask_destroy,
 };
 
-static const struct mlxsw_sp_acl_erp_table_ops erp_two_masks_ops = {
+static const struct mlxsw_sp_acl_erp_vtable_ops erp_two_masks_ops = {
 	.erp_create = mlxsw_sp_acl_erp_mask_create,
 	.erp_destroy = mlxsw_sp_acl_erp_second_mask_destroy,
 };
 
-static const struct mlxsw_sp_acl_erp_table_ops erp_single_mask_ops = {
+static const struct mlxsw_sp_acl_erp_vtable_ops erp_single_mask_ops = {
 	.erp_create = mlxsw_sp_acl_erp_second_mask_create,
 	.erp_destroy = mlxsw_sp_acl_erp_first_mask_destroy,
 };
 
-static const struct mlxsw_sp_acl_erp_table_ops erp_no_mask_ops = {
+static const struct mlxsw_sp_acl_erp_vtable_ops erp_no_mask_ops = {
 	.erp_create = mlxsw_sp_acl_erp_first_mask_create,
 	.erp_destroy = mlxsw_sp_acl_erp_no_mask_destroy,
 };
 
 static bool
-mlxsw_sp_acl_erp_table_is_used(const struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_table_is_used(const struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	return erp_table->ops != &erp_single_mask_ops &&
-	       erp_table->ops != &erp_no_mask_ops;
+	return erp_vtable->ops != &erp_single_mask_ops &&
+	       erp_vtable->ops != &erp_no_mask_ops;
 }
 
 static unsigned int
 mlxsw_sp_acl_erp_bank_get(const struct mlxsw_sp_acl_erp *erp)
 {
-	return erp->index % erp->erp_table->erp_core->num_erp_banks;
+	return erp->index % erp->erp_vtable->erp_core->num_erp_banks;
 }
 
 static unsigned int
-mlxsw_sp_acl_erp_table_entry_size(const struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_vtable_entry_size(const struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	struct mlxsw_sp_acl_atcam_region *aregion = erp_table->aregion;
-	struct mlxsw_sp_acl_erp_core *erp_core = erp_table->erp_core;
+	struct mlxsw_sp_acl_atcam_region *aregion = erp_vtable->aregion;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
 
 	return erp_core->erpt_entries_size[aregion->type];
 }
 
-static int mlxsw_sp_acl_erp_id_get(struct mlxsw_sp_acl_erp_table *erp_table,
+static int mlxsw_sp_acl_erp_id_get(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				   u8 *p_id)
 {
 	u8 id;
 
-	id = find_first_zero_bit(erp_table->erp_id_bitmap,
+	id = find_first_zero_bit(erp_vtable->erp_id_bitmap,
 				 MLXSW_SP_ACL_ERP_MAX_PER_REGION);
 	if (id < MLXSW_SP_ACL_ERP_MAX_PER_REGION) {
-		__set_bit(id, erp_table->erp_id_bitmap);
+		__set_bit(id, erp_vtable->erp_id_bitmap);
 		*p_id = id;
 		return 0;
 	}
@@ -153,10 +158,10 @@ static int mlxsw_sp_acl_erp_id_get(struct mlxsw_sp_acl_erp_table *erp_table,
 	return -ENOBUFS;
 }
 
-static void mlxsw_sp_acl_erp_id_put(struct mlxsw_sp_acl_erp_table *erp_table,
+static void mlxsw_sp_acl_erp_id_put(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    u8 id)
 {
-	__clear_bit(id, erp_table->erp_id_bitmap);
+	__clear_bit(id, erp_vtable->erp_id_bitmap);
 }
 
 static void
@@ -176,23 +181,23 @@ mlxsw_sp_acl_erp_master_mask_bit_clear(unsigned long bit,
 }
 
 static int
-mlxsw_sp_acl_erp_master_mask_update(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_master_mask_update(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	struct mlxsw_sp_acl_tcam_region *region = erp_table->aregion->region;
+	struct mlxsw_sp_acl_tcam_region *region = erp_vtable->aregion->region;
 	struct mlxsw_sp *mlxsw_sp = region->mlxsw_sp;
 	char percr_pl[MLXSW_REG_PERCR_LEN];
 	char *master_mask;
 
 	mlxsw_reg_percr_pack(percr_pl, region->id);
 	master_mask = mlxsw_reg_percr_master_mask_data(percr_pl);
-	bitmap_to_arr32((u32 *) master_mask, erp_table->master_mask.bitmap,
+	bitmap_to_arr32((u32 *) master_mask, erp_vtable->master_mask.bitmap,
 			MLXSW_SP_ACL_TCAM_MASK_LEN);
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(percr), percr_pl);
 }
 
 static int
-mlxsw_sp_acl_erp_master_mask_set(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_master_mask_set(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				 struct mlxsw_sp_acl_erp_key *key)
 {
 	DECLARE_BITMAP(mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN);
@@ -203,9 +208,9 @@ mlxsw_sp_acl_erp_master_mask_set(struct mlxsw_sp_acl_erp_table *erp_table,
 			  MLXSW_SP_ACL_TCAM_MASK_LEN);
 	for_each_set_bit(bit, mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN)
 		mlxsw_sp_acl_erp_master_mask_bit_set(bit,
-						     &erp_table->master_mask);
+						     &erp_vtable->master_mask);
 
-	err = mlxsw_sp_acl_erp_master_mask_update(erp_table);
+	err = mlxsw_sp_acl_erp_master_mask_update(erp_vtable);
 	if (err)
 		goto err_master_mask_update;
 
@@ -214,12 +219,12 @@ mlxsw_sp_acl_erp_master_mask_set(struct mlxsw_sp_acl_erp_table *erp_table,
 err_master_mask_update:
 	for_each_set_bit(bit, mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN)
 		mlxsw_sp_acl_erp_master_mask_bit_clear(bit,
-						       &erp_table->master_mask);
+						       &erp_vtable->master_mask);
 	return err;
 }
 
 static int
-mlxsw_sp_acl_erp_master_mask_clear(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_master_mask_clear(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				   struct mlxsw_sp_acl_erp_key *key)
 {
 	DECLARE_BITMAP(mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN);
@@ -230,9 +235,9 @@ mlxsw_sp_acl_erp_master_mask_clear(struct mlxsw_sp_acl_erp_table *erp_table,
 			  MLXSW_SP_ACL_TCAM_MASK_LEN);
 	for_each_set_bit(bit, mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN)
 		mlxsw_sp_acl_erp_master_mask_bit_clear(bit,
-						       &erp_table->master_mask);
+						       &erp_vtable->master_mask);
 
-	err = mlxsw_sp_acl_erp_master_mask_update(erp_table);
+	err = mlxsw_sp_acl_erp_master_mask_update(erp_vtable);
 	if (err)
 		goto err_master_mask_update;
 
@@ -241,12 +246,12 @@ mlxsw_sp_acl_erp_master_mask_clear(struct mlxsw_sp_acl_erp_table *erp_table,
 err_master_mask_update:
 	for_each_set_bit(bit, mask_bitmap, MLXSW_SP_ACL_TCAM_MASK_LEN)
 		mlxsw_sp_acl_erp_master_mask_bit_set(bit,
-						     &erp_table->master_mask);
+						     &erp_vtable->master_mask);
 	return err;
 }
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_generic_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_generic_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
@@ -256,25 +261,25 @@ mlxsw_sp_acl_erp_generic_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	if (!erp)
 		return ERR_PTR(-ENOMEM);
 
-	err = mlxsw_sp_acl_erp_id_get(erp_table, &erp->id);
+	err = mlxsw_sp_acl_erp_id_get(erp_vtable, &erp->id);
 	if (err)
 		goto err_erp_id_get;
 
 	memcpy(&erp->key, key, sizeof(*key));
-	list_add(&erp->list, &erp_table->atcam_erps_list);
-	erp_table->num_atcam_erps++;
-	erp->erp_table = erp_table;
+	list_add(&erp->list, &erp_vtable->erp_table->atcam_erps_list);
+	erp_vtable->num_atcam_erps++;
+	erp->erp_vtable = erp_vtable;
 
-	err = mlxsw_sp_acl_erp_master_mask_set(erp_table, &erp->key);
+	err = mlxsw_sp_acl_erp_master_mask_set(erp_vtable, &erp->key);
 	if (err)
 		goto err_master_mask_set;
 
 	return erp;
 
 err_master_mask_set:
-	erp_table->num_atcam_erps--;
+	erp_vtable->num_atcam_erps--;
 	list_del(&erp->list);
-	mlxsw_sp_acl_erp_id_put(erp_table, erp->id);
+	mlxsw_sp_acl_erp_id_put(erp_vtable, erp->id);
 err_erp_id_get:
 	kfree(erp);
 	return ERR_PTR(err);
@@ -283,12 +288,12 @@ err_erp_id_get:
 static void
 mlxsw_sp_acl_erp_generic_destroy(struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_erp_table *erp_table = erp->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp->erp_vtable;
 
-	mlxsw_sp_acl_erp_master_mask_clear(erp_table, &erp->key);
-	erp_table->num_atcam_erps--;
+	mlxsw_sp_acl_erp_master_mask_clear(erp_vtable, &erp->key);
+	erp_vtable->num_atcam_erps--;
 	list_del(&erp->list);
-	mlxsw_sp_acl_erp_id_put(erp_table, erp->id);
+	mlxsw_sp_acl_erp_id_put(erp_vtable, erp->id);
 	kfree(erp);
 }
 
@@ -341,15 +346,16 @@ mlxsw_sp_acl_erp_table_master_rp(struct mlxsw_sp_acl_erp_table *erp_table)
 				struct mlxsw_sp_acl_erp, list);
 }
 
-static int mlxsw_sp_acl_erp_index_get(struct mlxsw_sp_acl_erp_table *erp_table,
-				      u8 *p_index)
+static int
+mlxsw_sp_acl_erp_index_get(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+			   u8 *p_index)
 {
 	u8 index;
 
-	index = find_first_zero_bit(erp_table->erp_index_bitmap,
-				    erp_table->num_max_atcam_erps);
-	if (index < erp_table->num_max_atcam_erps) {
-		__set_bit(index, erp_table->erp_index_bitmap);
+	index = find_first_zero_bit(erp_vtable->erp_table->erp_index_bitmap,
+				    erp_vtable->num_max_atcam_erps);
+	if (index < erp_vtable->num_max_atcam_erps) {
+		__set_bit(index, erp_vtable->erp_table->erp_index_bitmap);
 		*p_index = index;
 		return 0;
 	}
@@ -357,19 +363,21 @@ static int mlxsw_sp_acl_erp_index_get(struct mlxsw_sp_acl_erp_table *erp_table,
 	return -ENOBUFS;
 }
 
-static void mlxsw_sp_acl_erp_index_put(struct mlxsw_sp_acl_erp_table *erp_table,
-				       u8 index)
+static void
+mlxsw_sp_acl_erp_index_put(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+			   u8 index)
 {
-	__clear_bit(index, erp_table->erp_index_bitmap);
+	__clear_bit(index, erp_vtable->erp_table->erp_index_bitmap);
 }
 
 static void
-mlxsw_sp_acl_erp_table_locate(const struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_table_locate(const struct mlxsw_sp_acl_erp_core *erp_core,
+			      const struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+			      const struct mlxsw_sp_acl_erp_table *erp_table,
 			      const struct mlxsw_sp_acl_erp *erp,
 			      u8 *p_erpt_bank, u8 *p_erpt_index)
 {
-	unsigned int entry_size = mlxsw_sp_acl_erp_table_entry_size(erp_table);
-	struct mlxsw_sp_acl_erp_core *erp_core = erp_table->erp_core;
+	unsigned int entry_size = mlxsw_sp_acl_erp_vtable_entry_size(erp_vtable);
 	unsigned int row;
 
 	*p_erpt_bank = erp->index % erp_core->num_erp_banks;
@@ -381,13 +389,16 @@ static int
 mlxsw_sp_acl_erp_table_erp_add(struct mlxsw_sp_acl_erp_table *erp_table,
 			       struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp_table->erp_vtable;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
+	struct mlxsw_sp *mlxsw_sp = erp_core->mlxsw_sp;
 	enum mlxsw_reg_perpt_key_size key_size;
 	char perpt_pl[MLXSW_REG_PERPT_LEN];
 	u8 erpt_bank, erpt_index;
 
-	mlxsw_sp_acl_erp_table_locate(erp_table, erp, &erpt_bank, &erpt_index);
-	key_size = (enum mlxsw_reg_perpt_key_size) erp_table->aregion->type;
+	mlxsw_sp_acl_erp_table_locate(erp_core, erp_vtable, erp_table, erp,
+				      &erpt_bank, &erpt_index);
+	key_size = (enum mlxsw_reg_perpt_key_size) erp_vtable->aregion->type;
 	mlxsw_reg_perpt_pack(perpt_pl, erpt_bank, erpt_index, key_size, erp->id,
 			     0, erp_table->base_index, erp->index,
 			     erp->key.mask);
@@ -399,15 +410,18 @@ mlxsw_sp_acl_erp_table_erp_add(struct mlxsw_sp_acl_erp_table *erp_table,
 
 static void mlxsw_sp_acl_erp_table_erp_del(struct mlxsw_sp_acl_erp *erp)
 {
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp->erp_vtable;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
 	char empty_mask[MLXSW_REG_PTCEX_FLEX_KEY_BLOCKS_LEN] = { 0 };
-	struct mlxsw_sp_acl_erp_table *erp_table = erp->erp_table;
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
+	struct mlxsw_sp *mlxsw_sp = erp_core->mlxsw_sp;
 	enum mlxsw_reg_perpt_key_size key_size;
 	char perpt_pl[MLXSW_REG_PERPT_LEN];
 	u8 erpt_bank, erpt_index;
 
-	mlxsw_sp_acl_erp_table_locate(erp_table, erp, &erpt_bank, &erpt_index);
-	key_size = (enum mlxsw_reg_perpt_key_size) erp_table->aregion->type;
+	mlxsw_sp_acl_erp_table_locate(erp_core, erp_vtable, erp_table, erp,
+				      &erpt_bank, &erpt_index);
+	key_size = (enum mlxsw_reg_perpt_key_size) erp_vtable->aregion->type;
 	mlxsw_reg_perpt_pack(perpt_pl, erpt_bank, erpt_index, key_size, erp->id,
 			     0, erp_table->base_index, erp->index, empty_mask);
 	mlxsw_reg_perpt_erp_vector_pack(perpt_pl, erp_table->erp_index_bitmap,
@@ -420,8 +434,9 @@ static int
 mlxsw_sp_acl_erp_table_enable(struct mlxsw_sp_acl_erp_table *erp_table,
 			      bool ctcam_le)
 {
-	struct mlxsw_sp_acl_tcam_region *region = erp_table->aregion->region;
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp_table->erp_vtable;
+	struct mlxsw_sp_acl_tcam_region *region = erp_vtable->aregion->region;
+	struct mlxsw_sp *mlxsw_sp = erp_vtable->erp_core->mlxsw_sp;
 	char pererp_pl[MLXSW_REG_PERERP_LEN];
 
 	mlxsw_reg_pererp_pack(pererp_pl, region->id, ctcam_le, true, 0,
@@ -435,8 +450,9 @@ mlxsw_sp_acl_erp_table_enable(struct mlxsw_sp_acl_erp_table *erp_table,
 static void
 mlxsw_sp_acl_erp_table_disable(struct mlxsw_sp_acl_erp_table *erp_table)
 {
-	struct mlxsw_sp_acl_tcam_region *region = erp_table->aregion->region;
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp_table->erp_vtable;
+	struct mlxsw_sp_acl_tcam_region *region = erp_vtable->aregion->region;
+	struct mlxsw_sp *mlxsw_sp = erp_vtable->erp_core->mlxsw_sp;
 	char pererp_pl[MLXSW_REG_PERERP_LEN];
 	struct mlxsw_sp_acl_erp *master_rp;
 
@@ -466,27 +482,28 @@ mlxsw_sp_acl_erp_table_relocate(struct mlxsw_sp_acl_erp_table *erp_table)
 }
 
 static int
-mlxsw_sp_acl_erp_table_expand(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_vtable_expand(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	unsigned int num_erps, old_num_erps = erp_table->num_max_atcam_erps;
-	struct mlxsw_sp_acl_erp_core *erp_core = erp_table->erp_core;
+	unsigned int num_erps, old_num_erps = erp_vtable->num_max_atcam_erps;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
 	unsigned long old_base_index = erp_table->base_index;
-	bool ctcam_le = erp_table->num_ctcam_erps > 0;
+	bool ctcam_le = erp_vtable->num_ctcam_erps > 0;
 	int err;
 
-	if (erp_table->num_atcam_erps < erp_table->num_max_atcam_erps)
+	if (erp_vtable->num_atcam_erps < erp_vtable->num_max_atcam_erps)
 		return 0;
 
-	if (erp_table->num_max_atcam_erps == MLXSW_SP_ACL_ERP_MAX_PER_REGION)
+	if (erp_vtable->num_max_atcam_erps == MLXSW_SP_ACL_ERP_MAX_PER_REGION)
 		return -ENOBUFS;
 
 	num_erps = old_num_erps + erp_core->num_erp_banks;
 	err = mlxsw_sp_acl_erp_table_alloc(erp_core, num_erps,
-					   erp_table->aregion->type,
+					   erp_vtable->aregion->type,
 					   &erp_table->base_index);
 	if (err)
 		return err;
-	erp_table->num_max_atcam_erps = num_erps;
+	erp_vtable->num_max_atcam_erps = num_erps;
 
 	err = mlxsw_sp_acl_erp_table_relocate(erp_table);
 	if (err)
@@ -497,32 +514,32 @@ mlxsw_sp_acl_erp_table_expand(struct mlxsw_sp_acl_erp_table *erp_table)
 		goto err_table_enable;
 
 	mlxsw_sp_acl_erp_table_free(erp_core, old_num_erps,
-				    erp_table->aregion->type, old_base_index);
+				    erp_vtable->aregion->type, old_base_index);
 
 	return 0;
 
 err_table_enable:
 err_table_relocate:
-	erp_table->num_max_atcam_erps = old_num_erps;
+	erp_vtable->num_max_atcam_erps = old_num_erps;
 	mlxsw_sp_acl_erp_table_free(erp_core, num_erps,
-				    erp_table->aregion->type,
+				    erp_vtable->aregion->type,
 				    erp_table->base_index);
 	erp_table->base_index = old_base_index;
 	return err;
 }
 
 static int
-mlxsw_acl_erp_table_bf_add(struct mlxsw_sp_acl_erp_table *erp_table,
-			   struct mlxsw_sp_acl_erp *erp)
+mlxsw_acl_erp_vtable_bf_add(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+			    struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_atcam_region *aregion = erp_table->aregion;
+	struct mlxsw_sp_acl_atcam_region *aregion = erp_vtable->aregion;
 	unsigned int erp_bank = mlxsw_sp_acl_erp_bank_get(erp);
 	struct mlxsw_sp_acl_atcam_entry *aentry;
 	int err;
 
 	list_for_each_entry(aentry, &aregion->entries_list, list) {
 		err = mlxsw_sp_acl_bf_entry_add(aregion->region->mlxsw_sp,
-						erp_table->erp_core->bf,
+						erp_vtable->erp_core->bf,
 						aregion, erp_bank, aentry);
 		if (err)
 			goto bf_entry_add_err;
@@ -534,39 +551,40 @@ bf_entry_add_err:
 	list_for_each_entry_continue_reverse(aentry, &aregion->entries_list,
 					     list)
 		mlxsw_sp_acl_bf_entry_del(aregion->region->mlxsw_sp,
-					  erp_table->erp_core->bf,
+					  erp_vtable->erp_core->bf,
 					  aregion, erp_bank, aentry);
 	return err;
 }
 
 static void
-mlxsw_acl_erp_table_bf_del(struct mlxsw_sp_acl_erp_table *erp_table,
-			   struct mlxsw_sp_acl_erp *erp)
+mlxsw_acl_erp_vtable_bf_del(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+			    struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_atcam_region *aregion = erp_table->aregion;
+	struct mlxsw_sp_acl_atcam_region *aregion = erp_vtable->aregion;
 	unsigned int erp_bank = mlxsw_sp_acl_erp_bank_get(erp);
 	struct mlxsw_sp_acl_atcam_entry *aentry;
 
 	list_for_each_entry_reverse(aentry, &aregion->entries_list, list)
 		mlxsw_sp_acl_bf_entry_del(aregion->region->mlxsw_sp,
-					  erp_table->erp_core->bf,
+					  erp_vtable->erp_core->bf,
 					  aregion, erp_bank, aentry);
 }
 
 static int
-mlxsw_sp_acl_erp_region_table_trans(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_region_table_trans(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	struct mlxsw_sp_acl_erp_core *erp_core = erp_table->erp_core;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
 	struct mlxsw_sp_acl_erp *master_rp;
 	int err;
 
 	/* Initially, allocate a single eRP row. Expand later as needed */
 	err = mlxsw_sp_acl_erp_table_alloc(erp_core, erp_core->num_erp_banks,
-					   erp_table->aregion->type,
+					   erp_vtable->aregion->type,
 					   &erp_table->base_index);
 	if (err)
 		return err;
-	erp_table->num_max_atcam_erps = erp_core->num_erp_banks;
+	erp_vtable->num_max_atcam_erps = erp_core->num_erp_banks;
 
 	/* Transition the sole RP currently configured (the master RP)
 	 * to the eRP table
@@ -591,7 +609,7 @@ mlxsw_sp_acl_erp_region_table_trans(struct mlxsw_sp_acl_erp_table *erp_table)
 	 * on the master RP were not set to Bloom filter up to this
 	 * point.
 	 */
-	err = mlxsw_acl_erp_table_bf_add(erp_table, master_rp);
+	err = mlxsw_acl_erp_vtable_bf_add(erp_vtable, master_rp);
 	if (err)
 		goto err_table_bf_add;
 
@@ -602,43 +620,45 @@ mlxsw_sp_acl_erp_region_table_trans(struct mlxsw_sp_acl_erp_table *erp_table)
 	return 0;
 
 err_table_enable:
-	mlxsw_acl_erp_table_bf_del(erp_table, master_rp);
+	mlxsw_acl_erp_vtable_bf_del(erp_vtable, master_rp);
 err_table_bf_add:
 	mlxsw_sp_acl_erp_table_erp_del(master_rp);
 err_table_master_rp_add:
 	__clear_bit(master_rp->index, erp_table->erp_index_bitmap);
 err_table_master_rp:
-	mlxsw_sp_acl_erp_table_free(erp_core, erp_table->num_max_atcam_erps,
-				    erp_table->aregion->type,
+	mlxsw_sp_acl_erp_table_free(erp_core, erp_vtable->num_max_atcam_erps,
+				    erp_vtable->aregion->type,
 				    erp_table->base_index);
 	return err;
 }
 
 static void
-mlxsw_sp_acl_erp_region_master_mask_trans(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_region_master_mask_trans(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	struct mlxsw_sp_acl_erp_core *erp_core = erp_table->erp_core;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
+	struct mlxsw_sp_acl_erp_core *erp_core = erp_vtable->erp_core;
 	struct mlxsw_sp_acl_erp *master_rp;
 
 	mlxsw_sp_acl_erp_table_disable(erp_table);
 	master_rp = mlxsw_sp_acl_erp_table_master_rp(erp_table);
 	if (!master_rp)
 		return;
-	mlxsw_acl_erp_table_bf_del(erp_table, master_rp);
+	mlxsw_acl_erp_vtable_bf_del(erp_vtable, master_rp);
 	mlxsw_sp_acl_erp_table_erp_del(master_rp);
 	__clear_bit(master_rp->index, erp_table->erp_index_bitmap);
-	mlxsw_sp_acl_erp_table_free(erp_core, erp_table->num_max_atcam_erps,
-				    erp_table->aregion->type,
+	mlxsw_sp_acl_erp_table_free(erp_core, erp_vtable->num_max_atcam_erps,
+				    erp_vtable->aregion->type,
 				    erp_table->base_index);
 }
 
 static int
-mlxsw_sp_acl_erp_region_erp_add(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_region_erp_add(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_tcam_region *region = erp_table->aregion->region;
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
-	bool ctcam_le = erp_table->num_ctcam_erps > 0;
+	struct mlxsw_sp_acl_tcam_region *region = erp_vtable->aregion->region;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
+	struct mlxsw_sp *mlxsw_sp = erp_vtable->erp_core->mlxsw_sp;
+	bool ctcam_le = erp_vtable->num_ctcam_erps > 0;
 	char pererp_pl[MLXSW_REG_PERERP_LEN];
 
 	mlxsw_reg_pererp_pack(pererp_pl, region->id, ctcam_le, true, 0,
@@ -652,10 +672,11 @@ mlxsw_sp_acl_erp_region_erp_add(struct mlxsw_sp_acl_erp_table *erp_table,
 
 static void mlxsw_sp_acl_erp_region_erp_del(struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_erp_table *erp_table = erp->erp_table;
-	struct mlxsw_sp_acl_tcam_region *region = erp_table->aregion->region;
-	struct mlxsw_sp *mlxsw_sp = erp_table->erp_core->mlxsw_sp;
-	bool ctcam_le = erp_table->num_ctcam_erps > 0;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp->erp_vtable;
+	struct mlxsw_sp_acl_tcam_region *region = erp_vtable->aregion->region;
+	struct mlxsw_sp_acl_erp_table *erp_table = erp_vtable->erp_table;
+	struct mlxsw_sp *mlxsw_sp = erp_vtable->erp_core->mlxsw_sp;
+	bool ctcam_le = erp_vtable->num_ctcam_erps > 0;
 	char pererp_pl[MLXSW_REG_PERERP_LEN];
 
 	mlxsw_reg_pererp_pack(pererp_pl, region->id, ctcam_le, true, 0,
@@ -668,64 +689,66 @@ static void mlxsw_sp_acl_erp_region_erp_del(struct mlxsw_sp_acl_erp *erp)
 }
 
 static int
-mlxsw_sp_acl_erp_region_ctcam_enable(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_region_ctcam_enable(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
 	/* No need to re-enable lookup in the C-TCAM */
-	if (erp_table->num_ctcam_erps > 1)
+	if (erp_vtable->num_ctcam_erps > 1)
 		return 0;
 
-	return mlxsw_sp_acl_erp_table_enable(erp_table, true);
+	return mlxsw_sp_acl_erp_table_enable(erp_vtable->erp_table, true);
 }
 
 static void
-mlxsw_sp_acl_erp_region_ctcam_disable(struct mlxsw_sp_acl_erp_table *erp_table)
+mlxsw_sp_acl_erp_region_ctcam_disable(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
 	/* Only disable C-TCAM lookup when last C-TCAM eRP is deleted */
-	if (erp_table->num_ctcam_erps > 1)
+	if (erp_vtable->num_ctcam_erps > 1)
 		return;
 
-	mlxsw_sp_acl_erp_table_enable(erp_table, false);
+	mlxsw_sp_acl_erp_table_enable(erp_vtable->erp_table, false);
 }
 
 static int
-__mlxsw_sp_acl_erp_table_other_inc(struct mlxsw_sp_acl_erp_table *erp_table,
-				   unsigned int *inc_num)
+__mlxsw_sp_acl_erp_vtable_other_inc(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+				    unsigned int *inc_num)
 {
 	int err;
 
 	/* If there are C-TCAM eRP or deltas in use we need to transition
 	 * the region to use eRP table, if it is not already done
 	 */
-	if (!mlxsw_sp_acl_erp_table_is_used(erp_table)) {
-		err = mlxsw_sp_acl_erp_region_table_trans(erp_table);
+	if (!mlxsw_sp_acl_erp_table_is_used(erp_vtable)) {
+		err = mlxsw_sp_acl_erp_region_table_trans(erp_vtable);
 		if (err)
 			return err;
 	}
 
 	/* When C-TCAM or deltas are used, the eRP table must be used */
-	if (erp_table->ops != &erp_multiple_masks_ops)
-		erp_table->ops = &erp_multiple_masks_ops;
+	if (erp_vtable->ops != &erp_multiple_masks_ops)
+		erp_vtable->ops = &erp_multiple_masks_ops;
 
 	(*inc_num)++;
 
 	return 0;
 }
 
-static int mlxsw_sp_acl_erp_ctcam_inc(struct mlxsw_sp_acl_erp_table *erp_table)
+static int
+mlxsw_sp_acl_erp_ctcam_inc(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	return __mlxsw_sp_acl_erp_table_other_inc(erp_table,
-						  &erp_table->num_ctcam_erps);
+	return __mlxsw_sp_acl_erp_vtable_other_inc(erp_vtable,
+						   &erp_vtable->num_ctcam_erps);
 }
 
-static int mlxsw_sp_acl_erp_delta_inc(struct mlxsw_sp_acl_erp_table *erp_table)
+static int
+mlxsw_sp_acl_erp_delta_inc(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	return __mlxsw_sp_acl_erp_table_other_inc(erp_table,
-						  &erp_table->num_deltas);
+	return __mlxsw_sp_acl_erp_vtable_other_inc(erp_vtable,
+						   &erp_vtable->num_deltas);
 }
 
 static void
-__mlxsw_sp_acl_erp_table_other_dec(struct mlxsw_sp_acl_erp_table *erp_table,
-				   unsigned int *dec_num)
+__mlxsw_sp_acl_erp_vtable_other_dec(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
+				    unsigned int *dec_num)
 {
 	(*dec_num)--;
 
@@ -733,16 +756,16 @@ __mlxsw_sp_acl_erp_table_other_dec(struct mlxsw_sp_acl_erp_table *erp_table,
 	 * transition to depends on the number of A-TCAM eRPs currently
 	 * in use.
 	 */
-	if (erp_table->num_ctcam_erps > 0 || erp_table->num_deltas > 0)
+	if (erp_vtable->num_ctcam_erps > 0 || erp_vtable->num_deltas > 0)
 		return;
 
-	switch (erp_table->num_atcam_erps) {
+	switch (erp_vtable->num_atcam_erps) {
 	case 2:
 		/* Keep using the eRP table, but correctly set the
 		 * operations pointer so that when an A-TCAM eRP is
 		 * deleted we will transition to use the master mask
 		 */
-		erp_table->ops = &erp_two_masks_ops;
+		erp_vtable->ops = &erp_two_masks_ops;
 		break;
 	case 1:
 		/* We only kept the eRP table because we had C-TCAM
@@ -750,39 +773,41 @@ __mlxsw_sp_acl_erp_table_other_dec(struct mlxsw_sp_acl_erp_table *erp_table,
 		 * can stop using the table and transition to use the
 		 * master mask
 		 */
-		mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
-		erp_table->ops = &erp_single_mask_ops;
+		mlxsw_sp_acl_erp_region_master_mask_trans(erp_vtable);
+		erp_vtable->ops = &erp_single_mask_ops;
 		break;
 	case 0:
 		/* There are no more eRPs of any kind used by the region
 		 * so free its eRP table and transition to initial state
 		 */
-		mlxsw_sp_acl_erp_table_disable(erp_table);
-		mlxsw_sp_acl_erp_table_free(erp_table->erp_core,
-					    erp_table->num_max_atcam_erps,
-					    erp_table->aregion->type,
-					    erp_table->base_index);
-		erp_table->ops = &erp_no_mask_ops;
+		mlxsw_sp_acl_erp_table_disable(erp_vtable->erp_table);
+		mlxsw_sp_acl_erp_table_free(erp_vtable->erp_core,
+					    erp_vtable->num_max_atcam_erps,
+					    erp_vtable->aregion->type,
+					    erp_vtable->erp_table->base_index);
+		erp_vtable->ops = &erp_no_mask_ops;
 		break;
 	default:
 		break;
 	}
 }
 
-static void mlxsw_sp_acl_erp_ctcam_dec(struct mlxsw_sp_acl_erp_table *erp_table)
+static void
+mlxsw_sp_acl_erp_ctcam_dec(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	__mlxsw_sp_acl_erp_table_other_dec(erp_table,
-					   &erp_table->num_ctcam_erps);
+	__mlxsw_sp_acl_erp_vtable_other_dec(erp_vtable,
+					    &erp_vtable->num_ctcam_erps);
 }
 
-static void mlxsw_sp_acl_erp_delta_dec(struct mlxsw_sp_acl_erp_table *erp_table)
+static void
+mlxsw_sp_acl_erp_delta_dec(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
-	__mlxsw_sp_acl_erp_table_other_dec(erp_table,
-					   &erp_table->num_deltas);
+	__mlxsw_sp_acl_erp_vtable_other_dec(erp_vtable,
+					    &erp_vtable->num_deltas);
 }
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_ctcam_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_ctcam_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				   struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
@@ -796,26 +821,26 @@ mlxsw_sp_acl_erp_ctcam_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	bitmap_from_arr32(erp->mask_bitmap, (u32 *) key->mask,
 			  MLXSW_SP_ACL_TCAM_MASK_LEN);
 
-	err = mlxsw_sp_acl_erp_ctcam_inc(erp_table);
+	err = mlxsw_sp_acl_erp_ctcam_inc(erp_vtable);
 	if (err)
 		goto err_erp_ctcam_inc;
 
-	erp->erp_table = erp_table;
+	erp->erp_vtable = erp_vtable;
 
-	err = mlxsw_sp_acl_erp_master_mask_set(erp_table, &erp->key);
+	err = mlxsw_sp_acl_erp_master_mask_set(erp_vtable, &erp->key);
 	if (err)
 		goto err_master_mask_set;
 
-	err = mlxsw_sp_acl_erp_region_ctcam_enable(erp_table);
+	err = mlxsw_sp_acl_erp_region_ctcam_enable(erp_vtable);
 	if (err)
 		goto err_erp_region_ctcam_enable;
 
 	return erp;
 
 err_erp_region_ctcam_enable:
-	mlxsw_sp_acl_erp_master_mask_clear(erp_table, &erp->key);
+	mlxsw_sp_acl_erp_master_mask_clear(erp_vtable, &erp->key);
 err_master_mask_set:
-	mlxsw_sp_acl_erp_ctcam_dec(erp_table);
+	mlxsw_sp_acl_erp_ctcam_dec(erp_vtable);
 err_erp_ctcam_inc:
 	kfree(erp);
 	return ERR_PTR(err);
@@ -824,60 +849,60 @@ err_erp_ctcam_inc:
 static void
 mlxsw_sp_acl_erp_ctcam_mask_destroy(struct mlxsw_sp_acl_erp *erp)
 {
-	struct mlxsw_sp_acl_erp_table *erp_table = erp->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = erp->erp_vtable;
 
-	mlxsw_sp_acl_erp_region_ctcam_disable(erp_table);
-	mlxsw_sp_acl_erp_master_mask_clear(erp_table, &erp->key);
-	mlxsw_sp_acl_erp_ctcam_dec(erp_table);
+	mlxsw_sp_acl_erp_region_ctcam_disable(erp_vtable);
+	mlxsw_sp_acl_erp_master_mask_clear(erp_vtable, &erp->key);
+	mlxsw_sp_acl_erp_ctcam_dec(erp_vtable);
 	kfree(erp);
 }
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			     struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
 	int err;
 
 	if (key->ctcam)
-		return mlxsw_sp_acl_erp_ctcam_mask_create(erp_table, key);
+		return mlxsw_sp_acl_erp_ctcam_mask_create(erp_vtable, key);
 
 	/* Expand the eRP table for the new eRP, if needed */
-	err = mlxsw_sp_acl_erp_table_expand(erp_table);
+	err = mlxsw_sp_acl_erp_vtable_expand(erp_vtable);
 	if (err)
 		return ERR_PTR(err);
 
-	erp = mlxsw_sp_acl_erp_generic_create(erp_table, key);
+	erp = mlxsw_sp_acl_erp_generic_create(erp_vtable, key);
 	if (IS_ERR(erp))
 		return erp;
 
-	err = mlxsw_sp_acl_erp_index_get(erp_table, &erp->index);
+	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &erp->index);
 	if (err)
 		goto err_erp_index_get;
 
-	err = mlxsw_sp_acl_erp_table_erp_add(erp_table, erp);
+	err = mlxsw_sp_acl_erp_table_erp_add(erp_vtable->erp_table, erp);
 	if (err)
 		goto err_table_erp_add;
 
-	err = mlxsw_sp_acl_erp_region_erp_add(erp_table, erp);
+	err = mlxsw_sp_acl_erp_region_erp_add(erp_vtable, erp);
 	if (err)
 		goto err_region_erp_add;
 
-	erp_table->ops = &erp_multiple_masks_ops;
+	erp_vtable->ops = &erp_multiple_masks_ops;
 
 	return erp;
 
 err_region_erp_add:
 	mlxsw_sp_acl_erp_table_erp_del(erp);
 err_table_erp_add:
-	mlxsw_sp_acl_erp_index_put(erp_table, erp->index);
+	mlxsw_sp_acl_erp_index_put(erp_vtable, erp->index);
 err_erp_index_get:
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 	return ERR_PTR(err);
 }
 
 static void
-mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			      struct mlxsw_sp_acl_erp *erp)
 {
 	if (erp->key.ctcam)
@@ -885,64 +910,65 @@ mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
 
 	mlxsw_sp_acl_erp_region_erp_del(erp);
 	mlxsw_sp_acl_erp_table_erp_del(erp);
-	mlxsw_sp_acl_erp_index_put(erp_table, erp->index);
+	mlxsw_sp_acl_erp_index_put(erp_vtable, erp->index);
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 
-	if (erp_table->num_atcam_erps == 2 && erp_table->num_ctcam_erps == 0 &&
-	    erp_table->num_deltas == 0)
-		erp_table->ops = &erp_two_masks_ops;
+	if (erp_vtable->num_atcam_erps == 2 &&
+	    erp_vtable->num_ctcam_erps == 0 &&
+	    erp_vtable->num_deltas == 0)
+		erp_vtable->ops = &erp_two_masks_ops;
 }
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
 	int err;
 
 	if (key->ctcam)
-		return mlxsw_sp_acl_erp_ctcam_mask_create(erp_table, key);
+		return mlxsw_sp_acl_erp_ctcam_mask_create(erp_vtable, key);
 
 	/* Transition to use eRP table instead of master mask */
-	err = mlxsw_sp_acl_erp_region_table_trans(erp_table);
+	err = mlxsw_sp_acl_erp_region_table_trans(erp_vtable);
 	if (err)
 		return ERR_PTR(err);
 
-	erp = mlxsw_sp_acl_erp_generic_create(erp_table, key);
+	erp = mlxsw_sp_acl_erp_generic_create(erp_vtable, key);
 	if (IS_ERR(erp)) {
 		err = PTR_ERR(erp);
 		goto err_erp_create;
 	}
 
-	err = mlxsw_sp_acl_erp_index_get(erp_table, &erp->index);
+	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &erp->index);
 	if (err)
 		goto err_erp_index_get;
 
-	err = mlxsw_sp_acl_erp_table_erp_add(erp_table, erp);
+	err = mlxsw_sp_acl_erp_table_erp_add(erp_vtable->erp_table, erp);
 	if (err)
 		goto err_table_erp_add;
 
-	err = mlxsw_sp_acl_erp_region_erp_add(erp_table, erp);
+	err = mlxsw_sp_acl_erp_region_erp_add(erp_vtable, erp);
 	if (err)
 		goto err_region_erp_add;
 
-	erp_table->ops = &erp_two_masks_ops;
+	erp_vtable->ops = &erp_two_masks_ops;
 
 	return erp;
 
 err_region_erp_add:
 	mlxsw_sp_acl_erp_table_erp_del(erp);
 err_table_erp_add:
-	mlxsw_sp_acl_erp_index_put(erp_table, erp->index);
+	mlxsw_sp_acl_erp_index_put(erp_vtable, erp->index);
 err_erp_index_get:
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 err_erp_create:
-	mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+	mlxsw_sp_acl_erp_region_master_mask_trans(erp_vtable);
 	return ERR_PTR(err);
 }
 
 static void
-mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				     struct mlxsw_sp_acl_erp *erp)
 {
 	if (erp->key.ctcam)
@@ -950,16 +976,16 @@ mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
 
 	mlxsw_sp_acl_erp_region_erp_del(erp);
 	mlxsw_sp_acl_erp_table_erp_del(erp);
-	mlxsw_sp_acl_erp_index_put(erp_table, erp->index);
+	mlxsw_sp_acl_erp_index_put(erp_vtable, erp->index);
 	mlxsw_sp_acl_erp_generic_destroy(erp);
 	/* Transition to use master mask instead of eRP table */
-	mlxsw_sp_acl_erp_region_master_mask_trans(erp_table);
+	mlxsw_sp_acl_erp_region_master_mask_trans(erp_vtable);
 
-	erp_table->ops = &erp_single_mask_ops;
+	erp_vtable->ops = &erp_single_mask_ops;
 }
 
 static struct mlxsw_sp_acl_erp *
-mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				   struct mlxsw_sp_acl_erp_key *key)
 {
 	struct mlxsw_sp_acl_erp *erp;
@@ -967,25 +993,25 @@ mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_table *erp_table,
 	if (key->ctcam)
 		return ERR_PTR(-EINVAL);
 
-	erp = mlxsw_sp_acl_erp_generic_create(erp_table, key);
+	erp = mlxsw_sp_acl_erp_generic_create(erp_vtable, key);
 	if (IS_ERR(erp))
 		return erp;
 
-	erp_table->ops = &erp_single_mask_ops;
+	erp_vtable->ops = &erp_single_mask_ops;
 
 	return erp;
 }
 
 static void
-mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    struct mlxsw_sp_acl_erp *erp)
 {
 	mlxsw_sp_acl_erp_generic_destroy(erp);
-	erp_table->ops = &erp_no_mask_ops;
+	erp_vtable->ops = &erp_no_mask_ops;
 }
 
 static void
-mlxsw_sp_acl_erp_no_mask_destroy(struct mlxsw_sp_acl_erp_table *erp_table,
+mlxsw_sp_acl_erp_no_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				 struct mlxsw_sp_acl_erp *erp)
 {
 	WARN_ON(1);
@@ -1005,7 +1031,7 @@ mlxsw_sp_acl_erp_mask_get(struct mlxsw_sp_acl_atcam_region *aregion,
 
 	memcpy(key.mask, mask, MLXSW_REG_PTCEX_FLEX_KEY_BLOCKS_LEN);
 	key.ctcam = ctcam;
-	objagg_obj = objagg_obj_get(aregion->erp_table->objagg, &key);
+	objagg_obj = objagg_obj_get(aregion->erp_vtable->objagg, &key);
 	if (IS_ERR(objagg_obj))
 		return ERR_CAST(objagg_obj);
 	return (struct mlxsw_sp_acl_erp_mask *) objagg_obj;
@@ -1016,7 +1042,7 @@ void mlxsw_sp_acl_erp_mask_put(struct mlxsw_sp_acl_atcam_region *aregion,
 {
 	struct objagg_obj *objagg_obj = (struct objagg_obj *) erp_mask;
 
-	objagg_obj_put(aregion->erp_table->objagg, objagg_obj);
+	objagg_obj_put(aregion->erp_vtable->objagg, objagg_obj);
 }
 
 int mlxsw_sp_acl_erp_bf_insert(struct mlxsw_sp *mlxsw_sp,
@@ -1029,12 +1055,12 @@ int mlxsw_sp_acl_erp_bf_insert(struct mlxsw_sp *mlxsw_sp,
 	unsigned int erp_bank;
 
 	ASSERT_RTNL();
-	if (!mlxsw_sp_acl_erp_table_is_used(erp->erp_table))
+	if (!mlxsw_sp_acl_erp_table_is_used(erp->erp_vtable))
 		return 0;
 
 	erp_bank = mlxsw_sp_acl_erp_bank_get(erp);
 	return mlxsw_sp_acl_bf_entry_add(mlxsw_sp,
-					erp->erp_table->erp_core->bf,
+					erp->erp_vtable->erp_core->bf,
 					aregion, erp_bank, aentry);
 }
 
@@ -1047,12 +1073,12 @@ void mlxsw_sp_acl_erp_bf_remove(struct mlxsw_sp *mlxsw_sp,
 	const struct mlxsw_sp_acl_erp *erp = objagg_obj_root_priv(objagg_obj);
 	unsigned int erp_bank;
 
-	if (!mlxsw_sp_acl_erp_table_is_used(erp->erp_table))
+	if (!mlxsw_sp_acl_erp_table_is_used(erp->erp_vtable))
 		return;
 
 	erp_bank = mlxsw_sp_acl_erp_bank_get(erp);
 	mlxsw_sp_acl_bf_entry_del(mlxsw_sp,
-				  erp->erp_table->erp_core->bf,
+				  erp->erp_vtable->erp_core->bf,
 				  aregion, erp_bank, aentry);
 }
 
@@ -1225,7 +1251,7 @@ static void *mlxsw_sp_acl_erp_delta_create(void *priv, void *parent_obj,
 {
 	struct mlxsw_sp_acl_erp_key *parent_key = parent_obj;
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
-	struct mlxsw_sp_acl_erp_table *erp_table = aregion->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
 	struct mlxsw_sp_acl_erp_key *key = obj;
 	struct mlxsw_sp_acl_erp_delta *delta;
 	u16 delta_start;
@@ -1245,19 +1271,19 @@ static void *mlxsw_sp_acl_erp_delta_create(void *priv, void *parent_obj,
 	delta->start = delta_start;
 	delta->mask = delta_mask;
 
-	err = mlxsw_sp_acl_erp_delta_inc(erp_table);
+	err = mlxsw_sp_acl_erp_delta_inc(erp_vtable);
 	if (err)
 		goto err_erp_delta_inc;
 
 	memcpy(&delta->key, key, sizeof(*key));
-	err = mlxsw_sp_acl_erp_master_mask_set(erp_table, &delta->key);
+	err = mlxsw_sp_acl_erp_master_mask_set(erp_vtable, &delta->key);
 	if (err)
 		goto err_master_mask_set;
 
 	return delta;
 
 err_master_mask_set:
-	mlxsw_sp_acl_erp_delta_dec(erp_table);
+	mlxsw_sp_acl_erp_delta_dec(erp_vtable);
 err_erp_delta_inc:
 	kfree(delta);
 	return ERR_PTR(err);
@@ -1267,10 +1293,10 @@ static void mlxsw_sp_acl_erp_delta_destroy(void *priv, void *delta_priv)
 {
 	struct mlxsw_sp_acl_erp_delta *delta = delta_priv;
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
-	struct mlxsw_sp_acl_erp_table *erp_table = aregion->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
 
-	mlxsw_sp_acl_erp_master_mask_clear(erp_table, &delta->key);
-	mlxsw_sp_acl_erp_delta_dec(erp_table);
+	mlxsw_sp_acl_erp_master_mask_clear(erp_vtable, &delta->key);
+	mlxsw_sp_acl_erp_delta_dec(erp_vtable);
 	kfree(delta);
 }
 
@@ -1278,22 +1304,22 @@ static void *mlxsw_sp_acl_erp_root_create(void *priv, void *obj,
 					  unsigned int root_id)
 {
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
-	struct mlxsw_sp_acl_erp_table *erp_table = aregion->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
 	struct mlxsw_sp_acl_erp_key *key = obj;
 
 	if (!key->ctcam &&
 	    root_id != OBJAGG_OBJ_ROOT_ID_INVALID &&
 	    root_id >= MLXSW_SP_ACL_ERP_MAX_PER_REGION)
 		return ERR_PTR(-ENOBUFS);
-	return erp_table->ops->erp_create(erp_table, key);
+	return erp_vtable->ops->erp_create(erp_vtable, key);
 }
 
 static void mlxsw_sp_acl_erp_root_destroy(void *priv, void *root_priv)
 {
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
-	struct mlxsw_sp_acl_erp_table *erp_table = aregion->erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
 
-	erp_table->ops->erp_destroy(erp_table, root_priv);
+	erp_vtable->ops->erp_destroy(erp_vtable, root_priv);
 }
 
 static const struct objagg_ops mlxsw_sp_acl_erp_objagg_ops = {
@@ -1307,41 +1333,69 @@ static const struct objagg_ops mlxsw_sp_acl_erp_objagg_ops = {
 };
 
 static struct mlxsw_sp_acl_erp_table *
-mlxsw_sp_acl_erp_table_create(struct mlxsw_sp_acl_atcam_region *aregion,
-			      struct objagg_hints *hints)
+mlxsw_sp_acl_erp_table_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 {
 	struct mlxsw_sp_acl_erp_table *erp_table;
-	int err;
 
 	erp_table = kzalloc(sizeof(*erp_table), GFP_KERNEL);
 	if (!erp_table)
 		return ERR_PTR(-ENOMEM);
 
-	erp_table->objagg = objagg_create(&mlxsw_sp_acl_erp_objagg_ops,
-					  hints, aregion);
-	if (IS_ERR(erp_table->objagg)) {
-		err = PTR_ERR(erp_table->objagg);
-		goto err_objagg_create;
-	}
-
-	erp_table->erp_core = aregion->atcam->erp_core;
-	erp_table->ops = &erp_no_mask_ops;
 	INIT_LIST_HEAD(&erp_table->atcam_erps_list);
-	erp_table->aregion = aregion;
-
+	erp_table->erp_vtable = erp_vtable;
 	return erp_table;
-
-err_objagg_create:
-	kfree(erp_table);
-	return ERR_PTR(err);
 }
 
 static void
 mlxsw_sp_acl_erp_table_destroy(struct mlxsw_sp_acl_erp_table *erp_table)
 {
 	WARN_ON(!list_empty(&erp_table->atcam_erps_list));
-	objagg_destroy(erp_table->objagg);
 	kfree(erp_table);
+}
+
+static struct mlxsw_sp_acl_erp_vtable *
+mlxsw_sp_acl_erp_vtable_create(struct mlxsw_sp_acl_atcam_region *aregion,
+			       struct objagg_hints *hints)
+{
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
+	int err;
+
+	erp_vtable = kzalloc(sizeof(*erp_vtable), GFP_KERNEL);
+	if (!erp_vtable)
+		return ERR_PTR(-ENOMEM);
+
+	erp_vtable->erp_table = mlxsw_sp_acl_erp_table_create(erp_vtable);
+	if (IS_ERR(erp_vtable->erp_table)) {
+		err = PTR_ERR(erp_vtable->erp_table);
+		goto err_erp_table_create;
+	}
+
+	erp_vtable->objagg = objagg_create(&mlxsw_sp_acl_erp_objagg_ops,
+					   hints, aregion);
+	if (IS_ERR(erp_vtable->objagg)) {
+		err = PTR_ERR(erp_vtable->objagg);
+		goto err_objagg_create;
+	}
+
+	erp_vtable->erp_core = aregion->atcam->erp_core;
+	erp_vtable->ops = &erp_no_mask_ops;
+	erp_vtable->aregion = aregion;
+
+	return erp_vtable;
+
+err_objagg_create:
+	mlxsw_sp_acl_erp_table_destroy(erp_vtable->erp_table);
+err_erp_table_create:
+	kfree(erp_vtable);
+	return ERR_PTR(err);
+}
+
+static void
+mlxsw_sp_acl_erp_vtable_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
+{
+	mlxsw_sp_acl_erp_table_destroy(erp_vtable->erp_table);
+	objagg_destroy(erp_vtable->objagg);
+	kfree(erp_vtable);
 }
 
 static int
@@ -1370,7 +1424,7 @@ mlxsw_sp_acl_erp_hints_check(struct mlxsw_sp *mlxsw_sp,
 			     struct mlxsw_sp_acl_atcam_region *aregion,
 			     struct objagg_hints *hints, bool *p_rehash_needed)
 {
-	struct objagg *objagg = aregion->erp_table->objagg;
+	struct objagg *objagg = aregion->erp_vtable->objagg;
 	const struct objagg_stats *ostats;
 	const struct objagg_stats *hstats;
 	int err;
@@ -1410,7 +1464,7 @@ mlxsw_sp_acl_erp_rehash_hints_get(struct mlxsw_sp_acl_atcam_region *aregion)
 	bool rehash_needed;
 	int err;
 
-	hints = objagg_hints_get(aregion->erp_table->objagg,
+	hints = objagg_hints_get(aregion->erp_vtable->objagg,
 				 OBJAGG_OPT_ALGO_SIMPLE_GREEDY);
 	if (IS_ERR(hints)) {
 		dev_err_ratelimited(mlxsw_sp->bus_info->dev, "Failed to create ERP hints\n");
@@ -1442,14 +1496,14 @@ void mlxsw_sp_acl_erp_rehash_hints_put(void *hints_priv)
 int mlxsw_sp_acl_erp_region_init(struct mlxsw_sp_acl_atcam_region *aregion,
 				 void *hints_priv)
 {
-	struct mlxsw_sp_acl_erp_table *erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
 	struct objagg_hints *hints = hints_priv;
 	int err;
 
-	erp_table = mlxsw_sp_acl_erp_table_create(aregion, hints);
-	if (IS_ERR(erp_table))
-		return PTR_ERR(erp_table);
-	aregion->erp_table = erp_table;
+	erp_vtable = mlxsw_sp_acl_erp_vtable_create(aregion, hints);
+	if (IS_ERR(erp_vtable))
+		return PTR_ERR(erp_vtable);
+	aregion->erp_vtable = erp_vtable;
 
 	/* Initialize the region's master mask to all zeroes */
 	err = mlxsw_sp_acl_erp_master_mask_init(aregion);
@@ -1465,13 +1519,13 @@ int mlxsw_sp_acl_erp_region_init(struct mlxsw_sp_acl_atcam_region *aregion,
 
 err_erp_region_param_init:
 err_erp_master_mask_init:
-	mlxsw_sp_acl_erp_table_destroy(erp_table);
+	mlxsw_sp_acl_erp_vtable_destroy(erp_vtable);
 	return err;
 }
 
 void mlxsw_sp_acl_erp_region_fini(struct mlxsw_sp_acl_atcam_region *aregion)
 {
-	mlxsw_sp_acl_erp_table_destroy(aregion->erp_table);
+	mlxsw_sp_acl_erp_vtable_destroy(aregion->erp_vtable);
 }
 
 static int

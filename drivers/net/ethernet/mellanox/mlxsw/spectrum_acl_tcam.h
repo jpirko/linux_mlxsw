@@ -162,7 +162,7 @@ struct mlxsw_sp_acl_atcam_region {
 	struct mlxsw_sp_acl_tcam_region *region;
 	struct mlxsw_sp_acl_atcam *atcam;
 	enum mlxsw_sp_acl_atcam_region_type type;
-	struct mlxsw_sp_acl_erp_table *erp_table;
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable;
 	void *priv;
 };
 
