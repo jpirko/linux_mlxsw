@@ -1478,6 +1478,140 @@ mlxsw_sp_acl_erp_region_param_init(struct mlxsw_sp_acl_atcam_region *aregion)
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pererp), pererp_pl);
 }
 
+static bool mlxsw_sp_acl_erp_reorder_possible(const struct objagg_stats *ostats)
+{
+	const struct mlxsw_sp_acl_verp *verp;
+	struct objagg_obj *objagg_obj;
+	int i;
+
+	/* Go over the stats, which are sorted according to
+	 * the usage and root flag. In case the order is not
+	 * the same as the order in ERP table (table index),
+	 * reorder is needed.
+	 */
+	if (ostats->stats_info_count == 1)
+		return false;
+	for (i = 0; i < ostats->stats_info_count; i++) {
+		if (!ostats->stats_info[i].is_root)
+			break;
+		objagg_obj = ostats->stats_info[i].objagg_obj;
+		verp = objagg_obj_root_priv(objagg_obj);
+		if (verp->erp && verp->erp->index != i)
+			return true;
+	}
+	return false;
+}
+
+static struct mlxsw_sp_acl_erp *
+mlxsw_sp_acl_erp_reorder_create(struct mlxsw_sp_acl_verp *verp,
+				struct mlxsw_sp_acl_erp_table *erp_table,
+				u8 index)
+{
+	struct mlxsw_sp_acl_erp *erp;
+	int err;
+
+	erp = mlxsw_sp_acl_erp_generic_create(verp, erp_table);
+	if (IS_ERR(erp))
+		return erp;
+	erp->index = index;
+	__set_bit(erp->index, erp_table->erp_index_bitmap);
+	err = mlxsw_acl_erp_vtable_bf_add(erp_table->erp_vtable, erp);
+	if (err)
+		goto err_vtable_bf_add;
+	return erp;
+
+err_vtable_bf_add:
+	mlxsw_sp_acl_erp_generic_destroy(erp);
+	return ERR_PTR(err);
+}
+
+static void
+mlxsw_sp_acl_erp_reorder_destroy(struct mlxsw_sp_acl_erp *erp)
+{
+	mlxsw_acl_erp_vtable_bf_del(erp->erp_table->erp_vtable, erp);
+	mlxsw_sp_acl_erp_generic_destroy(erp);
+}
+
+static int mlxsw_sp_acl_erp_reorder(struct mlxsw_sp_acl_atcam_region *aregion,
+				    const struct objagg_stats *ostats)
+{
+	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
+	bool ctcam_le = erp_vtable->num_ctcam_erps > 0;
+	struct mlxsw_sp_acl_erp_table *orig_erp_table;
+	struct mlxsw_sp_acl_erp_table *erp_table;
+	struct mlxsw_sp_acl_erp *erp, *tmp;
+	struct mlxsw_sp_acl_verp *verp;
+	struct objagg_obj *objagg_obj;
+	int i;
+	int err;
+
+	erp_table = mlxsw_sp_acl_erp_table_create(erp_vtable);
+	if (IS_ERR(erp_table))
+		return PTR_ERR(erp_table);
+
+	err = mlxsw_sp_acl_erp_table_alloc(erp_vtable->erp_core,
+					   erp_vtable->num_max_atcam_erps,
+					   erp_vtable->aregion->type,
+					   &erp_table->base_index);
+	if (err)
+		goto erp_table_alloc;
+
+	for (i = 0; i < ostats->stats_info_count; i++) {
+		if (!ostats->stats_info[i].is_root)
+			break;
+		objagg_obj = ostats->stats_info[i].objagg_obj;
+		verp = objagg_obj_root_priv(objagg_obj);
+		if (verp->key.ctcam)
+			continue;
+		erp = mlxsw_sp_acl_erp_reorder_create(verp, erp_table, i);
+		if (IS_ERR(erp)) {
+			err = PTR_ERR(erp);
+			goto err_erp_reorder_create;
+		}
+	}
+
+	err = mlxsw_sp_acl_erp_table_relocate(erp_table);
+	if (err)
+		goto err_erp_table_relocate;
+
+	err = mlxsw_sp_acl_erp_table_enable(erp_table, ctcam_le);
+	if (err)
+		goto err_table_enable;
+
+	orig_erp_table = erp_vtable->erp_table;
+
+	/* Adjust pointers */
+	erp_vtable->erp_table = erp_table;
+	list_for_each_entry(erp, &erp_table->atcam_erps_list, list)
+		erp->verp->erp = erp;
+
+	/* Cleanup the original erp_table and original erps */
+	list_for_each_entry_safe(erp, tmp,
+				 &orig_erp_table->atcam_erps_list, list)
+		mlxsw_sp_acl_erp_reorder_destroy(erp);
+	mlxsw_sp_acl_erp_table_free(erp_vtable->erp_core,
+				    erp_vtable->num_max_atcam_erps,
+				    erp_vtable->aregion->type,
+				    orig_erp_table->base_index);
+	mlxsw_sp_acl_erp_table_destroy(orig_erp_table);
+
+	return 0;
+
+err_table_enable:
+err_erp_table_relocate:
+err_erp_reorder_create:
+	list_for_each_entry_safe(erp, tmp, &erp_table->atcam_erps_list, list)
+		mlxsw_sp_acl_erp_reorder_destroy(erp);
+
+	mlxsw_sp_acl_erp_table_free(erp_vtable->erp_core,
+				    erp_vtable->num_max_atcam_erps,
+				    erp_vtable->aregion->type,
+				    erp_table->base_index);
+erp_table_alloc:
+	mlxsw_sp_acl_erp_table_destroy(erp_table);
+	return err;
+}
+
 static int
 mlxsw_sp_acl_erp_hints_check(struct mlxsw_sp *mlxsw_sp,
 			     struct mlxsw_sp_acl_atcam_region *aregion,
@@ -1504,10 +1638,20 @@ mlxsw_sp_acl_erp_hints_check(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	/* Very basic criterion for now. */
-	if (hstats->root_count < ostats->root_count)
+	if (hstats->root_count < ostats->root_count) {
 		*p_rehash_needed = true;
-
-	err = 0;
+		err = 0;
+	} else if (mlxsw_sp_acl_erp_reorder_possible(ostats)) {
+		/* If it is possible just to reorder the existing ERPs
+		 * to achieve better HW performance, reorder
+		 * right away (ERP table swap).
+		 */
+		err = mlxsw_sp_acl_erp_reorder(aregion, ostats);
+		if (err)
+			dev_err_ratelimited(mlxsw_sp->bus_info->dev, "Failed to reorder ERP table\n");
+	} else {
+		err = 0;
+	}
 
 	objagg_stats_put(hstats);
 err_hints_stats_get:
