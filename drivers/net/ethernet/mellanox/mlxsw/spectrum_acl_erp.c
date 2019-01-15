@@ -80,26 +80,29 @@ struct mlxsw_sp_acl_erp_vtable {
 struct mlxsw_sp_acl_erp_vtable_ops {
 	struct mlxsw_sp_acl_verp *
 		(*erp_create)(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-			      struct mlxsw_sp_acl_erp_key *key);
+			      struct mlxsw_sp_acl_erp_key *key, u8 pref_index);
 	void (*erp_destroy)(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			    struct mlxsw_sp_acl_verp *verp);
 };
 
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-			     struct mlxsw_sp_acl_erp_key *key);
+			     struct mlxsw_sp_acl_erp_key *key,
+			     u8 pref_index);
 static void
 mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 			      struct mlxsw_sp_acl_verp *verp);
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-				    struct mlxsw_sp_acl_erp_key *key);
+				    struct mlxsw_sp_acl_erp_key *key,
+				    u8 pref_index);
 static void
 mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				     struct mlxsw_sp_acl_verp *verp);
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-				   struct mlxsw_sp_acl_erp_key *key);
+				   struct mlxsw_sp_acl_erp_key *key,
+				   u8 pref_index);
 static void
 mlxsw_sp_acl_erp_first_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 				    struct mlxsw_sp_acl_verp *verp);
@@ -390,10 +393,20 @@ mlxsw_sp_acl_erp_table_master_rp(struct mlxsw_sp_acl_erp_table *erp_table)
 
 static int
 mlxsw_sp_acl_erp_index_get(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-			   u8 *p_index)
+			   u8 *p_index, u8 pref_index)
 {
 	u8 index;
 
+	/* Try to take the preferred index if it is available. */
+	if (!__test_and_set_bit(pref_index,
+				erp_vtable->erp_table->erp_index_bitmap)) {
+		*p_index = pref_index;
+		return 0;
+	}
+
+	/* Preferred index is not available, fall-back to
+	 * the first available.
+	 */
 	index = find_first_zero_bit(erp_vtable->erp_table->erp_index_bitmap,
 				    erp_vtable->num_max_atcam_erps);
 	if (index < erp_vtable->num_max_atcam_erps) {
@@ -641,7 +654,6 @@ mlxsw_sp_acl_erp_region_table_trans(struct mlxsw_sp_acl_erp_vtable *erp_vtable)
 	/* Make sure the master RP is using a valid index, as
 	 * only a single eRP row is currently allocated.
 	 */
-	master_rp->index = 0;
 	__set_bit(master_rp->index, erp_table->erp_index_bitmap);
 
 	err = mlxsw_sp_acl_erp_table_erp_add(erp_table, master_rp);
@@ -902,7 +914,8 @@ mlxsw_sp_acl_erp_ctcam_mask_destroy(struct mlxsw_sp_acl_verp *verp)
 
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-			     struct mlxsw_sp_acl_erp_key *key)
+			     struct mlxsw_sp_acl_erp_key *key,
+			     u8 pref_index)
 {
 	struct mlxsw_sp_acl_verp *verp;
 	int err;
@@ -919,7 +932,8 @@ mlxsw_sp_acl_erp_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	if (IS_ERR(verp))
 		return verp;
 
-	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &verp->erp->index);
+	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &verp->erp->index,
+					 pref_index);
 	if (err)
 		goto err_erp_index_get;
 
@@ -964,7 +978,8 @@ mlxsw_sp_acl_erp_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-				    struct mlxsw_sp_acl_erp_key *key)
+				    struct mlxsw_sp_acl_erp_key *key,
+				    u8 pref_index)
 {
 	struct mlxsw_sp_acl_verp *verp;
 	int err;
@@ -983,7 +998,8 @@ mlxsw_sp_acl_erp_second_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 		goto err_verp_create;
 	}
 
-	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &verp->erp->index);
+	err = mlxsw_sp_acl_erp_index_get(erp_vtable, &verp->erp->index,
+					 pref_index);
 	if (err)
 		goto err_erp_index_get;
 
@@ -1029,7 +1045,8 @@ mlxsw_sp_acl_erp_second_mask_destroy(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 
 static struct mlxsw_sp_acl_verp *
 mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
-				   struct mlxsw_sp_acl_erp_key *key)
+				   struct mlxsw_sp_acl_erp_key *key,
+				   u8 pref_index)
 {
 	struct mlxsw_sp_acl_verp *verp;
 
@@ -1039,6 +1056,11 @@ mlxsw_sp_acl_erp_first_mask_create(struct mlxsw_sp_acl_erp_vtable *erp_vtable,
 	verp = mlxsw_sp_acl_verp_generic_create(erp_vtable, key);
 	if (IS_ERR(verp))
 		return verp;
+
+	/* No allocation. The index is useless now. It would be used
+	 * later on when transformation to table happens.
+	 */
+	verp->erp->index = pref_index;
 
 	erp_vtable->ops = &erp_single_mask_ops;
 
@@ -1365,12 +1387,14 @@ static void *mlxsw_sp_acl_erp_root_create(void *priv, void *obj,
 	struct mlxsw_sp_acl_atcam_region *aregion = priv;
 	struct mlxsw_sp_acl_erp_vtable *erp_vtable = aregion->erp_vtable;
 	struct mlxsw_sp_acl_erp_key *key = obj;
+	u8 pref_index;
 
 	if (!key->ctcam &&
 	    root_id != OBJAGG_OBJ_ROOT_ID_INVALID &&
 	    root_id >= MLXSW_SP_ACL_ERP_MAX_PER_REGION)
 		return ERR_PTR(-ENOBUFS);
-	return erp_vtable->ops->erp_create(erp_vtable, key);
+	pref_index = root_id != OBJAGG_OBJ_ROOT_ID_INVALID ? root_id : 0;
+	return erp_vtable->ops->erp_create(erp_vtable, key, pref_index);
 }
 
 static void mlxsw_sp_acl_erp_root_destroy(void *priv, void *root_priv)
