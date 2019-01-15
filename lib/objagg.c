@@ -115,7 +115,7 @@ static bool objagg_obj_is_root(const struct objagg_obj *objagg_obj)
  *
  * Returns a user private root pointer.
  */
-const void *objagg_obj_root_priv(const struct objagg_obj *objagg_obj)
+void *objagg_obj_root_priv(const struct objagg_obj *objagg_obj)
 {
 	if (objagg_obj_is_root(objagg_obj))
 		return objagg_obj->root_priv;
@@ -133,7 +133,7 @@ EXPORT_SYMBOL(objagg_obj_root_priv);
  * Returns user private delta pointer or NULL in case the passed
  * object is root.
  */
-const void *objagg_obj_delta_priv(const struct objagg_obj *objagg_obj)
+void *objagg_obj_delta_priv(const struct objagg_obj *objagg_obj)
 {
 	if (objagg_obj_is_root(objagg_obj))
 		return NULL;

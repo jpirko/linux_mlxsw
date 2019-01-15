@@ -20,8 +20,8 @@ struct objagg;
 struct objagg_obj;
 struct objagg_hints;
 
-const void *objagg_obj_root_priv(const struct objagg_obj *objagg_obj);
-const void *objagg_obj_delta_priv(const struct objagg_obj *objagg_obj);
+void *objagg_obj_root_priv(const struct objagg_obj *objagg_obj);
+void *objagg_obj_delta_priv(const struct objagg_obj *objagg_obj);
 const void *objagg_obj_raw(const struct objagg_obj *objagg_obj);
 
 struct objagg_obj *objagg_obj_get(struct objagg *objagg, void *obj);
