@@ -538,11 +538,15 @@ delta_simple_rehash_test()
 	tp_record_all mlxsw:* 3
 	tp_check_hits_any mlxsw:mlxsw_sp_acl_tcam_vregion_rehash
 	check_err $? "Rehash trace was not hit"
+	tp_check_hits_any mlxsw:mlxsw_sp_acl_erp_rehash_needed
+	check_err $? "Rehash needed trace was not hit"
 	tp_check_hits_any mlxsw:mlxsw_sp_acl_tcam_vregion_migrate
 	check_err $? "Migrate trace was not hit"
 	tp_record_all mlxsw:* 3
 	tp_check_hits_any mlxsw:mlxsw_sp_acl_tcam_vregion_rehash
 	check_err $? "Rehash trace was not hit"
+	tp_check_hits_any mlxsw:mlxsw_sp_acl_erp_rehash_needed
+	check_fail $? "Rehash needed trace was hit when no rehash should happen"
 	tp_check_hits_any mlxsw:mlxsw_sp_acl_tcam_vregion_migrate
 	check_fail $? "Migrate trace was hit when no migration should happen"
 
