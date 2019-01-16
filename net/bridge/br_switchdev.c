@@ -77,6 +77,47 @@ void nbp_switchdev_mark_clear(struct net_bridge_port *p)
 	__nbp_switchdev_mark_clear(p->br, p->offload_fwd_mark);
 }
 
+int br_port_offload_fwd_mark_get(const struct net_device *dev, int *p_mark)
+{
+	struct net_bridge_port *p;
+
+	ASSERT_RTNL();
+
+	p = br_port_get_rtnl(dev);
+	if (!p)
+		return -EINVAL;
+
+	*p_mark = p->offload_fwd_mark;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(br_port_offload_fwd_mark_get);
+
+void br_port_offload_fwd_mark_set(const struct net_device *dev, int mark)
+{
+	struct net_bridge_port *p;
+
+	ASSERT_RTNL();
+
+	p = br_port_get_rtnl(dev);
+	if (p)
+		p->offload_fwd_mark |= mark;
+}
+EXPORT_SYMBOL_GPL(br_port_offload_fwd_mark_set);
+
+void br_port_offload_fwd_mark_clear(const struct net_device *dev, int mark)
+{
+	struct net_bridge_port *p;
+
+	ASSERT_RTNL();
+
+	p = br_port_get_rtnl(dev);
+	if (p) {
+		p->offload_fwd_mark &= ~mark;
+		__nbp_switchdev_mark_clear(p->br, mark);
+	}
+}
+EXPORT_SYMBOL_GPL(br_port_offload_fwd_mark_clear);
+
 void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
 			      struct sk_buff *skb)
 {

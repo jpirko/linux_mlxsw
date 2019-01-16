@@ -141,4 +141,26 @@ br_port_flag_is_set(const struct net_device *dev, unsigned long flag)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_BRIDGE) && IS_ENABLED(CONFIG_NET_SWITCHDEV)
+int br_port_offload_fwd_mark_get(const struct net_device *dev, int *p_mark);
+void br_port_offload_fwd_mark_set(const struct net_device *dev, int mark);
+void br_port_offload_fwd_mark_clear(const struct net_device *dev, int mark);
+#else
+static inline int
+br_port_offload_fwd_mark_get(const struct net_device *dev, int *p_mark)
+{
+	return -EINVAL;
+}
+
+static inline void
+br_port_offload_fwd_mark_set(const struct net_device *dev, int mark)
+{
+}
+
+static inline void
+br_port_offload_fwd_mark_clear(const struct net_device *dev, int mark)
+{
+}
+#endif
+
 #endif
