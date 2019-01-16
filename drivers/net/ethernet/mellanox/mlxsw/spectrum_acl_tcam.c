@@ -28,6 +28,7 @@ size_t mlxsw_sp_acl_tcam_priv_size(struct mlxsw_sp *mlxsw_sp)
 
 #define MLXSW_SP_ACL_TCAM_VREGION_REHASH_INTRVL_DFLT 5000 /* ms */
 #define MLXSW_SP_ACL_TCAM_VREGION_REHASH_INTRVL_MIN 3000 /* ms */
+#define MLXSW_SP_ACL_TCAM_VREGION_REHASH_CREDITS 5000 /* number of entries */
 
 int mlxsw_sp_acl_tcam_init(struct mlxsw_sp *mlxsw_sp,
 			   struct mlxsw_sp_acl_tcam *tcam)
@@ -187,6 +188,7 @@ struct mlxsw_sp_acl_tcam_vregion {
 	struct mlxsw_sp_acl_tcam *tcam;
 	struct {
 		struct delayed_work dw;
+		void *hints_priv;
 	} rehash;
 	struct mlxsw_sp *mlxsw_sp;
 	bool failed_rollback; /* Indicates failed rollback during migration */
@@ -691,9 +693,13 @@ static void mlxsw_sp_acl_tcam_vregion_rehash_work(struct work_struct *work)
 	struct mlxsw_sp_acl_tcam_vregion *vregion =
 		container_of(work, struct mlxsw_sp_acl_tcam_vregion,
 			     rehash.dw.work);
+	int err;
 
-	mlxsw_sp_acl_tcam_vregion_rehash(vregion->mlxsw_sp, vregion);
-	mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
+	err = mlxsw_sp_acl_tcam_vregion_rehash(vregion->mlxsw_sp, vregion);
+	if (err == -EINTR)
+		mlxsw_core_schedule_dw(&vregion->rehash.dw, 0);
+	else
+		mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
 }
 
 static struct mlxsw_sp_acl_tcam_vregion *
@@ -1224,6 +1230,7 @@ mlxsw_sp_acl_tcam_vregion_migrate(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_acl_tcam_region *region2, *unused_region;
 	int err;
+	unsigned int credits = MLXSW_SP_ACL_TCAM_VREGION_REHASH_CREDITS;
 
 	trace_mlxsw_sp_acl_tcam_vregion_migrate(mlxsw_sp, vregion);
 
@@ -1281,16 +1288,31 @@ mlxsw_sp_acl_tcam_vregion_rehash(struct mlxsw_sp *mlxsw_sp,
 	if (vregion->failed_rollback)
 		return -EBUSY;
 
-	hints_priv = ops->region_rehash_hints_get(vregion->region->priv);
-	if (IS_ERR(hints_priv)) {
-		err = PTR_ERR(hints_priv);
-		if (err != -EAGAIN)
-			dev_err(mlxsw_sp->bus_info->dev, "Failed get rehash hints\n");
-		return err;
+	if (vregion->rehash.hints_priv) {
+		/* Migration is in progress, was not finished by the last call
+		 * of this function. Get the saved hints_priv and continue.
+		 */
+		hints_priv = vregion->rehash.hints_priv;
+		vregion->rehash.hints_priv = NULL;
+	} else {
+		hints_priv = ops->region_rehash_hints_get(vregion->region->priv);
+		if (IS_ERR(hints_priv)) {
+			err = PTR_ERR(hints_priv);
+			if (err != -EAGAIN)
+				dev_err(mlxsw_sp->bus_info->dev, "Failed get rehash hints\n");
+			return err;
+		}
 	}
 
 	err = mlxsw_sp_acl_tcam_vregion_migrate(mlxsw_sp, vregion, hints_priv);
-	if (err) {
+	if (err = -EINTR) {
+		/* Migration was not completed, save the hints_priv for
+		 * the next run, indicating that migration is still
+		 * in progress.
+		 */
+		vregion->rehash.hints_priv = hints_priv;
+		return err;
+	} else if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to migrate vregion\n");
 		if (vregion->failed_rollback) {
 			trace_mlxsw_sp_acl_tcam_vregion_rehash_dis(mlxsw_sp,
