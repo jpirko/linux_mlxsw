@@ -1198,7 +1198,7 @@ mlxsw_sp_acl_tcam_vregion_migrate(struct mlxsw_sp *mlxsw_sp,
 			unused_region = vregion->region;
 			vregion->region = vregion->region2;
 		} else {
-			/* In case of failure during  migration, the original
+			/* In case of failure during migration, the original
 			 * region is still used.
 			 */
 			unused_region = vregion->region2;
@@ -1246,7 +1246,7 @@ mlxsw_sp_acl_tcam_vregion_rehash(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	ops->region_rehash_hints_put(hints_priv);
-	return 0;
+	return err;
 }
 
 static const enum mlxsw_afk_element mlxsw_sp_acl_tcam_pattern_ipv4[] = {
