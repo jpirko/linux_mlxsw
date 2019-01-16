@@ -8,17 +8,21 @@
 
 #include "br_private.h"
 
-static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev)
+static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev,
+				 int *p_mark)
 {
 	struct net_bridge_port *p;
 
 	/* dev is yet to be added to the port list. */
 	list_for_each_entry(p, &br->port_list, list) {
-		if (switchdev_port_same_parent_id(dev, p->dev))
-			return p->offload_fwd_mark;
+		if (switchdev_port_same_parent_id(dev, p->dev)) {
+			*p_mark = p->offload_fwd_mark;
+			return 0;
+		}
 	}
 
-	return ++br->offload_fwd_mark;
+	*p_mark = ++br->offload_fwd_mark;
+	return 0;
 }
 
 int nbp_switchdev_mark_set(struct net_bridge_port *p)
@@ -38,9 +42,7 @@ int nbp_switchdev_mark_set(struct net_bridge_port *p)
 		return err;
 	}
 
-	p->offload_fwd_mark = br_switchdev_mark_get(p->br, p->dev);
-
-	return 0;
+	return br_switchdev_mark_get(p->br, p->dev, &p->offload_fwd_mark);
 }
 
 void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
