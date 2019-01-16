@@ -1826,7 +1826,7 @@ put_tgt_net:
 	if (fillargs.netnsid >= 0)
 		put_net(tgt_net);
 
-	return skb->len ? : err;
+	return err < 0 ? err : skb->len;
 }
 
 static void rtmsg_ifa(int event, struct in_ifaddr *ifa, struct nlmsghdr *nlh,
