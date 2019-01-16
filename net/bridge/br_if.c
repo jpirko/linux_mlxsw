@@ -351,6 +351,8 @@ static void del_nbp(struct net_bridge_port *p)
 
 	nbp_update_port_count(br);
 
+	nbp_switchdev_mark_clear(p);
+
 	netdev_upper_dev_unlink(dev, br->dev);
 
 	dev->priv_flags &= ~IFF_BRIDGE_PORT;
@@ -689,6 +691,7 @@ err7:
 	list_del_rcu(&p->list);
 	br_fdb_delete_by_port(br, p, 0, 1);
 	nbp_update_port_count(br);
+	nbp_switchdev_mark_clear(p);
 err6:
 	netdev_upper_dev_unlink(dev, br->dev);
 err5:

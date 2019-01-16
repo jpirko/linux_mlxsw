@@ -12,6 +12,8 @@ static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev,
 				 int *p_mark, struct netlink_ext_ack *extack)
 {
 	struct net_bridge_port *p;
+	int mark;
+	int pos;
 
 	/* dev is yet to be added to the port list. */
 	list_for_each_entry(p, &br->port_list, list) {
@@ -21,7 +23,16 @@ static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev,
 		}
 	}
 
-	*p_mark = ++br->offload_fwd_mark;
+	pos = ffs(br->free_offload_fwd_marks);
+	if (WARN_ON(!pos)) {
+		NL_SET_ERR_MSG_MOD(extack, "Out of offload_fwd_mark IDs");
+		return -ENOBUFS;
+	}
+	/* ffs is 1-based */
+	mark = 1 << --pos;
+
+	br->free_offload_fwd_marks &= ~mark;
+	*p_mark = mark;
 	return 0;
 }
 
@@ -47,6 +58,25 @@ int nbp_switchdev_mark_set(struct net_bridge_port *p,
 				     extack);
 }
 
+static void __nbp_switchdev_mark_clear(struct net_bridge *br,
+				       int offload_fwd_mark)
+{
+	struct net_bridge_port *p;
+
+	list_for_each_entry(p, &br->port_list, list) {
+		if (p->offload_fwd_mark & offload_fwd_mark)
+			return;
+	}
+
+	br->free_offload_fwd_marks |= offload_fwd_mark;
+}
+
+void nbp_switchdev_mark_clear(struct net_bridge_port *p)
+{
+	/* dev is already removed from the port list. */
+	__nbp_switchdev_mark_clear(p->br, p->offload_fwd_mark);
+}
+
 void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
 			      struct sk_buff *skb)
 {
@@ -58,7 +88,7 @@ bool nbp_switchdev_allowed_egress(const struct net_bridge_port *p,
 				  const struct sk_buff *skb)
 {
 	return !skb->offload_fwd_mark ||
-	       BR_INPUT_SKB_CB(skb)->offload_fwd_mark != p->offload_fwd_mark;
+	       !(BR_INPUT_SKB_CB(skb)->offload_fwd_mark & p->offload_fwd_mark);
 }
 
 /* Flags that can be offloaded to hardware */

@@ -418,7 +418,7 @@ struct net_bridge {
 	u32				auto_cnt;
 
 #ifdef CONFIG_NET_SWITCHDEV
-	int offload_fwd_mark;
+	int free_offload_fwd_marks;
 #endif
 	struct hlist_head		fdb_list;
 };
@@ -1170,8 +1170,13 @@ static inline void br_sysfs_delbr(struct net_device *dev) { return; }
 
 /* br_switchdev.c */
 #ifdef CONFIG_NET_SWITCHDEV
+static inline void br_switchdev_init(struct net_bridge *br)
+{
+	br->free_offload_fwd_marks = -1;
+}
 int nbp_switchdev_mark_set(struct net_bridge_port *p,
 			   struct netlink_ext_ack *extack);
+void nbp_switchdev_mark_clear(struct net_bridge_port *p);
 void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
 			      struct sk_buff *skb);
 bool nbp_switchdev_allowed_egress(const struct net_bridge_port *p,
@@ -1190,10 +1195,18 @@ static inline void br_switchdev_frame_unmark(struct sk_buff *skb)
 	skb->offload_fwd_mark = 0;
 }
 #else
+static inline void br_switchdev_init(struct net_bridge *br)
+{
+}
+
 static inline int nbp_switchdev_mark_set(struct net_bridge_port *p,
 					 struct netlink_ext_ack *extack)
 {
 	return 0;
+}
+
+static inline void nbp_switchdev_mark_clear(struct net_bridge_port *p)
+{
 }
 
 static inline void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
