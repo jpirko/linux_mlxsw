@@ -9,7 +9,7 @@
 #include "br_private.h"
 
 static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev,
-				 int *p_mark)
+				 int *p_mark, struct netlink_ext_ack *extack)
 {
 	struct net_bridge_port *p;
 
@@ -25,7 +25,8 @@ static int br_switchdev_mark_get(struct net_bridge *br, struct net_device *dev,
 	return 0;
 }
 
-int nbp_switchdev_mark_set(struct net_bridge_port *p)
+int nbp_switchdev_mark_set(struct net_bridge_port *p,
+			   struct netlink_ext_ack *extack)
 {
 	struct switchdev_attr attr = {
 		.orig_dev = p->dev,
@@ -42,7 +43,8 @@ int nbp_switchdev_mark_set(struct net_bridge_port *p)
 		return err;
 	}
 
-	return br_switchdev_mark_get(p->br, p->dev, &p->offload_fwd_mark);
+	return br_switchdev_mark_get(p->br, p->dev, &p->offload_fwd_mark,
+				     extack);
 }
 
 void nbp_switchdev_frame_mark(const struct net_bridge_port *p,
