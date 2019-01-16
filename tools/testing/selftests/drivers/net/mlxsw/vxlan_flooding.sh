@@ -38,7 +38,10 @@
 
 lib_dir=$(dirname $0)/../../../net/forwarding
 
-ALL_TESTS="flooding_test"
+ALL_TESTS="
+	flooding_test
+	marking_test
+"
 NUM_NETIFS=4
 source $lib_dir/tc_common.sh
 source $lib_dir/lib.sh
@@ -297,6 +300,24 @@ flooding_test()
 	log_test "flood after 7 packets"
 
 	flooding_filters_del $num_remotes
+}
+
+marking_test()
+{
+	flooding_remotes_add 1
+	flooding_filters_add 1
+
+	RET=0
+
+	# Generace a DHCP-like packet. It will get encapsulated and forwarded in
+	# fast path. It will also be trapped and marked, and vxlan device should
+	# therefore not forward it.
+	$MZ $h1 -q -p 64 -b de:ad:be:ef:13:37 -t udp sp=68,dp=67 -c 1
+	flooding_check_packets 1
+
+	log_test "vxlan offload_fwd_mark"
+
+	flooding_filters_del 1
 }
 
 trap cleanup EXIT
