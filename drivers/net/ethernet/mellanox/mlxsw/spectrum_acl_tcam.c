@@ -658,8 +658,10 @@ static void mlxsw_sp_acl_tcam_vregion_rehash_work(struct work_struct *work)
 	/* TODO: Take rtnl lock here as the rest of the code counts on it
 	 * now. Later, this should be replaced by per-vregion lock.
 	 */
+	printk("%p mlxsw_sp_acl_tcam_vregion_rehash_work rtnl LOCK vregion\n", vregion);
 	rtnl_lock();
 	mlxsw_sp_acl_tcam_vregion_rehash(vregion->mlxsw_sp, vregion);
+	printk("%p mlxsw_sp_acl_tcam_vregion_rehash_work rtnl UNLOCK\n", vregion);
 	rtnl_unlock();
 	mlxsw_sp_acl_tcam_vregion_rehash_work_schedule(vregion);
 }
@@ -1099,6 +1101,7 @@ mlxsw_sp_acl_tcam_vchunk_migrate_one(struct mlxsw_sp *mlxsw_sp,
 	int err;
 	int err2;
 
+	printk("mlxsw_sp_acl_tcam_vchunk_migrate_one %p\n", vchunk);
 	chunk2 = mlxsw_sp_acl_tcam_chunk_create(mlxsw_sp, vchunk, region);
 	if (IS_ERR(chunk2)) {
 		if (this_is_rollback)
@@ -1123,6 +1126,7 @@ mlxsw_sp_acl_tcam_vchunk_migrate_one(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 
 rollback:
+	printk("mlxsw_sp_acl_tcam_vchunk_migrate_one rollback\n");
 	/* Migrate the entries back to the original chunk. If some entry
 	 * migration fails, there's no good way how to proceed. Set the
 	 * vregion with "failed_rollback" flag.
@@ -1161,6 +1165,7 @@ mlxsw_sp_acl_tcam_vchunk_migrate_all(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 
 rollback:
+	printk("mlxsw_sp_acl_tcam_vchunk_migrate_all rollback\n");
 	list_for_each_entry_continue_reverse(vchunk, &vregion->vchunk_list,
 					     list) {
 		mlxsw_sp_acl_tcam_vchunk_migrate_one(mlxsw_sp, vchunk,
@@ -1235,7 +1240,9 @@ mlxsw_sp_acl_tcam_vregion_rehash(struct mlxsw_sp *mlxsw_sp,
 		return err;
 	}
 
+	printk("mlxsw_sp_acl_tcam_vregion_rehash calling migrate\n");
 	err = mlxsw_sp_acl_tcam_vregion_migrate(mlxsw_sp, vregion, hints_priv);
+	printk("mlxsw_sp_acl_tcam_vregion_rehash back from migrate\n");
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to migrate vregion\n");
 		if (vregion->failed_rollback) {
