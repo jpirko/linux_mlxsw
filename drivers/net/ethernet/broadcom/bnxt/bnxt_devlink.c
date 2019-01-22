@@ -225,6 +225,8 @@ int bnxt_dl_register(struct bnxt *bp)
 		goto err_dl_unreg;
 	}
 
+	devlink_params_publish(dl);
+
 	return 0;
 
 err_dl_unreg:

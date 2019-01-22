@@ -355,6 +355,7 @@ struct devlink_param_item {
 	const struct devlink_param *param;
 	union devlink_param_value driverinit_value;
 	bool driverinit_value_valid;
+	bool published;
 };
 
 enum devlink_param_generic_id {
@@ -567,6 +568,8 @@ int devlink_params_register(struct devlink *devlink,
 void devlink_params_unregister(struct devlink *devlink,
 			       const struct devlink_param *params,
 			       size_t params_count);
+void devlink_params_publish(struct devlink *devlink);
+void devlink_params_unpublish(struct devlink *devlink);
 int devlink_param_driverinit_value_get(struct devlink *devlink, u32 param_id,
 				       union devlink_param_value *init_val);
 int devlink_param_driverinit_value_set(struct devlink *devlink, u32 param_id,
@@ -598,6 +601,14 @@ static inline int devlink_register(struct devlink *devlink, struct device *dev)
 }
 
 static inline void devlink_unregister(struct devlink *devlink)
+{
+}
+
+static inline void devlink_params_publish(struct devlink *devlink)
+{
+}
+
+static inline void devlink_params_unpublish(struct devlink *devlink)
 {
 }
 
