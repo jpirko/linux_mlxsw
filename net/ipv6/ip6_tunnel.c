@@ -976,6 +976,7 @@ ip6_tnl_addr_conflict(const struct ip6_tnl *t, const struct ipv6hdr *hdr)
 	return ipv6_addr_equal(&t->parms.raddr, &hdr->saddr);
 }
 
+void flowercheck(int callee);
 int ip6_tnl_xmit_ctl(struct ip6_tnl *t,
 		     const struct in6_addr *laddr,
 		     const struct in6_addr *raddr)

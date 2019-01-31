@@ -118,22 +118,39 @@ static unsigned short int fl_mask_range(const struct fl_flow_mask *mask)
 	return mask->range.end - mask->range.start;
 }
 
-static void check(struct fl_flow_mask *mask, int callee)
+struct fl_flow_mask *last_checked_mask;
+static void checkht(struct rhashtable *ht, int callee)
 {
 	unsigned int i;
 
-	printk(KERN_WARNING "checking %p from %d\n", mask, callee);
-	for (i = 0; i < mask->ht.tbl->size; ++i) {
-		struct rhash_head *he = mask->ht.tbl->buckets[i];
-		rht_for_each_rcu(he, mask->ht.tbl, i) {
-			printk(KERN_WARNING "%d rht obj:%#lx he %#lx next %#lx\n",
+	printk(KERN_WARNING "checking ht %#lx from %d\n", (uintptr_t) ht, callee);
+	for (i = 0; i < ht->tbl->size; ++i) {
+		struct rhash_head *he = ht->tbl->buckets[i];
+		rht_for_each_rcu(he, ht->tbl, i) {
+			uintptr_t *ptr = (void *)&he->next;
+			printk(KERN_WARNING "%d rht obj:%#lx he %#lx next %#lx around %#lx / %#lx\n",
 			       i,
-			       (uintptr_t) rht_obj(&mask->ht, he),
+			       (uintptr_t) rht_obj(ht, he),
 			       (uintptr_t) he,
-			       (uintptr_t) he->next);
+			       ptr[0], ptr[-1], ptr[1]);
 		}
 	}
 }
+
+static void check(struct fl_flow_mask *mask, int callee)
+{
+	smp_store_release(&last_checked_mask, mask);
+	printk(KERN_WARNING "checking %#lx from %d\n", (uintptr_t) mask, callee);
+	checkht(&mask->ht, callee);
+}
+
+void flowercheck(int callee)
+{
+	struct fl_flow_mask *last = smp_load_acquire(&last_checked_mask);
+	if (last)
+		check(last, callee);
+}
+EXPORT_SYMBOL_GPL(flowercheck);
 
 static void fl_mask_update_range(struct fl_flow_mask *mask)
 {
@@ -141,6 +158,7 @@ static void fl_mask_update_range(struct fl_flow_mask *mask)
 	size_t size = sizeof(mask->key);
 	size_t i, first = 0, last;
 
+	printk(KERN_WARNING "fl_mask_update_range\n");
 	for (i = 0; i < size; i++) {
 		if (bytes[i]) {
 			first = i;
@@ -156,6 +174,7 @@ static void fl_mask_update_range(struct fl_flow_mask *mask)
 	}
 	mask->range.start = rounddown(first, sizeof(long));
 	mask->range.end = roundup(last + 1, sizeof(long));
+	printk(KERN_WARNING "/fl_mask_update_range\n");
 }
 
 static void *fl_key_get_start(struct fl_flow_key *key,
@@ -167,6 +186,8 @@ static void *fl_key_get_start(struct fl_flow_key *key,
 static void fl_set_masked_key(struct fl_flow_key *mkey, struct fl_flow_key *key,
 			      struct fl_flow_mask *mask)
 {
+	printk(KERN_WARNING "fl_set_masked_key\n");
+	{
 	const long *lkey = fl_key_get_start(key, mask);
 	const long *lmask = fl_key_get_start(&mask->key, mask);
 	long *lmkey = fl_key_get_start(mkey, mask);
@@ -174,6 +195,8 @@ static void fl_set_masked_key(struct fl_flow_key *mkey, struct fl_flow_key *key,
 
 	for (i = 0; i < fl_mask_range(mask); i += sizeof(long))
 		*lmkey++ = *lkey++ & *lmask++;
+	}
+	printk(KERN_WARNING "/fl_set_masked_key\n");
 }
 
 static bool fl_mask_fits_tmplt(struct fl_flow_tmplt *tmplt,
@@ -183,6 +206,7 @@ static bool fl_mask_fits_tmplt(struct fl_flow_tmplt *tmplt,
 	const long *ltmplt;
 	int i;
 
+	printk(KERN_WARNING "fl_mask_fits_tmplt\n");
 	if (!tmplt)
 		return true;
 	ltmplt = fl_key_get_start(&tmplt->mask, mask);
@@ -196,6 +220,7 @@ static bool fl_mask_fits_tmplt(struct fl_flow_tmplt *tmplt,
 static void fl_clear_masked_range(struct fl_flow_key *key,
 				  struct fl_flow_mask *mask)
 {
+	printk(KERN_WARNING "fl_clear_masked_range\n");
 	memset(fl_key_get_start(key, mask), 0, fl_mask_range(mask));
 }
 
@@ -205,6 +230,7 @@ static bool fl_range_port_dst_cmp(struct cls_fl_filter *filter,
 {
 	__be16 min_mask, max_mask, min_val, max_val;
 
+	printk(KERN_WARNING "fl_range_port_dst_cmp\n");
 	min_mask = htons(filter->mask->key.tp_min.dst);
 	max_mask = htons(filter->mask->key.tp_max.dst);
 	min_val = htons(filter->key.tp_min.dst);
@@ -228,6 +254,7 @@ static bool fl_range_port_src_cmp(struct cls_fl_filter *filter,
 {
 	__be16 min_mask, max_mask, min_val, max_val;
 
+	printk(KERN_WARNING "fl_range_port_src_cmp\n");
 	min_mask = htons(filter->mask->key.tp_min.src);
 	max_mask = htons(filter->mask->key.tp_max.src);
 	min_val = htons(filter->key.tp_min.src);
@@ -245,7 +272,6 @@ static bool fl_range_port_src_cmp(struct cls_fl_filter *filter,
 	return true;
 }
 
-struct fl_flow_mask *last_freed_mask;
 static noinline struct rhash_head *fl__rhashtable_lookup(
 	struct rhashtable *ht, const void *key,
 	const struct rhashtable_params params)
@@ -266,10 +292,9 @@ restart:
 	do {
 		printk(KERN_WARNING "loop\n");
 		rht_for_each_rcu_continue(he, *head, tbl, hash) {
-			printk(KERN_WARNING "rht obj:%#lx he %#lx last free %#lx next %#lx\n",
+			printk(KERN_WARNING "rht obj:%#lx he %#lx next %#lx\n",
 			       (uintptr_t) rht_obj(ht, he),
 			       (uintptr_t) he,
-			       (uintptr_t) smp_load_acquire(&last_freed_mask),
 			       (uintptr_t) he->next);
 			if (params.obj_cmpfn) {
 				if (params.obj_cmpfn(&arg, rht_obj(ht, he)))
@@ -321,9 +346,8 @@ static noinline void *fl_rhashtable_lookup_fast(
 static struct cls_fl_filter *__fl_lookup(struct fl_flow_mask *mask,
 					 struct fl_flow_key *mkey)
 {
-	printk(KERN_WARNING "lookup mask:%#lx mkey %#lx last free %#lx\n",
-	       (uintptr_t) mask, (uintptr_t) mkey,
-	       (uintptr_t) smp_load_acquire(&last_freed_mask));
+	printk(KERN_WARNING "lookup mask:%#lx mkey %#lx\n",
+	       (uintptr_t) mask, (uintptr_t) mkey);
 	check(mask, 20);
 	return fl_rhashtable_lookup_fast(&mask->ht, fl_key_get_start(mkey, mask),
 					 mask->filter_ht_params);
@@ -334,6 +358,7 @@ static struct cls_fl_filter *fl_lookup_range(struct fl_flow_mask *mask,
 					     struct fl_flow_key *key)
 {
 	struct cls_fl_filter *filter, *f;
+	printk(KERN_WARNING "fl_lookup_range\n");
 
 	list_for_each_entry_rcu(filter, &mask->filters, list) {
 		if (!fl_range_port_dst_cmp(filter, key, mkey))
@@ -368,7 +393,9 @@ static int fl_classify(struct sk_buff *skb, const struct tcf_proto *tp,
 	struct fl_flow_key skb_key;
 	struct fl_flow_key skb_mkey;
 
+	printk(KERN_WARNING "fl_classify\n");
 	list_for_each_entry_rcu(mask, &head->masks, list) {
+		check(mask, 100);
 		fl_clear_masked_range(&skb_key, mask);
 
 		skb_key.indev_ifindex = skb->skb_iif;
@@ -394,6 +421,7 @@ static int fl_init(struct tcf_proto *tp)
 {
 	struct cls_fl_head *head;
 
+	printk(KERN_WARNING "fl_init\n");
 	head = kzalloc(sizeof(*head), GFP_KERNEL);
 	if (!head)
 		return -ENOBUFS;
@@ -407,6 +435,8 @@ static int fl_init(struct tcf_proto *tp)
 
 static void fl_mask_free(struct fl_flow_mask *mask)
 {
+	printk(KERN_WARNING "fl_mask_free\n");
+	smp_store_release(&last_checked_mask, NULL);
 	rhashtable_destroy(&mask->ht);
 	kfree(mask);
 }
@@ -419,16 +449,26 @@ static void fl_mask_free_work(struct work_struct *work)
 	fl_mask_free(mask);
 }
 
+static void __attribute__((unused)) dump_filters(struct fl_flow_mask *mask)
+{
+	struct cls_fl_filter *f;
+	printk(KERN_WARNING "%#lx filters:\n", (uintptr_t) mask);
+	if (!list_empty(&mask->filters))
+		list_for_each_entry(f, &mask->filters, list)
+			printk(KERN_WARNING "filters present\n");
+}
+
 static bool fl_mask_put(struct cls_fl_head *head, struct fl_flow_mask *mask,
 			bool async)
 {
-	if (!list_empty(&mask->filters))
-		return false;
-
-	smp_store_release(&last_freed_mask, mask);
-	printk(KERN_WARNING "free %#lx tbl %#lx\n",
+	printk(KERN_WARNING "fl_mask_put %#lx tbl %#lx\n",
 	       (uintptr_t) mask, (uintptr_t) mask->ht.tbl);
+	if (!list_empty(&mask->filters)) {
+		dump_filters(mask);
+		return false;
+	}
 	rhashtable_remove_fast(&head->ht, &mask->ht_node, mask_ht_params);
+	checkht(&head->ht, 999);
 	list_del_rcu(&mask->list);
 	if (async)
 		tcf_queue_work(&mask->rwork, fl_mask_free_work);
@@ -444,6 +484,7 @@ static void __fl_destroy_filter(struct cls_fl_filter *f)
 	tcf_exts_destroy(&f->exts);
 	tcf_exts_put_net(&f->exts);
 	kfree(f);
+	printk(KERN_WARNING "/__fl_destroy_filter\n");
 }
 
 static void fl_destroy_filter_work(struct work_struct *work)
@@ -552,7 +593,6 @@ static void fl_destroy_sleepable(struct work_struct *work)
 						rwork);
 
 	printk(KERN_WARNING "fl_destroy_sleepable\n");
-	smp_store_release(&last_freed_mask, head);
 	rhashtable_destroy(&head->ht);
 	kfree(head);
 	module_put(THIS_MODULE);
@@ -582,6 +622,7 @@ static void *fl_get(struct tcf_proto *tp, u32 handle)
 {
 	struct cls_fl_head *head = rtnl_dereference(tp->root);
 
+	printk(KERN_WARNING "fl_get\n");
 	return idr_find(&head->handle_idr, handle);
 }
 
@@ -692,6 +733,7 @@ static void fl_set_key_val(struct nlattr **tb,
 {
 	if (!tb[val_type])
 		return;
+	printk(KERN_WARNING "fl_set_key_val\n");
 	memcpy(val, nla_data(tb[val_type]), len);
 	if (mask_type == TCA_FLOWER_UNSPEC || !tb[mask_type])
 		memset(mask, 0xff, len);
@@ -729,6 +771,7 @@ static int fl_set_key_mpls(struct nlattr **tb,
 			   struct flow_dissector_key_mpls *key_val,
 			   struct flow_dissector_key_mpls *key_mask)
 {
+	printk(KERN_WARNING "fl_set_key_mpls\n");
 	if (tb[TCA_FLOWER_KEY_MPLS_TTL]) {
 		key_val->mpls_ttl = nla_get_u8(tb[TCA_FLOWER_KEY_MPLS_TTL]);
 		key_mask->mpls_ttl = MPLS_TTL_MASK;
@@ -844,6 +887,7 @@ static int fl_set_geneve_opt(const struct nlattr *nla, struct fl_flow_key *key,
 	struct geneve_opt *opt;
 	int err, data_len = 0;
 
+	printk(KERN_WARNING "fl_set_geneve_opt\n");
 	if (option_len > sizeof(struct geneve_opt))
 		data_len = option_len - sizeof(struct geneve_opt);
 
@@ -1354,9 +1398,11 @@ static int fl_check_assign_mask(struct cls_fl_head *head,
 {
 	struct fl_flow_mask *newmask;
 
-	printk(KERN_WARNING "fl_check_assign_mask\n");
+	printk(KERN_WARNING "fl_check_assign_mask fold=%#lx fnew=%#lx\n",
+	       (uintptr_t)fold, (uintptr_t)fnew);
 	fnew->mask = rhashtable_lookup_fast(&head->ht, mask, mask_ht_params);
 	if (!fnew->mask) {
+		printk(KERN_WARNING "no mask\n");
 		if (fold)
 			return -EINVAL;
 
@@ -1365,8 +1411,13 @@ static int fl_check_assign_mask(struct cls_fl_head *head,
 			return PTR_ERR(newmask);
 
 		fnew->mask = newmask;
-	} else if (fold && fold->mask != fnew->mask) {
-		return -EINVAL;
+	} else {
+		printk(KERN_WARNING "yes mask %#lx\n",
+		       (uintptr_t) fnew->mask);
+		if (fold && fold->mask != fnew->mask) {
+			printk(KERN_WARNING "bad mask\n");
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -1474,24 +1525,37 @@ static int fl_change(struct net *net, struct sk_buff *in_skb,
 		}
 	}
 
+	// initializes mask
+	printk(KERN_WARNING "%#lx filters empty: %d\n", (uintptr_t) mask,
+	       list_empty(&mask->filters));
 	err = fl_set_parms(net, tp, fnew, mask, base, tb, tca[TCA_RATE], ovr,
 			   tp->chain->tmplt_priv, extack);
 	if (err)
 		goto errout_idr;
+	printk(KERN_WARNING "%#lx filters empty: %d\n", (uintptr_t) mask,
+	       list_empty(&mask->filters));
 
+	// fnew->mask = maybe something + some checking
 	err = fl_check_assign_mask(head, fnew, fold, mask);
 	if (err)
 		goto errout_idr;
+	if (fnew->mask)
+		printk(KERN_WARNING "%#lx filters empty: %d\n",
+		       (uintptr_t) fnew->mask,
+		       list_empty(&fnew->mask->filters));
 
 	if (!fold && __fl_lookup(fnew->mask, &fnew->mkey)) {
 		err = -EEXIST;
 		goto errout_mask;
 	}
 
-	printk(KERN_WARNING "fl_change fnew %#lx tbl %#lx\n",
-	       (uintptr_t) fnew->mask, (uintptr_t) fnew->mask->ht.tbl);
+	printk(KERN_WARNING "fl_change fold %#lx fnew->mask %#lx tbl %#lx\n",
+	       (uintptr_t) fold, (uintptr_t) fnew->mask,
+	       (uintptr_t) fnew->mask->ht.tbl);
+	checkht(&fnew->mask->ht, 1234);
 	err = rhashtable_insert_fast(&fnew->mask->ht, &fnew->ht_node,
 				     fnew->mask->filter_ht_params);
+	checkht(&fnew->mask->ht, 1235);
 	if (err)
 		goto errout_mask;
 
@@ -1543,6 +1607,7 @@ errout_idr:
 		idr_remove(&head->handle_idr, fnew->handle);
 errout:
 	tcf_exts_destroy(&fnew->exts);
+	printk(KERN_WARNING "kfree fnew %#lx\n", (uintptr_t) fnew);
 	kfree(fnew);
 errout_tb:
 	kfree(tb);
@@ -1721,6 +1786,7 @@ static int fl_dump_key_val(struct sk_buff *skb,
 {
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_val\n");
 	if (!memchr_inv(mask, 0, len))
 		return 0;
 	err = nla_put(skb, val_type, len, val);
@@ -1737,6 +1803,7 @@ static int fl_dump_key_val(struct sk_buff *skb,
 static int fl_dump_key_port_range(struct sk_buff *skb, struct fl_flow_key *key,
 				  struct fl_flow_key *mask)
 {
+	printk(KERN_WARNING "fl_dump_key_port_range\n");
 	if (fl_dump_key_val(skb, &key->tp_min.dst, TCA_FLOWER_KEY_PORT_DST_MIN,
 			    &mask->tp_min.dst, TCA_FLOWER_UNSPEC,
 			    sizeof(key->tp_min.dst)) ||
@@ -1760,6 +1827,7 @@ static int fl_dump_key_mpls(struct sk_buff *skb,
 {
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_mpls\n");
 	if (!memchr_inv(mpls_mask, 0, sizeof(*mpls_mask)))
 		return 0;
 	if (mpls_mask->mpls_ttl) {
@@ -1798,6 +1866,7 @@ static int fl_dump_key_ip(struct sk_buff *skb, bool encap,
 	int tos_mask = encap ? TCA_FLOWER_KEY_ENC_IP_TOS_MASK : TCA_FLOWER_KEY_IP_TOS_MASK;
 	int ttl_mask = encap ? TCA_FLOWER_KEY_ENC_IP_TTL_MASK : TCA_FLOWER_KEY_IP_TTL_MASK;
 
+	printk(KERN_WARNING "fl_dump_key_ip\n");
 	if (fl_dump_key_val(skb, &key->tos, tos_key, &mask->tos, tos_mask, sizeof(key->tos)) ||
 	    fl_dump_key_val(skb, &key->ttl, ttl_key, &mask->ttl, ttl_mask, sizeof(key->ttl)))
 		return -1;
@@ -1812,6 +1881,7 @@ static int fl_dump_key_vlan(struct sk_buff *skb,
 {
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_vlan\n");
 	if (!memchr_inv(vlan_mask, 0, sizeof(*vlan_mask)))
 		return 0;
 	if (vlan_mask->vlan_id) {
@@ -1833,6 +1903,7 @@ static void fl_get_key_flag(u32 dissector_key, u32 dissector_mask,
 			    u32 *flower_key, u32 *flower_mask,
 			    u32 flower_flag_bit, u32 dissector_flag_bit)
 {
+	printk(KERN_WARNING "fl_get_key_flag\n");
 	if (dissector_mask & dissector_flag_bit) {
 		*flower_mask |= flower_flag_bit;
 		if (dissector_key & dissector_flag_bit)
@@ -1846,6 +1917,7 @@ static int fl_dump_key_flags(struct sk_buff *skb, u32 flags_key, u32 flags_mask)
 	__be32 _key, _mask;
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_flags\n");
 	if (!memchr_inv(&flags_mask, 0, sizeof(flags_mask)))
 		return 0;
 
@@ -1875,6 +1947,7 @@ static int fl_dump_key_geneve_opt(struct sk_buff *skb,
 	struct nlattr *nest;
 	int opt_off = 0;
 
+	printk(KERN_WARNING "fl_dump_key_geneve_opt\n");
 	nest = nla_nest_start(skb, TCA_FLOWER_KEY_ENC_OPTS_GENEVE);
 	if (!nest)
 		goto nla_put_failure;
@@ -1908,6 +1981,7 @@ static int fl_dump_key_options(struct sk_buff *skb, int enc_opt_type,
 	struct nlattr *nest;
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_options\n");
 	if (!enc_opts->len)
 		return 0;
 
@@ -1938,6 +2012,7 @@ static int fl_dump_key_enc_opt(struct sk_buff *skb,
 {
 	int err;
 
+	printk(KERN_WARNING "fl_dump_key_enc_opt\n");
 	err = fl_dump_key_options(skb, TCA_FLOWER_KEY_ENC_OPTS, key_opts);
 	if (err)
 		return err;
@@ -1948,6 +2023,7 @@ static int fl_dump_key_enc_opt(struct sk_buff *skb,
 static int fl_dump_key(struct sk_buff *skb, struct net *net,
 		       struct fl_flow_key *key, struct fl_flow_key *mask)
 {
+	printk(KERN_WARNING "fl_dump_key\n");
 	if (mask->indev_ifindex) {
 		struct net_device *dev;
 
@@ -2151,6 +2227,7 @@ static int fl_dump(struct net *net, struct tcf_proto *tp, void *fh,
 	struct nlattr *nest;
 	struct fl_flow_key *key, *mask;
 
+	printk(KERN_WARNING "fl_dump\n");
 	if (!f)
 		return skb->len;
 

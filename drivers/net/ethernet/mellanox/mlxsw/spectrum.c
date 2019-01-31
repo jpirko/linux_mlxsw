@@ -3417,12 +3417,15 @@ static void mlxsw_sp_pude_event_func(const struct mlxsw_reg_info *reg,
 	}
 }
 
+void flowercheck(int callee);
 static void mlxsw_sp_rx_listener_no_mark_func(struct sk_buff *skb,
 					      u8 local_port, void *priv)
 {
 	struct mlxsw_sp *mlxsw_sp = priv;
 	struct mlxsw_sp_port *mlxsw_sp_port = mlxsw_sp->ports[local_port];
 	struct mlxsw_sp_port_pcpu_stats *pcpu_stats;
+
+	//flowercheck(100000);
 
 	if (unlikely(!mlxsw_sp_port)) {
 		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: skb received for non-existent port\n",

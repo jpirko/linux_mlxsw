@@ -620,7 +620,7 @@ mlxsw_sp_span_entry_create(struct mlxsw_sp *mlxsw_sp,
 	int i;
 
 	/* find a free entry to use */
-	for (i = 0; i < mlxsw_sp->span.entries_count; i++) {
+	for (i = 0; i < 1; i++) {
 		if (!mlxsw_sp->span.entries[i].ref_count) {
 			span_entry = &mlxsw_sp->span.entries[i];
 			break;
@@ -896,6 +896,7 @@ mlxsw_sp_span_entry_ops(struct mlxsw_sp *mlxsw_sp,
 	return NULL;
 }
 
+void flowercheck(int callee);
 int mlxsw_sp_span_mirror_add(struct mlxsw_sp_port *from,
 			     const struct net_device *to_dev,
 			     enum mlxsw_sp_span_type type, bool bind,
@@ -913,7 +914,9 @@ int mlxsw_sp_span_mirror_add(struct mlxsw_sp_port *from,
 		return -EOPNOTSUPP;
 	}
 
+	//flowercheck(200001);
 	err = ops->parms(to_dev, &sparms);
+	//flowercheck(200002);
 	if (err)
 		return err;
 
@@ -965,7 +968,9 @@ void mlxsw_sp_span_respin(struct mlxsw_sp *mlxsw_sp)
 		if (!curr->ref_count)
 			continue;
 
+		//flowercheck(200003);
 		err = curr->ops->parms(curr->to_dev, &sparms);
+		//flowercheck(200004);
 		if (err)
 			continue;
 
