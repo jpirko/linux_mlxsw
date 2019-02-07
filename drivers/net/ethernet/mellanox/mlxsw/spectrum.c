@@ -2908,6 +2908,7 @@ mlxsw_sp2_to_ptys_upper_speed(struct mlxsw_sp *mlxsw_sp, u32 upper_speed)
 	u32 ptys_proto = 0;
 	int i;
 
+	upper_speed = 40000;
 	for (i = 0; i < MLXSW_SP2_PORT_LINK_MODE_LEN; i++) {
 		if (mlxsw_sp2_port_link_mode[i].speed <= upper_speed)
 			ptys_proto |= mlxsw_sp2_port_link_mode[i].mask;
@@ -2962,6 +2963,7 @@ mlxsw_sp2_reg_ptys_eth_unpack(struct mlxsw_sp *mlxsw_sp, char *payload,
 {
 	mlxsw_reg_ptys_ext_eth_unpack(payload, p_eth_proto_cap,
 				      p_eth_proto_admin, p_eth_proto_oper);
+	*p_eth_proto_cap = 0x32; /* HACK: Only support 1, 10 and 40 Gb/s */
 }
 
 static const struct mlxsw_sp_port_type_speed_ops
