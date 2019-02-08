@@ -750,21 +750,21 @@ static int mlxsw_sp_port_sb_pms_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	}
 
 static const struct mlxsw_sp_sb_mm mlxsw_sp_sb_mms[] = {
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
-	MLXSW_SP_SB_MM(0, 6, 4),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
+	MLXSW_SP_SB_MM(0, 6, 0),
 };
 
 static int mlxsw_sp_sb_mms_init(struct mlxsw_sp *mlxsw_sp)
