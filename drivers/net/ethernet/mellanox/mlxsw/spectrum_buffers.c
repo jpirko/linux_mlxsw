@@ -75,6 +75,7 @@ struct mlxsw_sp_sb_vals {
 	unsigned int pool_count;
 	const struct mlxsw_sp_sb_pool_des *pool_dess;
 	const struct mlxsw_sp_sb_pm *pms;
+	const struct mlxsw_sp_sb_pr *prs;
 };
 
 struct mlxsw_sp_sb_ops {
@@ -381,8 +382,6 @@ static const struct mlxsw_sp_sb_pr mlxsw_sp_sb_prs[] = {
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_STATIC, MLXSW_SP_SB_INFI),
 };
 
-#define MLXSW_SP_SB_PRS_LEN ARRAY_SIZE(mlxsw_sp_sb_prs)
-
 static int mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp,
 				const struct mlxsw_sp_sb_pr *prs,
 				size_t prs_len)
@@ -688,6 +687,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp1_sb_vals = {
 	.pool_count = ARRAY_SIZE(mlxsw_sp_sb_pool_dess),
 	.pool_dess = mlxsw_sp_sb_pool_dess,
 	.pms = mlxsw_sp_sb_pms,
+	.prs = mlxsw_sp_sb_prs,
 };
 
 const struct mlxsw_sp_sb_ops mlxsw_sp1_sb_ops = {
@@ -697,6 +697,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
 	.pool_count = ARRAY_SIZE(mlxsw_sp_sb_pool_dess),
 	.pool_dess = mlxsw_sp_sb_pool_dess,
 	.pms = mlxsw_sp_sb_pms,
+	.prs = mlxsw_sp_sb_prs,
 };
 
 const struct mlxsw_sp_sb_ops mlxsw_sp2_sb_ops = {
@@ -720,12 +721,11 @@ int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp)
 	mlxsw_sp->sb->cell_size = MLXSW_CORE_RES_GET(mlxsw_sp->core, CELL_SIZE);
 	mlxsw_sp->sb->sb_size = MLXSW_CORE_RES_GET(mlxsw_sp->core,
 						   MAX_BUFFER_SIZE);
-
 	err = mlxsw_sp_sb_ports_init(mlxsw_sp);
 	if (err)
 		goto err_sb_ports_init;
-	err = mlxsw_sp_sb_prs_init(mlxsw_sp, mlxsw_sp_sb_prs,
-				   MLXSW_SP_SB_PRS_LEN);
+	err = mlxsw_sp_sb_prs_init(mlxsw_sp, mlxsw_sp->sb_vals->prs,
+				   mlxsw_sp->sb_vals->pool_count);
 	if (err)
 		goto err_sb_prs_init;
 	err = mlxsw_sp_cpu_port_sb_cms_init(mlxsw_sp);
