@@ -4447,6 +4447,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->mac_mask = mlxsw_sp1_mac_mask;
 	mlxsw_sp->rif_ops_arr = mlxsw_sp1_rif_ops_arr;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp1_port_type_speed_ops;
+	mlxsw_sp->sb_vals = &mlxsw_sp1_sb_vals;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info);
 }
@@ -4465,6 +4466,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->mac_mask = mlxsw_sp2_mac_mask;
 	mlxsw_sp->rif_ops_arr = mlxsw_sp2_rif_ops_arr;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
+	mlxsw_sp->sb_vals = &mlxsw_sp2_sb_vals;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info);
 }
