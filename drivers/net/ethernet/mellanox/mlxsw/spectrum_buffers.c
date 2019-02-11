@@ -756,12 +756,19 @@ static int mlxsw_sp_sb_mms_init(struct mlxsw_sp *mlxsw_sp)
 		const struct mlxsw_sp_sb_pool_des *des;
 		const struct mlxsw_sp_sb_mm *mc;
 		u32 min_buff;
+		int mode;
 
 		mc = &mlxsw_sp->sb_vals->mms[i];
 		des = &mlxsw_sp->sb_vals->pool_dess[mc->pool_index];
-		/* All pools used by sb_mm's are initialized using dynamic
-		 * thresholds, therefore 'max_buff' isn't specified in cells.
+
+		/* We assume that all pools used by sb_mm's are initialized
+		 * using dynamic thresholds. Therefore 'max_buff' isn't
+		 * specified in cells.
 		 */
+		mode = mlxsw_sp->sb_vals->prs[mc->pool_index].mode;
+		if (WARN_ON(mode != MLXSW_REG_SBPR_MODE_DYNAMIC))
+			continue;
+
 		min_buff = mlxsw_sp_bytes_cells(mlxsw_sp, mc->min_buff);
 		mlxsw_reg_sbmm_pack(sbmm_pl, i, min_buff, mc->max_buff,
 				    des->pool);
