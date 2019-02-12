@@ -2094,15 +2094,13 @@ static size_t ip6gre_get_size(const struct net_device *dev)
 		0;
 }
 
-static int ip6gre_fill_info(struct sk_buff *skb, const struct net_device *dev)
+static int __ip6gre_fill_info(struct sk_buff *skb,
+			      const struct net_device *dev,
+			      __be16 base_o_flags)
 {
 	struct ip6_tnl *t = netdev_priv(dev);
 	struct __ip6_tnl_parm *p = &t->parms;
-	__be16 o_flags = p->o_flags;
-
-	if ((p->erspan_ver == 1 || p->erspan_ver == 2) &&
-	    !p->collect_md)
-		o_flags |= TUNNEL_KEY;
+	__be16 o_flags = p->o_flags | base_o_flags;
 
 	if (nla_put_u32(skb, IFLA_GRE_LINK, p->link) ||
 	    nla_put_be16(skb, IFLA_GRE_IFLAGS,
@@ -2153,6 +2151,11 @@ static int ip6gre_fill_info(struct sk_buff *skb, const struct net_device *dev)
 
 nla_put_failure:
 	return -EMSGSIZE;
+}
+
+static int ip6gre_fill_info(struct sk_buff *skb, const struct net_device *dev)
+{
+	return __ip6gre_fill_info(skb, dev, 0);
 }
 
 static const struct nla_policy ip6gre_policy[IFLA_GRE_MAX + 1] = {
@@ -2256,6 +2259,20 @@ static int ip6erspan_changelink(struct net_device *dev, struct nlattr *tb[],
 	return 0;
 }
 
+static int ip6erspan_fill_info(struct sk_buff *skb,
+			       const struct net_device *dev)
+{
+	struct ip6_tnl *t = netdev_priv(dev);
+	struct __ip6_tnl_parm *p = &t->parms;
+	__be16 base_o_flags = 0;
+
+	if ((p->erspan_ver == 1 || p->erspan_ver == 2) &&
+	    !p->collect_md)
+		base_o_flags |= TUNNEL_KEY;
+
+	return __ip6gre_fill_info(skb, dev, base_o_flags);
+}
+
 static struct rtnl_link_ops ip6gre_link_ops __read_mostly = {
 	.kind		= "ip6gre",
 	.maxtype	= IFLA_GRE_MAX,
@@ -2295,7 +2312,7 @@ static struct rtnl_link_ops ip6erspan_tap_ops __read_mostly = {
 	.newlink	= ip6erspan_newlink,
 	.changelink	= ip6erspan_changelink,
 	.get_size	= ip6gre_get_size,
-	.fill_info	= ip6gre_fill_info,
+	.fill_info	= ip6erspan_fill_info,
 	.get_link_net	= ip6_tnl_get_link_net,
 };
 
