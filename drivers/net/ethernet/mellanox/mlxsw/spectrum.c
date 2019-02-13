@@ -865,6 +865,7 @@ int __mlxsw_sp_port_headroom_set(struct mlxsw_sp_port *mlxsw_sp_port, int mtu,
 		bool pfc = false;
 		u16 thres_cells;
 		u16 delay_cells;
+		u16 total_cells;
 		bool lossy;
 
 		for (j = 0; j < IEEE_8021QAZ_MAX_TCS; j++) {
@@ -882,7 +883,9 @@ int __mlxsw_sp_port_headroom_set(struct mlxsw_sp_port *mlxsw_sp_port, int mtu,
 		thres_cells = mlxsw_sp_pg_buf_threshold_get(mlxsw_sp, mtu);
 		delay_cells = mlxsw_sp_pg_buf_delay_get(mlxsw_sp, mtu, delay,
 							pfc, pause_en);
-		mlxsw_sp_pg_buf_pack(pbmc_pl, i, thres_cells + delay_cells,
+		total_cells = mlxsw_sp_sb_cap_headroom(mlxsw_sp,
+						    thres_cells + delay_cells);
+		mlxsw_sp_pg_buf_pack(pbmc_pl, i, total_cells,
 				     thres_cells, lossy);
 	}
 
