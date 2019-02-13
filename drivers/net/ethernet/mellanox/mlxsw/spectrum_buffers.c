@@ -263,15 +263,15 @@ static int mlxsw_sp_sb_pm_occ_query(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				     (unsigned long) pm);
 }
 
-static const u16 mlxsw_sp_pbs[] = {
+static const u32 mlxsw_sp1_pbs[] = {
 	[0] = 2 * ETH_FRAME_LEN,
 	[9] = 2 * MLXSW_PORT_MAX_MTU,
 };
 
-#define MLXSW_SP_PBS_LEN ARRAY_SIZE(mlxsw_sp_pbs)
 #define MLXSW_SP_PB_UNUSED 8
 
-static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+static int __mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port,
+				   const u32 *pbs, unsigned int npbs)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char pbmc_pl[MLXSW_REG_PBMC_LEN];
@@ -279,8 +279,8 @@ static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 
 	mlxsw_reg_pbmc_pack(pbmc_pl, mlxsw_sp_port->local_port,
 			    0xffff, 0xffff / 2);
-	for (i = 0; i < MLXSW_SP_PBS_LEN; i++) {
-		u16 size = mlxsw_sp_bytes_cells(mlxsw_sp, mlxsw_sp_pbs[i]);
+	for (i = 0; i < npbs; i++) {
+		u16 size = mlxsw_sp_bytes_cells(mlxsw_sp, pbs[i]);
 
 		if (i == MLXSW_SP_PB_UNUSED)
 			continue;
@@ -289,6 +289,26 @@ static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl,
 					 MLXSW_REG_PBMC_PORT_SHARED_BUF_IDX, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pbmc), pbmc_pl);
+}
+
+static int mlxsw_sp1_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	return __mlxsw_sp_port_pb_init(mlxsw_sp_port, mlxsw_sp1_pbs,
+				       ARRAY_SIZE(mlxsw_sp1_pbs));
+}
+
+/* 1/4 of a headroom necessary for 100Gbps port and 100m cable. */
+#define MLXSW_SP2_PB_HEADROOM 25488
+
+static int mlxsw_sp2_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	const u32 sp2_pbs[] = {
+		[0] = MLXSW_SP2_PB_HEADROOM * mlxsw_sp_port->mapping.width,
+		[9] = 2 * MLXSW_PORT_MAX_MTU,
+	};
+
+	return __mlxsw_sp_port_pb_init(mlxsw_sp_port, sp2_pbs,
+				       ARRAY_SIZE(sp2_pbs));
 }
 
 static int mlxsw_sp_port_pb_prio_init(struct mlxsw_sp_port *mlxsw_sp_port)
@@ -800,7 +820,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp1_sb_vals = {
 	.eg_tc_count = 16,
 };
 const struct mlxsw_sp_sb_ops mlxsw_sp1_sb_ops = {
-	.pb_init = mlxsw_sp_port_pb_init,
+	.pb_init = mlxsw_sp1_port_pb_init,
 };
 
 const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
@@ -820,7 +840,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
 	.eg_tc_count = 16,
 };
 const struct mlxsw_sp_sb_ops mlxsw_sp2_sb_ops = {
-	.pb_init = mlxsw_sp_port_pb_init,
+	.pb_init = mlxsw_sp2_port_pb_init,
 };
 
 int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp)
