@@ -92,6 +92,7 @@ struct mlxsw_sp_sb_vals {
 };
 
 struct mlxsw_sp_sb_ops {
+	int (*pb_init)(struct mlxsw_sp_port *mlxsw_sp_port);
 };
 
 u32 mlxsw_sp_cells_bytes(const struct mlxsw_sp *mlxsw_sp, u32 cells)
@@ -296,7 +297,7 @@ static int mlxsw_sp_port_headroom_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	int err;
 
-	err = mlxsw_sp_port_pb_init(mlxsw_sp_port);
+	err = mlxsw_sp_port->mlxsw_sp->sb_ops->pb_init(mlxsw_sp_port);
 	if (err)
 		return err;
 	return mlxsw_sp_port_pb_prio_init(mlxsw_sp_port);
@@ -722,6 +723,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp1_sb_vals = {
 	.eg_tc_count = 16,
 };
 const struct mlxsw_sp_sb_ops mlxsw_sp1_sb_ops = {
+	.pb_init = mlxsw_sp_port_pb_init,
 };
 
 const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
@@ -741,6 +743,7 @@ const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
 	.eg_tc_count = 16,
 };
 const struct mlxsw_sp_sb_ops mlxsw_sp2_sb_ops = {
+	.pb_init = mlxsw_sp_port_pb_init,
 };
 
 int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp)
