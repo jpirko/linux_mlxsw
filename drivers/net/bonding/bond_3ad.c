@@ -1732,7 +1732,7 @@ static void ad_agg_selection_logic(struct aggregator *agg,
 
 		/* check if any partner replies */
 		if (best->is_individual)
-			net_warn_ratelimited("%s: Warning: No 802.3ad response from the link partner for any adapters in the bond\n",
+			net_warn_ratelimited("%s: No 802.3ad response from the link partner for any adapters in the bond\n",
 					     bond->dev->name);
 
 		best->is_active = 1;
