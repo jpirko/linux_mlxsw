@@ -509,6 +509,57 @@ static void devlink_notify(struct devlink *devlink, enum devlink_command cmd)
 				msg, 0, DEVLINK_MCGRP_CONFIG, GFP_KERNEL);
 }
 
+static int __devlink_port_phys_port_name_get(struct devlink_port *devlink_port,
+					     char *name, size_t len)
+{
+	struct devlink_port_attrs *attrs = &devlink_port->attrs;
+	int n = 0;
+
+	if (!attrs->set)
+		return -EOPNOTSUPP;
+
+	switch (attrs->flavour) {
+	case DEVLINK_PORT_FLAVOUR_PHYSICAL:
+		if (!attrs->split)
+			n = snprintf(name, len, "p%u", attrs->port_number);
+		else
+			n = snprintf(name, len, "p%us%u", attrs->port_number,
+				     attrs->split_subport_number);
+		break;
+	case DEVLINK_PORT_FLAVOUR_CPU:
+	case DEVLINK_PORT_FLAVOUR_DSA:
+		/* As CPU and DSA ports do not have a netdevice associated
+		 * case should not ever happen.
+		 */
+		WARN_ON(1);
+		return -EINVAL;
+	}
+
+	if (n >= len)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int devlink_nl_port_phys_port_name_put(struct sk_buff *msg,
+					      struct devlink_port *devlink_port)
+{
+	struct devlink_port_attrs *attrs = &devlink_port->attrs;
+	char phys_name[IFNAMSIZ];
+	int err;
+
+	if (attrs->flavour != DEVLINK_PORT_FLAVOUR_PHYSICAL)
+		return 0;
+
+	err = __devlink_port_phys_port_name_get(devlink_port,
+						phys_name, sizeof(phys_name));
+	if (err)
+		return err;
+	if (nla_put_string(msg, DEVLINK_ATTR_PORT_PHYS_NAME, phys_name))
+		return -EMSGSIZE;
+	return 0;
+}
+
 static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 				     struct devlink_port *devlink_port)
 {
@@ -530,6 +581,9 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 	    nla_put(msg, DEVLINK_ATTR_PORT_SWITCH_ID,
 		    attrs->switch_id.id_len, attrs->switch_id.id))
 		return -EMSGSIZE;
+	if (devlink_nl_port_phys_port_name_put(msg, devlink_port))
+		return -EMSGSIZE;
+
 	return 0;
 }
 
@@ -5566,38 +5620,6 @@ void devlink_port_attrs_set(struct devlink_port *devlink_port,
 	}
 }
 EXPORT_SYMBOL_GPL(devlink_port_attrs_set);
-
-static int __devlink_port_phys_port_name_get(struct devlink_port *devlink_port,
-					     char *name, size_t len)
-{
-	struct devlink_port_attrs *attrs = &devlink_port->attrs;
-	int n = 0;
-
-	if (!attrs->set)
-		return -EOPNOTSUPP;
-
-	switch (attrs->flavour) {
-	case DEVLINK_PORT_FLAVOUR_PHYSICAL:
-		if (!attrs->split)
-			n = snprintf(name, len, "p%u", attrs->port_number);
-		else
-			n = snprintf(name, len, "p%us%u", attrs->port_number,
-				     attrs->split_subport_number);
-		break;
-	case DEVLINK_PORT_FLAVOUR_CPU:
-	case DEVLINK_PORT_FLAVOUR_DSA:
-		/* As CPU and DSA ports do not have a netdevice associated
-		 * case should not ever happen.
-		 */
-		WARN_ON(1);
-		return -EINVAL;
-	}
-
-	if (n >= len)
-		return -EINVAL;
-
-	return 0;
-}
 
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
