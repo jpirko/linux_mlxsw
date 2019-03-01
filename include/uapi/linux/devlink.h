@@ -333,6 +333,7 @@ enum devlink_attr {
 	DEVLINK_ATTR_FLASH_UPDATE_COMPONENT,	/* string */
 
 	DEVLINK_ATTR_PORT_SWITCH_ID,		/* binary */
+	DEVLINK_ATTR_PORT_PHYS_NAME,		/* string */
 
 	/* add new attributes above here, update the policy in devlink.c */
 
