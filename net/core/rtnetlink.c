@@ -979,6 +979,22 @@ static size_t rtnl_xdp_size(void)
 	return xdp_size;
 }
 
+static bool rtnl_should_fill_link_down_reason(const struct net_device *dev)
+{
+	return (dev->flags & IFF_UP) && !netif_oper_up(dev) &&
+		dev->rtnl_link_ops &&
+		dev->rtnl_link_ops->link_down_reason_get_size &&
+		dev->rtnl_link_ops->fill_link_down_reason;
+}
+
+static size_t rtnl_link_down_reason_get_size(const struct net_device *dev)
+{
+	if (!rtnl_should_fill_link_down_reason(dev))
+		return 0;
+
+	return dev->rtnl_link_ops->link_down_reason_get_size(dev);
+}
+
 static noinline size_t if_nlmsg_size(const struct net_device *dev,
 				     u32 ext_filter_mask)
 {
@@ -1026,6 +1042,7 @@ static noinline size_t if_nlmsg_size(const struct net_device *dev,
 	       + nla_total_size(4)  /* IFLA_CARRIER_DOWN_COUNT */
 	       + nla_total_size(4)  /* IFLA_MIN_MTU */
 	       + nla_total_size(4)  /* IFLA_MAX_MTU */
+	       + rtnl_link_down_reason_get_size(dev)
 	       + 0;
 }
 
@@ -1683,6 +1700,9 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 	    nla_put_s32(skb, IFLA_NEW_IFINDEX, new_ifindex) < 0)
 		goto nla_put_failure;
 
+	if (rtnl_should_fill_link_down_reason(dev) &&
+	    dev->rtnl_link_ops->fill_link_down_reason(skb, dev))
+		goto nla_put_failure;
 
 	rcu_read_lock();
 	if (rtnl_fill_link_af(skb, dev, ext_filter_mask))
@@ -1742,6 +1762,8 @@ static const struct nla_policy ifla_policy[IFLA_MAX+1] = {
 	[IFLA_CARRIER_DOWN_COUNT] = { .type = NLA_U32 },
 	[IFLA_MIN_MTU]		= { .type = NLA_U32 },
 	[IFLA_MAX_MTU]		= { .type = NLA_U32 },
+	[IFLA_LINK_DOWN_REASON_MAJOR] = { .type = NLA_U32 },
+	[IFLA_LINK_DOWN_REASON_MINOR] = { .type = NLA_U32 },
 };
 
 static const struct nla_policy ifla_info_policy[IFLA_INFO_MAX+1] = {
