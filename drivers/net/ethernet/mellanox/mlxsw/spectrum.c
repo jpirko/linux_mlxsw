@@ -3541,6 +3541,113 @@ static const struct ethtool_ops mlxsw_sp_port_ethtool_ops = {
 	.get_ts_info		= mlxsw_sp_get_ts_info,
 };
 
+struct mlxsw_sp_ldr_opcode_mapping {
+	u16 status_opcode;
+	enum rtnl_link_down_reason_major major;
+};
+
+static const struct mlxsw_sp_ldr_opcode_mapping mlxsw_sp_ldr_opcode_map[] = {
+	{1024, RTNL_LDR_NO_CABLE},
+
+	{16, RTNL_LDR_UNSUPPORTED_CABLE},
+	{20, RTNL_LDR_UNSUPPORTED_CABLE},
+	{24, RTNL_LDR_UNSUPPORTED_CABLE},
+	{25, RTNL_LDR_UNSUPPORTED_CABLE},
+	{26, RTNL_LDR_UNSUPPORTED_CABLE},
+	{27, RTNL_LDR_UNSUPPORTED_CABLE},
+	{28, RTNL_LDR_UNSUPPORTED_CABLE},
+	{29, RTNL_LDR_UNSUPPORTED_CABLE},
+	{30, RTNL_LDR_UNSUPPORTED_CABLE},
+	{31, RTNL_LDR_UNSUPPORTED_CABLE},
+	{32, RTNL_LDR_UNSUPPORTED_CABLE},
+	{1025, RTNL_LDR_UNSUPPORTED_CABLE},
+	{1027, RTNL_LDR_UNSUPPORTED_CABLE},
+	{1029, RTNL_LDR_UNSUPPORTED_CABLE},
+
+	{2, RTNL_LDR_AUTONEG_FAILURE},
+	{3, RTNL_LDR_AUTONEG_FAILURE},
+	{4, RTNL_LDR_AUTONEG_FAILURE},
+	{38, RTNL_LDR_AUTONEG_FAILURE},
+	{39, RTNL_LDR_AUTONEG_FAILURE},
+
+	{36, RTNL_LDR_NO_LINK_PARTNER},
+
+	{5, RTNL_LDR_LINK_TRAINING_FAILURE},
+	{6, RTNL_LDR_LINK_TRAINING_FAILURE},
+	{7, RTNL_LDR_LINK_TRAINING_FAILURE},
+	{8, RTNL_LDR_LINK_TRAINING_FAILURE},
+
+	{9, RTNL_LDR_LOGICAL_MISMATCH},
+	{10, RTNL_LDR_LOGICAL_MISMATCH},
+	{11, RTNL_LDR_LOGICAL_MISMATCH},
+	{12, RTNL_LDR_LOGICAL_MISMATCH},
+	{13, RTNL_LDR_LOGICAL_MISMATCH},
+
+	{14, RTNL_LDR_REMOTE_FAULT},
+
+	{15, RTNL_LDR_BAD_SIGNAL_INTEGRITY},
+	{17, RTNL_LDR_BAD_SIGNAL_INTEGRITY},
+	{34, RTNL_LDR_BAD_SIGNAL_INTEGRITY},
+	{35, RTNL_LDR_BAD_SIGNAL_INTEGRITY},
+	{42, RTNL_LDR_BAD_SIGNAL_INTEGRITY},
+
+	{23, RTNL_LDR_CALIBRATION_FAILURE},
+
+	{1032, RTNL_LDR_POWER_BUDGET_EXCEEDED},
+};
+
+static size_t
+mlxsw_sp_port_link_down_reason_get_size(const struct net_device *dev)
+{
+	return nla_total_size(4) /* IFLA_LINK_DOWN_REASON_MAJOR */
+	     + nla_total_size(4) /* IFLA_LINK_DOWN_REASON_MINOR */
+	     + 0;
+}
+
+static int mlxsw_sp_port_fill_link_down_reason(struct sk_buff *skb,
+					       const struct net_device *dev)
+{
+	enum rtnl_link_down_reason_major major = RTNL_LDR_OTHER;
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	char pddr_pl[MLXSW_REG_PDDR_LEN];
+	u16 status_opcode;
+	int i;
+	int err;
+
+	mlxsw_reg_pddr_pack(pddr_pl, mlxsw_sp_port->local_port,
+			    MLXSW_REG_PDDR_PAGESEL_TROUBLESHOOTING_INFO);
+	mlxsw_reg_pddr_trblsh_group_opcode_set(pddr_pl,
+				    MLXSW_REG_PDDR_TRBLSH_GROUP_MONITOR);
+
+	err = mlxsw_reg_query(mlxsw_sp_port->mlxsw_sp->core,
+			      MLXSW_REG(pddr), pddr_pl);
+	if (err)
+		return err;
+
+	status_opcode = mlxsw_reg_pddr_trblsh_status_opcode_get(pddr_pl);
+	if (!status_opcode)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_ldr_opcode_map); ++i) {
+		if (mlxsw_sp_ldr_opcode_map[i].status_opcode == status_opcode) {
+			major = mlxsw_sp_ldr_opcode_map[i].major;
+			break;
+		}
+	}
+
+	if (nla_put_u32(skb, IFLA_LINK_DOWN_REASON_MAJOR, major) ||
+	    nla_put_u32(skb, IFLA_LINK_DOWN_REASON_MINOR, status_opcode))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static const struct rtnl_link_ops mlxsw_sp_port_rtnl_link_ops = {
+	.kind			    = "mlxsw",
+	.link_down_reason_get_size  = mlxsw_sp_port_link_down_reason_get_size,
+	.fill_link_down_reason	    = mlxsw_sp_port_fill_link_down_reason,
+};
+
 static int
 mlxsw_sp_port_speed_by_width_set(struct mlxsw_sp_port *mlxsw_sp_port)
 {
@@ -3798,6 +3905,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 
 	dev->netdev_ops = &mlxsw_sp_port_netdev_ops;
 	dev->ethtool_ops = &mlxsw_sp_port_ethtool_ops;
+	dev->rtnl_link_ops = &mlxsw_sp_port_rtnl_link_ops;
 
 	err = mlxsw_sp_port_module_map(mlxsw_sp_port);
 	if (err) {
