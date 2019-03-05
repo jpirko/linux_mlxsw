@@ -993,6 +993,22 @@ static size_t rtnl_prop_list_size(const struct net_device *dev)
 	return size;
 }
 
+static bool rtnl_should_fill_link_down_reason(const struct net_device *dev)
+{
+	return (dev->flags & IFF_UP) && !netif_oper_up(dev) &&
+		dev->rtnl_link_ops &&
+		dev->rtnl_link_ops->link_down_reason_get_size &&
+		dev->rtnl_link_ops->fill_link_down_reason;
+}
+
+static size_t rtnl_link_down_reason_get_size(const struct net_device *dev)
+{
+	if (!rtnl_should_fill_link_down_reason(dev))
+		return 0;
+
+	return dev->rtnl_link_ops->link_down_reason_get_size(dev);
+}
+
 static noinline size_t if_nlmsg_size(const struct net_device *dev,
 				     u32 ext_filter_mask)
 {
@@ -1042,6 +1058,7 @@ static noinline size_t if_nlmsg_size(const struct net_device *dev,
 	       + nla_total_size(4)  /* IFLA_MAX_MTU */
 	       + rtnl_prop_list_size(dev)
 	       + nla_total_size(MAX_ADDR_LEN) /* IFLA_PERM_ADDRESS */
+	       + rtnl_link_down_reason_get_size(dev)
 	       + 0;
 }
 
@@ -1762,6 +1779,10 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 	    nla_put(skb, IFLA_PERM_ADDRESS, dev->addr_len, dev->perm_addr))
 		goto nla_put_failure;
 
+	if (rtnl_should_fill_link_down_reason(dev) &&
+	    dev->rtnl_link_ops->fill_link_down_reason(skb, dev))
+		goto nla_put_failure;
+
 	rcu_read_lock();
 	if (rtnl_fill_link_af(skb, dev, ext_filter_mask))
 		goto nla_put_failure_rcu;
@@ -1827,6 +1848,8 @@ static const struct nla_policy ifla_policy[IFLA_MAX+1] = {
 	[IFLA_ALT_IFNAME]	= { .type = NLA_STRING,
 				    .len = ALTIFNAMSIZ - 1 },
 	[IFLA_PERM_ADDRESS]	= { .type = NLA_REJECT },
+	[IFLA_LINK_DOWN_REASON_MAJOR] = { .type = NLA_U32 },
+	[IFLA_LINK_DOWN_REASON_MINOR] = { .type = NLA_U32 },
 };
 
 static const struct nla_policy ifla_info_policy[IFLA_INFO_MAX+1] = {

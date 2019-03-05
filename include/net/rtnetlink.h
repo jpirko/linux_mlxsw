@@ -110,6 +110,9 @@ struct rtnl_link_ops {
 	int			(*fill_linkxstats)(struct sk_buff *skb,
 						   const struct net_device *dev,
 						   int *prividx, int attr);
+	size_t			(*link_down_reason_get_size)(const struct net_device *dev);
+	int			(*fill_link_down_reason)(struct sk_buff *skb,
+							 const struct net_device *dev);
 };
 
 int __rtnl_link_register(struct rtnl_link_ops *ops);
