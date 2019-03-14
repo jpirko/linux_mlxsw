@@ -196,7 +196,7 @@ int mlxsw_env_get_module_info(struct mlxsw_core *mlxsw_core, int module,
 		break;
 	case MLXSW_REG_MCIA_EEPROM_MODULE_INFO_ID_SFP:
 		modinfo->type       = ETH_MODULE_SFF_8472;
-		modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
+		modinfo->eeprom_len = 256;
 		break;
 	default:
 		return -EINVAL;
