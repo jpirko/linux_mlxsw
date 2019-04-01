@@ -519,12 +519,15 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 		return -EMSGSIZE;
 	if (nla_put_u32(msg, DEVLINK_ATTR_PORT_NUMBER, attrs->port_number))
 		return -EMSGSIZE;
-	if (!attrs->split)
-		return 0;
-	if (nla_put_u32(msg, DEVLINK_ATTR_PORT_SPLIT_GROUP, attrs->port_number))
+	if (attrs->split &&
+	    (nla_put_u32(msg, DEVLINK_ATTR_PORT_SPLIT_GROUP,
+			 attrs->port_number) ||
+	     nla_put_u32(msg, DEVLINK_ATTR_PORT_SPLIT_SUBPORT_NUMBER,
+			 attrs->split_subport_number)))
 		return -EMSGSIZE;
-	if (nla_put_u32(msg, DEVLINK_ATTR_PORT_SPLIT_SUBPORT_NUMBER,
-			attrs->split_subport_number))
+	if (attrs->switch_port &&
+	    nla_put(msg, DEVLINK_ATTR_PORT_SWITCH_ID,
+		    attrs->switch_id.id_len, attrs->switch_id.id))
 		return -EMSGSIZE;
 	return 0;
 }
