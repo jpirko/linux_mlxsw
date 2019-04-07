@@ -104,12 +104,16 @@ h3_create()
 	simple_if_init $h3 192.0.2.66/28
 	mtu_set $h3 10000
 
+	ethtool -s $h3 speed 1000 autoneg off
+
 	vlan_create $h3 111 v$h3 192.0.2.130/28
 }
 
 h3_destroy()
 {
 	vlan_destroy $h3 111
+
+	ethtool -s $h3 autoneg on
 
 	mtu_restore $h3
 	simple_if_fini $h3 192.0.2.66/28
