@@ -3590,6 +3590,28 @@ MLXSW_ITEM32(reg, qeec, dwrr, 0x18, 15, 1);
  */
 MLXSW_ITEM32(reg, qeec, dwrr_weight, 0x18, 0, 8);
 
+/* reg_qeec_min_shaper_bs
+ * Min shaper burst size
+ * Burst size is 2^min_shaper_bs * 512 bits
+ * Range is: n..25 (from 2KB..2GB)
+ * Value of 0 is configured as n
+ * For Spectrum: n=5
+ * Reserved when ptps=1
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, qeec, min_shaper_bs, 0x1C, 16, 6);
+
+/* reg_qeec_max_shaper_bs
+ * Max shaper burst size
+ * Burst size is 2^max_shaper_bs * 512 bits
+ * Range is: n..25 (from 2KB..2GB)
+ * Value of 0 is configured as n
+ * For Spectrum: n=5
+ * Reserved when ptps=1
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, qeec, max_shaper_bs, 0x1C, 0, 6);
+
 static inline void mlxsw_reg_qeec_pack(char *payload, u8 local_port,
 				       enum mlxsw_reg_qeec_hr hr, u8 index,
 				       u8 next_index)
