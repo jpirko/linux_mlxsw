@@ -3259,6 +3259,8 @@ static int mlxsw_sp_port_min_bw_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			    next_index);
 	mlxsw_reg_qeec_mise_set(qeec_pl, true);
 	mlxsw_reg_qeec_min_shaper_rate_set(qeec_pl, minrate);
+	//mlxsw_reg_qeec_min_shaper_bs_set(qeec_pl, 11); /* 128 KB */
+	//mlxsw_reg_qeec_max_shaper_bs_set(qeec_pl, 11); /* 128 KB */
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qeec), qeec_pl);
 }
