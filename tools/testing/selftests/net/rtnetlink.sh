@@ -696,7 +696,7 @@ kci_test_ipsec_offload()
 	algo="aead rfc4106(gcm(aes)) 0x3132333435363738393031323334353664636261 128"
 	srcip=192.168.123.3
 	dstip=192.168.123.4
-	dev=simx1
+	dev=netdevsim0p1
 	sysfsd=/sys/kernel/debug/netdevsim/netdevsim0/ports/0/
 	sysfsf=$sysfsd/ipsec
 
@@ -708,7 +708,8 @@ kci_test_ipsec_offload()
 		return 1
 	fi
 
-	ip link add $dev type netdevsim
+	echo "0" > /sys/bus/netdevsim/new_device
+	sleep 0.2
 	ip addr add $srcip dev $dev
 	ip link set $dev up
 	if [ ! -d $sysfsd ] ; then
@@ -781,7 +782,6 @@ EOF
 	fi
 
 	# clean up any leftovers
-	ip link del $dev
 	rmmod netdevsim
 
 	if [ $ret -ne 0 ]; then

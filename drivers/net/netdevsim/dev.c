@@ -275,7 +275,7 @@ err_devlink_free:
 	return ERR_PTR(err);
 }
 
-void nsim_dev_destroy(struct nsim_dev *nsim_dev)
+static void nsim_dev_destroy(struct nsim_dev *nsim_dev)
 {
 	struct devlink *devlink = priv_to_devlink(nsim_dev);
 
@@ -307,8 +307,18 @@ static int nsim_dev_port_init(struct nsim_dev *nsim_dev,
 	err = nsim_dev_port_debugfs_init(nsim_dev, nsim_dev_port);
 	if (err)
 		goto err_dl_port_unregister;
+
+	nsim_dev_port->ns = nsim_create(nsim_dev, nsim_dev_port);
+	if (IS_ERR(nsim_dev_port->ns)) {
+		err = PTR_ERR(nsim_dev_port->ns);
+		goto err_port_debugfs_exit;
+	}
+
+	devlink_port_type_eth_set(devlink_port, nsim_dev_port->ns->netdev);
 	return 0;
 
+err_port_debugfs_exit:
+	nsim_dev_port_debugfs_exit(nsim_dev_port);
 err_dl_port_unregister:
 	devlink_port_unregister(devlink_port);
 	return err;
@@ -320,6 +330,8 @@ static void nsim_dev_port_exit(struct nsim_dev *nsim_dev,
 	struct nsim_dev_port *nsim_dev_port = &nsim_dev->ports[port_index];
 	struct devlink_port *devlink_port = &nsim_dev_port->devlink_port;
 
+	devlink_port_type_clear(devlink_port);
+	nsim_destroy(nsim_dev_port->ns);
 	nsim_dev_port_debugfs_exit(nsim_dev_port);
 	devlink_port_unregister(devlink_port);
 }
