@@ -16,6 +16,7 @@
 #define DEVLINK_GENL_NAME "devlink"
 #define DEVLINK_GENL_VERSION 0x1
 #define DEVLINK_GENL_MCGRP_CONFIG_NAME "config"
+#define DEVLINK_GENL_MCGRP_PACKET_NAME "packet"
 
 enum devlink_command {
 	/* don't change the order or add anything between, this is ABI! */
@@ -105,6 +106,12 @@ enum devlink_command {
 
 	DEVLINK_CMD_FLASH_UPDATE,
 
+	DEVLINK_CMD_PACKET_LOG,
+	DEVLINK_CMD_PACKET_GET,		/* can dump */
+	DEVLINK_CMD_PACKET_SET,
+	DEVLINK_CMD_PACKET_NEW,
+	DEVLINK_CMD_PACKET_DEL,
+
 	/* add new commands above here */
 	__DEVLINK_CMD_MAX,
 	DEVLINK_CMD_MAX = __DEVLINK_CMD_MAX - 1
@@ -183,6 +190,58 @@ enum devlink_param_fw_load_policy_value {
 	DEVLINK_PARAM_FW_LOAD_POLICY_VALUE_DRIVER,
 	DEVLINK_PARAM_FW_LOAD_POLICY_VALUE_FLASH,
 };
+
+/**
+ * enum devlink_packet_trap_group - Packet trap groups
+ * @DEVLINK_PACKET_TRAP_GROUP_L2: Layer 2 packet traps
+ *
+ * Enumerates packet trap groups. The groups should correspond to different
+ * layers in the networking stack.
+ */
+enum devlink_packet_trap_group {
+	DEVLINK_PACKET_TRAP_GROUP_L2,
+
+	__DEVLINK_PACKET_TRAP_GROUP_MAX,
+	DEVLINK_PACKET_TRAP_GROUP_MAX = __DEVLINK_PACKET_TRAP_GROUP_MAX - 1,
+};
+
+/**
+ * enum devlink_packet_trap_l2 - Layer 2 packet traps
+ * @DEVLINK_PACKET_TRAP_L2_INGRESS_SMAC_MC: Packet was dropped at ingress due
+ * to multicast source MAC
+ * @DEVLINK_PACKET_TRAP_L2_INGRESS_VLAN_TAG_ALLOW: Packet was dropped at ingress
+ * because it was prio-tagged / untagged and port is not configured with a PVID
+ * @DEVLINK_PACKET_TRAP_L2_INGRESS_VLAN_FILTER: Packet was dropped by ingress
+ * VLAN filter
+ * @DEVLINK_PACKET_TRAP_L2_INGRESS_STP_FILTER: Packet was dropped by ingress
+ * STP filter
+ * @DEVLINK_PACKET_TRAP_L2_TX_LIST_EMPTY: Packet was dropped due to empty Tx
+ * list (e.g., empty flood group)
+ * @DEVLINK_PACKET_TRAP_L2_LOOPBACK: Packet was dropped by loopback filter
+ * (Tx port equals Rx port)
+ */
+enum devlink_packet_trap_l2 {
+	DEVLINK_PACKET_TRAP_L2_INGRESS_SMAC_MC,
+	DEVLINK_PACKET_TRAP_L2_INGRESS_VLAN_TAG_ALLOW,
+	DEVLINK_PACKET_TRAP_L2_INGRESS_VLAN_FILTER,
+	DEVLINK_PACKET_TRAP_L2_INGRESS_STP_FILTER,
+	DEVLINK_PACKET_TRAP_L2_TX_LIST_EMPTY,
+	DEVLINK_PACKET_TRAP_L2_LOOPBACK,
+
+	__DEVLINK_PACKET_TRAP_L2_MAX,
+	DEVLINK_PACKET_TRAP_L2_MAX = __DEVLINK_PACKET_TRAP_L2_MAX - 1,
+};
+
+/**
+ * enum devlink_packet_trap_type - Packet trap types
+ * @DEVLINK_PACKET_TRAP_TYPE_DROP - Packet trap indicates a dropped packet
+ */
+enum devlink_packet_trap_type {
+	DEVLINK_PACKET_TRAP_TYPE_DROP,
+};
+
+#define DEVLINK_PACKET_TRAP_METADATA_TYPE_IN_PORT		BIT(0)
+#define DEVLINK_PACKET_TRAP_METADATA_TYPE_TIMESTAMP		BIT(1)
 
 enum devlink_attr {
 	/* don't change the order or add anything between, this is ABI! */
@@ -331,6 +390,17 @@ enum devlink_attr {
 
 	DEVLINK_ATTR_FLASH_UPDATE_FILE_NAME,	/* string */
 	DEVLINK_ATTR_FLASH_UPDATE_COMPONENT,	/* string */
+
+	DEVLINK_ATTR_PACKET_TRAP_GROUP_ID,		/* u16 */
+	DEVLINK_ATTR_PACKET_TRAP_TYPE,			/* u8 */
+	/* Unique within its trap group */
+	DEVLINK_ATTR_PACKET_TRAP_ID,			/* u16 */
+	/* In nanoseconds */
+	DEVLINK_ATTR_PACKET_TIMESTAMP,			/* u64 */
+	DEVLINK_ATTR_PACKET_IN_PORT,			/* nested */
+	DEVLINK_ATTR_PACKET_PAYLOAD,			/* dynamic */
+	DEVLINK_ATTR_PACKET_TRAP_ENABLE,		/* u8 */
+	DEVLINK_ATTR_PACKET_TRAP_METADATA,		/* u32 */
 
 	/* add new attributes above here, update the policy in devlink.c */
 

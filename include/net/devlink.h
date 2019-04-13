@@ -33,6 +33,8 @@ struct devlink {
 	u32 snapshot_id;
 	struct list_head reporter_list;
 	struct devlink_dpipe_headers *dpipe_headers;
+	struct list_head trap_list;
+	struct rhashtable trap_ht;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -478,6 +480,56 @@ struct devlink_health_reporter_ops {
 			struct devlink_fmsg *fmsg);
 };
 
+/**
+ * struct devlink_packet_metadata - Packet metadata
+ * @timestamp: Timestamp of the packet in nanoseconds
+ * @in_port_index: Devlink port index of ingress port
+ *
+ * Describes the metadata about trapped packets that drivers pass devlink.
+ */
+struct devlink_packet_metadata {
+	u64 timestamp;
+	unsigned int in_port_index;
+};
+
+/**
+ * struct devlink_packet_trap - Packet trap attributes
+ * @type: Type of trap
+ * @supported_metadata: Flags indicating supported metadata by packet trap
+ * @group_id: Trap group ID
+ * @trap_id: Trap reason
+ *
+ * Describes attributes of packet traps that drivers register with devlink.
+ */
+struct devlink_packet_trap {
+	enum devlink_packet_trap_type type;
+	u32 supported_metadata;
+	u16 group_id;
+	u16 trap_id;
+};
+
+/**
+ * struct devlink_packet_trap_filter - Packet trap filter
+ * @all_valid: All registered packet traps are valid
+ * @group_id_valid: Only packet traps member in group_id are valid
+ * @trap_id_valid: Only packet trap whose key is {group_id, trap_id} is valid
+ * @group_id: Trap group ID
+ * @trap_id: Trap reason
+ *
+ * Describes packet traps on which an operation should be performed. The
+ * structure is used instead of calling into drivers multiple times with an
+ * individual trap, as some drivers might share resources between traps
+ * belonging to the same group and thus require the same settings across all
+ * the traps member in the group.
+ */
+struct devlink_packet_trap_filter {
+	u8 all_valid:1,
+	   group_id_valid:1,
+	   trap_id_valid:1;
+	u16 group_id;
+	u16 trap_id;
+};
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink, struct netlink_ext_ack *extack);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -537,6 +589,9 @@ struct devlink_ops {
 	int (*flash_update)(struct devlink *devlink, const char *file_name,
 			    const char *component,
 			    struct netlink_ext_ack *extack);
+	int (*packet_trap_set)(struct devlink *devlink,
+			       const struct devlink_packet_trap_filter *filter,
+			       bool enable);
 };
 
 static inline void *devlink_priv(struct devlink *devlink)
@@ -737,6 +792,17 @@ int devlink_health_report(struct devlink_health_reporter *reporter,
 void
 devlink_health_reporter_state_update(struct devlink_health_reporter *reporter,
 				     enum devlink_health_reporter_state state);
+
+int devlink_packet_traps_register(struct devlink *devlink,
+				  const struct devlink_packet_trap *traps,
+				  size_t traps_count);
+void devlink_packet_traps_unregister(struct devlink *devlink,
+				     const struct devlink_packet_trap *traps,
+				     size_t traps_count);
+void devlink_packet_log(struct devlink *devlink,
+			const struct devlink_packet_trap *trap,
+			struct sk_buff *skb,
+			struct devlink_packet_metadata *metadata);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
