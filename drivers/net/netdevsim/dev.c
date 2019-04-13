@@ -45,6 +45,30 @@ static void nsim_dev_debugfs_exit(struct nsim_dev *nsim_dev)
 	debugfs_remove_recursive(nsim_dev->ddir);
 }
 
+static int nsim_dev_port_debugfs_init(struct nsim_dev *nsim_dev,
+				      struct nsim_dev_port *nsim_dev_port)
+{
+	char port_ddir_name[16];
+	char dev_link_name[32];
+
+	sprintf(port_ddir_name, "%u", nsim_dev_port->port_index);
+	nsim_dev_port->ddir = debugfs_create_dir(port_ddir_name,
+						 nsim_dev->ports_ddir);
+	if (IS_ERR_OR_NULL(nsim_dev_port->ddir))
+		return -ENOMEM;
+
+	sprintf(dev_link_name, "../../../" DRV_NAME "%u",
+		nsim_dev->nsim_bus_dev->dev.id);
+	debugfs_create_symlink("dev", nsim_dev_port->ddir, dev_link_name);
+
+	return 0;
+}
+
+static void nsim_dev_port_debugfs_exit(struct nsim_dev_port *nsim_dev_port)
+{
+	debugfs_remove_recursive(nsim_dev_port->ddir);
+}
+
 static u64 nsim_dev_ipv4_fib_resource_occ_get(void *priv)
 {
 	struct nsim_dev *nsim_dev = priv;
@@ -198,13 +222,15 @@ static const struct devlink_ops nsim_dev_devlink_ops = {
 	.reload = nsim_dev_reload,
 };
 
-static struct nsim_dev *nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev)
+static struct nsim_dev *nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev,
+					unsigned int port_count)
 {
 	struct nsim_dev *nsim_dev;
 	struct devlink *devlink;
 	int err;
 
-	devlink = devlink_alloc(&nsim_dev_devlink_ops, sizeof(*nsim_dev));
+	devlink = devlink_alloc(&nsim_dev_devlink_ops,
+				struct_size(nsim_dev, ports, port_count));
 	if (!devlink)
 		return ERR_PTR(-ENOMEM);
 	nsim_dev = devlink_priv(devlink);
@@ -249,19 +275,6 @@ err_devlink_free:
 	return ERR_PTR(err);
 }
 
-struct nsim_dev *nsim_dev_create_with_ns(struct nsim_bus_dev *nsim_bus_dev,
-					 struct netdevsim *ns)
-{
-	struct nsim_dev *nsim_dev;
-
-	dev_hold(ns->netdev);
-	rtnl_unlock();
-	nsim_dev = nsim_dev_create(nsim_bus_dev);
-	rtnl_lock();
-	dev_put(ns->netdev);
-	return nsim_dev;
-}
-
 void nsim_dev_destroy(struct nsim_dev *nsim_dev)
 {
 	struct devlink *devlink = priv_to_devlink(nsim_dev);
@@ -272,6 +285,78 @@ void nsim_dev_destroy(struct nsim_dev *nsim_dev)
 	devlink_resources_unregister(devlink, NULL);
 	nsim_fib_destroy(nsim_dev->fib_data);
 	devlink_free(devlink);
+}
+
+static int nsim_dev_port_init(struct nsim_dev *nsim_dev,
+			      unsigned int port_index)
+{
+	struct nsim_dev_port *nsim_dev_port = &nsim_dev->ports[port_index];
+	struct devlink_port *devlink_port = &nsim_dev_port->devlink_port;
+	int err;
+
+	nsim_dev_port->port_index = port_index;
+	devlink_port_attrs_set(devlink_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
+			       port_index + 1, 0, 0,
+			       nsim_dev->switch_id.id,
+			       nsim_dev->switch_id.id_len);
+	err = devlink_port_register(priv_to_devlink(nsim_dev), devlink_port,
+				    port_index);
+	if (err)
+		return err;
+
+	err = nsim_dev_port_debugfs_init(nsim_dev, nsim_dev_port);
+	if (err)
+		goto err_dl_port_unregister;
+	return 0;
+
+err_dl_port_unregister:
+	devlink_port_unregister(devlink_port);
+	return err;
+}
+
+static void nsim_dev_port_exit(struct nsim_dev *nsim_dev,
+			       unsigned int port_index)
+{
+	struct nsim_dev_port *nsim_dev_port = &nsim_dev->ports[port_index];
+	struct devlink_port *devlink_port = &nsim_dev_port->devlink_port;
+
+	nsim_dev_port_debugfs_exit(nsim_dev_port);
+	devlink_port_unregister(devlink_port);
+}
+
+int nsim_dev_probe(struct nsim_bus_dev *nsim_bus_dev)
+{
+	struct nsim_dev *nsim_dev;
+	int i;
+	int err;
+
+	nsim_dev = nsim_dev_create(nsim_bus_dev, nsim_bus_dev->port_count);
+	if (IS_ERR(nsim_dev))
+		return PTR_ERR(nsim_dev);
+	dev_set_drvdata(&nsim_bus_dev->dev, nsim_dev);
+
+	for (i = 0; i < nsim_bus_dev->port_count; i++) {
+		err = nsim_dev_port_init(nsim_dev, i);
+		if (err)
+			goto port_rollback;
+	}
+	return 0;
+
+port_rollback:
+	for (i--; i >= 0; i--)
+		nsim_dev_port_exit(nsim_dev, i);
+	nsim_dev_destroy(nsim_dev);
+	return err;
+}
+
+void nsim_dev_remove(struct nsim_bus_dev *nsim_bus_dev)
+{
+	struct nsim_dev *nsim_dev = dev_get_drvdata(&nsim_bus_dev->dev);
+	int i;
+
+	for (i = nsim_bus_dev->port_count - 1; i >= 0; i--)
+		nsim_dev_port_exit(nsim_dev, i);
+	nsim_dev_destroy(nsim_dev);
 }
 
 int nsim_dev_init(void)
