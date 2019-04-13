@@ -141,6 +141,7 @@ struct nsim_dev {
 	u32 prog_id_gen;
 	struct list_head bpf_bound_progs;
 	struct list_head bpf_bound_maps;
+	struct netdev_phys_item_id switch_id;
 };
 
 struct nsim_dev *nsim_dev_create_with_ns(struct nsim_bus_dev *nsim_bus_dev,
