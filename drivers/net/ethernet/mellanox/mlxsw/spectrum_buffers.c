@@ -425,16 +425,16 @@ static const struct mlxsw_sp_sb_pr mlxsw_sp1_sb_prs[] = {
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR_EXT(MLXSW_REG_SBPR_MODE_DYNAMIC,
-			   MLXSW_SP1_SB_PR_EGRESS_SIZE, true, false),
+			   MLXSW_SP1_SB_PR_EGRESS_SIZE, false, false),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR(MLXSW_REG_SBPR_MODE_DYNAMIC, 0),
 	MLXSW_SP_SB_PR_EXT(MLXSW_REG_SBPR_MODE_STATIC, MLXSW_SP_SB_INFI,
-			   true, true),
+			   false, false),
 	MLXSW_SP_SB_PR_EXT(MLXSW_REG_SBPR_MODE_DYNAMIC,
-			   MLXSW_SP1_SB_PR_CPU_SIZE, true, false),
+			   MLXSW_SP1_SB_PR_CPU_SIZE, false, false),
 	MLXSW_SP_SB_PR_EXT(MLXSW_REG_SBPR_MODE_DYNAMIC,
-			   MLXSW_SP1_SB_PR_CPU_SIZE, true, false),
+			   MLXSW_SP1_SB_PR_CPU_SIZE, false, false),
 };
 
 #define MLXSW_SP2_SB_PR_INGRESS_SIZE	40960000
@@ -512,8 +512,8 @@ static int mlxsw_sp_sb_prs_init(struct mlxsw_sp *mlxsw_sp,
 		.min_buff = _min_buff,			\
 		.max_buff = _max_buff,			\
 		.pool_index = MLXSW_SP_SB_POOL_EGR_MC,	\
-		.freeze_pool = true,			\
-		.freeze_thresh = true,			\
+		.freeze_pool = false,			\
+		.freeze_thresh = false,			\
 	}
 
 static const struct mlxsw_sp_sb_cm mlxsw_sp1_sb_cms_ingress[] = {
