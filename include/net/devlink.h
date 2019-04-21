@@ -17,6 +17,7 @@
 #include <linux/list.h>
 #include <linux/netdevice.h>
 #include <linux/spinlock.h>
+#include <linux/refcount.h>
 #include <net/net_namespace.h>
 #include <uapi/linux/devlink.h>
 
@@ -34,6 +35,8 @@ struct devlink {
 	struct list_head reporter_list;
 	struct mutex reporters_lock; /* protects reporter_list */
 	struct devlink_dpipe_headers *dpipe_headers;
+	struct list_head trap_list;
+	struct list_head trap_group_list;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -479,6 +482,166 @@ struct devlink_health_reporter_ops {
 			struct devlink_fmsg *fmsg);
 };
 
+struct devlink_stats {
+	u64 rx_bytes;
+	u64 rx_packets;
+	struct u64_stats_sync syncp;
+};
+
+/**
+ * struct devlink_trap_metadata_cap - Packet trap metadata capabilities.
+ * @port_type: The type of the port provided as part of trap metadata.
+ *	       Only applicable if port information is provided.
+ * @in_port: Trap can provide input port.
+ *
+ * Describes the metadata types a trap can provide.
+ */
+struct devlink_trap_metadata_cap {
+	enum devlink_port_type port_type;
+	u8 in_port:1;
+};
+
+/**
+ * struct devlink_trap_group - Immutable packet trap group attributes.
+ * @name: Trap group name.
+ * @id: Trap group identifier.
+ *
+ * Describes immutable attributes of packet trap groups that drivers register
+ * with devlink.
+ */
+struct devlink_trap_group {
+	const char *name;
+	u16 id;
+};
+
+/**
+ * struct devlink_trap - Immutable packet trap attributes.
+ * @type: Trap type.
+ * @generic: Whether the trap is generic or not.
+ * @group: Immutable packet trap group attributes.
+ * @name: Trap name.
+ * @id: Trap identifier.
+ * @metadata_cap: Metadata types that can be provided by the trap.
+ *
+ * Describes immutable attributes of packet traps that drivers register with
+ * devlink.
+ */
+struct devlink_trap {
+	enum devlink_trap_type type;
+	bool generic;
+	struct devlink_trap_group group;
+	const char *name;
+	u16 id;
+	struct devlink_trap_metadata_cap metadata_cap;
+};
+
+/**
+ * struct devlink_trap_group_item - Packet trap group attributes.
+ * @ops: Trap group operations.
+ * @group: Immutable packet trap group attributes.
+ * @refcount: Number of trap items using the group.
+ * @list: trap_group_list member.
+ * @stats: Trap group statistics.
+ *
+ * Describes packet trap group attributes. Created by devlink during trap
+ * registration.
+ */
+struct devlink_trap_group_item {
+	const struct devlink_trap_group_ops *ops;
+	const struct devlink_trap_group *group;
+	refcount_t refcount;
+	struct list_head list;
+	struct devlink_stats __percpu *stats;
+};
+
+/**
+ * struct devlink_trap_item - Packet trap attributes.
+ * @ops: Trap operations.
+ * @trap: Immutable packet trap attributes.
+ * @group_item: Associated group item.
+ * @list: trap_list member.
+ * @report: Trap reporting state.
+ * @action: Trap action.
+ * @stats: Trap statistics.
+ * @priv: Driver private information.
+ *
+ * Describes both mutable and immutable packet trap attributes. Created by
+ * devlink during trap registration and used for all trap related operations.
+ */
+struct devlink_trap_item {
+	const struct devlink_trap_ops *ops;
+	const struct devlink_trap *trap;
+	struct devlink_trap_group_item *group_item;
+	struct list_head list;
+	enum devlink_trap_report report;
+	enum devlink_trap_action action;
+	struct devlink_stats __percpu *stats;
+	void *priv;
+};
+
+/**
+ * struct devlink_trap_ops - Trap operations.
+ * @init: Trap initialization function. Should be used by device drivers to
+ *	  initialize the trap in the underlying device and set the action
+ *	  field. Drivers should also store the provided trap item, so that they
+ *	  could efficiently pass it to devlink_trap_report() when the trap is
+ *	  triggered.
+ * @fini: Trap de-initialization function. Should be used by device drivers to
+ *	  de-initialize the trap in the underlying device.
+ * @action_set: Trap action set function.
+ */
+struct devlink_trap_ops {
+	int (*init)(struct devlink_trap_item *trap_item,
+		    struct devlink *devlink);
+	void (*fini)(struct devlink_trap_item *trap_item,
+		     struct devlink *devlink);
+	int (*action_set)(struct devlink_trap_item *trap_item,
+			  struct devlink *devlink,
+			  enum devlink_trap_action action);
+};
+
+/**
+ * struct devlink_trap_group_ops - Trap group operations.
+ * @init: Trap group initialization function. Should be used by device drivers
+ *	  to initialize the trap group in the underlying device.
+ */
+struct devlink_trap_group_ops {
+	int (*init)(struct devlink_trap_group_item *group_item,
+		    struct devlink *devlink);
+};
+
+enum devlink_trap_generic_id {
+	/* Add new generic trap IDs above */
+	__DEVLINK_TRAP_GENERIC_ID_MAX,
+	DEVLINK_TRAP_GENERIC_ID_MAX = __DEVLINK_TRAP_GENERIC_ID_MAX - 1,
+};
+
+#define DEVLINK_TRAP_GENERIC(_type, _id, _group, _metadata)		      \
+	{								      \
+		.type = DEVLINK_TRAP_TYPE_##_type,			      \
+		.generic = true,					      \
+		.group = _group,					      \
+		.name = DEVLINK_TRAP_GENERIC_NAME_##_id,		      \
+		.id = DEVLINK_TRAP_GENERIC_ID_##_id,			      \
+		.metadata_cap = _metadata,				      \
+	}
+
+#define DEVLINK_TRAP_DRIVER(_type, _id, _name, _group, _metadata)	      \
+	{								      \
+		.type = DEVLINK_TRAP_TYPE_##_type,			      \
+		.generic = false,					      \
+		.group = _group,					      \
+		.name = _name,						      \
+		.id = _id,						      \
+		.metadata_cap = _metadata,				      \
+	}
+
+#define DEVLINK_TRAP_GROUP(_id, _name)					      \
+	{								      \
+		.name = _name,						      \
+		.id = _id,						      \
+	}
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink, struct netlink_ext_ack *extack);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -738,6 +901,19 @@ int devlink_health_report(struct devlink_health_reporter *reporter,
 void
 devlink_health_reporter_state_update(struct devlink_health_reporter *reporter,
 				     enum devlink_health_reporter_state state);
+
+int devlink_traps_register(struct devlink *devlink,
+			   const struct devlink_trap *traps,
+			   size_t traps_count,
+			   const struct devlink_trap_ops *trap_ops,
+			   const struct devlink_trap_group_ops *group_ops);
+void devlink_traps_unregister(struct devlink *devlink,
+			      const struct devlink_trap *traps,
+			      size_t traps_count);
+void devlink_trap_report(struct devlink *devlink,
+			 struct sk_buff *skb,
+			 struct devlink_trap_item *trap_item,
+			 const struct devlink_port *in_devlink_port);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
