@@ -34,6 +34,8 @@ struct devlink {
 	struct list_head reporter_list;
 	struct mutex reporters_lock; /* protects reporter_list */
 	struct devlink_dpipe_headers *dpipe_headers;
+	struct list_head trap_list;
+	struct rhashtable trap_ht;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -479,6 +481,44 @@ struct devlink_health_reporter_ops {
 			struct devlink_fmsg *fmsg);
 };
 
+/**
+ * struct devlink_trap_metadata - Packet trap metadata
+ * @timestamp: Timestamp of the packet in nanoseconds
+ * @in_devlink_port: Ingress devlink port
+ *
+ * Describes the metadata about trapped packets that drivers pass devlink.
+ */
+struct devlink_trap_metadata {
+	u64 timestamp;
+	const struct devlink_port *in_devlink_port;
+};
+
+/**
+ * struct devlink_trap - Packet trap attributes
+ * @action_set: Callback to set trap action in underlying device
+ * @init_action: Initial trap action
+ * @port_type: The type of the port reported as part of trap metadata
+ * @type: Trap type
+ * @name: Trap name
+ * @id: Trap identifier
+ * @metadata_in_port: Trap provides input port
+ * @metadata_timestamp: Trap provides timestamp
+ *
+ * Describes attributes of packet traps that drivers register with devlink.
+ */
+struct devlink_trap {
+	int (*action_set)(struct devlink *devlink, u16 id,
+			  enum devlink_trap_action action,
+			  struct netlink_ext_ack *extack);
+	enum devlink_trap_action init_action;
+	enum devlink_trap_type type;
+	enum devlink_port_type port_type;
+	const char *name;
+	u16 id;
+	u8 metadata_in_port:1,
+	   metadata_timestamp:1;
+};
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink, struct netlink_ext_ack *extack);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -738,6 +778,17 @@ int devlink_health_report(struct devlink_health_reporter *reporter,
 void
 devlink_health_reporter_state_update(struct devlink_health_reporter *reporter,
 				     enum devlink_health_reporter_state state);
+
+int devlink_traps_register(struct devlink *devlink,
+			   const struct devlink_trap *traps,
+			   size_t traps_count);
+void devlink_traps_unregister(struct devlink *devlink,
+			      const struct devlink_trap *traps,
+			      size_t traps_count);
+void devlink_trap_report(struct devlink *devlink,
+			 const struct devlink_trap *trap,
+			 struct sk_buff *skb,
+			 const struct devlink_trap_metadata *metadata);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
