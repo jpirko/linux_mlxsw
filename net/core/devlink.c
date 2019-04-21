@@ -23,6 +23,8 @@
 #include <linux/refcount.h>
 #include <linux/rcupdate.h>
 #include <linux/lockdep.h>
+#include <linux/rhashtable.h>
+#include <linux/u64_stats_sync.h>
 #include <rdma/ib_verbs.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
@@ -454,10 +456,12 @@ static struct genl_family devlink_nl_family;
 
 enum devlink_multicast_groups {
 	DEVLINK_MCGRP_CONFIG,
+	DEVLINK_MCGRP_TRAP,
 };
 
 static const struct genl_multicast_group devlink_nl_mcgrps[] = {
 	[DEVLINK_MCGRP_CONFIG] = { .name = DEVLINK_GENL_MCGRP_CONFIG_NAME },
+	[DEVLINK_MCGRP_TRAP] = { .name = DEVLINK_GENL_MCGRP_TRAP_NAME },
 };
 
 static int devlink_nl_put_handle(struct sk_buff *msg, struct devlink *devlink)
@@ -537,7 +541,6 @@ static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 				enum devlink_command cmd, u32 portid,
 				u32 seq, int flags)
 {
-	spinlock_t *type_lock = &devlink_port->type_lock;
 	void *hdr;
 
 	hdr = genlmsg_put(msg, portid, seq, &devlink_nl_family, flags, cmd);
@@ -560,7 +563,7 @@ static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 		struct net_device *netdev;
 
 		netdev = rcu_dereference_protected(devlink_port->type_dev,
-						   lockdep_is_held(type_lock));
+				lockdep_is_held(&devlink_port->type_lock));
 		if (netdev &&
 		    (nla_put_u32(msg, DEVLINK_ATTR_PORT_NETDEV_IFINDEX,
 				 netdev->ifindex) ||
@@ -572,7 +575,7 @@ static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 		struct ib_device *ibdev;
 
 		ibdev = rcu_dereference_protected(devlink_port->type_dev,
-						  lockdep_is_held(type_lock));
+				lockdep_is_held(&devlink_port->type_lock));
 		if (ibdev &&
 		    nla_put_string(msg, DEVLINK_ATTR_PORT_IBDEV_NAME,
 				   ibdev->name))
@@ -4965,6 +4968,387 @@ devlink_nl_cmd_health_reporter_dump_clear_doit(struct sk_buff *skb,
 	return 0;
 }
 
+struct devlink_stats {
+	u64 rx_bytes;
+	u64 rx_packets;
+	struct u64_stats_sync syncp;
+};
+
+struct devlink_trap_item {
+	const struct devlink_trap *trap;
+	struct list_head list;
+	struct rhash_head ht_node;
+	enum devlink_trap_report report;
+	enum devlink_trap_action action;
+	struct devlink_stats __percpu *stats;
+};
+
+static u32 devlink_trap_obj_hashfn(const void *data, u32 len, u32 seed)
+{
+	const struct devlink_trap_item *trap_item = data;
+
+	return jhash(&trap_item->trap->id, len, seed);
+}
+
+static int devlink_trap_obj_cmpfn(struct rhashtable_compare_arg *arg,
+				  const void *obj)
+{
+	const struct devlink_trap_item *trap_item = obj;
+	u16 trap_id = *(u16 *) arg->key;
+
+	return trap_item->trap->id != trap_id;
+}
+
+static const struct rhashtable_params devlink_trap_ht_params = {
+	.head_offset = offsetof(struct devlink_trap_item, ht_node),
+	.key_len = sizeof(u16),
+	.obj_hashfn = devlink_trap_obj_hashfn,
+	.obj_cmpfn = devlink_trap_obj_cmpfn,
+};
+
+static struct devlink_trap_item *
+devlink_trap_item_get_from_info(struct devlink *devlink,
+				struct genl_info *info)
+{
+	u16 trap_id;
+
+	if (!info->attrs[DEVLINK_ATTR_TRAP_ID])
+		return NULL;
+	trap_id = nla_get_u16(info->attrs[DEVLINK_ATTR_TRAP_ID]);
+
+	return rhashtable_lookup_fast(&devlink->trap_ht, &trap_id,
+				      devlink_trap_ht_params);
+}
+
+static int
+devlink_trap_action_get_from_info(struct genl_info *info,
+				  enum devlink_trap_action *p_trap_action)
+{
+	u8 val;
+
+	if (!info->attrs[DEVLINK_ATTR_TRAP_ACTION])
+		return -EINVAL;
+
+	val = nla_get_u8(info->attrs[DEVLINK_ATTR_TRAP_ACTION]);
+	switch (val) {
+	case DEVLINK_TRAP_ACTION_DROP: /* fall-through */
+	case DEVLINK_TRAP_ACTION_TRAP:
+		*p_trap_action = val;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+devlink_trap_report_get_from_info(struct genl_info *info,
+				  enum devlink_trap_report *p_trap_report)
+{
+	u8 val;
+
+	if (!info->attrs[DEVLINK_ATTR_TRAP_REPORT])
+		return -EINVAL;
+
+	val = nla_get_u8(info->attrs[DEVLINK_ATTR_TRAP_REPORT]);
+	switch (val) {
+	case DEVLINK_TRAP_REPORT_OFF: /* fall-through */
+	case DEVLINK_TRAP_REPORT_ON:
+		*p_trap_report = val;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int devlink_trap_metadata_put(struct sk_buff *msg,
+				     const struct devlink_trap *trap)
+{
+	struct nlattr *attr;
+
+	attr = nla_nest_start(msg, DEVLINK_ATTR_TRAP_METADATA);
+	if (!attr)
+		return -EMSGSIZE;
+
+	if (trap->metadata_cap.in_port &&
+	    nla_put_flag(msg, DEVLINK_ATTR_TRAP_METADATA_TYPE_IN_PORT))
+		goto nla_put_failure;
+
+	if (trap->metadata_cap.timestamp &&
+	    nla_put_flag(msg, DEVLINK_ATTR_TRAP_METADATA_TYPE_TIMESTAMP))
+		goto nla_put_failure;
+
+	nla_nest_end(msg, attr);
+
+	return 0;
+
+nla_put_failure:
+	nla_nest_cancel(msg, attr);
+	return -EMSGSIZE;
+}
+
+static void devlink_trap_stats_read(struct devlink_stats __percpu *trap_stats,
+				    struct devlink_stats *stats)
+{
+	int i;
+
+	memset(stats, 0, sizeof(*stats));
+	for_each_possible_cpu(i) {
+		struct devlink_stats *cpu_stats;
+		u64 rx_packets, rx_bytes;
+		unsigned int start;
+
+		cpu_stats = per_cpu_ptr(trap_stats, i);
+		do {
+			start = u64_stats_fetch_begin_irq(&cpu_stats->syncp);
+			rx_packets = cpu_stats->rx_packets;
+			rx_bytes = cpu_stats->rx_bytes;
+		} while (u64_stats_fetch_retry_irq(&cpu_stats->syncp, start));
+
+		stats->rx_packets += rx_packets;
+		stats->rx_bytes += rx_bytes;
+	}
+}
+
+static int devlink_trap_stats_put(struct sk_buff *msg,
+				  struct devlink_stats __percpu *trap_stats)
+{
+	struct devlink_stats stats;
+	struct nlattr *attr;
+
+	devlink_trap_stats_read(trap_stats, &stats);
+
+	attr = nla_nest_start(msg, DEVLINK_ATTR_STATS);
+	if (!attr)
+		return -EMSGSIZE;
+
+	if (nla_put_u64_64bit(msg, DEVLINK_ATTR_STATS_RX_PACKETS,
+			      stats.rx_packets, DEVLINK_ATTR_PAD))
+		goto nla_put_failure;
+
+	if (nla_put_u64_64bit(msg, DEVLINK_ATTR_STATS_RX_BYTES,
+			      stats.rx_bytes, DEVLINK_ATTR_PAD))
+		goto nla_put_failure;
+
+	nla_nest_end(msg, attr);
+
+	return 0;
+
+nla_put_failure:
+	nla_nest_cancel(msg, attr);
+	return -EMSGSIZE;
+}
+
+static int devlink_nl_trap_fill(struct sk_buff *msg, struct devlink *devlink,
+				const struct devlink_trap_item *trap_item,
+				enum devlink_command cmd, u32 portid, u32 seq,
+				int flags)
+{
+	void *hdr;
+	int err;
+
+	hdr = genlmsg_put(msg, portid, seq, &devlink_nl_family, flags, cmd);
+	if (!hdr)
+		return -EMSGSIZE;
+
+	if (devlink_nl_put_handle(msg, devlink))
+		goto nla_put_failure;
+
+	if (nla_put_u16(msg, DEVLINK_ATTR_TRAP_ID, trap_item->trap->id))
+		goto nla_put_failure;
+
+	if (nla_put_string(msg, DEVLINK_ATTR_TRAP_NAME, trap_item->trap->name))
+		goto nla_put_failure;
+
+	if (nla_put_u8(msg, DEVLINK_ATTR_TRAP_TYPE, trap_item->trap->type))
+		goto nla_put_failure;
+
+	if (trap_item->trap->generic &&
+	    nla_put_flag(msg, DEVLINK_ATTR_TRAP_GENERIC))
+		goto nla_put_failure;
+
+	if (nla_put_u8(msg, DEVLINK_ATTR_TRAP_REPORT, trap_item->report))
+		goto nla_put_failure;
+
+	if (nla_put_u8(msg, DEVLINK_ATTR_TRAP_ACTION, trap_item->action))
+		goto nla_put_failure;
+
+	err = devlink_trap_metadata_put(msg, trap_item->trap);
+	if (err)
+		goto nla_put_failure;
+
+	err = devlink_trap_stats_put(msg, trap_item->stats);
+	if (err)
+		goto nla_put_failure;
+
+	genlmsg_end(msg, hdr);
+
+	return 0;
+
+nla_put_failure:
+	genlmsg_cancel(msg, hdr);
+	return -EMSGSIZE;
+}
+
+static int devlink_nl_cmd_trap_get_doit(struct sk_buff *skb,
+					struct genl_info *info)
+{
+	struct netlink_ext_ack *extack = info->extack;
+	struct devlink *devlink = info->user_ptr[0];
+	struct devlink_trap_item *trap_item;
+	struct sk_buff *msg;
+	int err;
+
+	if (list_empty(&devlink->trap_list))
+		return -EOPNOTSUPP;
+
+	trap_item = devlink_trap_item_get_from_info(devlink, info);
+	if (!trap_item) {
+		NL_SET_ERR_MSG_MOD(extack, "Device did not register this trap");
+		return -EINVAL;
+	}
+
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	err = devlink_nl_trap_fill(msg, devlink, trap_item,
+				   DEVLINK_CMD_TRAP_NEW, info->snd_portid,
+				   info->snd_seq, 0);
+	if (err)
+		goto err_trap_fill;
+
+	return genlmsg_reply(msg, info);
+
+err_trap_fill:
+	nlmsg_free(msg);
+	return err;
+}
+
+static int devlink_nl_cmd_trap_get_dumpit(struct sk_buff *msg,
+					  struct netlink_callback *cb)
+{
+	struct devlink_trap_item *trap_item;
+	struct devlink *devlink;
+	int start = cb->args[0];
+	int idx = 0;
+	int err;
+
+	mutex_lock(&devlink_mutex);
+	list_for_each_entry(devlink, &devlink_list, list) {
+		if (!net_eq(devlink_net(devlink), sock_net(msg->sk)))
+			continue;
+		mutex_lock(&devlink->lock);
+		list_for_each_entry(trap_item, &devlink->trap_list, list) {
+			if (idx < start) {
+				idx++;
+				continue;
+			}
+			err = devlink_nl_trap_fill(msg, devlink, trap_item,
+						   DEVLINK_CMD_TRAP_NEW,
+						   NETLINK_CB(cb->skb).portid,
+						   cb->nlh->nlmsg_seq,
+						   NLM_F_MULTI);
+			if (err) {
+				mutex_unlock(&devlink->lock);
+				goto out;
+			}
+			idx++;
+		}
+		mutex_unlock(&devlink->lock);
+	}
+out:
+	mutex_unlock(&devlink_mutex);
+
+	cb->args[0] = idx;
+	return msg->len;
+}
+
+static int devlink_trap_action_set(struct devlink *devlink,
+				   struct devlink_trap_item *trap_item,
+				   struct genl_info *info)
+{
+	enum devlink_trap_action trap_action;
+	u16 trap_id = trap_item->trap->id;
+	int err;
+
+	if (!info->attrs[DEVLINK_ATTR_TRAP_ACTION])
+		return 0;
+
+	err = devlink_trap_action_get_from_info(info, &trap_action);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(info->extack, "Invalid trap action");
+		return -EINVAL;
+	}
+
+	if (trap_item->action != trap_action &&
+	    trap_item->trap->type != DEVLINK_TRAP_TYPE_DROP) {
+		NL_SET_ERR_MSG_MOD(info->extack, "Cannot change action of non-drop traps. Skipping");
+		return 0;
+	}
+
+	err = trap_item->trap->action_set(devlink, trap_id, trap_action,
+					  info->extack);
+	if (err)
+		return err;
+
+	trap_item->action = trap_action;
+
+	return 0;
+}
+
+static int devlink_trap_report_set(struct devlink *devlink,
+				   struct devlink_trap_item *trap_item,
+				   struct genl_info *info)
+{
+	enum devlink_trap_report trap_report;
+	int err;
+
+	if (!info->attrs[DEVLINK_ATTR_TRAP_REPORT])
+		return 0;
+
+	err = devlink_trap_report_get_from_info(info, &trap_report);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(info->extack, "Invalid trap report state");
+		return -EINVAL;
+	}
+
+	trap_item->report = trap_report;
+
+	return 0;
+}
+
+static int devlink_nl_cmd_trap_set_doit(struct sk_buff *skb,
+					struct genl_info *info)
+{
+	struct netlink_ext_ack *extack = info->extack;
+	struct devlink *devlink = info->user_ptr[0];
+	struct devlink_trap_item *trap_item;
+	int err;
+
+	if (list_empty(&devlink->trap_list))
+		return -EOPNOTSUPP;
+
+	trap_item = devlink_trap_item_get_from_info(devlink, info);
+	if (!trap_item) {
+		NL_SET_ERR_MSG_MOD(extack, "Device did not register this trap");
+		return -EINVAL;
+	}
+
+	err = devlink_trap_action_set(devlink, trap_item, info);
+	if (err)
+		return err;
+
+	err = devlink_trap_report_set(devlink, trap_item, info);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_BUS_NAME] = { .type = NLA_NUL_STRING },
 	[DEVLINK_ATTR_DEV_NAME] = { .type = NLA_NUL_STRING },
@@ -4995,6 +5379,9 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_HEALTH_REPORTER_AUTO_RECOVER] = { .type = NLA_U8 },
 	[DEVLINK_ATTR_FLASH_UPDATE_FILE_NAME] = { .type = NLA_NUL_STRING },
 	[DEVLINK_ATTR_FLASH_UPDATE_COMPONENT] = { .type = NLA_NUL_STRING },
+	[DEVLINK_ATTR_TRAP_ID] = { .type = NLA_U16 },
+	[DEVLINK_ATTR_TRAP_REPORT] = { .type = NLA_U8 },
+	[DEVLINK_ATTR_TRAP_ACTION] = { .type = NLA_U8 },
 };
 
 static const struct genl_ops devlink_nl_ops[] = {
@@ -5294,6 +5681,19 @@ static const struct genl_ops devlink_nl_ops[] = {
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
 	},
+	{
+		.cmd = DEVLINK_CMD_TRAP_GET,
+		.doit = devlink_nl_cmd_trap_get_doit,
+		.dumpit = devlink_nl_cmd_trap_get_dumpit,
+		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
+		/* can be retrieved by unprivileged users */
+	},
+	{
+		.cmd = DEVLINK_CMD_TRAP_SET,
+		.doit = devlink_nl_cmd_trap_set_doit,
+		.flags = GENL_ADMIN_PERM,
+		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
+	},
 };
 
 static struct genl_family devlink_nl_family __ro_after_init = {
@@ -5339,6 +5739,7 @@ struct devlink *devlink_alloc(const struct devlink_ops *ops, size_t priv_size)
 	INIT_LIST_HEAD(&devlink->param_list);
 	INIT_LIST_HEAD(&devlink->region_list);
 	INIT_LIST_HEAD(&devlink->reporter_list);
+	INIT_LIST_HEAD(&devlink->trap_list);
 	mutex_init(&devlink->lock);
 	mutex_init(&devlink->reporters_lock);
 	return devlink;
@@ -5385,6 +5786,7 @@ void devlink_free(struct devlink *devlink)
 {
 	mutex_destroy(&devlink->reporters_lock);
 	mutex_destroy(&devlink->lock);
+	WARN_ON(!list_empty(&devlink->trap_list));
 	WARN_ON(!list_empty(&devlink->reporter_list));
 	WARN_ON(!list_empty(&devlink->region_list));
 	WARN_ON(!list_empty(&devlink->param_list));
@@ -6532,6 +6934,428 @@ unlock:
 	return err;
 }
 EXPORT_SYMBOL_GPL(devlink_region_snapshot_create);
+
+#define DEVLINK_TRAP(_id)					\
+{								\
+	.id = DEVLINK_TRAP_GENERIC_ID_##_id,			\
+	.name = DEVLINK_TRAP_GENERIC_NAME_##_id,		\
+}
+
+static const struct devlink_trap devlink_trap_generic[] = {
+};
+
+static int devlink_trap_generic_verify(const struct devlink_trap *trap)
+{
+	if (trap->id > DEVLINK_TRAP_GENERIC_ID_MAX)
+		return -EINVAL;
+
+	if (strcmp(trap->name, devlink_trap_generic[trap->id].name))
+		return -EINVAL;
+
+	if (trap->type != devlink_trap_generic[trap->id].type)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int devlink_trap_driver_verify(const struct devlink_trap *trap)
+{
+	int i;
+
+	if (trap->id <= DEVLINK_TRAP_GENERIC_ID_MAX)
+		return -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(devlink_trap_generic); i++) {
+		if (!strcmp(trap->name, devlink_trap_generic[i].name))
+			return -EEXIST;
+	}
+
+	return 0;
+}
+
+static int devlink_trap_verify(const struct devlink_trap *trap)
+{
+	if (!trap || !trap->action_set || !trap->name)
+		return -EINVAL;
+
+	if (trap->metadata_cap.in_port &&
+	    trap->metadata_cap.port_type != DEVLINK_PORT_TYPE_ETH &&
+	    trap->metadata_cap.port_type != DEVLINK_PORT_TYPE_IB)
+		return -EINVAL;
+
+	if (trap->generic)
+		return devlink_trap_generic_verify(trap);
+	else
+		return devlink_trap_driver_verify(trap);
+}
+
+static void devlink_trap_notify(struct devlink *devlink,
+				const struct devlink_trap_item *trap_item,
+				enum devlink_command cmd)
+{
+	struct sk_buff *msg;
+	int err;
+
+	WARN_ON_ONCE(cmd != DEVLINK_CMD_TRAP_NEW &&
+		     cmd != DEVLINK_CMD_TRAP_DEL);
+
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg)
+		return;
+
+	err = devlink_nl_trap_fill(msg, devlink, trap_item, cmd, 0, 0, 0);
+	if (err) {
+		nlmsg_free(msg);
+		return;
+	}
+
+	genlmsg_multicast_netns(&devlink_nl_family, devlink_net(devlink),
+				msg, 0, DEVLINK_MCGRP_CONFIG, GFP_KERNEL);
+}
+
+static int devlink_trap_register(struct devlink *devlink,
+				 const struct devlink_trap *trap)
+{
+	struct devlink_trap_item *trap_item;
+	int err;
+
+	if (rhashtable_lookup_fast(&devlink->trap_ht, &trap->id,
+				   devlink_trap_ht_params))
+		return -EEXIST;
+
+	trap_item = kzalloc(sizeof(*trap_item), GFP_KERNEL);
+	if (!trap_item)
+		return -ENOMEM;
+
+	trap_item->stats = netdev_alloc_pcpu_stats(struct devlink_stats);
+	if (!trap_item->stats) {
+		err = -ENOMEM;
+		goto err_stats_alloc;
+	}
+
+	trap_item->report = DEVLINK_TRAP_REPORT_OFF;
+	trap_item->action = trap->init_action;
+	trap_item->trap = trap;
+
+	err = rhashtable_insert_fast(&devlink->trap_ht, &trap_item->ht_node,
+				     devlink_trap_ht_params);
+	if (err)
+		goto err_rhashtable_insert;
+	list_add_tail(&trap_item->list, &devlink->trap_list);
+
+	devlink_trap_notify(devlink, trap_item, DEVLINK_CMD_TRAP_NEW);
+
+	return 0;
+
+err_rhashtable_insert:
+	free_percpu(trap_item->stats);
+err_stats_alloc:
+	kfree(trap_item);
+	return err;
+}
+
+static void devlink_trap_unregister(struct devlink *devlink,
+				    const struct devlink_trap *trap)
+{
+	struct devlink_trap_item *trap_item;
+
+	trap_item = rhashtable_lookup_fast(&devlink->trap_ht, &trap->id,
+					   devlink_trap_ht_params);
+	if (WARN_ON_ONCE(!trap_item))
+		return;
+
+	devlink_trap_notify(devlink, trap_item, DEVLINK_CMD_TRAP_DEL);
+	list_del(&trap_item->list);
+	rhashtable_remove_fast(&devlink->trap_ht, &trap_item->ht_node,
+			       devlink_trap_ht_params);
+	free_percpu(trap_item->stats);
+	kfree(trap_item);
+}
+
+static void devlink_traps_disable(struct devlink *devlink)
+{
+	struct devlink_trap_item *trap_item;
+
+	list_for_each_entry(trap_item, &devlink->trap_list, list)
+		trap_item->trap->action_set(devlink, trap_item->trap->id,
+					    DEVLINK_TRAP_ACTION_DROP, NULL);
+}
+
+/**
+ * devlink_traps_register - Register packet traps with devlink
+ * @devlink: devlink
+ * @traps: Supported packet traps
+ * @traps_count: Count of provided packet traps
+ *
+ * Return: Non-zero value on failure.
+ */
+int devlink_traps_register(struct devlink *devlink,
+			   const struct devlink_trap *traps,
+			   size_t traps_count)
+{
+	int i, err;
+
+	err = rhashtable_init(&devlink->trap_ht, &devlink_trap_ht_params);
+	if (err)
+		return err;
+
+	mutex_lock(&devlink->lock);
+	for (i = 0; i < traps_count; i++) {
+		const struct devlink_trap *trap = &traps[i];
+
+		err = devlink_trap_verify(trap);
+		if (err)
+			goto err_trap_verify;
+
+		err = devlink_trap_register(devlink, trap);
+		if (err)
+			goto err_trap_register;
+	}
+	mutex_unlock(&devlink->lock);
+
+	return 0;
+
+err_trap_register:
+err_trap_verify:
+	for (i--; i >= 0; i--)
+		devlink_trap_unregister(devlink, &traps[i]);
+	mutex_unlock(&devlink->lock);
+	rhashtable_destroy(&devlink->trap_ht);
+	return err;
+}
+EXPORT_SYMBOL_GPL(devlink_traps_register);
+
+/**
+ * devlink_traps_unregister - Unregister packet traps from devlink
+ * @devlink: devlink
+ * @traps: Supported packet traps
+ * @traps_count: Count of provided packet traps
+ */
+void devlink_traps_unregister(struct devlink *devlink,
+			      const struct devlink_trap *traps,
+			      size_t traps_count)
+{
+	int i;
+
+	mutex_lock(&devlink->lock);
+	/* Make sure we do not have any packets in-flight while unregistering
+	 * traps by disabling all of them and waiting for a grace period.
+	 */
+	devlink_traps_disable(devlink);
+	synchronize_rcu();
+	for (i = traps_count - 1; i >= 0; i--)
+		devlink_trap_unregister(devlink, &traps[i]);
+	mutex_unlock(&devlink->lock);
+	rhashtable_destroy(&devlink->trap_ht);
+}
+EXPORT_SYMBOL_GPL(devlink_traps_unregister);
+
+static void
+devlink_trap_stats_update(struct devlink_stats __percpu *trap_stats,
+			  size_t skb_len)
+{
+	struct devlink_stats *stats;
+
+	stats = this_cpu_ptr(trap_stats);
+	u64_stats_update_begin(&stats->syncp);
+	stats->rx_bytes += skb_len;
+	stats->rx_packets++;
+	u64_stats_update_end(&stats->syncp);
+}
+
+static size_t devlink_nl_trap_in_port_size(void)
+{
+	       /* DEVLINK_ATTR_TRAP_IN_PORT nest */
+	return nla_total_size(0) +
+	       /* DEVLINK_ATTR_PORT_INDEX */
+	       nla_total_size(sizeof(u32)) +
+	       /* DEVLINK_ATTR_PORT_TYPE */
+	       nla_total_size(sizeof(u16)) +
+	       /* DEVLINK_ATTR_PORT_NETDEV_IFINDEX */
+	       nla_total_size(sizeof(u32)) +
+	       /* DEVLINK_ATTR_PORT_{NETDEV, IBDEV}_NAME */
+	       nla_total_size(max_t(int, IFNAMSIZ, IB_DEVICE_NAME_MAX) + 1);
+}
+
+static size_t
+devlink_nl_trap_report_size(struct devlink *devlink,
+			    const struct devlink_trap_item *trap_item,
+			    size_t skb_len)
+{
+	size_t size = nlmsg_msg_size(GENL_HDRLEN + devlink_nl_family.hdrsize);
+
+	return NLMSG_ALIGN(size) +
+	       /* DEVLINK_ATTR_BUS_NAME */
+	       nla_total_size(strlen(devlink->dev->bus->name) + 1) +
+	       /* DEVLINK_ATTR_DEV_NAME */
+	       nla_total_size(strlen(dev_name(devlink->dev)) + 1) +
+	       /* DEVLINK_ATTR_TRAP_ID */
+	       nla_total_size(sizeof(u16)) +
+	       /* DEVLINK_ATTR_TRAP_NAME */
+	       nla_total_size(strlen(trap_item->trap->name) + 1) +
+	       /* DEVLINK_ATTR_TRAP_TYPE */
+	       nla_total_size(sizeof(u8)) +
+	       /* DEVLINK_ATTR_TRAP_TIMESTAMP */
+	       nla_total_size_64bit(sizeof(u64)) +
+	       /* DEVLINK_ATTR_TRAP_IN_PORT */
+	       devlink_nl_trap_in_port_size() +
+	       /* DEVLINK_ATTR_PACKET_PAYLOAD */
+	       nla_total_size(skb_len);
+}
+
+static int
+devlink_nl_trap_report_in_port_put(struct sk_buff *msg,
+				   const struct devlink_trap *trap,
+				   const struct devlink_trap_metadata *metadata)
+{
+	const struct devlink_port *devlink_port = metadata->in_devlink_port;
+	struct nlattr *attr;
+
+	if (trap->metadata_cap.in_port == 0)
+		return 0;
+
+	attr = nla_nest_start(msg, DEVLINK_ATTR_TRAP_IN_PORT);
+	if (!attr)
+		return -EMSGSIZE;
+
+	if (nla_put_u32(msg, DEVLINK_ATTR_PORT_INDEX, devlink_port->index))
+		goto nla_put_failure;
+
+	if (nla_put_u16(msg, DEVLINK_ATTR_PORT_TYPE,
+			trap->metadata_cap.port_type))
+		goto nla_put_failure;
+
+	if (trap->metadata_cap.port_type == DEVLINK_PORT_TYPE_ETH) {
+		struct net_device *netdev;
+
+		netdev = rcu_dereference(devlink_port->type_dev);
+		if (netdev &&
+		    (nla_put_u32(msg, DEVLINK_ATTR_PORT_NETDEV_IFINDEX,
+				 netdev->ifindex) ||
+		     nla_put_string(msg, DEVLINK_ATTR_PORT_NETDEV_NAME,
+				    netdev->name)))
+			goto nla_put_failure;
+	} else if (trap->metadata_cap.port_type == DEVLINK_PORT_TYPE_IB) {
+		struct ib_device *ibdev;
+
+		ibdev = rcu_dereference(devlink_port->type_dev);
+		if (ibdev &&
+		    nla_put_string(msg, DEVLINK_ATTR_PORT_IBDEV_NAME,
+				   ibdev->name))
+			goto nla_put_failure;
+	}
+
+	nla_nest_end(msg, attr);
+
+	return 0;
+
+nla_put_failure:
+	nla_nest_cancel(msg, attr);
+	return -EMSGSIZE;
+}
+
+static int
+devlink_nl_trap_report_fill(struct sk_buff *msg, struct devlink *devlink,
+			    const struct devlink_trap_item *trap_item,
+			    struct sk_buff *skb,
+			    const struct devlink_trap_metadata *metadata)
+{
+	const struct devlink_trap *trap = trap_item->trap;
+	struct nlattr *nla;
+	void *hdr;
+	int err;
+
+	hdr = genlmsg_put(msg, 0, 0, &devlink_nl_family, 0,
+			  DEVLINK_CMD_TRAP_REPORT);
+	if (!hdr)
+		return -EMSGSIZE;
+
+	if (devlink_nl_put_handle(msg, devlink))
+		goto nla_put_failure;
+
+	if (nla_put_u16(msg, DEVLINK_ATTR_TRAP_ID, trap->id))
+		goto nla_put_failure;
+
+	if (nla_put_string(msg, DEVLINK_ATTR_TRAP_NAME, trap->name))
+		goto nla_put_failure;
+
+	if (nla_put_u8(msg, DEVLINK_ATTR_TRAP_TYPE, trap->type))
+		goto nla_put_failure;
+
+	if (trap->metadata_cap.timestamp &&
+	    nla_put_u64_64bit(msg, DEVLINK_ATTR_TRAP_TIMESTAMP,
+			      metadata->timestamp, DEVLINK_ATTR_PAD))
+		goto nla_put_failure;
+
+	err = devlink_nl_trap_report_in_port_put(msg, trap, metadata);
+	if (err)
+		goto nla_put_failure;
+
+	nla = skb_put(msg, nla_total_size(skb->len));
+	nla->nla_type = DEVLINK_ATTR_TRAP_PAYLOAD;
+	nla->nla_len = nla_attr_size(skb->len);
+	if (skb_copy_bits(skb, 0, nla_data(nla), skb->len))
+		goto nla_put_failure;
+
+	genlmsg_end(msg, hdr);
+
+	return 0;
+
+nla_put_failure:
+	genlmsg_cancel(msg, hdr);
+	return -EMSGSIZE;
+}
+
+/**
+ * devlink_trap_report - Report trapped packet to user space
+ * @devlink: devlink
+ * @trap: Packet trap from which we go the packet
+ * @skb: Trapped packet
+ * @metadata: Packet metadata
+ */
+void devlink_trap_report(struct devlink *devlink,
+			 const struct devlink_trap *trap, struct sk_buff *skb,
+			 const struct devlink_trap_metadata *metadata)
+{
+	struct devlink_trap_item *trap_item;
+	struct sk_buff *msg;
+	int err;
+
+	rcu_read_lock();
+
+	trap_item = rhashtable_lookup_fast(&devlink->trap_ht, &trap->id,
+					   devlink_trap_ht_params);
+	if (!trap_item)
+		goto unlock;
+
+	devlink_trap_stats_update(trap_item->stats, skb->len);
+
+	if (trap_item->report != DEVLINK_TRAP_REPORT_ON)
+		goto unlock;
+
+	msg = nlmsg_new(devlink_nl_trap_report_size(devlink, trap_item,
+						    skb->len), GFP_ATOMIC);
+	if (!msg)
+		goto unlock;
+
+	err = devlink_nl_trap_report_fill(msg, devlink, trap_item, skb,
+					  metadata);
+	if (err)
+		goto free_unlock;
+
+	rcu_read_unlock();
+
+	genlmsg_multicast_netns(&devlink_nl_family, devlink_net(devlink),
+				msg, 0, DEVLINK_MCGRP_TRAP, GFP_ATOMIC);
+
+	return;
+
+free_unlock:
+	nlmsg_free(msg);
+unlock:
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(devlink_trap_report);
 
 static void __devlink_compat_running_version(struct devlink *devlink,
 					     char *buf, size_t len)
