@@ -34,6 +34,8 @@ struct devlink {
 	struct list_head reporter_list;
 	struct mutex reporters_lock; /* protects reporter_list */
 	struct devlink_dpipe_headers *dpipe_headers;
+	struct list_head trap_list;
+	struct rhashtable trap_ht;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -479,6 +481,61 @@ struct devlink_health_reporter_ops {
 			struct devlink_fmsg *fmsg);
 };
 
+/**
+ * struct devlink_trap_metadata - Packet trap metadata
+ * @trap_id: Trap identifier
+ * @in_devlink_port: Input devlink port
+ *
+ * Describes the metadata about trapped packets that drivers pass devlink.
+ */
+struct devlink_trap_metadata {
+	u16 trap_id;
+	const struct devlink_port *in_devlink_port;
+};
+
+/**
+ * struct devlink_trap_metadata_cap - Packet trap metadata capabilities
+ * @port_type: The type of the port provided as part of trap metadata.
+ *             Only applicable if port information is provided
+ * @in_port: Trap can provide input port
+ *
+ * Describes the metadata types a trap can provide.
+ */
+struct devlink_trap_metadata_cap {
+	enum devlink_port_type port_type;
+	u8 in_port:1;
+};
+
+/**
+ * struct devlink_trap - Packet trap attributes
+ * @metadata_cap: Metadata types that can be provided by the trap
+ * @action_set: Callback to set trap action in underlying device
+ * @init_action: Initial trap action
+ * @type: Trap type
+ * @generic: Whether the trap is generic or not
+ * @name: Trap name
+ * @id: Trap identifier
+ *
+ * Describes attributes of packet traps that drivers register with devlink.
+ */
+struct devlink_trap {
+	struct devlink_trap_metadata_cap metadata_cap;
+	int (*action_set)(struct devlink *devlink, u16 id,
+			  enum devlink_trap_action action,
+			  struct netlink_ext_ack *extack);
+	enum devlink_trap_action init_action;
+	enum devlink_trap_type type;
+	bool generic;
+	const char *name;
+	u16 id;
+};
+
+enum devlink_trap_generic_id {
+	/* Add new generic trap IDs above */
+	__DEVLINK_TRAP_GENERIC_ID_MAX,
+	DEVLINK_TRAP_GENERIC_ID_MAX = __DEVLINK_TRAP_GENERIC_ID_MAX - 1,
+};
+
 struct devlink_ops {
 	int (*reload)(struct devlink *devlink, struct netlink_ext_ack *extack);
 	int (*port_type_set)(struct devlink_port *devlink_port,
@@ -738,6 +795,16 @@ int devlink_health_report(struct devlink_health_reporter *reporter,
 void
 devlink_health_reporter_state_update(struct devlink_health_reporter *reporter,
 				     enum devlink_health_reporter_state state);
+
+int devlink_traps_register(struct devlink *devlink,
+			   const struct devlink_trap *traps,
+			   size_t traps_count);
+void devlink_traps_unregister(struct devlink *devlink,
+			      const struct devlink_trap *traps,
+			      size_t traps_count);
+void devlink_trap_report(struct devlink *devlink,
+			 struct sk_buff *skb,
+			 const struct devlink_trap_metadata *metadata);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
