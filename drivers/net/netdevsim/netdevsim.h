@@ -152,6 +152,8 @@ struct nsim_dev {
 	u32 bpf_bind_verifier_delay;
 	struct dentry *ddir_bpf_bound_progs;
 	u32 prog_id_gen;
+	u8 *traps_state_arr;
+	struct delayed_work trap_report_dw;
 	struct list_head bpf_bound_progs;
 	struct list_head bpf_bound_maps;
 	struct netdev_phys_item_id switch_id;
