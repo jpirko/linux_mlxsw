@@ -36,6 +36,7 @@ struct devlink {
 	struct devlink_dpipe_headers *dpipe_headers;
 	struct list_head trap_list;
 	struct rhashtable trap_ht;
+	struct list_head trap_group_list;
 	const struct devlink_ops *ops;
 	struct device *dev;
 	possible_net_t _net;
@@ -501,6 +502,7 @@ struct devlink_trap_metadata_cap {
  * @init_action: Initial trap action.
  * @type: Trap type.
  * @generic: Whether the trap is generic or not.
+ * @group_name: Trap group name.
  * @name: Trap name.
  * @id: Trap identifier.
  *
@@ -514,8 +516,20 @@ struct devlink_trap {
 	enum devlink_trap_action init_action;
 	enum devlink_trap_type type;
 	bool generic;
+	const char *group_name;
 	const char *name;
 	u16 id;
+};
+
+/**
+ * struct devlink_trap_group - Packet trap group attributes.
+ * @name: Trap group name.
+ *
+ * Describes attributes of packet trap groups that drivers register with
+ * devlink.
+ */
+struct devlink_trap_group {
+	const char *name;
 };
 
 enum devlink_trap_generic_id {
@@ -794,6 +808,12 @@ void devlink_trap_report(struct devlink *devlink,
 			 struct sk_buff *skb,
 			 u16 trap_id,
 			 const struct devlink_port *in_devlink_port);
+int devlink_trap_groups_register(struct devlink *devlink,
+				 const struct devlink_trap_group *groups,
+				 size_t groups_count);
+void devlink_trap_groups_unregister(struct devlink *devlink,
+				    const struct devlink_trap_group *groups,
+				    size_t groups_count);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 
