@@ -112,6 +112,11 @@ enum devlink_command {
 	DEVLINK_CMD_TRAP_DEL,
 	DEVLINK_CMD_TRAP_REPORT,
 
+	DEVLINK_CMD_TRAP_GROUP_GET,	/* can dump */
+	DEVLINK_CMD_TRAP_GROUP_SET,
+	DEVLINK_CMD_TRAP_GROUP_NEW,
+	DEVLINK_CMD_TRAP_GROUP_DEL,
+
 	/* add new commands above here */
 	__DEVLINK_CMD_MAX,
 	DEVLINK_CMD_MAX = __DEVLINK_CMD_MAX - 1
@@ -406,6 +411,8 @@ enum devlink_attr {
 	DEVLINK_ATTR_TRAP_TIMESTAMP,			/* u64 */
 	DEVLINK_ATTR_TRAP_IN_PORT,			/* nested */
 	DEVLINK_ATTR_TRAP_PAYLOAD,			/* dynamic */
+	DEVLINK_ATTR_TRAP_GROUP_ID,			/* u16 */
+	DEVLINK_ATTR_TRAP_GROUP_NAME,			/* string */
 
 	/* add new attributes above here, update the policy in devlink.c */
 
