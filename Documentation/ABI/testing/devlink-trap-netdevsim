@@ -1,0 +1,99 @@
+What:		"l2_drops" trap group
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	A trap group registered by netdevsim which contains packet
+		traps for packets that were dropped by the device during
+		layer 2 forwarding (i.e., bridge).
+
+What:		"l3_drops" trap group
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	A trap group registered by netdevsim which contains packet
+		traps for packets that were dropped by the device or hit an
+		exception (e.g., TTL error) during layer 3 forwarding.
+
+What:		"buffer_drops" trap group
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	A trap group registered by netdevsim which contains packet
+		traps for packets that were dropped by the device due to
+		enqueue decision.
+
+What:		"ingress_smac_mc" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps incoming packets that the device decided to drop because
+		of a multicast source MAC.
+
+What:		"ingress_vlan_tag_allow" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps incoming packets that the device decided to drop in case
+		the ingress bridge port is not configured with a PVID and the
+		packet is untagged or prio-tagged.
+
+What:		"ingress_vlan_filter" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps incoming packets that the device decided to drop in case
+		they are tagged with a VLAN that is not configured on the
+		ingress bridge port.
+
+What:		"ingress_stp_filter" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps incoming packets that the device decided to drop in case
+		the STP state of the ingress bridge port is "listening",
+		"disabled" or "blocking".
+
+What:		"empty_tx_list" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps packets that the device decided to drop in case after
+		layer 2 forwarding there are no ports to transmit the packet
+		through.
+
+What:		"loopback_filter" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps packets that the device decided to drop in case after
+		layer 2 forwarding the packet should be transmitted through the
+		same port from which it was received.
+
+What:		"blackhole_route" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps packets that the device decided to drop in case they hit
+		a "blackhole" route.
+
+What:		"ttl_error" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps unicast packets that should be forwarded by the device
+		whose TTL was decremented to 0 or less.
+
+What:		"tail_drop" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps packets that the device decided to drop because they
+		could not be enqueued to a transmission queue which is full.
+
+What:		"early_drop" trap
+Date:		29-Apr-2019
+KernelVersion:	v5.2
+Contact:	netdev@vger.kernel.org
+Description:	Traps packets that the device decided to drop due to the
+		decision of the Random Early Detection (RED) queueing
+		discipline to early drop the packet.
