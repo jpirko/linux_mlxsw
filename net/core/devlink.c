@@ -21,6 +21,8 @@
 #include <linux/netdevice.h>
 #include <linux/spinlock.h>
 #include <linux/refcount.h>
+#include <linux/rcupdate.h>
+#include <linux/lockdep.h>
 #include <rdma/ib_verbs.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
@@ -538,8 +540,10 @@ static int devlink_nl_port_type_fill(struct sk_buff *msg,
 		return -EMSGSIZE;
 
 	if (port_type == DEVLINK_PORT_TYPE_ETH) {
-		struct net_device *netdev = devlink_port->type_dev;
+		struct net_device *netdev;
 
+		netdev = rcu_dereference_check(devlink_port->type_dev,
+				lockdep_is_held(&devlink_port->type_lock));
 		if (netdev &&
 		    (nla_put_u32(msg, DEVLINK_ATTR_PORT_NETDEV_IFINDEX,
 				 netdev->ifindex) ||
@@ -548,8 +552,10 @@ static int devlink_nl_port_type_fill(struct sk_buff *msg,
 			return -EMSGSIZE;
 	}
 	if (port_type == DEVLINK_PORT_TYPE_IB) {
-		struct ib_device *ibdev = devlink_port->type_dev;
+		struct ib_device *ibdev;
 
+		ibdev = rcu_dereference_check(devlink_port->type_dev,
+				lockdep_is_held(&devlink_port->type_lock));
 		if (ibdev &&
 		    nla_put_string(msg, DEVLINK_ATTR_PORT_IBDEV_NAME,
 				   ibdev->name))
@@ -5459,7 +5465,7 @@ static void __devlink_port_type_set(struct devlink_port *devlink_port,
 		return;
 	spin_lock(&devlink_port->type_lock);
 	devlink_port->type = type;
-	devlink_port->type_dev = type_dev;
+	rcu_assign_pointer(devlink_port->type_dev, type_dev);
 	spin_unlock(&devlink_port->type_lock);
 	devlink_port_notify(devlink_port, DEVLINK_CMD_PORT_NEW);
 }
