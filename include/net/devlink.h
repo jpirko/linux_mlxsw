@@ -62,7 +62,7 @@ struct devlink_port {
 			       */
 	enum devlink_port_type type;
 	enum devlink_port_type desired_type;
-	void *type_dev;
+	void __rcu *type_dev;
 	struct devlink_port_attrs attrs;
 };
 
