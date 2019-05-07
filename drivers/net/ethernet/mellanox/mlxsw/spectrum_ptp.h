@@ -50,8 +50,12 @@ void mlxsw_sp1_ptp_got_timestamp(struct mlxsw_sp *mlxsw_sp, bool ingress,
 
 int mlxsw_sp1_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
 			       struct hwtstamp_config *config);
+int mlxsw_sp2_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct hwtstamp_config *config);
 
 int mlxsw_sp1_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct hwtstamp_config *config);
+int mlxsw_sp2_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			       struct hwtstamp_config *config);
 
 void mlxsw_sp1_ptp_shaper_work(struct work_struct *work);
@@ -114,7 +118,21 @@ mlxsw_sp1_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static inline int
+mlxsw_sp2_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
+			   struct hwtstamp_config *config)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int
 mlxsw_sp1_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
+			   struct hwtstamp_config *config)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int
+mlxsw_sp2_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct hwtstamp_config *config)
 {
 	return -EOPNOTSUPP;
@@ -175,20 +193,6 @@ static inline void mlxsw_sp2_ptp_transmitted(struct mlxsw_sp *mlxsw_sp,
 					     struct sk_buff *skb, u8 local_port)
 {
 	dev_kfree_skb_any(skb);
-}
-
-static inline int
-mlxsw_sp2_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct hwtstamp_config *config)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int
-mlxsw_sp2_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct hwtstamp_config *config)
-{
-	return -EOPNOTSUPP;
 }
 
 static inline void mlxsw_sp2_ptp_shaper_work(struct work_struct *work)

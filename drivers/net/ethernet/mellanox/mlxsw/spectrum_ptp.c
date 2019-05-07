@@ -1192,3 +1192,48 @@ void mlxsw_sp1_get_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 		*data++ = *(u64 *)(stats + offset);
 	}
 }
+
+int mlxsw_sp2_ptp_hwtstamp_get(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct hwtstamp_config *config)
+{
+	return -EOPNOTSUPP;
+}
+
+static int mlxsw_sp2_ptp_mtpcpc_set(struct mlxsw_sp_port *mlxsw_sp_port,
+				    u16 ing_types)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char mtpcpc_pl[MLXSW_REG_MTPCPC_LEN];
+
+	printk(KERN_WARNING "mtpcpc pport 1 port %s ing_types %#04x\n",
+	       mlxsw_sp_port->dev->name, ing_types);
+	mlxsw_reg_mtpcpc_pack(mtpcpc_pl, true, mlxsw_sp_port->local_port,
+			      ing_types);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(mtpcpc), mtpcpc_pl);
+}
+
+int mlxsw_sp2_ptp_hwtstamp_set(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct hwtstamp_config *config)
+{
+	enum hwtstamp_rx_filters rx_filter;
+	u16 ing_types;
+	u16 egr_types;
+	int err;
+
+	err = mlxsw_sp_ptp_get_message_types(config, &ing_types, &egr_types,
+					     &rx_filter);
+	if (err)
+		return err;
+
+	printk(KERN_WARNING "PTP: should configure ing:%#02x eg:%#02x at %s\n",
+	       ing_types, egr_types, mlxsw_sp_port->dev->name);
+
+	// xxx does the | make sense?
+	err = mlxsw_sp2_ptp_mtpcpc_set(mlxsw_sp_port, ing_types | egr_types);
+	if (err)
+		return err;
+
+	config->rx_filter = rx_filter;
+	mlxsw_sp_port->ptp.hwtstamp_config = *config;
+	return 0;
+}
