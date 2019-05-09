@@ -220,8 +220,43 @@ static int nsim_dev_reload(struct devlink *devlink,
 	return 0;
 }
 
+#define NSIM_DEV_FLASH_SIZE 500000
+#define NSIM_DEV_FLASH_CHUNK_SIZE 1000
+#define NSIM_DEV_FLASH_CHUNK_TIME_MS 10
+
+static int nsim_dev_flash_update(struct devlink *devlink, const char *file_name,
+				 const char *component,
+				 struct netlink_ext_ack *extack)
+{
+	int i;
+
+	devlink_flash_update_begin_notify(devlink);
+
+	devlink_flash_update_status_notify(devlink, "Preparing to flash",
+					   component, 0, 0);
+	for (i = 0; i < NSIM_DEV_FLASH_SIZE / NSIM_DEV_FLASH_CHUNK_SIZE; i++) {
+		devlink_flash_update_status_notify(devlink, "Flashing",
+						   component,
+						   i * NSIM_DEV_FLASH_CHUNK_SIZE,
+						   NSIM_DEV_FLASH_SIZE);
+		msleep(NSIM_DEV_FLASH_CHUNK_TIME_MS);
+	}
+	devlink_flash_update_status_notify(devlink, "Flashing",
+					   component,
+					   NSIM_DEV_FLASH_SIZE,
+					   NSIM_DEV_FLASH_SIZE);
+
+	devlink_flash_update_status_notify(devlink, "Flashing done",
+					   component, 0, 0);
+
+	devlink_flash_update_end_notify(devlink);
+
+	return 0;
+}
+
 static const struct devlink_ops nsim_dev_devlink_ops = {
 	.reload = nsim_dev_reload,
+	.flash_update = nsim_dev_flash_update,
 };
 
 static struct nsim_dev *
