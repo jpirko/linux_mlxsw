@@ -7228,13 +7228,24 @@ unlock:
 }
 EXPORT_SYMBOL_GPL(devlink_region_snapshot_create);
 
-#define DEVLINK_TRAP(_id)					\
+#define DEVLINK_TRAP(_id, _type)				\
 {								\
 	.id = DEVLINK_TRAP_GENERIC_ID_##_id,			\
 	.name = DEVLINK_TRAP_GENERIC_NAME_##_id,		\
+	.type = DEVLINK_TRAP_TYPE_##_type,			\
 }
 
 static const struct devlink_trap devlink_trap_generic[] = {
+	DEVLINK_TRAP(INGRESS_SMAC_MC_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_VLAN_TAG_ALLOW_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_VLAN_FILTER_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_STP_FILTER_DROP, DROP),
+	DEVLINK_TRAP(EMPTY_TX_LIST_DROP, DROP),
+	DEVLINK_TRAP(LOOPBACK_FILTER_DROP, DROP),
+	DEVLINK_TRAP(BLACKHOLE_ROUTE_DROP, DROP),
+	DEVLINK_TRAP(TTL_ERROR_EXCEPTION, EXCEPTION),
+	DEVLINK_TRAP(TAIL_DROP, DROP),
+	DEVLINK_TRAP(EARLY_DROP, DROP),
 };
 
 static int devlink_trap_generic_verify(const struct devlink_trap *trap)
