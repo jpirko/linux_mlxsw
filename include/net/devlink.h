@@ -524,6 +524,9 @@ struct devlink_trap {
 	u32 metadata_cap;
 };
 
+/* All traps must be documented in
+ * Documentation/networking/devlink-trap.rst
+ */
 enum devlink_trap_generic_id {
 	DEVLINK_TRAP_GENERIC_ID_INGRESS_SMAC_MC_DROP,
 	DEVLINK_TRAP_GENERIC_ID_INGRESS_VLAN_TAG_ALLOW_DROP,
@@ -542,6 +545,9 @@ enum devlink_trap_generic_id {
 	DEVLINK_TRAP_GENERIC_ID_MAX = __DEVLINK_TRAP_GENERIC_ID_MAX - 1,
 };
 
+/* All trap groups must be documented in
+ * Documentation/networking/devlink-trap.rst
+ */
 enum devlink_trap_group_generic_id {
 	DEVLINK_TRAP_GROUP_GENERIC_ID_L2_DROPS,
 	DEVLINK_TRAP_GROUP_GENERIC_ID_L3_DROPS,
