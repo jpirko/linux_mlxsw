@@ -26,6 +26,7 @@ Contents:
    device_drivers/intel/ice
    dsa/index
    devlink-info-versions
+   devlink-trap
    ieee802154
    kapi
    z8530book

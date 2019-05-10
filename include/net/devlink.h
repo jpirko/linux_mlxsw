@@ -547,6 +547,9 @@ struct devlink_trap_group {
 	const char *name;
 };
 
+/* All traps must be documented in
+ * Documentation/networking/devlink-trap.rst
+ */
 enum devlink_trap_generic_id {
 	DEVLINK_TRAP_GENERIC_ID_INGRESS_SMAC_MC_DROP,
 	DEVLINK_TRAP_GENERIC_ID_INGRESS_VLAN_TAG_ALLOW_DROP,
