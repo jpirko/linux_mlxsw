@@ -159,6 +159,17 @@ be added to the following table:
        Random Early Detection (RED) queueing discipline to earlydrop the
        packet
 
+Driver-specific Packet Traps
+============================
+
+Device drivers can register driver-specific packet traps, but these must be
+clearly documented. Such traps can correspond to device-specific exceptions and
+help debug packet drops caused by these exceptions. The following list includes
+links to the description of device-specific traps registered by various device
+drivers:
+
+  * :doc:`/devlink-trap-netdevsim`
+
 Trap Groups
 ===========
 
@@ -166,3 +177,9 @@ Trap groups are optional and driver-specific. Trap groups allow device drivers
 to group logically related packet traps which the user can then control as a
 whole. In addition, ``devlink-trap`` can report aggregated per-group packets
 and bytes statistics, in case per-trap statistics are too narrow.
+
+Since trap groups are device-specific, they must be documented by each driver.
+The following list includes links to the description of device-specific trap
+groups registered by various device drivers:
+
+  * :doc:`/devlink-trap-netdevsim`
