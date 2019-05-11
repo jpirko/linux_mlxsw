@@ -204,6 +204,9 @@ out:
 	return err;
 }
 
+/* All driver-specific traps must be documented in
+ * Documentation/networking/devlink-trap-netdevsim.rst
+ */
 enum {
 	NSIM_TRAP_ID_BASE = DEVLINK_TRAP_GENERIC_ID_MAX,
 	NSIM_TRAP_ID_FID_MISS_EXCEPTION,
@@ -252,6 +255,9 @@ enum {
 #define NSIM_TRAP_BUFFER(_id)						      \
 	NSIM_GENERIC_TRAP(_id, DROP, DROP, BUFFER_DROPS)
 
+/* All trap groups must be documented in
+ * Documentation/networking/devlink-trap-netdevsim.rst
+ */
 #define NSIM_TRAP_GROUP_NAME_L2_DROPS			"l2_drops"
 #define NSIM_TRAP_GROUP_NAME_L3_DROPS			"l3_drops"
 #define NSIM_TRAP_GROUP_NAME_BUFFER_DROPS		"buffer_drops"
