@@ -216,6 +216,9 @@ struct nsim_trap_data {
 	spinlock_t trap_lock;	/* Protects trap_items_arr */
 };
 
+/* All driver-specific traps must be documented in
+ * Documentation/networking/devlink-trap-netdevsim.rst
+ */
 enum {
 	NSIM_TRAP_ID_BASE = DEVLINK_TRAP_GENERIC_ID_MAX,
 	NSIM_TRAP_ID_FID_MISS_EXCEPTION,
@@ -223,6 +226,9 @@ enum {
 
 #define NSIM_TRAP_NAME_FID_MISS_EXCEPTION "fid_miss_exception"
 
+/* All trap groups must be documented in
+ * Documentation/networking/devlink-trap-netdevsim.rst
+ */
 enum {
 	NSIM_TRAP_GROUP_ID_L2_DROPS,
 	NSIM_TRAP_GROUP_ID_L3_DROPS,
