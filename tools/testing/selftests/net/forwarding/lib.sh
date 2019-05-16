@@ -18,6 +18,7 @@ NETIF_CREATE=${NETIF_CREATE:=yes}
 MCD=${MCD:=smcrouted}
 MC_CLI=${MC_CLI:=smcroutectl}
 PING_TIMEOUT=${PING_TIMEOUT:=5}
+WAIT_TIMEOUT=${WAIT_TIMEOUT:=20}
 
 relative_path="${BASH_SOURCE%/*}"
 if [[ "$relative_path" == "${BASH_SOURCE}" ]]; then
@@ -227,15 +228,31 @@ setup_wait_dev()
 {
 	local dev=$1; shift
 
-	while true; do
+	setup_wait_dev_with_timeout "$dev" 600
+
+	if (($?)); then
+		check_err 1
+		log_test setup_wait_dev ": Interface $dev does not come up."
+		exit 0
+	fi
+}
+
+setup_wait_dev_with_timeout()
+{
+	local dev=$1; shift
+	local max_iterations=${1:-$WAIT_TIMEOUT}; shift
+
+	for ((i = 1; i <= $max_iterations; ++i)); do
 		ip link show dev $dev up \
 			| grep 'state UP' &> /dev/null
 		if [[ $? -ne 0 ]]; then
 			sleep 1
 		else
-			break
+			return 0
 		fi
 	done
+
+	return 1
 }
 
 setup_wait()
