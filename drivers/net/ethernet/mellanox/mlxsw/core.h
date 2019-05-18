@@ -287,6 +287,15 @@ struct mlxsw_driver {
 				       unsigned int sb_index, u16 tc_index,
 				       enum devlink_sb_pool_type pool_type,
 				       u32 *p_cur, u32 *p_max);
+	int (*trap_init)(struct mlxsw_core *mlxsw_core,
+			 const struct devlink_trap *trap, void *trap_ctx);
+	void (*trap_fini)(struct mlxsw_core *mlxsw_core,
+			  const struct devlink_trap *trap, void *trap_ctx);
+	int (*trap_action_set)(struct mlxsw_core *mlxsw_core,
+			       const struct devlink_trap *trap,
+			       enum devlink_trap_action action);
+	int (*trap_group_init)(struct mlxsw_core *mlxsw_core,
+			       const struct devlink_trap_group *group);
 	void (*txhdr_construct)(struct sk_buff *skb,
 				const struct mlxsw_tx_info *tx_info);
 	int (*resources_register)(struct mlxsw_core *mlxsw_core);
