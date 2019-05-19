@@ -28,6 +28,7 @@ Contents:
    devlink-info-versions
    devlink-trap
    devlink-trap-netdevsim
+   devlink-trap-mlxsw
    ieee802154
    kapi
    z8530book

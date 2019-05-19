@@ -187,3 +187,4 @@ The following list includes links to the description of driver-specific trap
 groups registered by various device drivers:
 
   * :doc:`/devlink-trap-netdevsim`
+  * :doc:`/devlink-trap-mlxsw`

@@ -15,6 +15,9 @@
 		.in_port = 1,						      \
 	}
 
+/* All trap groups must be documented in
+ * Documentation/networking/devlink-trap-mlxsw.rst
+ */
 enum {
 	MLXSW_SP_TRAP_GROUP_ID_L2_DROPS,
 };
