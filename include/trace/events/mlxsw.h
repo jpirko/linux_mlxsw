@@ -113,6 +113,52 @@ TRACE_EVENT(mlxsw_sp_acl_tcam_vregion_rehash_rollback_failed,
 		  __entry->mlxsw_sp, __entry->vregion)
 );
 
+#define MLXSW_SP1_PTP_UNMATCHED_EVENT(NAME)				\
+	TRACE_EVENT(NAME,						\
+		TP_PROTO(const struct mlxsw_sp *mlxsw_sp,		\
+			 bool ingress,					\
+			 int local_port,				\
+			 u8 message_type,				\
+			 u16 sequence_id,				\
+			 u8 domain_number,				\
+			 u64 timestamp),				\
+									\
+		TP_ARGS(mlxsw_sp, ingress, local_port, message_type,	\
+			sequence_id, domain_number, timestamp),		\
+									\
+		TP_STRUCT__entry(					\
+			__field(const void *, mlxsw_sp)			\
+			__field(bool, ingress)				\
+			__field(int, local_port)			\
+			__field(u8, message_type)			\
+			__field(u16, sequence_id)			\
+			__field(u8, domain_number)			\
+			__field(u64, timestamp)				\
+		),							\
+									\
+		TP_fast_assign(						\
+			__entry->mlxsw_sp = mlxsw_sp;			\
+			__entry->ingress = ingress;			\
+			__entry->local_port = local_port;		\
+			__entry->message_type = message_type;		\
+			__entry->sequence_id = sequence_id;		\
+			__entry->domain_number = domain_number;		\
+			__entry->timestamp = timestamp;			\
+		),							\
+									\
+		TP_printk("mlxsw_sp %p, ingress %d, local_port %d, message_type %d, sequence_id %d, domain_number %d, timestamp %lld", \
+			  __entry->mlxsw_sp, __entry->ingress,		\
+			  __entry->local_port, __entry->message_type,	\
+			  __entry->sequence_id, __entry->domain_number, \
+			  __entry->timestamp)				\
+	);
+
+MLXSW_SP1_PTP_UNMATCHED_EVENT(mlxsw_sp1_ptp_unmatched_save)
+MLXSW_SP1_PTP_UNMATCHED_EVENT(mlxsw_sp1_ptp_unmatched_remove)
+MLXSW_SP1_PTP_UNMATCHED_EVENT(mlxsw_sp1_ptp_unmatched_collect)
+
+#undef MLXSW_SP1_PTP_UNMATCHED_EVENT
+
 #endif /* _MLXSW_TRACEPOINT_H */
 
 /* This part must be outside protection */
