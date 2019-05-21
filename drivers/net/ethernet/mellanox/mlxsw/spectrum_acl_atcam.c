@@ -7,7 +7,6 @@
 #include <linux/gfp.h>
 #include <linux/refcount.h>
 #include <linux/rhashtable.h>
-#define CREATE_TRACE_POINTS
 #include <trace/events/mlxsw.h>
 
 #include "reg.h"
