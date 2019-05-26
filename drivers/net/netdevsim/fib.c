@@ -137,19 +137,20 @@ static int nsim_fib_rule_event(struct nsim_fib_data *data,
 }
 
 static int nsim_fib_account(struct nsim_fib_entry *entry, bool add,
+			    unsigned int num_rt,
 			    struct netlink_ext_ack *extack)
 {
 	int err = 0;
 
 	if (add) {
-		if (entry->num < entry->max) {
-			entry->num++;
+		if (entry->num + num_rt < entry->max) {
+			entry->num += num_rt;
 		} else {
 			err = -ENOSPC;
 			NL_SET_ERR_MSG_MOD(extack, "Exceeded number of supported fib entries");
 		}
 	} else {
-		entry->num--;
+		entry->num -= num_rt;
 	}
 
 	return err;
@@ -159,14 +160,20 @@ static int nsim_fib_event(struct nsim_fib_data *data,
 			  struct fib_notifier_info *info, bool add)
 {
 	struct netlink_ext_ack *extack = info->extack;
+	struct fib6_entry_notifier_info *fen6_info;
+	unsigned int num_rt = 1;
 	int err = 0;
 
 	switch (info->family) {
 	case AF_INET:
-		err = nsim_fib_account(&data->ipv4.fib, add, extack);
+		err = nsim_fib_account(&data->ipv4.fib, add, num_rt, extack);
 		break;
 	case AF_INET6:
-		err = nsim_fib_account(&data->ipv6.fib, add, extack);
+		fen6_info = container_of(info, struct fib6_entry_notifier_info,
+					 info);
+		if (fen6_info->multipath_rt)
+			num_rt = fen6_info->nsiblings + 1;
+		err = nsim_fib_account(&data->ipv6.fib, add, num_rt, extack);
 		break;
 	}
 
