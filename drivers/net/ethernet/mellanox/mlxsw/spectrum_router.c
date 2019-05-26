@@ -6119,6 +6119,11 @@ static int mlxsw_sp_router_fib_event(struct notifier_block *nb,
 				NL_SET_ERR_MSG_MOD(info->extack, "IPv6 gateway with IPv4 route is not supported");
 				return notifier_from_errno(-EINVAL);
 			}
+		} else if (info->family == AF_INET6) {
+			struct fib6_entry_notifier_info *fen6_info = ptr;
+
+			if (fen6_info->multipath_rt)
+				return NOTIFY_DONE;
 		}
 		break;
 	}
