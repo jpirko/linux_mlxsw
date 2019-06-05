@@ -197,3 +197,12 @@ following table:
    * - ``buffer_drops``
      - Contains packet traps for packets that were dropped by the device due to
        an enqueue decision
+
+Testing
+=======
+
+See ``tools/testing/selftests/net/devlink_trap.sh`` for a test covering the
+core infrastructure. Test cases should be added for any new functionality.
+
+Device drivers should focus their tests on device-specific functionality, such
+as the triggering of supported packet traps.
