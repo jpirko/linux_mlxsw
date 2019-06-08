@@ -27,6 +27,12 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
+devlink help 2>&1 | grep "trap" &> /dev/null
+if [ $? -ne 0 ]; then
+	echo "SKIP: iproute2 too old, missing devlink-trap"
+	exit $KSFT_SKIP
+fi
+
 ##############################################################################
 # Devlink helpers
 
@@ -189,4 +195,123 @@ devlink_tc_bind_pool_th_restore()
 
 	devlink sb tc bind set $port tc $tc type $dir \
 		pool ${orig[0]} th ${orig[1]}
+}
+
+devlink_trap_report_set()
+{
+	local trap_name=$1; shift
+	local report=$1; shift
+
+	# Pipe output to /dev/null to avoid expected warnings.
+	devlink trap set $DEVLINK_DEV trap $trap_name report $report \
+		&> /dev/null
+}
+
+devlink_trap_action_set()
+{
+	local trap_name=$1; shift
+	local action=$1; shift
+
+	# Pipe output to /dev/null to avoid expected warnings.
+	devlink trap set $DEVLINK_DEV trap $trap_name \
+		action $action &> /dev/null
+}
+
+devlink_trap_rx_packets_get()
+{
+	local trap_name=$1; shift
+
+	devlink -js trap show $DEVLINK_DEV trap $trap_name \
+		| jq '.[][][]["stats"]["rx"]["packets"]'
+}
+
+devlink_trap_rx_bytes_get()
+{
+	local trap_name=$1; shift
+
+	devlink -js trap show $DEVLINK_DEV trap $trap_name \
+		| jq '.[][][]["stats"]["rx"]["bytes"]'
+}
+
+devlink_trap_stats_idle_test()
+{
+	local trap_name=$1; shift
+	local t0_packets t0_bytes
+	local t1_packets t1_bytes
+
+	t0_packets=$(devlink_trap_rx_packets_get $trap_name)
+	t0_bytes=$(devlink_trap_rx_bytes_get $trap_name)
+
+	sleep 1
+
+	t1_packets=$(devlink_trap_rx_packets_get $trap_name)
+	t1_bytes=$(devlink_trap_rx_bytes_get $trap_name)
+
+	if [[ $t0_packets -eq $t1_packets && $t0_bytes -eq $t1_bytes ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+devlink_trap_group_rx_packets_get()
+{
+	local group_name=$1; shift
+
+	devlink -js trap group show $DEVLINK_DEV group $group_name \
+		| jq '.[][][]["stats"]["rx"]["packets"]'
+}
+
+devlink_trap_group_rx_bytes_get()
+{
+	local group_name=$1; shift
+
+	devlink -js trap group show $DEVLINK_DEV group $group_name \
+		| jq '.[][][]["stats"]["rx"]["bytes"]'
+}
+
+devlink_trap_group_stats_idle_test()
+{
+	local group_name=$1; shift
+	local t0_packets t0_bytes
+	local t1_packets t1_bytes
+
+	t0_packets=$(devlink_trap_group_rx_packets_get $group_name)
+	t0_bytes=$(devlink_trap_group_rx_bytes_get $group_name)
+
+	sleep 1
+
+	t1_packets=$(devlink_trap_group_rx_packets_get $group_name)
+	t1_bytes=$(devlink_trap_group_rx_bytes_get $group_name)
+
+	if [[ $t0_packets -eq $t1_packets && $t0_bytes -eq $t1_bytes ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+devlink_trap_mon_input_port_test()
+{
+	local trap_name=$1; shift
+	local input_port=$1; shift
+	local devlink_pid
+	local tmp_dir
+	local rc
+
+	tmp_dir="$(mktemp -d)"
+
+	devlink_trap_report_set $trap_name "true"
+	timeout 1 devlink -v mon trap-report &> ${tmp_dir}/reports.txt
+	devlink_trap_report_set $trap_name "false"
+
+	grep -e "$trap_name" ${tmp_dir}/reports.txt -A 2 \
+		| grep -q -e "$input_port"
+
+	# Return false if no reports were found.
+	rc=$?
+
+	rm -rf $tmp_dir
+
+	return $rc
 }
