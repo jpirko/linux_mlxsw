@@ -4151,6 +4151,7 @@ void mlxsw_sp_rx_listener_no_mark_func(struct sk_buff *skb,
 	struct mlxsw_sp_port_pcpu_stats *pcpu_stats;
 
 	if (unlikely(!mlxsw_sp_port)) {
+		dev_kfree_skb_any(skb);
 		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: skb received for non-existent port\n",
 				     local_port);
 		return;
