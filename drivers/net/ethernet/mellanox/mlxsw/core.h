@@ -363,6 +363,7 @@ struct mlxsw_bus_info {
 	u8 psid[MLXSW_CMD_BOARDINFO_PSID_LEN];
 	u8 low_frequency:1,
 	   read_frc_capable:1;
+	u32 bandwidth;	/* Mb/s */
 };
 
 struct mlxsw_hwmon;
