@@ -7412,6 +7412,17 @@ EXPORT_SYMBOL_GPL(devlink_region_snapshot_create);
 	}
 
 static const struct devlink_trap devlink_trap_generic[] = {
+	DEVLINK_TRAP(INGRESS_SMAC_MC_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_VLAN_TAG_ALLOW_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_VLAN_FILTER_DROP, DROP),
+	DEVLINK_TRAP(INGRESS_STP_FILTER_DROP, DROP),
+	DEVLINK_TRAP(UC_EMPTY_TX_LIST_DROP, DROP),
+	DEVLINK_TRAP(MC_EMPTY_TX_LIST_DROP, DROP),
+	DEVLINK_TRAP(UC_LOOPBACK_FILTER_DROP, DROP),
+	DEVLINK_TRAP(BLACKHOLE_ROUTE_DROP, DROP),
+	DEVLINK_TRAP(TTL_ERROR_EXCEPTION, EXCEPTION),
+	DEVLINK_TRAP(TAIL_DROP, DROP),
+	DEVLINK_TRAP(EARLY_DROP, DROP),
 };
 
 #define DEVLINK_TRAP_GROUP(_id)						      \
@@ -7421,6 +7432,9 @@ static const struct devlink_trap devlink_trap_generic[] = {
 	}
 
 static const struct devlink_trap_group devlink_trap_group_generic[] = {
+	DEVLINK_TRAP_GROUP(L2_DROPS),
+	DEVLINK_TRAP_GROUP(L3_DROPS),
+	DEVLINK_TRAP_GROUP(BUFFER_DROPS),
 };
 
 static int devlink_trap_generic_verify(const struct devlink_trap *trap)
