@@ -527,6 +527,33 @@ static int devlink_nl_port_attrs_put(struct sk_buff *msg,
 	return 0;
 }
 
+static int devlink_nl_port_type_fill(struct sk_buff *msg,
+				     const struct devlink_port *devlink_port)
+{
+	if (nla_put_u16(msg, DEVLINK_ATTR_PORT_TYPE, devlink_port->type))
+		return -EMSGSIZE;
+
+	if (devlink_port->type == DEVLINK_PORT_TYPE_ETH) {
+		struct net_device *netdev = devlink_port->type_dev;
+
+		if (netdev &&
+		    (nla_put_u32(msg, DEVLINK_ATTR_PORT_NETDEV_IFINDEX,
+				 netdev->ifindex) ||
+		     nla_put_string(msg, DEVLINK_ATTR_PORT_NETDEV_NAME,
+				    netdev->name)))
+			return -EMSGSIZE;
+	} else if (devlink_port->type == DEVLINK_PORT_TYPE_IB) {
+		struct ib_device *ibdev = devlink_port->type_dev;
+
+		if (ibdev &&
+		    nla_put_string(msg, DEVLINK_ATTR_PORT_IBDEV_NAME,
+				   ibdev->name))
+			return -EMSGSIZE;
+	}
+
+	return 0;
+}
+
 static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 				struct devlink_port *devlink_port,
 				enum devlink_command cmd, u32 portid,
@@ -544,30 +571,12 @@ static int devlink_nl_port_fill(struct sk_buff *msg, struct devlink *devlink,
 		goto nla_put_failure;
 
 	spin_lock(&devlink_port->type_lock);
-	if (nla_put_u16(msg, DEVLINK_ATTR_PORT_TYPE, devlink_port->type))
-		goto nla_put_failure_type_locked;
 	if (devlink_port->desired_type != DEVLINK_PORT_TYPE_NOTSET &&
 	    nla_put_u16(msg, DEVLINK_ATTR_PORT_DESIRED_TYPE,
 			devlink_port->desired_type))
 		goto nla_put_failure_type_locked;
-	if (devlink_port->type == DEVLINK_PORT_TYPE_ETH) {
-		struct net_device *netdev = devlink_port->type_dev;
-
-		if (netdev &&
-		    (nla_put_u32(msg, DEVLINK_ATTR_PORT_NETDEV_IFINDEX,
-				 netdev->ifindex) ||
-		     nla_put_string(msg, DEVLINK_ATTR_PORT_NETDEV_NAME,
-				    netdev->name)))
-			goto nla_put_failure_type_locked;
-	}
-	if (devlink_port->type == DEVLINK_PORT_TYPE_IB) {
-		struct ib_device *ibdev = devlink_port->type_dev;
-
-		if (ibdev &&
-		    nla_put_string(msg, DEVLINK_ATTR_PORT_IBDEV_NAME,
-				   ibdev->name))
-			goto nla_put_failure_type_locked;
-	}
+	if (devlink_nl_port_type_fill(msg, devlink_port))
+		goto nla_put_failure_type_locked;
 	spin_unlock(&devlink_port->type_lock);
 	if (devlink_nl_port_attrs_put(msg, devlink_port))
 		goto nla_put_failure;
