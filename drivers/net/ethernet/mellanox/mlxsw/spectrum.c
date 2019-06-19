@@ -2293,6 +2293,15 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_tc_stats[] = {
 
 #define MLXSW_SP_PORT_HW_TC_STATS_LEN ARRAY_SIZE(mlxsw_sp_port_hw_tc_stats)
 
+static struct mlxsw_sp_port_hw_stats mlxsw_sp_host_iface_stats[] = {
+	{
+		.str = "wqe_overflow",
+		.getter = mlxsw_reg_hmon_wqe_overflow_get,
+	},
+};
+
+#define MLXSW_SP_HOST_IFACE_STATS_LEN ARRAY_SIZE(mlxsw_sp_host_iface_stats)
+
 #define MLXSW_SP_PORT_ETHTOOL_STATS_LEN (MLXSW_SP_PORT_HW_STATS_LEN + \
 					 MLXSW_SP_PORT_HW_RFC_2863_STATS_LEN + \
 					 MLXSW_SP_PORT_HW_RFC_2819_STATS_LEN + \
@@ -2301,7 +2310,8 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_tc_stats[] = {
 					 (MLXSW_SP_PORT_HW_PRIO_STATS_LEN * \
 					  IEEE_8021QAZ_MAX_TCS) + \
 					 (MLXSW_SP_PORT_HW_TC_STATS_LEN * \
-					  TC_MAX_QUEUE))
+					  TC_MAX_QUEUE) + \
+					 MLXSW_SP_HOST_IFACE_STATS_LEN)
 
 static void mlxsw_sp_port_get_prio_strings(u8 **p, int prio)
 {
@@ -2368,6 +2378,12 @@ static void mlxsw_sp_port_get_strings(struct net_device *dev,
 
 		for (i = 0; i < TC_MAX_QUEUE; i++)
 			mlxsw_sp_port_get_tc_strings(&p, i);
+
+		for (i = 0; i < MLXSW_SP_HOST_IFACE_STATS_LEN; i++) {
+			memcpy(p, mlxsw_sp_host_iface_stats[i].str,
+			       ETH_GSTRING_LEN);
+			p += ETH_GSTRING_LEN;
+		}
 
 		break;
 	}
@@ -2460,6 +2476,25 @@ static void __mlxsw_sp_port_get_stats(struct net_device *dev,
 	}
 }
 
+static void mlxsw_sp_host_iface_get_stats(struct net_device *dev, u64 *data,
+					  int data_index)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_port_hw_stats *hw_stats;
+	char hmon_pl[MLXSW_REG_HMON_LEN];
+	int i, err;
+
+	mlxsw_reg_hmon_pack(hmon_pl);
+	err = mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(hmon), hmon_pl);
+	if (err)
+		return;
+
+	hw_stats = mlxsw_sp_host_iface_stats;
+	for (i = 0; i < MLXSW_SP_HOST_IFACE_STATS_LEN; i++)
+		data[data_index + i] = hw_stats[i].getter(hmon_pl);
+}
+
 static void mlxsw_sp_port_get_stats(struct net_device *dev,
 				    struct ethtool_stats *stats, u64 *data)
 {
@@ -2503,6 +2538,10 @@ static void mlxsw_sp_port_get_stats(struct net_device *dev,
 					  data, data_index);
 		data_index += MLXSW_SP_PORT_HW_TC_STATS_LEN;
 	}
+
+	/* Host Interface Counters */
+	mlxsw_sp_host_iface_get_stats(dev, data, data_index);
+	data_index += MLXSW_SP_HOST_IFACE_STATS_LEN;
 }
 
 static int mlxsw_sp_port_get_sset_count(struct net_device *dev, int sset)
