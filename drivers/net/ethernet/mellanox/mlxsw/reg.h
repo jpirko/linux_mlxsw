@@ -5621,6 +5621,28 @@ static inline void mlxsw_reg_hpkt_pack(char *payload, u8 action, u16 trap_id,
 				MLXSW_REG_HPKT_CTRL_PACKET_NO_BUFFER);
 }
 
+/* HMON - Host Monitoring Register
+ * -------------------------------
+ * This register is used for monitoring host issues.
+ */
+#define MLXSW_REG_HMON_ID 0x7084
+#define MLXSW_REG_HMON_LEN 0x18
+
+MLXSW_REG_DEFINE(hmon, MLXSW_REG_HMON_ID, MLXSW_REG_HMON_LEN);
+
+/* reg_hmon_wqe_overflow
+ * WQE overflow (sum off all RDQs)
+ * Spectrum-1: 8-bit rolling counter
+ * Spectrum-2: 64-bit counter
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, hmon, wqe_overflow, 0x10, 0, 64);
+
+static inline void mlxsw_reg_hmon_pack(char *payload)
+{
+	MLXSW_REG_ZERO(hmon, payload);
+}
+
 /* RGCR - Router General Configuration Register
  * --------------------------------------------
  * The register is used for setting up the router configuration.
@@ -10517,6 +10539,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(pplr),
 	MLXSW_REG(htgt),
 	MLXSW_REG(hpkt),
+	MLXSW_REG(hmon),
 	MLXSW_REG(rgcr),
 	MLXSW_REG(ritr),
 	MLXSW_REG(rtar),
