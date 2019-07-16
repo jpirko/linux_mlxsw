@@ -54,6 +54,7 @@ static DEFINE_MUTEX(net_dm_mutex);
 struct per_cpu_dm_data {
 	spinlock_t		lock;	/* Protects 'skb' and 'send_timer' */
 	struct sk_buff		*skb;
+	struct sk_buff_head	drop_queue;
 	struct work_struct	dm_alert_work;
 	struct timer_list	send_timer;
 };
@@ -74,6 +75,22 @@ static int dm_hit_limit = 64;
 static int dm_delay = 1;
 static unsigned long dm_hw_check_delta = 2*HZ;
 static LIST_HEAD(hw_stats_list);
+
+static enum net_dm_alert_mode net_dm_alert_mode = NET_DM_ALERT_MODE_SUMMARY;
+
+struct net_dm_skb_cb {
+	void *pc;
+};
+
+#define NET_DM_SKB_CB(__skb) ((struct net_dm_skb_cb *)&((__skb)->cb[0]))
+
+struct net_dm_alert_ops {
+	void (*kfree_skb_probe)(void *ignore, struct sk_buff *skb,
+				void *location);
+	void (*napi_poll_probe)(void *ignore, struct napi_struct *napi,
+				int work, int budget);
+	void (*work_item_func)(struct work_struct *work);
+};
 
 static int net_dm_nl_pre_doit(const struct genl_ops *ops,
 			      struct sk_buff *skb, struct genl_info *info)
@@ -255,9 +272,193 @@ static void trace_napi_poll_hit(void *ignore, struct napi_struct *napi,
 	rcu_read_unlock();
 }
 
+static const struct net_dm_alert_ops net_dm_alert_summary_ops = {
+	.kfree_skb_probe	= trace_kfree_skb_hit,
+	.napi_poll_probe	= trace_napi_poll_hit,
+	.work_item_func		= send_dm_alert,
+};
+
+static void net_dm_packet_trace_kfree_skb_hit(void *ignore,
+					      struct sk_buff *skb,
+					      void *location)
+{
+	struct per_cpu_dm_data *data;
+	struct sk_buff *nskb;
+	unsigned long flags;
+
+	nskb = skb_clone(skb, GFP_ATOMIC);
+	if (!nskb)
+		return;
+
+	NET_DM_SKB_CB(nskb)->pc = location;
+	if (nskb->dev)
+		dev_hold(nskb->dev);
+
+	data = this_cpu_ptr(&dm_cpu_data);
+	spin_lock_irqsave(&data->drop_queue.lock, flags);
+
+	__skb_queue_tail(&data->drop_queue, nskb);
+
+	if (!timer_pending(&data->send_timer)) {
+		data->send_timer.expires = jiffies + dm_delay * HZ;
+		add_timer(&data->send_timer);
+	}
+
+	spin_unlock_irqrestore(&data->drop_queue.lock, flags);
+}
+
+static void net_dm_packet_trace_napi_poll_hit(void *ignore,
+					      struct napi_struct *napi,
+					      int work, int budget)
+{
+}
+
+#define NET_DM_MAX_SYMBOL_LEN 40
+
+static size_t net_dm_packet_report_size(size_t payload_len)
+{
+	size_t size;
+
+	size = nlmsg_msg_size(GENL_HDRLEN + net_drop_monitor_family.hdrsize);
+
+	return NLMSG_ALIGN(size) +
+	       /* NET_DM_ATTR_PC */
+	       nla_total_size(sizeof(u64)) +
+	       /* NET_DM_ATTR_SYMBOL */
+	       nla_total_size(NET_DM_MAX_SYMBOL_LEN + 1) +
+	       /* NET_DM_ATTR_NETDEV_IFINDEX */
+	       nla_total_size(sizeof(u32)) +
+	       /* NET_DM_ATTR_NETDEV_NAME */
+	       nla_total_size(IFNAMSIZ + 1) +
+	       /* NET_DM_ATTR_TIMESTAMP */
+	       nla_total_size(sizeof(struct timespec)) +
+	       /* NET_DM_ATTR_PAYLOAD */
+	       nla_total_size(payload_len);
+}
+
+static int net_dm_packet_report_fill(struct sk_buff *msg, struct sk_buff *skb,
+				     size_t payload_len)
+{
+	u64 pc = (u64)(uintptr_t) NET_DM_SKB_CB(skb)->pc;
+	char buf[NET_DM_MAX_SYMBOL_LEN];
+	struct nlattr *attr;
+	struct timespec ts;
+	void *hdr;
+
+	hdr = genlmsg_put(msg, 0, 0, &net_drop_monitor_family, 0,
+			  NET_DM_CMD_PACKET_ALERT);
+	if (!hdr)
+		return -EMSGSIZE;
+
+	if (nla_put_u64_64bit(msg, NET_DM_ATTR_PC, pc, NET_DM_ATTR_PAD))
+		goto nla_put_failure;
+
+	snprintf(buf, sizeof(buf), "%pS", NET_DM_SKB_CB(skb)->pc);
+	if (nla_put_string(msg, NET_DM_ATTR_SYMBOL, buf))
+		goto nla_put_failure;
+
+	if (skb->dev &&
+	    nla_put_u32(msg, NET_DM_ATTR_NETDEV_IFINDEX, skb->dev->ifindex))
+		goto nla_put_failure;
+
+	if (skb->dev &&
+	    nla_put_string(msg, NET_DM_ATTR_NETDEV_NAME, skb->dev->name))
+		goto nla_put_failure;
+
+	if (ktime_to_timespec_cond(skb->tstamp, &ts) &&
+	    nla_put(msg, NET_DM_ATTR_TIMESTAMP, sizeof(ts), &ts))
+		goto nla_put_failure;
+
+	if (!payload_len)
+		goto out;
+
+	attr = skb_put(msg, nla_total_size(payload_len));
+	attr->nla_type = NET_DM_ATTR_PAYLOAD;
+	attr->nla_len = nla_attr_size(payload_len);
+	if (skb_copy_bits(skb, 0, nla_data(attr), payload_len))
+		goto nla_put_failure;
+
+out:
+	genlmsg_end(msg, hdr);
+
+	return 0;
+
+nla_put_failure:
+	genlmsg_cancel(msg, hdr);
+	return -EMSGSIZE;
+}
+
+#define NET_DM_MAX_PACKET_SIZE (0xffff - NLA_HDRLEN - NLA_ALIGNTO)
+
+static void net_dm_packet_report(struct sk_buff *skb)
+{
+	struct sk_buff *msg;
+	size_t payload_len;
+	int rc;
+
+	/* Make sure we start copying the packet from the MAC header */
+	if (skb->data > skb_mac_header(skb))
+		skb_push(skb, skb->data - skb_mac_header(skb));
+	else
+		skb_pull(skb, skb_mac_header(skb) - skb->data);
+
+	/* Ensure packet fits inside a single netlink attribute */
+	payload_len = min_t(size_t, skb->len, NET_DM_MAX_PACKET_SIZE);
+
+	msg = nlmsg_new(net_dm_packet_report_size(payload_len), GFP_KERNEL);
+	if (!msg)
+		goto out;
+
+	rc = net_dm_packet_report_fill(msg, skb, payload_len);
+	if (rc) {
+		nlmsg_free(msg);
+		goto out;
+	}
+
+	genlmsg_multicast(&net_drop_monitor_family, msg, 0, 0, GFP_KERNEL);
+
+out:
+	if (skb->dev)
+		dev_put(skb->dev);
+	consume_skb(skb);
+}
+
+static void net_dm_packet_work(struct work_struct *work)
+{
+	struct per_cpu_dm_data *data;
+	struct sk_buff_head list;
+	struct sk_buff *skb;
+	unsigned long flags;
+
+	data = container_of(work, struct per_cpu_dm_data, dm_alert_work);
+
+	__skb_queue_head_init(&list);
+
+	spin_lock_irqsave(&data->drop_queue.lock, flags);
+	skb_queue_splice_tail_init(&data->drop_queue, &list);
+	spin_unlock_irqrestore(&data->drop_queue.lock, flags);
+
+	while ((skb = __skb_dequeue(&list)))
+		net_dm_packet_report(skb);
+}
+
+static const struct net_dm_alert_ops net_dm_alert_packet_ops = {
+	.kfree_skb_probe	= net_dm_packet_trace_kfree_skb_hit,
+	.napi_poll_probe	= net_dm_packet_trace_napi_poll_hit,
+	.work_item_func		= net_dm_packet_work,
+};
+
+static const struct net_dm_alert_ops *net_dm_alert_ops_arr[] = {
+	[NET_DM_ALERT_MODE_SUMMARY]	= &net_dm_alert_summary_ops,
+	[NET_DM_ALERT_MODE_PACKET]	= &net_dm_alert_packet_ops,
+};
+
 static int net_dm_trace_on_set(struct netlink_ext_ack *extack)
 {
+	const struct net_dm_alert_ops *ops;
 	int cpu, rc;
+
+	ops = net_dm_alert_ops_arr[net_dm_alert_mode];
 
 	if (!try_module_get(THIS_MODULE)) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to take reference on module");
@@ -267,17 +468,17 @@ static int net_dm_trace_on_set(struct netlink_ext_ack *extack)
 	for_each_possible_cpu(cpu) {
 		struct per_cpu_dm_data *data = &per_cpu(dm_cpu_data, cpu);
 
-		INIT_WORK(&data->dm_alert_work, send_dm_alert);
+		INIT_WORK(&data->dm_alert_work, ops->work_item_func);
 		timer_setup(&data->send_timer, sched_send_work, 0);
 	}
 
-	rc = register_trace_kfree_skb(trace_kfree_skb_hit, NULL);
+	rc = register_trace_kfree_skb(ops->kfree_skb_probe, NULL);
 	if (rc) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to connect probe to kfree_skb() tracepoint");
 		goto err_module_put;
 	}
 
-	rc = register_trace_napi_poll(trace_napi_poll_hit, NULL);
+	rc = register_trace_napi_poll(ops->napi_poll_probe, NULL);
 	if (rc) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to connect probe to napi_poll() tracepoint");
 		goto err_unregister_trace;
@@ -286,7 +487,7 @@ static int net_dm_trace_on_set(struct netlink_ext_ack *extack)
 	return 0;
 
 err_unregister_trace:
-	unregister_trace_kfree_skb(trace_kfree_skb_hit, NULL);
+	unregister_trace_kfree_skb(ops->kfree_skb_probe, NULL);
 err_module_put:
 	module_put(THIS_MODULE);
 	return rc;
@@ -295,10 +496,13 @@ err_module_put:
 static void net_dm_trace_off_set(void)
 {
 	struct dm_hw_stat_delta *new_stat, *temp;
+	const struct net_dm_alert_ops *ops;
 	int cpu;
 
-	unregister_trace_napi_poll(trace_napi_poll_hit, NULL);
-	unregister_trace_kfree_skb(trace_kfree_skb_hit, NULL);
+	ops = net_dm_alert_ops_arr[net_dm_alert_mode];
+
+	unregister_trace_napi_poll(ops->napi_poll_probe, NULL);
+	unregister_trace_kfree_skb(ops->kfree_skb_probe, NULL);
 
 	tracepoint_synchronize_unregister();
 
@@ -307,9 +511,18 @@ static void net_dm_trace_off_set(void)
 	 */
 	for_each_possible_cpu(cpu) {
 		struct per_cpu_dm_data *data = &per_cpu(dm_cpu_data, cpu);
+		struct sk_buff *skb;
 
 		del_timer_sync(&data->send_timer);
 		cancel_work_sync(&data->dm_alert_work);
+		/* If we deactivated a pending timer, some packets are still
+		 * queued and we need to free them.
+		 */
+		while ((skb = __skb_dequeue(&data->drop_queue))) {
+			if (skb->dev)
+				dev_put(skb->dev);
+			consume_skb(skb);
+		}
 	}
 
 	list_for_each_entry_safe(new_stat, temp, &hw_stats_list, list) {
@@ -351,12 +564,61 @@ static int set_all_monitor_traces(int state, struct netlink_ext_ack *extack)
 	return rc;
 }
 
+static int net_dm_alert_mode_get_from_info(struct genl_info *info,
+					   enum net_dm_alert_mode *p_alert_mode)
+{
+	u8 val;
+
+	val = nla_get_u8(info->attrs[NET_DM_ATTR_ALERT_MODE]);
+
+	switch (val) {
+	case NET_DM_ALERT_MODE_SUMMARY: /* fall-through */
+	case NET_DM_ALERT_MODE_PACKET:
+		*p_alert_mode = val;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int net_dm_alert_mode_set(struct genl_info *info)
+{
+	struct netlink_ext_ack *extack = info->extack;
+	enum net_dm_alert_mode alert_mode;
+	int rc;
+
+	if (!info->attrs[NET_DM_ATTR_ALERT_MODE])
+		return 0;
+
+	rc = net_dm_alert_mode_get_from_info(info, &alert_mode);
+	if (rc) {
+		NL_SET_ERR_MSG_MOD(extack, "Invalid alert mode");
+		return -EINVAL;
+	}
+
+	net_dm_alert_mode = alert_mode;
+
+	return 0;
+}
+
 static int net_dm_cmd_config(struct sk_buff *skb,
 			struct genl_info *info)
 {
-	NL_SET_ERR_MSG_MOD(info->extack, "Command not supported");
+	struct netlink_ext_ack *extack = info->extack;
+	int rc;
 
-	return -EOPNOTSUPP;
+	if (trace_state == TRACE_ON) {
+		NL_SET_ERR_MSG_MOD(extack, "Cannot configure drop monitor while tracing is on");
+		return -EOPNOTSUPP;
+	}
+
+	rc = net_dm_alert_mode_set(info);
+	if (rc)
+		return rc;
+
+	return 0;
 }
 
 static int net_dm_cmd_trace(struct sk_buff *skb,
@@ -411,6 +673,11 @@ out:
 	return NOTIFY_DONE;
 }
 
+static const struct nla_policy net_dm_nl_policy[NET_DM_ATTR_MAX + 1] = {
+	[NET_DM_ATTR_UNSPEC] = { .strict_start_type = NET_DM_ATTR_UNSPEC + 1 },
+	[NET_DM_ATTR_ALERT_MODE] = { .type = NLA_U8 },
+};
+
 static const struct genl_ops dropmon_ops[] = {
 	{
 		.cmd = NET_DM_CMD_CONFIG,
@@ -434,6 +701,8 @@ static struct genl_family net_drop_monitor_family __ro_after_init = {
 	.hdrsize        = 0,
 	.name           = "NET_DM",
 	.version        = 2,
+	.maxattr	= NET_DM_ATTR_MAX,
+	.policy		= net_dm_nl_policy,
 	.pre_doit	= net_dm_nl_pre_doit,
 	.post_doit	= net_dm_nl_post_doit,
 	.module		= THIS_MODULE,
@@ -479,6 +748,7 @@ static int __init init_net_drop_monitor(void)
 		INIT_WORK(&data->dm_alert_work, send_dm_alert);
 		timer_setup(&data->send_timer, sched_send_work, 0);
 		spin_lock_init(&data->lock);
+		skb_queue_head_init(&data->drop_queue);
 		reset_per_cpu_data(data);
 	}
 
@@ -509,6 +779,7 @@ static void exit_net_drop_monitor(void)
 		 * to this struct and can free the skb inside it
 		 */
 		kfree_skb(data->skb);
+		WARN_ON(!skb_queue_empty(&data->drop_queue));
 	}
 
 	BUG_ON(genl_unregister_family(&net_drop_monitor_family));
