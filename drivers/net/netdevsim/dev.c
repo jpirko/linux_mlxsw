@@ -474,7 +474,7 @@ nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev, struct nsim_dev *nsim_dev,
 		struct netlink_ext_ack *extack);
 static void nsim_dev_destroy(struct nsim_dev *nsim_dev, bool reload);
 
-static int nsim_dev_reload_down(struct devlink *devlink,
+static int nsim_dev_reload_down(struct devlink *devlink, bool netns_change,
 				struct netlink_ext_ack *extack)
 {
 	struct nsim_dev *nsim_dev = devlink_priv(devlink);
