@@ -691,6 +691,7 @@ nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev, struct nsim_dev *nsim_dev,
 					sizeof(*nsim_dev));
 		if (!devlink)
 			return ERR_PTR(-ENOMEM);
+		devlink_net_set(devlink, nsim_bus_dev->initial_net);
 	} else {
 		devlink = priv_to_devlink(nsim_dev);
 	}
