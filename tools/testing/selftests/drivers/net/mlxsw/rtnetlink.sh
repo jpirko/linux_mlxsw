@@ -629,7 +629,7 @@ nexthop_offload_test()
 	check_err $? "ipv6 nexthop not marked as offloaded when should"
 
 	ip link set dev $swp2 down
-	sleep 1
+	sleep 5
 
 	ip -4 route show 198.51.100.0/24 vrf v$swp1 | grep -q offload
 	check_fail $? "ipv4 nexthop marked as offloaded when should not"
