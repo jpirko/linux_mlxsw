@@ -46,6 +46,7 @@ struct mlxsw_sp1_ptp_key {
 struct mlxsw_sp1_ptp_unmatched {
 	struct mlxsw_sp1_ptp_key key;
 	struct rhash_head ht_node;
+	struct list_head list;
 	struct rcu_head rcu;
 	struct sk_buff *skb;
 	u64 timestamp;
@@ -356,19 +357,14 @@ static int mlxsw_sp_ptp_parse(struct sk_buff *skb,
 	return 0;
 }
 
-/* Returns NULL on successful insertion, a pointer on conflict, or an ERR_PTR on
- * error.
- */
 static struct mlxsw_sp1_ptp_unmatched *
-mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
+mlxsw_sp1_ptp_unmatched_init(struct mlxsw_sp *mlxsw_sp,
 			     struct mlxsw_sp1_ptp_key key,
 			     struct sk_buff *skb,
 			     u64 timestamp)
 {
 	int cycles = MLXSW_SP1_PTP_HT_GC_TIMEOUT / MLXSW_SP1_PTP_HT_GC_INTERVAL;
-	struct mlxsw_sp_ptp_state *ptp_state = mlxsw_sp->ptp_state;
 	struct mlxsw_sp1_ptp_unmatched *unmatched;
-	struct mlxsw_sp1_ptp_unmatched *conflict;
 
 	unmatched = kzalloc(sizeof(*unmatched), GFP_ATOMIC);
 	if (!unmatched)
@@ -378,6 +374,17 @@ mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
 	unmatched->skb = skb;
 	unmatched->timestamp = timestamp;
 	unmatched->gc_cycle = mlxsw_sp->ptp_state->gc_cycle + cycles;
+	INIT_LIST_HEAD(&unmatched->list);
+
+	return unmatched;
+}
+
+static struct mlxsw_sp1_ptp_unmatched *
+mlxsw_sp1_ptp_unmatched_insert(struct mlxsw_sp *mlxsw_sp,
+			       struct mlxsw_sp1_ptp_unmatched *unmatched)
+{
+	struct mlxsw_sp_ptp_state *ptp_state = mlxsw_sp->ptp_state;
+	struct mlxsw_sp1_ptp_unmatched *conflict;
 
 	conflict = rhashtable_lookup_get_insert_fast(&ptp_state->unmatched_ht,
 					    &unmatched->ht_node,
@@ -386,6 +393,43 @@ mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
 		kfree(unmatched);
 
 	return conflict;
+}
+
+/* Returns NULL on successful insertion, a pointer on conflict, or an ERR_PTR on
+ * error.
+ */
+static struct mlxsw_sp1_ptp_unmatched *
+mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
+			     struct mlxsw_sp1_ptp_key key,
+			     struct sk_buff *skb,
+			     u64 timestamp)
+{
+	struct mlxsw_sp1_ptp_unmatched *unmatched;
+
+	unmatched = mlxsw_sp1_ptp_unmatched_init(mlxsw_sp, key, skb, timestamp);
+	if (IS_ERR(unmatched))
+		return unmatched;
+
+	return mlxsw_sp1_ptp_unmatched_insert(mlxsw_sp, unmatched);
+}
+
+static struct mlxsw_sp1_ptp_unmatched *
+mlxsw_sp1_ptp_unmatched_insert_next(struct mlxsw_sp *mlxsw_sp,
+				    struct mlxsw_sp1_ptp_unmatched *unmatched)
+{
+	struct mlxsw_sp1_ptp_unmatched *next;
+
+	/* If more entries are chained on this one, insert the next one. */
+	next = list_first_entry_or_null(&unmatched->list,
+					struct mlxsw_sp1_ptp_unmatched,
+					list);
+	if (next) {
+		list_del(&unmatched->list);
+		unmatched = mlxsw_sp1_ptp_unmatched_insert(mlxsw_sp, next);
+		WARN_ON_ONCE(unmatched);
+	}
+
+	return next;
 }
 
 static struct mlxsw_sp1_ptp_unmatched *
@@ -480,16 +524,21 @@ static void mlxsw_sp1_ptp_unmatched_free_fn(void *ptr, void *arg)
 	/* This is invoked at a point where the ports are gone already. Nothing
 	 * to do with whatever is left in the HT but to free it.
 	 */
-	if (unmatched->skb)
-		dev_kfree_skb_any(unmatched->skb);
-	kfree_rcu(unmatched, rcu);
+	do {
+		if (unmatched->skb)
+			dev_kfree_skb_any(unmatched->skb);
+		kfree_rcu(unmatched, rcu);
+		unmatched = list_first_entry_or_null(&unmatched->list,
+						struct mlxsw_sp1_ptp_unmatched,
+						list);
+	} while (unmatched);
 }
 
 static void mlxsw_sp1_ptp_got_piece(struct mlxsw_sp *mlxsw_sp,
 				    struct mlxsw_sp1_ptp_key key,
 				    struct sk_buff *skb, u64 timestamp)
 {
-	struct mlxsw_sp1_ptp_unmatched *unmatched, *conflict;
+	struct mlxsw_sp1_ptp_unmatched *unmatched, *conflict, *new;
 	int err;
 
 	rcu_read_lock();
@@ -544,21 +593,25 @@ static void mlxsw_sp1_ptp_got_piece(struct mlxsw_sp *mlxsw_sp,
 		 * skb if we are handling skb, or a timestamp if we are handling
 		 * timestamp. We can't match that up, so save what we have.
 		 */
-		conflict = mlxsw_sp1_ptp_unmatched_save(mlxsw_sp, key,
-							skb, timestamp);
-		if (IS_ERR(conflict)) {
+		conflict = mlxsw_sp1_ptp_unmatched_insert(mlxsw_sp, unmatched);
+		WARN_ON_ONCE(conflict);
+
+		new = mlxsw_sp1_ptp_unmatched_init(mlxsw_sp, key,
+						   skb, timestamp);
+		if (IS_ERR(new)) {
 			if (skb)
 				mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb,
 							    key.local_port,
 							    key.ingress, NULL);
 		} else {
-			/* Above, we removed an object with this key from the
-			 * hash table, under lock, so conflict can not be a
-			 * valid pointer.
-			 */
-			WARN_ON_ONCE(conflict);
+			list_add_tail(&new->list, &unmatched->list);
 		}
+
+		unmatched = NULL;
 	}
+
+	if (unmatched)
+		mlxsw_sp1_ptp_unmatched_insert_next(mlxsw_sp, unmatched);
 
 	spin_unlock(&mlxsw_sp->ptp_state->unmatched_lock);
 
@@ -672,6 +725,9 @@ mlxsw_sp1_ptp_ht_gc_collect(struct mlxsw_sp_ptp_state *ptp_state,
 	err = rhashtable_remove_fast(&ptp_state->unmatched_ht,
 				     &unmatched->ht_node,
 				     mlxsw_sp1_ptp_unmatched_ht_params);
+	if (!err)
+		mlxsw_sp1_ptp_unmatched_insert_next(ptp_state->mlxsw_sp,
+						    unmatched);
 	spin_unlock(&ptp_state->unmatched_lock);
 
 	if (err)
@@ -688,6 +744,20 @@ mlxsw_sp1_ptp_ht_gc_collect(struct mlxsw_sp_ptp_state *ptp_state,
 
 out:
 	local_bh_enable();
+}
+
+static void
+mlxsw_sp1_ptp_ht_gc_collect_chain(struct mlxsw_sp_ptp_state *ptp_state,
+				  struct mlxsw_sp1_ptp_unmatched *unmatched,
+				  u32 gc_cycle)
+{
+	struct mlxsw_sp1_ptp_key key = unmatched->key;
+
+	do {
+		mlxsw_sp1_ptp_ht_gc_collect(ptp_state, unmatched);
+		unmatched = mlxsw_sp1_ptp_unmatched_lookup(ptp_state->mlxsw_sp,
+							   key);
+	} while (unmatched && unmatched->gc_cycle <= gc_cycle);
 }
 
 static void mlxsw_sp1_ptp_ht_gc(struct work_struct *work)
@@ -710,7 +780,8 @@ static void mlxsw_sp1_ptp_ht_gc(struct work_struct *work)
 
 		unmatched = obj;
 		if (unmatched->gc_cycle <= gc_cycle)
-			mlxsw_sp1_ptp_ht_gc_collect(ptp_state, unmatched);
+			mlxsw_sp1_ptp_ht_gc_collect_chain(ptp_state, unmatched,
+							  gc_cycle);
 	}
 	rhashtable_walk_stop(&iter);
 	rhashtable_walk_exit(&iter);
