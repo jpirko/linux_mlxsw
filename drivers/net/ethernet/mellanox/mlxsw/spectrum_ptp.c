@@ -50,6 +50,7 @@ struct mlxsw_sp1_ptp_unmatched {
 	struct sk_buff *skb;
 	u64 timestamp;
 	u32 gc_cycle;
+	int i;
 };
 
 static const struct rhashtable_params mlxsw_sp1_ptp_unmatched_ht_params = {
@@ -369,6 +370,7 @@ mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_ptp_state *ptp_state = mlxsw_sp->ptp_state;
 	struct mlxsw_sp1_ptp_unmatched *unmatched;
 	int err;
+	static int i;
 
 	unmatched = kzalloc(sizeof(*unmatched), GFP_ATOMIC);
 	if (!unmatched)
@@ -378,6 +380,7 @@ mlxsw_sp1_ptp_unmatched_save(struct mlxsw_sp *mlxsw_sp,
 	unmatched->skb = skb;
 	unmatched->timestamp = timestamp;
 	unmatched->gc_cycle = mlxsw_sp->ptp_state->gc_cycle + cycles;
+	unmatched->i = i++;
 
 	err = rhltable_insert(&ptp_state->unmatched_ht, &unmatched->ht_node,
 			      mlxsw_sp1_ptp_unmatched_ht_params);
@@ -398,12 +401,17 @@ mlxsw_sp1_ptp_unmatched_lookup(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp1_ptp_unmatched *unmatched, *last = NULL;
 	struct rhlist_head *tmp, *list;
 	int length = 0;
+	static int longest;
 
 	list = rhltable_lookup(&mlxsw_sp->ptp_state->unmatched_ht, &key,
 			       mlxsw_sp1_ptp_unmatched_ht_params);
 	rhl_for_each_entry_rcu(unmatched, tmp, list, ht_node) {
 		last = unmatched;
 		length++;
+	}
+	if (length > longest) {
+		longest = length;
+		printk(KERN_WARNING "longest chain now %d\n", longest);
 	}
 
 	*p_length = length;
@@ -657,6 +665,8 @@ mlxsw_sp1_ptp_ht_gc_collect(struct mlxsw_sp_ptp_state *ptp_state,
 		/* The packet was matched with timestamp during the walk. */
 		goto out;
 
+	printk(KERN_WARNING "GC %d has-skb %d has-ts %d\n",
+	       unmatched->i, !!unmatched->skb, !!unmatched->timestamp);
 	/* mlxsw_sp1_ptp_unmatched_finish() invokes netif_receive_skb(). While
 	 * the comment at that function states that it can only be called in
 	 * soft IRQ context, this pattern of local_bh_disable() +
