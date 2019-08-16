@@ -29,12 +29,6 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-devlink help 2>&1 | grep trap &> /dev/null
-if [ $? -ne 0 ]; then
-	echo "SKIP: iproute2 too old, missing devlink trap support"
-	exit 1
-fi
-
 ##############################################################################
 # Devlink helpers
 
