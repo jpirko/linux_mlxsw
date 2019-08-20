@@ -755,18 +755,18 @@ mlxsw_sp_port_module_info_get(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	return 0;
 }
 
-static int mlxsw_sp_port_module_map(struct mlxsw_sp_port *mlxsw_sp_port,
-				    u8 module, u8 width, u8 lane)
+static int mlxsw_sp_port_module_map(struct mlxsw_sp_port *mlxsw_sp_port)
 {
+	struct mlxsw_sp_port_mapping *port_mapping = &mlxsw_sp_port->mapping;
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char pmlp_pl[MLXSW_REG_PMLP_LEN];
 	int i;
 
 	mlxsw_reg_pmlp_pack(pmlp_pl, mlxsw_sp_port->local_port);
-	mlxsw_reg_pmlp_width_set(pmlp_pl, width);
-	for (i = 0; i < width; i++) {
-		mlxsw_reg_pmlp_module_set(pmlp_pl, i, module);
-		mlxsw_reg_pmlp_tx_lane_set(pmlp_pl, i, lane + i);  /* Rx & Tx */
+	mlxsw_reg_pmlp_width_set(pmlp_pl, port_mapping->width);
+	for (i = 0; i < port_mapping->width; i++) {
+		mlxsw_reg_pmlp_module_set(pmlp_pl, i, port_mapping->module);
+		mlxsw_reg_pmlp_tx_lane_set(pmlp_pl, i, port_mapping->lane + i); /* Rx & Tx */
 	}
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pmlp), pmlp_pl);
@@ -3470,7 +3470,7 @@ static const struct ethtool_ops mlxsw_sp_port_ethtool_ops = {
 };
 
 static int
-mlxsw_sp_port_speed_by_width_set(struct mlxsw_sp_port *mlxsw_sp_port, u8 width)
+mlxsw_sp_port_speed_by_width_set(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	const struct mlxsw_sp_port_type_speed_ops *ops;
@@ -3486,7 +3486,7 @@ mlxsw_sp_port_speed_by_width_set(struct mlxsw_sp_port *mlxsw_sp_port, u8 width)
 				   &base_speed);
 	if (err)
 		return err;
-	upper_speed = base_speed * width;
+	upper_speed = base_speed * mlxsw_sp_port->mapping.width;
 
 	eth_proto_admin = ops->to_ptys_upper_speed(mlxsw_sp, upper_speed);
 	ops->reg_ptys_eth_pack(mlxsw_sp, ptys_pl, mlxsw_sp_port->local_port,
@@ -3647,7 +3647,8 @@ static int mlxsw_sp_port_tc_mc_mode_set(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
-				bool split, u8 module, u8 width, u8 lane)
+				bool split,
+				struct mlxsw_sp_port_mapping *port_mapping)
 {
 	struct mlxsw_sp_port_vlan *mlxsw_sp_port_vlan;
 	struct mlxsw_sp_port *mlxsw_sp_port;
@@ -3655,7 +3656,8 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	int err;
 
 	err = mlxsw_core_port_init(mlxsw_sp->core, local_port,
-				   module + 1, split, lane / width,
+				   port_mapping->module + 1, split,
+				   port_mapping->lane / port_mapping->width,
 				   mlxsw_sp->base_mac,
 				   sizeof(mlxsw_sp->base_mac));
 	if (err) {
@@ -3676,9 +3678,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	mlxsw_sp_port->local_port = local_port;
 	mlxsw_sp_port->pvid = MLXSW_SP_DEFAULT_VID;
 	mlxsw_sp_port->split = split;
-	mlxsw_sp_port->mapping.module = module;
-	mlxsw_sp_port->mapping.width = width;
-	mlxsw_sp_port->mapping.lane = lane;
+	mlxsw_sp_port->mapping = *port_mapping;
 	mlxsw_sp_port->link.autoneg = 1;
 	INIT_LIST_HEAD(&mlxsw_sp_port->vlans_list);
 	INIT_LIST_HEAD(&mlxsw_sp_port->mall_tc_list);
@@ -3703,7 +3703,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	dev->netdev_ops = &mlxsw_sp_port_netdev_ops;
 	dev->ethtool_ops = &mlxsw_sp_port_ethtool_ops;
 
-	err = mlxsw_sp_port_module_map(mlxsw_sp_port, module, width, lane);
+	err = mlxsw_sp_port_module_map(mlxsw_sp_port);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to map module\n",
 			mlxsw_sp_port->local_port);
@@ -3745,7 +3745,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		goto err_port_system_port_mapping_set;
 	}
 
-	err = mlxsw_sp_port_speed_by_width_set(mlxsw_sp_port, width);
+	err = mlxsw_sp_port_speed_by_width_set(mlxsw_sp_port);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to enable speeds\n",
 			mlxsw_sp_port->local_port);
@@ -3983,10 +3983,7 @@ static int mlxsw_sp_ports_create(struct mlxsw_sp *mlxsw_sp)
 		port_mapping = mlxsw_sp->port_mapping[i];
 		if (!port_mapping)
 			continue;
-		err = mlxsw_sp_port_create(mlxsw_sp, i, false,
-					   port_mapping->module,
-					   port_mapping->width,
-					   port_mapping->lane);
+		err = mlxsw_sp_port_create(mlxsw_sp, i, false, port_mapping);
 		if (err)
 			goto err_port_create;
 	}
@@ -4059,15 +4056,17 @@ mlxsw_sp_port_split_create(struct mlxsw_sp *mlxsw_sp, u8 base_port,
 			   struct mlxsw_sp_port_mapping *port_mapping,
 			   unsigned int count, u8 offset)
 {
-	u8 width = port_mapping->width / count;
+	struct mlxsw_sp_port_mapping split_port_mapping;
 	int err, i;
 
+	split_port_mapping = *port_mapping;
+	split_port_mapping.width /= count;
 	for (i = 0; i < count; i++) {
 		err = mlxsw_sp_port_create(mlxsw_sp, base_port + i * offset,
-					   true, port_mapping->module,
-					   width, i * width);
+					   true, &split_port_mapping);
 		if (err)
 			goto err_port_create;
+		split_port_mapping.lane += split_port_mapping.width;
 	}
 
 	return 0;
@@ -4082,8 +4081,8 @@ err_port_create:
 static void mlxsw_sp_port_unsplit_create(struct mlxsw_sp *mlxsw_sp,
 					 u8 base_port, unsigned int count)
 {
-	u8 local_port, width = mlxsw_sp->port_module_max_width;
 	struct mlxsw_sp_port_mapping *port_mapping;
+	u8 local_port;
 	int i;
 
 	/* Split by four means we need to re-create two ports, otherwise
@@ -4096,9 +4095,7 @@ static void mlxsw_sp_port_unsplit_create(struct mlxsw_sp *mlxsw_sp,
 		port_mapping = mlxsw_sp->port_mapping[local_port];
 		if (!port_mapping)
 			continue;
-
-		mlxsw_sp_port_create(mlxsw_sp, local_port, false,
-				     port_mapping->module, width, 0);
+		mlxsw_sp_port_create(mlxsw_sp, local_port, false, port_mapping);
 	}
 }
 
