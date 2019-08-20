@@ -4054,15 +4054,18 @@ static u8 mlxsw_sp_cluster_base_port_get(u8 local_port)
 	return local_port - offset;
 }
 
-static int mlxsw_sp_port_split_create(struct mlxsw_sp *mlxsw_sp, u8 base_port,
-				      u8 module, unsigned int count, u8 offset)
+static int
+mlxsw_sp_port_split_create(struct mlxsw_sp *mlxsw_sp, u8 base_port,
+			   struct mlxsw_sp_port_mapping *port_mapping,
+			   unsigned int count, u8 offset)
 {
-	u8 width = mlxsw_sp->port_module_max_width / count;
+	u8 width = port_mapping->width / count;
 	int err, i;
 
 	for (i = 0; i < count; i++) {
 		err = mlxsw_sp_port_create(mlxsw_sp, base_port + i * offset,
-					   true, module, width, i * width);
+					   true, port_mapping->module,
+					   width, i * width);
 		if (err)
 			goto err_port_create;
 	}
@@ -4105,8 +4108,9 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	u8 local_ports_in_1x, local_ports_in_2x, offset;
+	struct mlxsw_sp_port_mapping port_mapping;
 	struct mlxsw_sp_port *mlxsw_sp_port;
-	u8 module, base_port;
+	u8 base_port;
 	int i;
 	int err;
 
@@ -4124,8 +4128,6 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 		NL_SET_ERR_MSG_MOD(extack, "Port number does not exist");
 		return -EINVAL;
 	}
-
-	module = mlxsw_sp_port->mapping.module;
 
 	/* Split ports cannot be split. */
 	if (mlxsw_sp_port->split) {
@@ -4167,12 +4169,14 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 		}
 	}
 
+	port_mapping = mlxsw_sp_port->mapping;
+
 	for (i = 0; i < count; i++)
 		if (mlxsw_sp_port_created(mlxsw_sp, base_port + i * offset))
 			mlxsw_sp_port_remove(mlxsw_sp, base_port + i * offset);
 
-	err = mlxsw_sp_port_split_create(mlxsw_sp, base_port, module, count,
-					 offset);
+	err = mlxsw_sp_port_split_create(mlxsw_sp, base_port, &port_mapping,
+					 count, offset);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to create split ports\n");
 		goto err_port_split_create;
