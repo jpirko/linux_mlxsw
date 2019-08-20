@@ -177,6 +177,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_sb_vals *sb_vals;
 	const struct mlxsw_sp_port_type_speed_ops *port_type_speed_ops;
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
+	unsigned int port_module_max_width;
 	const struct mlxsw_listener *listeners;
 	size_t listeners_count;
 };

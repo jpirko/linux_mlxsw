@@ -75,6 +75,9 @@ static const unsigned char mlxsw_sp2_mac_mask[ETH_ALEN] = {
 	0xff, 0xff, 0xff, 0xff, 0xf0, 0x00
 };
 
+#define MLXSW_SP_PORT_MODULE_MAX_WIDTH	4
+#define MLXSW_SP3_PORT_MODULE_MAX_WIDTH	8
+
 /* tx_hdr_version
  * Tx header version.
  * Must be set to 1.
@@ -4025,7 +4028,7 @@ static u8 mlxsw_sp_cluster_base_port_get(u8 local_port)
 static int mlxsw_sp_port_split_create(struct mlxsw_sp *mlxsw_sp, u8 base_port,
 				      u8 module, unsigned int count, u8 offset)
 {
-	u8 width = MLXSW_PORT_MODULE_MAX_WIDTH / count;
+	u8 width = mlxsw_sp->port_module_max_width / count;
 	int err, i;
 
 	for (i = 0; i < count; i++) {
@@ -4047,7 +4050,7 @@ err_port_create:
 static void mlxsw_sp_port_unsplit_create(struct mlxsw_sp *mlxsw_sp,
 					 u8 base_port, unsigned int count)
 {
-	u8 local_port, module, width = MLXSW_PORT_MODULE_MAX_WIDTH;
+	u8 local_port, module, width = mlxsw_sp->port_module_max_width;
 	int i;
 
 	/* Split by four means we need to re-create two ports, otherwise
@@ -4073,7 +4076,7 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	u8 local_ports_in_1x, local_ports_in_2x, offset;
 	struct mlxsw_sp_port *mlxsw_sp_port;
-	u8 module, cur_width, base_port;
+	u8 module, base_port;
 	int i;
 	int err;
 
@@ -4093,7 +4096,6 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 	}
 
 	module = mlxsw_sp_port->mapping.module;
-	cur_width = mlxsw_sp_port->mapping.width;
 
 	if (count != 2 && count != 4) {
 		netdev_err(mlxsw_sp_port->dev, "Port can only be split into 2 or 4 ports\n");
@@ -4101,7 +4103,7 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 		return -EINVAL;
 	}
 
-	if (cur_width != MLXSW_PORT_MODULE_MAX_WIDTH) {
+	if (mlxsw_sp_port->mapping.width != mlxsw_sp->port_module_max_width) {
 		netdev_err(mlxsw_sp_port->dev, "Port cannot be split further\n");
 		NL_SET_ERR_MSG_MOD(extack, "Port cannot be split further");
 		return -EINVAL;
@@ -4151,8 +4153,8 @@ static int mlxsw_sp_port_unsplit(struct mlxsw_core *mlxsw_core, u8 local_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	u8 local_ports_in_1x, local_ports_in_2x, offset;
 	struct mlxsw_sp_port *mlxsw_sp_port;
-	u8 cur_width, base_port;
 	unsigned int count;
+	u8 base_port;
 	int i;
 
 	if (!MLXSW_CORE_RES_VALID(mlxsw_core, LOCAL_PORTS_IN_1X) ||
@@ -4176,8 +4178,7 @@ static int mlxsw_sp_port_unsplit(struct mlxsw_core *mlxsw_core, u8 local_port,
 		return -EINVAL;
 	}
 
-	cur_width = mlxsw_sp_port->mapping.width;
-	count = cur_width == 1 ? 4 : 2;
+	count = mlxsw_sp->port_module_max_width / mlxsw_sp_port->mapping.width;
 
 	if (count == 2)
 		offset = local_ports_in_2x;
@@ -4966,12 +4967,14 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->ptp_ops = &mlxsw_sp1_ptp_ops;
 	mlxsw_sp->listeners = mlxsw_sp1_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp1_listener);
+	mlxsw_sp->port_module_max_width = MLXSW_SP_PORT_MODULE_MAX_WIDTH;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info);
 }
 
-static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
-			  const struct mlxsw_bus_info *mlxsw_bus_info)
+static int __mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
+			    const struct mlxsw_bus_info *mlxsw_bus_info,
+			    unsigned int port_module_max_width)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 
@@ -4986,8 +4989,23 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->sb_vals = &mlxsw_sp2_sb_vals;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
+	mlxsw_sp->port_module_max_width = port_module_max_width;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info);
+}
+
+static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
+			  const struct mlxsw_bus_info *mlxsw_bus_info)
+{
+	return __mlxsw_sp2_init(mlxsw_core, mlxsw_bus_info,
+				MLXSW_SP_PORT_MODULE_MAX_WIDTH);
+}
+
+static int mlxsw_sp3_init(struct mlxsw_core *mlxsw_core,
+			  const struct mlxsw_bus_info *mlxsw_bus_info)
+{
+	return __mlxsw_sp2_init(mlxsw_core, mlxsw_bus_info,
+				MLXSW_SP3_PORT_MODULE_MAX_WIDTH);
 }
 
 static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
@@ -5443,7 +5461,7 @@ static struct mlxsw_driver mlxsw_sp2_driver = {
 static struct mlxsw_driver mlxsw_sp3_driver = {
 	.kind				= mlxsw_sp3_driver_name,
 	.priv_size			= sizeof(struct mlxsw_sp),
-	.init				= mlxsw_sp2_init,
+	.init				= mlxsw_sp3_init,
 	.fini				= mlxsw_sp_fini,
 	.basic_trap_groups_set		= mlxsw_sp_basic_trap_groups_set,
 	.port_split			= mlxsw_sp_port_split,
