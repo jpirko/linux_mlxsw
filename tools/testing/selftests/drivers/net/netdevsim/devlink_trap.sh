@@ -361,4 +361,6 @@ setup_prepare
 
 tests_run
 
+modprobe -r netdevsim &> /dev/null
+
 exit $EXIT_STATUS
