@@ -4097,15 +4097,23 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 
 	module = mlxsw_sp_port->mapping.module;
 
-	if (count != 2 && count != 4) {
-		netdev_err(mlxsw_sp_port->dev, "Port can only be split into 2 or 4 ports\n");
-		NL_SET_ERR_MSG_MOD(extack, "Port can only be split into 2 or 4 ports");
+	/* Split ports cannot be split. */
+	if (mlxsw_sp_port->split) {
+		netdev_err(mlxsw_sp_port->dev, "Port cannot be split further\n");
+		NL_SET_ERR_MSG_MOD(extack, "Port cannot be split further");
 		return -EINVAL;
 	}
 
+	/* Split port with non-max module width cannot be split. */
 	if (mlxsw_sp_port->mapping.width != mlxsw_sp->port_module_max_width) {
-		netdev_err(mlxsw_sp_port->dev, "Port cannot be split further\n");
-		NL_SET_ERR_MSG_MOD(extack, "Port cannot be split further");
+		netdev_err(mlxsw_sp_port->dev, "Port cannot be split\n");
+		NL_SET_ERR_MSG_MOD(extack, "Port cannot be split");
+		return -EINVAL;
+	}
+
+	if (count != 2 && count != 4) {
+		netdev_err(mlxsw_sp_port->dev, "Port can only be split into 2 or 4 ports\n");
+		NL_SET_ERR_MSG_MOD(extack, "Port can only be split into 2 or 4 ports");
 		return -EINVAL;
 	}
 
