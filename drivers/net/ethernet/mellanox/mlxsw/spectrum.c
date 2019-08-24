@@ -4081,9 +4081,10 @@ static void mlxsw_sp_port_module_info_fini(struct mlxsw_sp *mlxsw_sp)
 	kfree(mlxsw_sp->port_mapping);
 }
 
-static u8 mlxsw_sp_cluster_base_port_get(u8 local_port)
+static u8 mlxsw_sp_cluster_base_port_get(struct mlxsw_sp *mlxsw_sp,
+					 u8 local_port)
 {
-	u8 offset = (local_port - 1) % MLXSW_SP_PORTS_PER_CLUSTER_MAX;
+	u8 offset = (local_port - 1) % mlxsw_sp->port_module_max_width;
 
 	return local_port - offset;
 }
@@ -4213,7 +4214,8 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
 			return -EINVAL;
 		}
 	} else {
-		base_port = mlxsw_sp_cluster_base_port_get(local_port);
+		base_port = mlxsw_sp_cluster_base_port_get(mlxsw_sp,
+							   local_port);
 		if (mlxsw_sp->ports[base_port + 1] ||
 		    mlxsw_sp->ports[base_port + 3]) {
 			netdev_err(mlxsw_sp_port->dev, "Invalid split configuration\n");
