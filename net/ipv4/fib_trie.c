@@ -103,6 +103,15 @@ static int call_fib_entry_notifiers(struct net *net,
 		.type = fa->fa_type,
 		.tb_id = fa->tb_id,
 	};
+	switch (event_type) {
+	case FIB_EVENT_ENTRY_REPLACE:
+	case FIB_EVENT_ENTRY_DEL:
+		pr_err("event=%d dst=%pI4h/%d, tos=%d, tb_id=%d\n", event_type,
+		       &dst, dst_len, fa->fa_tos, fa->tb_id);
+		break;
+	default:
+		break;
+	}
 	return call_fib4_notifiers(net, event_type, &info.info);
 }
 
