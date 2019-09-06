@@ -2096,6 +2096,7 @@ static int fib_leaf_notify(struct key_vector *l, struct fib_table *tb,
 			   struct netlink_ext_ack *extack)
 {
 	struct fib_alias *fa;
+	int last_slen = -1;
 	int err;
 
 	hlist_for_each_entry_rcu(fa, &l->leaf, fa_list) {
@@ -2110,6 +2111,15 @@ static int fib_leaf_notify(struct key_vector *l, struct fib_table *tb,
 		if (tb->tb_id != fa->tb_id)
 			continue;
 
+		if (fa->fa_slen == last_slen)
+			continue;
+
+		last_slen = fa->fa_slen;
+		err = call_fib_entry_notifier(nb, FIB_EVENT_ENTRY_REPLACE_TMP,
+					      l->key, KEYLENGTH - fa->fa_slen,
+					      fa, extack);
+		if (err)
+			return err;
 		err = call_fib_entry_notifier(nb, FIB_EVENT_ENTRY_ADD, l->key,
 					      KEYLENGTH - fa->fa_slen,
 					      fa, extack);
