@@ -976,6 +976,27 @@ static struct key_vector *fib_find_node(struct trie *t,
 	return n;
 }
 
+/* Return the first fib alias matching prefix length and table ID. */
+static struct fib_alias *fib_find_first_alias(struct hlist_head *fah, u8 slen,
+					      u32 tb_id)
+{
+	struct fib_alias *fa;
+
+	hlist_for_each_entry(fa, fah, fa_list) {
+		if (fa->fa_slen < slen)
+			continue;
+		if (fa->fa_slen != slen)
+			break;
+		if (fa->tb_id > tb_id)
+			continue;
+		if (fa->tb_id != tb_id)
+			break;
+		return fa;
+	}
+
+	return NULL;
+}
+
 /* Return the first fib alias matching TOS with
  * priority less than or equal to PRIO.
  */
@@ -1215,6 +1236,17 @@ int fib_table_insert(struct net *net, struct fib_table *tb,
 			new_fa->tb_id = tb->tb_id;
 			new_fa->fa_default = -1;
 
+			if (fib_find_first_alias(&l->leaf, fa->fa_slen,
+						 tb->tb_id) == fa) {
+				enum fib_event_type fib_event;
+
+				fib_event = FIB_EVENT_ENTRY_REPLACE_TMP;
+				err = call_fib_entry_notifiers(net, fib_event,
+							       key, plen,
+							       new_fa, extack);
+				if (err)
+					goto out_free_new_fa;
+			}
 			err = call_fib_entry_notifiers(net,
 						       FIB_EVENT_ENTRY_REPLACE,
 						       key, plen, new_fa,
