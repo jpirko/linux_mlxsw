@@ -187,9 +187,10 @@ static int nsim_fib_event_nb(struct notifier_block *nb, unsigned long event,
 		err = nsim_fib_rule_event(info, event == FIB_EVENT_RULE_ADD);
 		break;
 
+	case FIB_EVENT_ENTRY_REPLACE:  /* fall through */
 	case FIB_EVENT_ENTRY_ADD:  /* fall through */
 	case FIB_EVENT_ENTRY_DEL:
-		err = nsim_fib_event(info, event == FIB_EVENT_ENTRY_ADD);
+		err = nsim_fib_event(info, event != FIB_EVENT_ENTRY_DEL);
 		break;
 	}
 
