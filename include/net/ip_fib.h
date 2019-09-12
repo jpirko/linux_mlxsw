@@ -451,6 +451,11 @@ int fib_nh_common_init(struct fib_nh_common *nhc, struct nlattr *fc_encap,
 void fib_nh_common_release(struct fib_nh_common *nhc);
 
 /* Exported by fib_trie.c */
+void fib_alias_in_hw_set(struct net *net, u32 dst, int dst_len,
+			 const struct fib_info *fi, u8 tos, u8 type, u32 tb_id);
+void fib_alias_in_hw_clear(struct net *net, u32 dst, int dst_len,
+			   const struct fib_info *fi, u8 tos, u8 type,
+			   u32 tb_id);
 void fib_trie_init(void);
 struct fib_table *fib_trie_table(u32 id, struct fib_table *alias);
 
