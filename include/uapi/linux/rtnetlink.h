@@ -302,6 +302,7 @@ enum rt_scope_t {
 #define RTM_F_PREFIX		0x800	/* Prefix addresses		*/
 #define RTM_F_LOOKUP_TABLE	0x1000	/* set rtm_table to FIB lookup result */
 #define RTM_F_FIB_MATCH	        0x2000	/* return full fib lookup match */
+#define RTM_F_IN_HW		0x4000	/* route is in hardware */
 
 /* Reserved table identifiers */
 
