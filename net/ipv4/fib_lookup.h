@@ -21,6 +21,15 @@ struct fib_alias {
 
 #define FA_S_ACCESSED	0x01
 
+struct fib_rt_info {
+	struct fib_info		*fi;
+	u32			tb_id;
+	__be32			dst;
+	int			dst_len;
+	u8			tos;
+	u8			type;
+};
+
 /* Dont write on fa_state unless needed, to keep it shared on all cpus */
 static inline void fib_alias_accessed(struct fib_alias *fa)
 {
@@ -35,9 +44,8 @@ struct fib_info *fib_create_info(struct fib_config *cfg,
 int fib_nh_match(struct fib_config *cfg, struct fib_info *fi,
 		 struct netlink_ext_ack *extack);
 bool fib_metrics_match(struct fib_config *cfg, struct fib_info *fi);
-int fib_dump_info(struct sk_buff *skb, u32 pid, u32 seq, int event, u32 tb_id,
-		  u8 type, __be32 dst, int dst_len, u8 tos, struct fib_info *fi,
-		  unsigned int);
+int fib_dump_info(struct sk_buff *skb, u32 pid, u32 seq, int event,
+		  struct fib_rt_info *fri, unsigned int);
 void rtmsg_fib(int event, __be32 key, struct fib_alias *fa, int dst_len,
 	       u32 tb_id, const struct nl_info *info, unsigned int nlm_flags);
 
