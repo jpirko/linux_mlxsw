@@ -4768,13 +4768,19 @@ static void mlxsw_sp_fib4_entry_replace(struct mlxsw_sp *mlxsw_sp,
 					struct mlxsw_sp_fib4_entry *fib4_entry)
 {
 	struct mlxsw_sp_fib_node *fib_node = fib4_entry->common.fib_node;
+	u32 *addr = (u32 *) fib_node->key.addr;
 	struct mlxsw_sp_fib4_entry *replaced;
+	struct fib_info *fi;
 
 	if (list_is_singular(&fib_node->entry_list))
 		return;
 
 	/* We inserted the new entry before replaced one */
 	replaced = list_next_entry(fib4_entry, common.list);
+
+	fi = mlxsw_sp_nexthop4_group_fi(replaced->common.nh_group);
+	fib_alias_in_hw_clear(&init_net, *addr, fib_node->key.prefix_len, fi,
+			      replaced->tos, replaced->type, replaced->tb_id);
 
 	mlxsw_sp_fib4_node_entry_unlink(mlxsw_sp, replaced);
 	mlxsw_sp_fib4_entry_destroy(mlxsw_sp, replaced);
@@ -4813,6 +4819,10 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to link FIB entry to node\n");
 		goto err_fib4_node_entry_link;
 	}
+
+	fib_alias_in_hw_set(&init_net, fen_info->dst, fen_info->dst_len,
+			    fen_info->fi, fen_info->tos, fen_info->type,
+			    fen_info->tb_id);
 
 	mlxsw_sp_fib4_entry_replace(mlxsw_sp, fib4_entry);
 
