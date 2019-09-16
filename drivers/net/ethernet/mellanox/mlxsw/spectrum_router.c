@@ -4769,13 +4769,20 @@ static void mlxsw_sp_fib4_entry_replace(struct mlxsw_sp *mlxsw_sp,
 					struct mlxsw_sp_fib4_entry *fib4_entry)
 {
 	struct mlxsw_sp_fib_node *fib_node = fib4_entry->common.fib_node;
+	struct net *net = mlxsw_sp_net(mlxsw_sp);
+	u32 *addr = (u32 *) fib_node->key.addr;
 	struct mlxsw_sp_fib4_entry *replaced;
+	struct fib_info *fi;
 
 	if (list_is_singular(&fib_node->entry_list))
 		return;
 
 	/* We inserted the new entry before replaced one */
 	replaced = list_next_entry(fib4_entry, common.list);
+
+	fi = mlxsw_sp_nexthop4_group_fi(replaced->common.nh_group);
+	fib_alias_in_hw_clear(net, *addr, fib_node->key.prefix_len, fi,
+			      replaced->tos, replaced->type, replaced->tb_id);
 
 	mlxsw_sp_fib4_node_entry_unlink(mlxsw_sp, replaced);
 	mlxsw_sp_fib4_entry_destroy(mlxsw_sp, replaced);
@@ -4786,6 +4793,7 @@ static int
 mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 			     const struct fib_entry_notifier_info *fen_info)
 {
+	struct net *net = mlxsw_sp_net(mlxsw_sp);
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct mlxsw_sp_fib_node *fib_node;
 	int err;
@@ -4814,6 +4822,10 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to link FIB entry to node\n");
 		goto err_fib4_node_entry_link;
 	}
+
+	fib_alias_in_hw_set(net, fen_info->dst, fen_info->dst_len,
+			    fen_info->fi, fen_info->tos, fen_info->type,
+			    fen_info->tb_id);
 
 	mlxsw_sp_fib4_entry_replace(mlxsw_sp, fib4_entry);
 
@@ -5731,11 +5743,18 @@ static void mlxsw_sp_fib4_node_flush(struct mlxsw_sp *mlxsw_sp,
 				     struct mlxsw_sp_fib_node *fib_node)
 {
 	struct mlxsw_sp_fib4_entry *fib4_entry, *tmp;
+	struct net *net = mlxsw_sp_net(mlxsw_sp);
+	u32 *addr = (u32 *) fib_node->key.addr;
 
 	list_for_each_entry_safe(fib4_entry, tmp, &fib_node->entry_list,
 				 common.list) {
 		bool do_break = &tmp->common.list == &fib_node->entry_list;
+		struct fib_info *fi;
 
+		fi = mlxsw_sp_nexthop4_group_fi(fib4_entry->common.nh_group);
+		fib_alias_in_hw_clear(net, *addr, fib_node->key.prefix_len, fi,
+				      fib4_entry->tos, fib4_entry->type,
+				      fib4_entry->tb_id);
 		mlxsw_sp_fib4_node_entry_unlink(mlxsw_sp, fib4_entry);
 		mlxsw_sp_fib4_entry_destroy(mlxsw_sp, fib4_entry);
 		mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
