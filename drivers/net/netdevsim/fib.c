@@ -14,6 +14,9 @@
  * THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
  */
 
+#include <linux/in6.h>
+#include <linux/kernel.h>
+#include <linux/rhashtable.h>
 #include <net/fib_notifier.h>
 #include <net/ip_fib.h>
 #include <net/ip6_fib.h>
@@ -36,6 +39,34 @@ struct nsim_fib_data {
 	struct notifier_block fib_nb;
 	struct nsim_per_fib_data ipv4;
 	struct nsim_per_fib_data ipv6;
+	struct rhashtable fib_rt_ht;
+	struct devlink *devlink;
+};
+
+struct nsim_fib_rt_key {
+	unsigned char addr[sizeof(struct in6_addr)];
+	unsigned char prefix_len;
+	int family;
+	u32 tb_id;
+};
+
+struct nsim_fib_rt {
+	struct nsim_fib_rt_key key;
+	struct rhash_head ht_node;
+};
+
+struct nsim_fib4_rt {
+	struct nsim_fib_rt common;
+	struct fib_info *fi;
+	u8 type;
+	u8 tos;
+};
+
+static const struct rhashtable_params nsim_fib_rt_ht_params = {
+	.key_offset = offsetof(struct nsim_fib_rt, key),
+	.head_offset = offsetof(struct nsim_fib_rt, ht_node),
+	.key_len = sizeof(struct nsim_fib_rt_key),
+	.automatic_shrinking = true,
 };
 
 u64 nsim_fib_get_val(struct nsim_fib_data *fib_data,
@@ -144,6 +175,192 @@ static int nsim_fib_account(struct nsim_fib_entry *entry, bool add,
 	return err;
 }
 
+static void nsim_fib_rt_init(struct nsim_fib_rt *fib_rt, const void *addr,
+			     size_t addr_len, unsigned int prefix_len,
+			     int family, u32 tb_id)
+{
+	memcpy(fib_rt->key.addr, addr, addr_len);
+	fib_rt->key.prefix_len = prefix_len;
+	fib_rt->key.family = family;
+	fib_rt->key.tb_id = tb_id;
+}
+
+static struct nsim_fib_rt *nsim_fib_rt_lookup(struct rhashtable *fib_rt_ht,
+					      const void *addr, size_t addr_len,
+					      unsigned int prefix_len,
+					      int family, u32 tb_id)
+{
+	struct nsim_fib_rt_key key;
+
+	memset(&key, 0, sizeof(key));
+	memcpy(key.addr, addr, addr_len);
+	key.prefix_len = prefix_len;
+	key.family = family;
+	key.tb_id = tb_id;
+
+	return rhashtable_lookup_fast(fib_rt_ht, &key, nsim_fib_rt_ht_params);
+}
+
+static struct nsim_fib4_rt *
+nsim_fib4_rt_create(struct fib_entry_notifier_info *fen_info)
+{
+	struct nsim_fib4_rt *fib4_rt;
+
+	fib4_rt = kzalloc(sizeof(*fib4_rt), GFP_ATOMIC);
+	if (!fib4_rt)
+		return NULL;
+
+	nsim_fib_rt_init(&fib4_rt->common, &fen_info->dst, sizeof(u32),
+			 fen_info->dst_len, AF_INET, fen_info->tb_id);
+
+	fib4_rt->fi = fen_info->fi;
+	fib_info_hold(fib4_rt->fi);
+	fib4_rt->tos = fen_info->tos;
+	fib4_rt->type = fen_info->type;
+
+	return fib4_rt;
+}
+
+static void nsim_fib4_rt_destroy(struct nsim_fib4_rt *fib4_rt)
+{
+	fib_info_put(fib4_rt->fi);
+	kfree(fib4_rt);
+}
+
+static struct nsim_fib4_rt *
+nsim_fib4_rt_lookup(struct rhashtable *fib_rt_ht,
+		    const struct fib_entry_notifier_info *fen_info)
+{
+	struct nsim_fib_rt *fib_rt;
+
+	fib_rt = nsim_fib_rt_lookup(fib_rt_ht, &fen_info->dst, sizeof(u32),
+				    fen_info->dst_len, AF_INET,
+				    fen_info->tb_id);
+	if (!fib_rt)
+		return NULL;
+
+	return container_of(fib_rt, struct nsim_fib4_rt, common);
+}
+
+static int nsim_fib4_rt_add(struct nsim_fib_data *data,
+			    struct nsim_fib4_rt *fib4_rt,
+			    struct netlink_ext_ack *extack)
+{
+	struct nsim_fib_rt *fib_rt = &fib4_rt->common;
+	struct net *net = devlink_net(data->devlink);
+	u32 *addr = (u32 *) fib_rt->key.addr;
+	int err;
+
+	err = nsim_fib_account(&data->ipv4.fib, true, extack);
+	if (err)
+		return err;
+
+	err = rhashtable_insert_fast(&data->fib_rt_ht,
+				     &fib4_rt->common.ht_node,
+				     nsim_fib_rt_ht_params);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Failed to insert IPv4 route");
+		goto err_fib_dismiss;
+	}
+
+	fib_alias_in_hw_set(net, *addr, fib_rt->key.prefix_len, fib4_rt->fi,
+			    fib4_rt->tos, fib4_rt->type, fib_rt->key.tb_id);
+
+	return 0;
+
+err_fib_dismiss:
+	nsim_fib_account(&data->ipv4.fib, false, extack);
+	return err;
+}
+
+static int nsim_fib4_rt_replace(struct nsim_fib_data *data,
+				struct nsim_fib4_rt *fib4_rt,
+				struct nsim_fib4_rt *fib4_rt_old,
+				struct netlink_ext_ack *extack)
+{
+	struct nsim_fib_rt *fib_rt_old = &fib4_rt_old->common;
+	struct nsim_fib_rt *fib_rt = &fib4_rt->common;
+	struct net *net = devlink_net(data->devlink);
+	u32 *addr = (u32 *) fib_rt->key.addr;
+	int err;
+
+	/* We are replacing a route, so no need to change the accounting. */
+	err = rhashtable_replace_fast(&data->fib_rt_ht,
+				      &fib4_rt_old->common.ht_node,
+				      &fib4_rt->common.ht_node,
+				      nsim_fib_rt_ht_params);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Failed to replace IPv4 route");
+		return err;
+	}
+
+	fib_alias_in_hw_clear(net, *addr, fib_rt->key.prefix_len,
+			      fib4_rt_old->fi, fib4_rt_old->tos,
+			      fib4_rt_old->type, fib_rt->key.tb_id);
+	nsim_fib4_rt_destroy(fib4_rt_old);
+
+	fib_alias_in_hw_set(net, *addr, fib_rt->key.prefix_len,
+			    fib4_rt->fi, fib4_rt->tos, fib4_rt->type,
+			    fib_rt->key.tb_id);
+
+	return 0;
+}
+
+static int nsim_fib4_rt_insert(struct nsim_fib_data *data,
+			       struct fib_entry_notifier_info *fen_info)
+{
+	struct netlink_ext_ack *extack = fen_info->info.extack;
+	struct nsim_fib4_rt *fib4_rt, *fib4_rt_old;
+	int err;
+
+	fib4_rt = nsim_fib4_rt_create(fen_info);
+	if (!fib4_rt)
+		return -ENOMEM;
+
+	fib4_rt_old = nsim_fib4_rt_lookup(&data->fib_rt_ht, fen_info);
+	if (!fib4_rt_old)
+		err = nsim_fib4_rt_add(data, fib4_rt, extack);
+	else
+		err = nsim_fib4_rt_replace(data, fib4_rt, fib4_rt_old, extack);
+
+	if (err)
+		nsim_fib4_rt_destroy(fib4_rt);
+
+	return err;
+}
+
+static void nsim_fib4_rt_remove(struct nsim_fib_data *data,
+				const struct fib_entry_notifier_info *fen_info)
+{
+	struct netlink_ext_ack *extack = fen_info->info.extack;
+	struct nsim_fib4_rt *fib4_rt;
+
+	fib4_rt = nsim_fib4_rt_lookup(&data->fib_rt_ht, fen_info);
+	if (WARN_ON_ONCE(!fib4_rt))
+		return;
+
+	rhashtable_remove_fast(&data->fib_rt_ht, &fib4_rt->common.ht_node,
+			       nsim_fib_rt_ht_params);
+	nsim_fib_account(&data->ipv4.fib, false, extack);
+	nsim_fib4_rt_destroy(fib4_rt);
+}
+
+static int nsim_fib4_event(struct nsim_fib_data *data,
+			   struct fib_notifier_info *info, bool add)
+{
+	struct fib_entry_notifier_info *fen_info;
+	int err = 0;
+
+	fen_info = container_of(info, struct fib_entry_notifier_info, info);
+
+	if (add)
+		err = nsim_fib4_rt_insert(data, fen_info);
+	else
+		nsim_fib4_rt_remove(data, fen_info);
+
+	return err;
+}
+
 static int nsim_fib_event(struct nsim_fib_data *data,
 			  struct fib_notifier_info *info, bool add)
 {
@@ -152,7 +369,7 @@ static int nsim_fib_event(struct nsim_fib_data *data,
 
 	switch (info->family) {
 	case AF_INET:
-		err = nsim_fib_account(&data->ipv4.fib, add, extack);
+		err = nsim_fib4_event(data, info, add);
 		break;
 	case AF_INET6:
 		err = nsim_fib_account(&data->ipv6.fib, add, extack);
@@ -247,6 +464,33 @@ static void nsim_fib_set_max_all(struct nsim_fib_data *data,
 	}
 }
 
+static void nsim_fib4_rt_free(struct nsim_fib_rt *fib_rt,
+			      struct devlink *devlink)
+{
+	u32 *addr = (u32 *) fib_rt->key.addr;
+	struct nsim_fib4_rt *fib4_rt;
+
+	fib4_rt = container_of(fib_rt, struct nsim_fib4_rt, common);
+	fib_alias_in_hw_clear(devlink_net(devlink), *addr,
+			      fib_rt->key.prefix_len, fib4_rt->fi, fib4_rt->tos,
+			      fib4_rt->type, fib_rt->key.tb_id);
+	nsim_fib4_rt_destroy(fib4_rt);
+}
+
+static void nsim_fib_rt_free(void *ptr, void *arg)
+{
+	struct nsim_fib_rt *fib_rt = ptr;
+	struct devlink *devlink = arg;
+
+	switch (fib_rt->key.family) {
+	case AF_INET:
+		nsim_fib4_rt_free(fib_rt, devlink);
+		break;
+	default:
+		WARN_ON_ONCE(1);
+	}
+}
+
 struct nsim_fib_data *nsim_fib_create(struct devlink *devlink,
 				      struct netlink_ext_ack *extack)
 {
@@ -256,6 +500,11 @@ struct nsim_fib_data *nsim_fib_create(struct devlink *devlink,
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return ERR_PTR(-ENOMEM);
+	data->devlink = devlink;
+
+	err = rhashtable_init(&data->fib_rt_ht, &nsim_fib_rt_ht_params);
+	if (err)
+		goto err_data_free;
 
 	nsim_fib_set_max_all(data, devlink);
 
@@ -264,7 +513,7 @@ struct nsim_fib_data *nsim_fib_create(struct devlink *devlink,
 				    nsim_fib_dump_inconsistent, extack);
 	if (err) {
 		pr_err("Failed to register fib notifier\n");
-		goto err_out;
+		goto err_rhashtable_destroy;
 	}
 
 	devlink_resource_occ_get_register(devlink,
@@ -285,7 +534,10 @@ struct nsim_fib_data *nsim_fib_create(struct devlink *devlink,
 					  data);
 	return data;
 
-err_out:
+err_rhashtable_destroy:
+	rhashtable_free_and_destroy(&data->fib_rt_ht, nsim_fib_rt_free,
+				    devlink);
+err_data_free:
 	kfree(data);
 	return ERR_PTR(err);
 }
@@ -301,5 +553,7 @@ void nsim_fib_destroy(struct devlink *devlink, struct nsim_fib_data *data)
 	devlink_resource_occ_get_unregister(devlink,
 					    NSIM_RESOURCE_IPV4_FIB);
 	unregister_fib_notifier(devlink_net(devlink), &data->fib_nb);
+	rhashtable_free_and_destroy(&data->fib_rt_ht, nsim_fib_rt_free,
+				    devlink);
 	kfree(data);
 }
