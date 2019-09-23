@@ -3643,6 +3643,16 @@ static int mlxsw_sp_port_tc_mc_mode_set(struct mlxsw_sp_port *mlxsw_sp_port,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qtctm), qtctm_pl);
 }
 
+static int mlxsw_sp_port_hll_init(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	char qhll_pl[MLXSW_REG_QHLL_LEN];
+
+	mlxsw_reg_qhll_pack(qhll_pl, mlxsw_sp_port->local_port, 31);
+	//return mlxsw_reg_write(mlxsw_sp_port->mlxsw_sp->core,
+	//MLXSW_REG(qhll), qhll_pl);
+	return 0;
+}
+
 static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				bool split, u8 module, u8 width, u8 lane)
 {
@@ -3734,6 +3744,13 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	 * headers.
 	 */
 	dev->needed_headroom = MLXSW_TXHDR_LEN;
+
+	err = mlxsw_sp_port_hll_init(mlxsw_sp_port);
+	if (err) {
+		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to set HLL\n",
+			mlxsw_sp_port->local_port);
+		goto err_port_hll;
+	}
 
 	err = mlxsw_sp_port_system_port_mapping_set(mlxsw_sp_port);
 	if (err) {
@@ -3864,6 +3881,7 @@ err_port_admin_status_set:
 err_port_mtu_set:
 err_port_speed_by_width_set:
 err_port_system_port_mapping_set:
+err_port_hll:
 err_dev_addr_init:
 	mlxsw_sp_port_swid_set(mlxsw_sp_port, MLXSW_PORT_SWID_DISABLED_PORT);
 err_port_swid_set:
@@ -4629,6 +4647,15 @@ static void mlxsw_sp_traps_fini(struct mlxsw_sp *mlxsw_sp)
 
 #define MLXSW_SP_LAG_SEED_INIT 0xcafecafe
 
+static int mlxsw_sp_sll_init(struct mlxsw_sp *mlxsw_sp)
+{
+	char qsll_pl[MLXSW_REG_QSLL_LEN];
+
+	mlxsw_reg_qsll_pack(qsll_pl, 31);
+	//return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qsll), qsll_pl);
+	return 0;
+}
+
 static int mlxsw_sp_lag_init(struct mlxsw_sp *mlxsw_sp)
 {
 	char slcr_pl[MLXSW_REG_SLCR_LEN];
@@ -4769,6 +4796,12 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_lag_init;
 	}
 
+	err = mlxsw_sp_sll_init(mlxsw_sp);
+	if (err) {
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to initialize SLL\n");
+		goto err_sll_init;
+	}
+
 	/* Initialize SPAN before router and switchdev, so that those components
 	 * can call mlxsw_sp_span_respin().
 	 */
@@ -4887,6 +4920,7 @@ err_switchdev_init:
 	mlxsw_sp_span_fini(mlxsw_sp);
 err_span_init:
 	mlxsw_sp_lag_fini(mlxsw_sp);
+err_sll_init:
 err_lag_init:
 	mlxsw_sp_buffers_fini(mlxsw_sp);
 err_buffers_init:

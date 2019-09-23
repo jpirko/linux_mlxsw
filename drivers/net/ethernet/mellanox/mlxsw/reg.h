@@ -3800,6 +3800,35 @@ mlxsw_reg_qpdpm_dscp_pack(char *payload, unsigned short dscp, u8 prio)
 	mlxsw_reg_qpdpm_dscp_entry_prio_set(payload, dscp, prio);
 }
 
+/* QSLL */
+#define MLXSW_REG_QSLL_ID 0x4015
+#define MLXSW_REG_QSLL_LEN 0x08
+
+MLXSW_REG_DEFINE(qsll, MLXSW_REG_QSLL_ID, MLXSW_REG_QSLL_LEN);
+MLXSW_ITEM32(reg, qsll, sll_time, 0x04, 0, 5);
+
+static inline void mlxsw_reg_qsll_pack(char *payload, int sll_time)
+{
+	MLXSW_REG_ZERO(qsll, payload);
+	mlxsw_reg_qsll_sll_time_set(payload, sll_time);
+}
+
+/* QHLL */
+#define MLXSW_REG_QHLL_ID 0x4016
+#define MLXSW_REG_QHLL_LEN 0x0C
+
+MLXSW_REG_DEFINE(qhll, MLXSW_REG_QHLL_ID, MLXSW_REG_QHLL_LEN);
+MLXSW_ITEM32(reg, qhll, local_port, 0x00, 16, 8);
+MLXSW_ITEM32(reg, qhll, hll_time, 0x04, 0, 5);
+
+static inline void
+mlxsw_reg_qhll_pack(char *payload, u8 local_port, int hll_time)
+{
+	MLXSW_REG_ZERO(qhll, payload);
+	mlxsw_reg_qhll_local_port_set(payload, local_port);
+	mlxsw_reg_qhll_hll_time_set(payload, hll_time);
+}
+
 /* QTCTM - QoS Switch Traffic Class Table is Multicast-Aware Register
  * ------------------------------------------------------------------
  * This register configures if the Switch Priority to Traffic Class mapping is
@@ -10513,6 +10542,8 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(qrwe),
 	MLXSW_REG(qpdsm),
 	MLXSW_REG(qpdpm),
+	MLXSW_REG(qsll),
+	MLXSW_REG(qhll),
 	MLXSW_REG(qtctm),
 	MLXSW_REG(qpsc),
 	MLXSW_REG(pmlp),
