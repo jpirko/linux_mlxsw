@@ -1735,17 +1735,47 @@ static int mlxsw_core_reg_access(struct mlxsw_core *mlxsw_core,
 	return mlxsw_reg_trans_bulk_wait(&bulk_list);
 }
 
+u64 last_regs[64];
+EXPORT_SYMBOL(last_regs);
+
+unsigned last_reg;
+EXPORT_SYMBOL(last_reg);
+
+u64 count_reg;
+EXPORT_SYMBOL(count_reg);
+
+static u64 name_to_u64(const char *name)
+{
+	u64 ret = 0;
+	while (*name) {
+		ret <<= 8;
+		ret |= (unsigned char)*name;
+		name++;
+	}
+	return ret;
+}
+
 int mlxsw_reg_query(struct mlxsw_core *mlxsw_core,
 		    const struct mlxsw_reg_info *reg, char *payload)
 {
+	/*
+	last_reg = (last_reg + 1) % 64;
+	last_regs[last_reg] = (name_to_u64(reg->name) << 8) | '?';
+	count_reg++;
+	*/
+
 	return mlxsw_core_reg_access(mlxsw_core, reg, payload,
 				     MLXSW_CORE_REG_ACCESS_TYPE_QUERY);
 }
 EXPORT_SYMBOL(mlxsw_reg_query);
-
 int mlxsw_reg_write(struct mlxsw_core *mlxsw_core,
 		    const struct mlxsw_reg_info *reg, char *payload)
 {
+	last_reg = (last_reg + 1) % 64;
+	last_regs[last_reg] = name_to_u64(reg->name);
+	count_reg++;
+
+	//printk(KERN_WARNING "reg_write %s\n", reg->name);
 	return mlxsw_core_reg_access(mlxsw_core, reg, payload,
 				     MLXSW_CORE_REG_ACCESS_TYPE_WRITE);
 }

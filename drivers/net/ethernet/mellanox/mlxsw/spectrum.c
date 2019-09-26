@@ -530,6 +530,8 @@ static void mlxsw_sp_txhdr_construct(struct sk_buff *skb,
 	mlxsw_tx_hdr_proto_set(txhdr, MLXSW_TXHDR_PROTO_ETH);
 	mlxsw_tx_hdr_swid_set(txhdr, 0);
 	mlxsw_tx_hdr_control_tclass_set(txhdr, 1);
+	//mlxsw_tx_hdr_control_tclass_set(txhdr, 0);
+	//mlxsw_tx_hdr_etclass_set(txhdr, 7);
 	mlxsw_tx_hdr_port_mid_set(txhdr, tx_info->local_port);
 	mlxsw_tx_hdr_type_set(txhdr, MLXSW_TXHDR_TYPE_CONTROL);
 }
@@ -2306,7 +2308,7 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_tc_stats[] = {
 					 (MLXSW_SP_PORT_HW_PRIO_STATS_LEN * \
 					  IEEE_8021QAZ_MAX_TCS) + \
 					 (MLXSW_SP_PORT_HW_TC_STATS_LEN * \
-					  TC_MAX_QUEUE))
+					  TC_MAX_QUEUE) + 66 + 2)
 
 static void mlxsw_sp_port_get_prio_strings(u8 **p, int prio)
 {
@@ -2374,6 +2376,23 @@ static void mlxsw_sp_port_get_strings(struct net_device *dev,
 
 		for (i = 0; i < TC_MAX_QUEUE; i++)
 			mlxsw_sp_port_get_tc_strings(&p, i);
+
+		sprintf(p, "regct");
+		p += ETH_GSTRING_LEN;
+
+		sprintf(p, "regidx");
+		p += ETH_GSTRING_LEN;
+
+		for (i = 0; i < 64; i++) {
+			sprintf(p, "reg%02d", i);
+			p += ETH_GSTRING_LEN;
+		}
+
+		sprintf(p, "mlxsw_pci_wqe_frags");
+		p += ETH_GSTRING_LEN;
+
+		sprintf(p, "mlxsw_pci_wqe_bytes");
+		p += ETH_GSTRING_LEN;
 
 		mlxsw_sp_port->mlxsw_sp->ptp_ops->get_stats_strings(&p);
 		break;
@@ -2467,6 +2486,13 @@ static void __mlxsw_sp_port_get_stats(struct net_device *dev,
 	}
 }
 
+extern u64 last_regs[64];
+extern unsigned last_reg;
+extern u64 count_reg;
+
+extern atomic64_t mlxsw_pci_wqe_frags;
+extern atomic64_t mlxsw_pci_wqe_bytes;
+
 static void mlxsw_sp_port_get_stats(struct net_device *dev,
 				    struct ethtool_stats *stats, u64 *data)
 {
@@ -2511,6 +2537,15 @@ static void mlxsw_sp_port_get_stats(struct net_device *dev,
 					  data, data_index);
 		data_index += MLXSW_SP_PORT_HW_TC_STATS_LEN;
 	}
+
+	data[data_index++] = count_reg;
+	data[data_index++] = last_reg;
+	for (i = 0; i < 64; i++) {
+		data[data_index++] = last_regs[i];
+	}
+
+	data[data_index++] = atomic64_read(&mlxsw_pci_wqe_frags);
+	data[data_index++] = atomic64_read(&mlxsw_pci_wqe_bytes);
 
 	/* PTP counters */
 	mlxsw_sp_port->mlxsw_sp->ptp_ops->get_stats(mlxsw_sp_port,

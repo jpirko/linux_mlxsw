@@ -316,6 +316,12 @@ static void mlxsw_pci_sdq_fini(struct mlxsw_pci *mlxsw_pci,
 	mlxsw_cmd_hw2sw_sdq(mlxsw_pci->core, q->num);
 }
 
+atomic64_t mlxsw_pci_wqe_frags;
+EXPORT_SYMBOL(mlxsw_pci_wqe_frags);
+
+atomic64_t mlxsw_pci_wqe_bytes;
+EXPORT_SYMBOL(mlxsw_pci_wqe_bytes);
+
 static int mlxsw_pci_wqe_frag_map(struct mlxsw_pci *mlxsw_pci, char *wqe,
 				  int index, char *frag_data, size_t frag_len,
 				  int direction)
@@ -1555,6 +1561,7 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 	char *wqe;
 	int i;
 	int err;
+	unsigned long int tot;
 
 	if (skb_shinfo(skb)->nr_frags > MLXSW_PCI_WQE_SG_ENTRIES - 1) {
 		err = skb_linearize(skb);
@@ -1583,6 +1590,7 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 	if (err)
 		goto unlock;
 
+	tot = skb_headlen(skb);
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
@@ -1592,7 +1600,10 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 					     DMA_TO_DEVICE);
 		if (err)
 			goto unmap_frags;
+		tot += skb_frag_size(frag);
 	}
+	atomic64_inc(&mlxsw_pci_wqe_frags);
+	atomic64_add(tot, &mlxsw_pci_wqe_bytes);
 
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP))
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
