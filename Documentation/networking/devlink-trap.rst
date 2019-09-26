@@ -162,6 +162,46 @@ be added to the following table:
      - ``drop``
      - Traps packets that the device decided to drop because they could not be
        enqueued to a transmission queue which is full
+   * - ``non_ip``
+     - ``drop``
+     - Traps packets that the device decided to drop because they do not have
+       IP header
+   * - ``uc_dip_over_mc_dmac``
+     - ``drop``
+     - Traps packets that the device decided to drop because they were sent to
+       unicast destination IP using multicast destination MAC
+   * - ``dip_is_loopback_address``
+     - ``drop``
+     - Traps packets that the device decided to drop because they were sent to
+       loopback destination IP
+   * - ``sip_is_mc``
+     - ``drop``
+     - Traps packets that the device decided to drop because they were sent
+       from multicast source IP
+   * - ``sip_is_loopback_address``
+     - ``drop``
+     - Traps packets that the device decided to drop because they were sent
+       from loopback source IP
+   * - ``ipv4_sip_is_unspecified``
+     - ``drop``
+     - Traps packets that the device decided to drop because of unspecified
+       source IP
+   * - ``ip_header_corrupted``
+     - ``drop``
+     - Traps packets that the device decided to drop because of wrong header
+       checksum or wrong IP version or wrong IPv4 IHL
+   * - ``ipv4_sip_is_limited_bc``
+     - ``drop``
+     - Traps packets that the device decided to drop because IPv4 source IP
+        was limited broadcast
+   * - ``ipv6_mc_dip_reserved_scope``
+     - ``drop``
+     - Traps packets that the device decided to drop because IPv6 destination
+       IP was reserved
+   * - ``ipv6_mc_dip_interface_local_scope``
+     - ``drop``
+     - Traps packets that the device decided to drop because IPv6 destination
+       IP was of interface local scope
 
 Driver-specific Packet Traps
 ============================
