@@ -767,9 +767,11 @@ nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev, struct nsim_dev *nsim_dev,
 			goto err_traps_exit;
 	}
 
-	err = nsim_bpf_dev_init(nsim_dev);
-	if (err)
-		goto err_debugfs_exit;
+	if (!reload) {
+		err = nsim_bpf_dev_init(nsim_dev);
+		if (err)
+			goto err_debugfs_exit;
+	}
 
 	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
 	if (err)
@@ -780,7 +782,8 @@ nsim_dev_create(struct nsim_bus_dev *nsim_bus_dev, struct nsim_dev *nsim_dev,
 	return nsim_dev;
 
 err_bpf_dev_exit:
-	nsim_bpf_dev_exit(nsim_dev);
+	if (!reload)
+		nsim_bpf_dev_exit(nsim_dev);
 err_debugfs_exit:
 	if (!reload)
 		nsim_dev_debugfs_exit(nsim_dev);
@@ -810,11 +813,10 @@ static void nsim_dev_destroy(struct nsim_dev *nsim_dev, bool reload)
 {
 	struct devlink *devlink = priv_to_devlink(nsim_dev);
 
-	if (!devlink_is_reload_failed(devlink)) {
+	if (!devlink_is_reload_failed(devlink))
 		nsim_dev_port_del_all(nsim_dev);
+	if (!reload)
 		nsim_bpf_dev_exit(nsim_dev);
-
-	}
 	if (!reload)
 		nsim_dev_debugfs_exit(nsim_dev);
 	if (!devlink_is_reload_failed(devlink)) {
