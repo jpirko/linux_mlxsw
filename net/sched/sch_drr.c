@@ -188,6 +188,19 @@ static unsigned long drr_search_class(struct Qdisc *sch, u32 classid)
 	return (unsigned long)drr_find_class(sch, classid);
 }
 
+u16 drr_priomap(struct Qdisc *sch, unsigned long cl)
+{
+	struct drr_sched *q = qdisc_priv(sch);
+	u16 priomap = 0;
+	int prio;
+
+	for (prio = 0; prio <= TC_PRIO_MAX; prio++) {
+		if (cl == (unsigned long)q->clprio[prio])
+			priomap |= 1 << prio;
+	}
+	return priomap;
+}
+
 static struct tcf_block *drr_tcf_block(struct Qdisc *sch, unsigned long cl,
 				       struct netlink_ext_ack *extack)
 {
@@ -495,6 +508,7 @@ static const struct Qdisc_class_ops drr_class_ops = {
 	.change		= drr_change_class,
 	.delete		= drr_delete_class,
 	.find		= drr_search_class,
+	.priomap	= drr_priomap,
 	.tcf_block	= drr_tcf_block,
 	.bind_tcf	= drr_bind_tcf,
 	.unbind_tcf	= drr_unbind_tcf,

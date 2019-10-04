@@ -203,6 +203,7 @@ struct Qdisc_class_ops {
 
 	/* Class manipulation routines */
 	unsigned long		(*find)(struct Qdisc *, u32 classid);
+	u16			(*priomap)(struct Qdisc *, unsigned long cl);
 	int			(*change)(struct Qdisc *, u32, u32,
 					struct nlattr **, unsigned long *,
 					struct netlink_ext_ack *);

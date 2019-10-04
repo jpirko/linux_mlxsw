@@ -328,6 +328,19 @@ static unsigned long prio_find(struct Qdisc *sch, u32 classid)
 	return band;
 }
 
+u16 prio_priomap(struct Qdisc *sch, unsigned long cl)
+{
+	struct prio_sched_data *q = qdisc_priv(sch);
+	u16 priomap = 0;
+	int prio;
+
+	for (prio = 0; prio <= TC_PRIO_MAX; prio++) {
+		if (q->prio2band[prio] == cl - 1)
+			priomap |= 1 << prio;
+	}
+	return priomap;
+}
+
 static unsigned long prio_bind(struct Qdisc *sch, unsigned long parent, u32 classid)
 {
 	return prio_find(sch, classid);
@@ -398,6 +411,7 @@ static const struct Qdisc_class_ops prio_class_ops = {
 	.graft		=	prio_graft,
 	.leaf		=	prio_leaf,
 	.find		=	prio_find,
+	.priomap	=	prio_priomap,
 	.walk		=	prio_walk,
 	.tcf_block	=	prio_tcf_block,
 	.bind_tcf	=	prio_bind,
