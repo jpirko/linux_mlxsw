@@ -824,4 +824,12 @@ struct tc_root_qopt_offload {
 	bool ingress;
 };
 
+enum tc_post_change_command {
+	TC_POST_CHANGE,
+};
+
+struct tc_post_change_qopt_offload {
+	enum tc_post_change_command command;
+};
+
 #endif

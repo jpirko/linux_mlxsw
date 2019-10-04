@@ -864,6 +864,18 @@ static void qdisc_offload_graft_root(struct net_device *dev,
 				   TC_SETUP_ROOT_QDISC, &graft_offload, extack);
 }
 
+static void qdisc_setup_tc_post_change(struct net_device *dev)
+{
+	struct tc_post_change_qopt_offload qopt = {
+		.command	= TC_POST_CHANGE,
+	};
+
+	if (!tc_can_offload(dev) || !dev->netdev_ops->ndo_setup_tc)
+		return;
+
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_POST_CHANGE, &qopt);
+}
+
 static int tc_fill_qdisc(struct sk_buff *skb, struct Qdisc *q, u32 clid,
 			 u32 portid, u32 seq, u16 flags, int event)
 {
@@ -1102,6 +1114,8 @@ skip:
 			return err;
 		notify_and_destroy(net, skb, n, classid, old, new);
 	}
+
+	qdisc_setup_tc_post_change(dev);
 	return 0;
 }
 
@@ -1303,8 +1317,8 @@ err_out4:
 	goto err_out3;
 }
 
-static int qdisc_change(struct Qdisc *sch, struct nlattr **tca,
-			struct netlink_ext_ack *extack)
+static int qdisc_change(struct Qdisc *sch, struct net_device *dev,
+			struct nlattr **tca, struct netlink_ext_ack *extack)
 {
 	struct qdisc_size_table *ostab, *stab = NULL;
 	int err = 0;
@@ -1322,6 +1336,8 @@ static int qdisc_change(struct Qdisc *sch, struct nlattr **tca,
 		if (err)
 			return err;
 	}
+
+	qdisc_setup_tc_post_change(dev);
 
 	if (tca[TCA_STAB]) {
 		stab = qdisc_get_stab(tca[TCA_STAB], extack);
@@ -1620,7 +1636,7 @@ replay:
 		NL_SET_ERR_MSG(extack, "Invalid qdisc name");
 		return -EINVAL;
 	}
-	err = qdisc_change(q, tca, extack);
+	err = qdisc_change(q, dev, tca, extack);
 	if (err == 0)
 		qdisc_notify(net, skb, n, clid, NULL, q);
 	return err;
@@ -2083,6 +2099,7 @@ static int tc_ctl_tclass(struct sk_buff *skb, struct nlmsghdr *n,
 		/* We just create a new class, need to do reverse binding. */
 		if (cl != new_cl)
 			tc_bind_tclass(q, portid, clid, new_cl);
+		qdisc_setup_tc_post_change(dev);
 	}
 out:
 	return err;
