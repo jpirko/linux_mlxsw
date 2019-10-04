@@ -720,15 +720,27 @@ static int devlink_nl_cmd_port_get_doit(struct sk_buff *skb,
 static int devlink_nl_cmd_port_get_dumpit(struct sk_buff *msg,
 					  struct netlink_callback *cb)
 {
-	struct devlink *devlink;
+	const struct genl_dumpit_info *info = genl_dumpit_info(cb);
+	struct devlink *devlink, *filter_devlink = NULL;
 	struct devlink_port *devlink_port;
 	int start = cb->args[0];
 	int idx = 0;
 	int err;
 
 	mutex_lock(&devlink_mutex);
+
+	if (info->attrs[DEVLINK_ATTR_BUS_NAME] ||
+	    info->attrs[DEVLINK_ATTR_DEV_NAME]) {
+		filter_devlink = devlink_get_from_attrs(sock_net(cb->skb->sk),
+							info->attrs);
+		if (IS_ERR(filter_devlink)) {
+			err = PTR_ERR(filter_devlink);
+			goto out;
+		}
+	}
 	list_for_each_entry(devlink, &devlink_list, list) {
-		if (!net_eq(devlink_net(devlink), sock_net(msg->sk)))
+		if (!net_eq(devlink_net(devlink), sock_net(msg->sk)) ||
+		    (filter_devlink && filter_devlink != devlink))
 			continue;
 		mutex_lock(&devlink->lock);
 		list_for_each_entry(devlink_port, &devlink->port_list, list) {
@@ -5915,7 +5927,8 @@ static const struct genl_ops devlink_nl_ops[] = {
 	},
 	{
 		.cmd = DEVLINK_CMD_PORT_GET,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+		.validate = GENL_DONT_VALIDATE_STRICT |
+			    GENL_DONT_VALIDATE_DUMP_STRICT,
 		.doit = devlink_nl_cmd_port_get_doit,
 		.dumpit = devlink_nl_cmd_port_get_dumpit,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_PORT,
