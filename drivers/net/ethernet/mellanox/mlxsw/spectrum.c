@@ -1748,6 +1748,8 @@ static int mlxsw_sp_setup_tc(struct net_device *dev, enum tc_setup_type type,
 		return mlxsw_sp_setup_tc_red(mlxsw_sp_port, type_data);
 	case TC_SETUP_QDISC_PRIO:
 		return mlxsw_sp_setup_tc_prio(mlxsw_sp_port, type_data);
+	case TC_SETUP_POST_CHANGE:
+		return mlxsw_sp_setup_tc_post_change(mlxsw_sp_port, type_data);
 	default:
 		return -EOPNOTSUPP;
 	}

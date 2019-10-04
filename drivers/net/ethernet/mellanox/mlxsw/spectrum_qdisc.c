@@ -18,7 +18,38 @@ enum mlxsw_sp_qdisc_type {
 	MLXSW_SP_QDISC_NO_QDISC,
 	MLXSW_SP_QDISC_RED,
 	MLXSW_SP_QDISC_PRIO,
+	MLXSW_SP_QDISC_DRR,
+	MLXSW_SP_QDISC_CBS,
 };
+
+struct mlxsw_sp_qdisc_type_mapping {
+	const char *id;
+	enum mlxsw_sp_qdisc_type type;
+};
+
+static const struct mlxsw_sp_qdisc_type_mapping mlxsw_sp_qdisc_type_map[] = {
+	{"noop", MLXSW_SP_QDISC_NO_QDISC},
+	{"pfifo", MLXSW_SP_QDISC_NO_QDISC},
+	{"bfifo", MLXSW_SP_QDISC_NO_QDISC},
+	{"prio", MLXSW_SP_QDISC_PRIO},
+	{"drr", MLXSW_SP_QDISC_DRR},
+	{"red", MLXSW_SP_QDISC_RED},
+	{"cbs", MLXSW_SP_QDISC_CBS},
+};
+
+static enum mlxsw_sp_qdisc_type mlxsw_sp_qdisc_type(struct Qdisc *sch)
+{
+	int i;
+
+	if (sch)
+		for (i = 0; i < ARRAY_SIZE(mlxsw_sp_qdisc_type_map); i++) {
+			if (!strcmp(mlxsw_sp_qdisc_type_map[i].id,
+				    sch->ops->id))
+				return mlxsw_sp_qdisc_type_map[i].type;
+		}
+
+	return MLXSW_SP_QDISC_NO_QDISC;
+}
 
 struct mlxsw_sp_qdisc_ops {
 	enum mlxsw_sp_qdisc_type type;
@@ -663,6 +694,258 @@ mlxsw_sp_qdisc_prio_graft(struct mlxsw_sp_port *mlxsw_sp_port,
 	return -EOPNOTSUPP;
 }
 
+struct mlxsw_sp_qdisc_tc_config {
+	unsigned int group;
+	bool has_shaper;
+	bool dwrr;
+	bool red;
+	unsigned int shaper;
+	unsigned int weight;
+};
+
+struct mlxsw_sp_qdisc_config {
+	unsigned int num_tcs;
+	unsigned int prio_tc[8];
+	struct mlxsw_sp_qdisc_tc_config tc[8];
+};
+
+struct mlxsw_sp_qdisc_walk_state {
+	struct mlxsw_sp_qdisc_config config;
+	unsigned int num_grs;
+	int dwrr; /* -1=none, 0=strict, 1=dwrr*/
+};
+
+static int mlxsw_sp_qdisc_new_band(struct mlxsw_sp_qdisc_walk_state *wst,
+				   u8 priomap, bool dwrr)
+{
+	int prio;
+	int tc;
+
+	if (wst->config.num_tcs == 8)
+		return -ENOBUFS;
+
+	if (wst->dwrr != dwrr) {
+		if (wst->num_grs == 8)
+			return -ENOBUFS;
+		wst->num_grs++;
+		wst->dwrr = dwrr;
+	}
+
+	tc = wst->config.num_tcs++;
+	wst->config.tc[tc] = (struct mlxsw_sp_qdisc_tc_config) {
+		.group = wst->num_grs - 1,
+		.dwrr = dwrr,
+	};
+
+	for (prio = 0; prio < 8; prio++) {
+		if (priomap & (1 << prio))
+			wst->config.prio_tc[prio] = tc;
+	}
+
+	return tc;
+}
+
+static int mlxsw_sp_qdisc_handle_red(struct mlxsw_sp_qdisc_tc_config *tcc,
+				     struct Qdisc *sch)
+{
+	tcc->red = true;
+	return 0;
+}
+
+static int mlxsw_sp_qdisc_handle_cbs(struct mlxsw_sp_qdisc_tc_config *tcc,
+				     struct Qdisc *sch)
+{
+	tcc->has_shaper = true;
+	tcc->shaper = 123;
+	return 0;
+}
+
+static int mlxsw_sp_qdisc_handle_leaf(struct mlxsw_sp_qdisc_tc_config *tcc,
+				      struct Qdisc *sch)
+{
+	switch (mlxsw_sp_qdisc_type(sch)) {
+	case MLXSW_SP_QDISC_NO_QDISC:
+		return 0;
+	case MLXSW_SP_QDISC_RED:
+		return mlxsw_sp_qdisc_handle_red(tcc, sch);
+	case MLXSW_SP_QDISC_CBS:
+		return mlxsw_sp_qdisc_handle_cbs(tcc, sch);
+
+	case MLXSW_SP_QDISC_PRIO:
+	case MLXSW_SP_QDISC_DRR:
+		break;
+	}
+
+	return -EOPNOTSUPP;
+}
+
+struct mlxsw_sp_qdisc_drr_walker {
+	struct qdisc_walker w;
+	struct mlxsw_sp_qdisc_walk_state *wst;
+	u8 priomap;
+	int err;
+};
+
+static int mlxsw_sp_qdisc_walk_drr_class(struct Qdisc *sch, unsigned long cl,
+					 struct qdisc_walker *w)
+{
+	struct mlxsw_sp_qdisc_drr_walker *dw =
+		container_of(w, struct mlxsw_sp_qdisc_drr_walker, w);
+	struct Qdisc *leaf = sch->ops->cl_ops->leaf(sch, cl);
+	u16 cl_priomap = sch->ops->cl_ops->priomap(sch, cl);
+	u8 common_priomap = dw->priomap & (u8)cl_priomap;
+	int err;
+	int tc;
+
+	if (!common_priomap)
+		return 0;
+
+	tc = mlxsw_sp_qdisc_new_band(dw->wst, common_priomap, true);
+	if (tc < 0) {
+		dw->err = tc;
+		return -1;
+	}
+
+	err = mlxsw_sp_qdisc_handle_leaf(&dw->wst->config.tc[tc], leaf);
+	if (err) {
+		dw->err = err;
+		return -1;
+	}
+
+	dw->priomap &= ~common_priomap;
+	return 0;
+}
+
+static int mlxsw_sp_qdisc_walk_drr(struct mlxsw_sp_qdisc_walk_state *wst,
+				   struct Qdisc *sch, u8 priomap)
+{
+	struct mlxsw_sp_qdisc_drr_walker dw = {
+		.w.fn = mlxsw_sp_qdisc_walk_drr_class,
+		.wst = wst,
+		.priomap = priomap,
+	};
+	int tc;
+
+	sch->ops->cl_ops->walk(sch, &dw.w);
+	if (dw.err)
+		return dw.err;
+
+	if (dw.priomap) {
+		tc = mlxsw_sp_qdisc_new_band(wst, dw.priomap, true);
+		if (tc < 0)
+			return tc;
+
+		wst->config.tc[tc].has_shaper = true;
+		wst->config.tc[tc].shaper = 0;
+	}
+
+	wst->dwrr = -1;
+	return 0;
+}
+
+static int mlxsw_sp_qdisc_walk_prio_child(struct mlxsw_sp_qdisc_walk_state *wst,
+					  struct Qdisc *sch, u8 priomap)
+{
+	enum mlxsw_sp_qdisc_type type = mlxsw_sp_qdisc_type(sch);
+	int tc;
+
+	if (!priomap)
+		return 0;
+
+	if (type == MLXSW_SP_QDISC_DRR)
+		return mlxsw_sp_qdisc_walk_drr(wst, sch, priomap);
+
+	tc = mlxsw_sp_qdisc_new_band(wst, priomap, false);
+	if (tc < 0)
+		return tc;
+
+	return mlxsw_sp_qdisc_handle_leaf(&wst->config.tc[tc], sch);
+}
+
+struct mlxsw_sp_qdisc_prio_walker {
+	struct qdisc_walker w;
+	struct mlxsw_sp_qdisc_walk_state *wst;
+	int err;
+};
+
+static int mlxsw_sp_qdisc_walk_prio_band(struct Qdisc *sch, unsigned long cl,
+					 struct qdisc_walker *w)
+{
+	struct mlxsw_sp_qdisc_prio_walker *pw =
+		container_of(w, struct mlxsw_sp_qdisc_prio_walker, w);
+	struct Qdisc *leaf = sch->ops->cl_ops->leaf(sch, cl);
+	u16 priomap = sch->ops->cl_ops->priomap(sch, cl);
+	int err;
+
+	err = mlxsw_sp_qdisc_walk_prio_child(pw->wst, leaf, priomap);
+	if (err) {
+		pw->err = err;
+		return -1;
+	}
+	return 0;
+}
+
+static int mlxsw_sp_qdisc_walk_prio(struct mlxsw_sp_qdisc_walk_state *wst,
+				     struct Qdisc *sch)
+{
+	struct mlxsw_sp_qdisc_prio_walker pw = {
+		.w.fn = mlxsw_sp_qdisc_walk_prio_band,
+		.wst = wst,
+	};
+
+	sch->ops->cl_ops->walk(sch, &pw.w);
+	return pw.err;
+}
+
+static void dump_config(struct mlxsw_sp_qdisc_config *cfg)
+{
+	int prio;
+	int tc;
+
+	for (prio = 0; prio < 8; prio++) {
+		printk(KERN_WARNING "prio %d -> TC %d\n",
+		       prio, cfg->prio_tc[prio]);
+	}
+
+	for (tc = 0; tc < cfg->num_tcs; tc++) {
+		struct mlxsw_sp_qdisc_tc_config *tcc = &cfg->tc[tc];
+		char buf[100] = "strict";
+
+		if (tcc->dwrr)
+			sprintf(buf, "dwrr w=%d", tcc->weight);
+		printk(KERN_WARNING "SG %d -(%s)-> GR %d\n",
+		       tc, buf, tcc->group);
+		if (tcc->has_shaper)
+			printk(KERN_WARNING " - max_shaper %d\n", tcc->shaper);
+		if (tcc->red)
+			printk(KERN_WARNING " - RED\n");
+	}
+}
+
+static void mlxsw_sp_qdisc_walk(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	struct Qdisc *sch = mlxsw_sp_port->dev->qdisc;
+	struct mlxsw_sp_qdisc_walk_state wst;
+
+	memset(&wst, 0, sizeof(wst));
+	wst.dwrr = -1;
+
+	switch (mlxsw_sp_qdisc_type(sch)) {
+	case MLXSW_SP_QDISC_NO_QDISC:
+		break;
+	case MLXSW_SP_QDISC_PRIO:
+		mlxsw_sp_qdisc_walk_prio(&wst, sch);
+		break;
+	case MLXSW_SP_QDISC_DRR:
+	case MLXSW_SP_QDISC_RED:
+	case MLXSW_SP_QDISC_CBS:
+		mlxsw_sp_qdisc_walk_prio_child(&wst, sch, 0xff);
+		break;
+	}
+
+	dump_config(&wst.config);
+}
+
 int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct tc_prio_qopt_offload *p)
 {
@@ -694,6 +977,17 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 	default:
 		return -EOPNOTSUPP;
 	}
+}
+
+int mlxsw_sp_setup_tc_post_change(struct mlxsw_sp_port *mlxsw_sp_port,
+				  struct tc_post_change_qopt_offload *p)
+{
+	switch (p->command) {
+	case TC_POST_CHANGE:
+		mlxsw_sp_qdisc_walk(mlxsw_sp_port);
+	}
+
+	return 0;
 }
 
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port)
