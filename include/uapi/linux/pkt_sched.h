@@ -662,6 +662,7 @@ struct tc_netem_gemodel {
 enum {
 	TCA_DRR_UNSPEC,
 	TCA_DRR_QUANTUM,
+	TCA_DRR_DEFMAP,
 	__TCA_DRR_MAX
 };
 

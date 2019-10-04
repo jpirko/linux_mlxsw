@@ -34,6 +34,7 @@ struct drr_sched {
 	struct tcf_proto __rcu		*filter_list;
 	struct tcf_block		*block;
 	struct Qdisc_class_hash		clhash;
+	struct drr_class		*clprio[TC_PRIO_MAX + 1];
 };
 
 static struct drr_class *drr_find_class(struct Qdisc *sch, u32 classid)
@@ -49,6 +50,7 @@ static struct drr_class *drr_find_class(struct Qdisc *sch, u32 classid)
 
 static const struct nla_policy drr_policy[TCA_DRR_MAX + 1] = {
 	[TCA_DRR_QUANTUM]	= { .type = NLA_U32 },
+	[TCA_DRR_DEFMAP]	= { .type = NLA_U16 },
 };
 
 static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
@@ -59,7 +61,9 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 	struct drr_class *cl = (struct drr_class *)*arg;
 	struct nlattr *opt = tca[TCA_OPTIONS];
 	struct nlattr *tb[TCA_DRR_MAX + 1];
+	u16 defmap = 0;
 	u32 quantum;
+	int prio;
 	int err;
 
 	if (!opt) {
@@ -93,6 +97,8 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 				return err;
 			}
 		}
+
+		// xxx update clprio from the new DEFMAP
 
 		sch_tree_lock(sch);
 		if (tb[TCA_DRR_QUANTUM])
@@ -129,8 +135,15 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 		}
 	}
 
+	if (tb[TCA_DRR_DEFMAP])
+		defmap = nla_get_u32(tb[TCA_DRR_DEFMAP]);
+
 	sch_tree_lock(sch);
 	qdisc_class_hash_insert(&q->clhash, &cl->common);
+	for (prio = 0; prio <= TC_PRIO_MAX; prio++) {
+		if (defmap & (1 << prio))
+			q->clprio[prio] = cl;
+	}
 	sch_tree_unlock(sch);
 
 	qdisc_class_hash_grow(sch, &q->clhash);
@@ -150,6 +163,7 @@ static int drr_delete_class(struct Qdisc *sch, unsigned long arg)
 {
 	struct drr_sched *q = qdisc_priv(sch);
 	struct drr_class *cl = (struct drr_class *)arg;
+	int prio;
 
 	if (cl->filter_cnt > 0)
 		return -EBUSY;
@@ -157,6 +171,10 @@ static int drr_delete_class(struct Qdisc *sch, unsigned long arg)
 	sch_tree_lock(sch);
 
 	qdisc_purge_queue(cl->qdisc);
+	for (prio = 0; prio <= TC_PRIO_MAX; prio++) {
+		if (q->clprio[prio] == cl)
+			q->clprio[prio] = NULL;
+	}
 	qdisc_class_hash_remove(&q->clhash, &cl->common);
 
 	sch_tree_unlock(sch);
@@ -237,15 +255,20 @@ static int drr_dump_class(struct Qdisc *sch, unsigned long arg,
 {
 	struct drr_class *cl = (struct drr_class *)arg;
 	struct nlattr *nest;
+	u16 defmap;
 
 	tcm->tcm_parent	= TC_H_ROOT;
 	tcm->tcm_handle	= cl->common.classid;
 	tcm->tcm_info	= cl->qdisc->handle;
 
+	defmap = drr_priomap(sch, (unsigned long)cl);
 	nest = nla_nest_start_noflag(skb, TCA_OPTIONS);
 	if (nest == NULL)
 		goto nla_put_failure;
 	if (nla_put_u32(skb, TCA_DRR_QUANTUM, cl->quantum))
+		goto nla_put_failure;
+	if (defmap &&
+	    nla_put_u32(skb, TCA_DRR_DEFMAP, defmap))
 		goto nla_put_failure;
 	return nla_nest_end(skb, nest);
 
@@ -303,13 +326,14 @@ static struct drr_class *drr_classify(struct sk_buff *skb, struct Qdisc *sch,
 				      int *qerr)
 {
 	struct drr_sched *q = qdisc_priv(sch);
+	u32 prio = skb->priority;
 	struct drr_class *cl;
 	struct tcf_result res;
 	struct tcf_proto *fl;
 	int result;
 
-	if (TC_H_MAJ(skb->priority ^ sch->handle) == 0) {
-		cl = drr_find_class(sch, skb->priority);
+	if (TC_H_MAJ(prio ^ sch->handle) == 0) {
+		cl = drr_find_class(sch, prio);
 		if (cl != NULL)
 			return cl;
 	}
@@ -334,7 +358,10 @@ static struct drr_class *drr_classify(struct sk_buff *skb, struct Qdisc *sch,
 			cl = drr_find_class(sch, res.classid);
 		return cl;
 	}
-	return NULL;
+
+	if (TC_H_MAJ(prio))
+		prio = 0;
+	return q->clprio[prio & TC_PRIO_MAX];
 }
 
 static int drr_enqueue(struct sk_buff *skb, struct Qdisc *sch,
