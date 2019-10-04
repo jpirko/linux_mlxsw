@@ -237,6 +237,7 @@ static int drr_graft_class(struct Qdisc *sch, unsigned long arg,
 			   struct netlink_ext_ack *extack)
 {
 	struct drr_class *cl = (struct drr_class *)arg;
+	struct tc_drr_qopt_offload graft_offload;
 
 	if (new == NULL) {
 		new = qdisc_create_dflt(sch->dev_queue, &pfifo_qdisc_ops,
@@ -246,6 +247,16 @@ static int drr_graft_class(struct Qdisc *sch, unsigned long arg,
 	}
 
 	*old = qdisc_replace(sch, new, &cl->qdisc);
+
+	graft_offload.handle = sch->handle;
+	graft_offload.parent = sch->parent;
+	graft_offload.graft_params.classid = cl->common.classid;
+	graft_offload.graft_params.child_handle = new->handle;
+	graft_offload.command = TC_DRR_GRAFT;
+
+	qdisc_offload_graft_helper(qdisc_dev(sch), sch, new, *old,
+				   TC_SETUP_QDISC_DRR, &graft_offload,
+				   extack);
 	return 0;
 }
 
@@ -457,7 +468,13 @@ out:
 static int drr_init_qdisc(struct Qdisc *sch, struct nlattr *opt,
 			  struct netlink_ext_ack *extack)
 {
+	struct net_device *dev = qdisc_dev(sch);
 	struct drr_sched *q = qdisc_priv(sch);
+	struct tc_drr_qopt_offload oopt = {
+		.command = TC_DRR_REPLACE,
+		.handle = sch->handle,
+		.parent = sch->parent,
+	};
 	int err;
 
 	err = tcf_block_get(&q->block, &q->filter_list, sch, extack);
@@ -467,7 +484,8 @@ static int drr_init_qdisc(struct Qdisc *sch, struct nlattr *opt,
 	if (err < 0)
 		return err;
 	INIT_LIST_HEAD(&q->active);
-	return 0;
+
+	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_DRR, &oopt);
 }
 
 static void drr_reset_qdisc(struct Qdisc *sch)
@@ -489,10 +507,18 @@ static void drr_reset_qdisc(struct Qdisc *sch)
 
 static void drr_destroy_qdisc(struct Qdisc *sch)
 {
+	struct net_device *dev = qdisc_dev(sch);
 	struct drr_sched *q = qdisc_priv(sch);
+	struct tc_drr_qopt_offload oopt = {
+		.command = TC_DRR_DESTROY,
+		.handle = sch->handle,
+		.parent = sch->parent,
+	};
 	struct drr_class *cl;
 	struct hlist_node *next;
 	unsigned int i;
+
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_DRR, &oopt);
 
 	tcf_block_put(q->block);
 

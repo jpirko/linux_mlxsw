@@ -794,6 +794,7 @@ struct tc_prio_qopt_offload_params {
 	/* In case that a prio qdisc is offloaded and now is changed to a
 	 * non-offloadedable config, it needs to update the backlog & qlen
 	 * values to negate the HW backlog & qlen values (and only them).
+	 * xxx Figure out WTH and do this for DRR as well.
 	 */
 	struct gnet_stats_queue *qstats;
 };
@@ -832,4 +833,25 @@ struct tc_post_change_qopt_offload {
 	enum tc_post_change_command command;
 };
 
+enum tc_drr_command {
+	TC_DRR_REPLACE,
+	TC_DRR_DESTROY,
+	TC_DRR_STATS,
+	TC_DRR_GRAFT,
+};
+
+struct tc_drr_qopt_offload_graft_params {
+	u32 classid;
+	u32 child_handle;
+};
+
+struct tc_drr_qopt_offload {
+	enum tc_drr_command command;
+	u32 handle;
+	u32 parent;
+	union {
+		struct tc_qopt_offload_stats stats;
+		struct tc_drr_qopt_offload_graft_params graft_params;
+	};
+};
 #endif
