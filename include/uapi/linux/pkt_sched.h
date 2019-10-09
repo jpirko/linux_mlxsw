@@ -1181,4 +1181,33 @@ enum {
 
 #define TCA_TAPRIO_ATTR_MAX (__TCA_TAPRIO_ATTR_MAX - 1)
 
+/* ETS */
+
+#define TCQ_ETS_MAX_BANDS 16
+
+enum {
+	TCA_ETS_UNSPEC,
+	TCA_ETS_BANDS,	/* u8 */
+	TCA_ETS_STRICT,	/* u8 */
+	TCA_ETS_QUANTA,	/* nested TCA_ETS_BAND_QUANTUM */
+	TCA_ETS_PRIOMAP,	/* nested TCA_ETS_PMAP_BAND */
+	__TCA_ETS_MAX,
+};
+
+#define TCA_ETS_MAX (__TCA_ETS_MAX - 1)
+
+enum {
+	TCA_ETS_BAND_UNSPEC,
+	TCA_ETS_BAND_QUANTUM,	/* u32 */
+	__TCA_ETS_BAND_MAX,
+};
+#define TCA_ETS_BAND_MAX (__TCA_ETS_BAND_MAX - 1)
+
+enum {
+	TCA_ETS_PMAP_UNSPEC,
+	TCA_ETS_PMAP_BAND,	/* u8 */
+	__TCA_ETS_PMAP_MAX,
+};
+#define TCA_ETS_PMAP_MAX (__TCA_ETS_PMAP_MAX - 1)
+
 #endif
