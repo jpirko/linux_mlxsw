@@ -471,18 +471,35 @@ int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static int
-mlxsw_sp_qdisc_prio_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
+__mlxsw_sp_qdisc_ets_destroy(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	int i;
 
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 		mlxsw_sp_port_prio_tc_set(mlxsw_sp_port, i,
 					  MLXSW_SP_PORT_DEFAULT_TCLASS);
+		mlxsw_sp_port_ets_set(mlxsw_sp_port,
+				      MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+				      i, 0, false, 0);
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port,
 				       &mlxsw_sp_port->tclass_qdiscs[i]);
 		mlxsw_sp_port->tclass_qdiscs[i].prio_bitmap = 0;
 	}
+
+	return 0;
+}
+static int
+mlxsw_sp_qdisc_prio_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
+			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
+{
+	return __mlxsw_sp_qdisc_ets_destroy(mlxsw_sp_port);
+}
+
+static int
+__mlxsw_sp_qdisc_ets_check_params(unsigned int nbands)
+{
+	if (nbands > IEEE_8021QAZ_MAX_TCS)
+		return -EOPNOTSUPP;
 
 	return 0;
 }
@@ -494,30 +511,48 @@ mlxsw_sp_qdisc_prio_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 {
 	struct tc_prio_qopt_offload_params *p = params;
 
-	if (p->bands > IEEE_8021QAZ_MAX_TCS)
-		return -EOPNOTSUPP;
-
-	return 0;
+	return __mlxsw_sp_qdisc_ets_check_params(p->bands);
 }
 
 static int
-mlxsw_sp_qdisc_prio_replace(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			    void *params)
+__mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port,
+			     unsigned int nbands,
+			     unsigned int quanta[TCQ_ETS_MAX_BANDS],
+			     u8 priomap[TC_PRIO_MAX + 1])
 {
-	struct tc_prio_qopt_offload_params *p = params;
 	struct mlxsw_sp_qdisc *child_qdisc;
 	int tclass, i, band, backlog;
+	unsigned int w_psum_prev = 0;
+	unsigned int q_psum = 0;
+	unsigned int w_psum = 0;
+	unsigned int weight = 0;
+	unsigned int q_sum = 0;
+	unsigned int quantum;
 	u8 old_priomap;
 	int err;
 
-	for (band = 0; band < p->bands; band++) {
+	for (band = 0; band < nbands; band++)
+		q_sum += quanta[band];
+
+	for (band = 0; band < nbands; band++) {
 		tclass = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
 		child_qdisc = &mlxsw_sp_port->tclass_qdiscs[tclass];
 		old_priomap = child_qdisc->prio_bitmap;
 		child_qdisc->prio_bitmap = 0;
+
+		quantum = quanta[band];
+		q_psum += quantum;
+		w_psum = quantum ? q_psum * 100 / q_sum : 0;
+		weight = w_psum - w_psum_prev;
+		w_psum_prev = w_psum;
+		err = mlxsw_sp_port_ets_set(mlxsw_sp_port,
+					    MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+					    tclass, 0, !!quantum, weight);
+		if (err)
+			return err;
+
 		for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-			if (p->priomap[i] == band) {
+			if (priomap[i] == band) {
 				child_qdisc->prio_bitmap |= BIT(i);
 				if (BIT(i) & old_priomap)
 					continue;
@@ -540,8 +575,35 @@ mlxsw_sp_qdisc_prio_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 		child_qdisc = &mlxsw_sp_port->tclass_qdiscs[tclass];
 		child_qdisc->prio_bitmap = 0;
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, child_qdisc);
+		mlxsw_sp_port_ets_set(mlxsw_sp_port,
+				      MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+				      tclass, 0, false, 0);
 	}
 	return 0;
+}
+
+static int
+mlxsw_sp_qdisc_prio_replace(struct mlxsw_sp_port *mlxsw_sp_port,
+			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			    void *params)
+{
+	struct tc_prio_qopt_offload_params *p = params;
+	unsigned int quanta[TCQ_ETS_MAX_BANDS] = {0};
+
+	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, p->bands,
+					    quanta, p->priomap);
+}
+
+static void
+__mlxsw_sp_qdisc_ets_unoffload(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			       struct gnet_stats_queue *qstats)
+{
+	u64 backlog;
+
+	backlog = mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
+				       mlxsw_sp_qdisc->stats_base.backlog);
+	qstats->backlog -= backlog;
 }
 
 static void
@@ -550,11 +612,9 @@ mlxsw_sp_qdisc_prio_unoffload(struct mlxsw_sp_port *mlxsw_sp_port,
 			      void *params)
 {
 	struct tc_prio_qopt_offload_params *p = params;
-	u64 backlog;
 
-	backlog = mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
-				       mlxsw_sp_qdisc->stats_base.backlog);
-	p->qstats->backlog -= backlog;
+	__mlxsw_sp_qdisc_ets_unoffload(mlxsw_sp_port, mlxsw_sp_qdisc,
+				       p->qstats);
 }
 
 static int
@@ -645,22 +705,22 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_prio = {
  * unoffload the child.
  */
 static int
-mlxsw_sp_qdisc_prio_graft(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			  struct tc_prio_qopt_offload_graft_params *p)
+__mlxsw_sp_qdisc_ets_graft(struct mlxsw_sp_port *mlxsw_sp_port,
+			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			   u8 band, u32 child_handle)
 {
-	int tclass_num = MLXSW_SP_PRIO_BAND_TO_TCLASS(p->band);
+	int tclass_num = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
 	struct mlxsw_sp_qdisc *old_qdisc;
 
-	if (p->band < IEEE_8021QAZ_MAX_TCS &&
-	    mlxsw_sp_port->tclass_qdiscs[tclass_num].handle == p->child_handle)
+	if (band < IEEE_8021QAZ_MAX_TCS &&
+	    mlxsw_sp_port->tclass_qdiscs[tclass_num].handle == child_handle)
 		return 0;
 
 	/* See if the grafted qdisc is already offloaded on any tclass. If so,
 	 * unoffload it.
 	 */
 	old_qdisc = mlxsw_sp_qdisc_find_by_handle(mlxsw_sp_port,
-						  p->child_handle);
+						  child_handle);
 	if (old_qdisc)
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, old_qdisc);
 
@@ -695,8 +755,9 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
 						&p->stats);
 	case TC_PRIO_GRAFT:
-		return mlxsw_sp_qdisc_prio_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
-						 &p->graft_params);
+		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
+						  p->graft_params.band,
+						  p->graft_params.child_handle);
 	default:
 		return -EOPNOTSUPP;
 	}
