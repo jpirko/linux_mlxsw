@@ -228,3 +228,41 @@ ets_set_dwrr_two_bands()
 {
 	ets_qdisc_setup $put 0 5000 2500
 }
+
+__xxx()
+{
+	local n=$1; shift
+
+	local is=$(seq 0 $((n - 1)))
+	local i
+
+	for i in $is; do
+		ets_start_traffic $i
+	done
+
+	read -p Ready.
+
+	for i in $is; do
+		stop_traffic
+	done
+}
+
+xxx()
+{
+	__xxx 0
+}
+
+xxx1()
+{
+	__xxx 1
+}
+
+xxx2()
+{
+	__xxx 2
+}
+
+xxx3()
+{
+	__xxx 3
+}

@@ -301,6 +301,11 @@ ping_ipv4()
 	ping_test $h3.12 $(dip 2) " vlan 12"
 }
 
+xxx()
+{
+	read -p Ready.
+}
+
 trap cleanup EXIT
 
 setup_prepare
