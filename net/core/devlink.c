@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 #include <linux/u64_stats_sync.h>
 #include <linux/timekeeping.h>
+#include <linux/ctype.h>
 #include <rdma/ib_verbs.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
@@ -30,6 +31,30 @@
 #include <net/drop_monitor.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/devlink.h>
+
+static bool devlink_obj_name_valid(const char *name)
+{
+	size_t i, len = strlen(name);
+
+	if (!len)
+		return false;
+
+	/* Name can contain lowercase/uppercase characters or digits.
+	 * Underscores are also allowed, but not at the beginning
+	 * or end of the name and not more than one in a row.
+	 */
+	for (i = 0; i < len; i++) {
+		if (isalnum(name[i]))
+			continue;
+		if (name[i] != '_')
+			return false;
+		if (i == 0 || i + 1 == len)
+			return false;
+		if (name[i - 1] == '_')
+			return false;
+	}
+	return true;
+}
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ethernet[] = {
 	{
@@ -4782,6 +4807,9 @@ devlink_health_reporter_create(struct devlink *devlink,
 		goto unlock;
 	}
 
+	if (WARN_ON(!devlink_obj_name_valid(ops->name)))
+		return ERR_PTR(-EINVAL);
+
 	if (WARN_ON(auto_recover && !ops->recover) ||
 	    WARN_ON(graceful_period && !ops->recover)) {
 		reporter = ERR_PTR(-EINVAL);
@@ -6702,6 +6730,36 @@ void devlink_sb_unregister(struct devlink *devlink, unsigned int sb_index)
 }
 EXPORT_SYMBOL_GPL(devlink_sb_unregister);
 
+static int
+devlink_dpipe_header_verify(struct devlink_dpipe_header *dpipe_header)
+{
+	int i;
+
+	if (WARN_ON(!devlink_obj_name_valid(dpipe_header->name)))
+		return -EINVAL;
+
+	for (i = 0; i < dpipe_header->fields_count; i++) {
+		const char *name = dpipe_header->fields[i].name;
+
+		if (WARN_ON(!devlink_obj_name_valid(name)))
+			return -EINVAL;
+	}
+	return 0;
+}
+
+static int
+devlink_dpipe_headers_verify(struct devlink_dpipe_headers *dpipe_headers)
+{
+	int i, err;
+
+	for (i = 0; i < dpipe_headers->headers_count; i++) {
+		err = devlink_dpipe_header_verify(dpipe_headers->headers[i]);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
 /**
  *	devlink_dpipe_headers_register - register dpipe headers
  *
@@ -6713,6 +6771,11 @@ EXPORT_SYMBOL_GPL(devlink_sb_unregister);
 int devlink_dpipe_headers_register(struct devlink *devlink,
 				   struct devlink_dpipe_headers *dpipe_headers)
 {
+	int err;
+
+	err = devlink_dpipe_headers_verify(dpipe_headers);
+	if (err)
+		return err;
 	mutex_lock(&devlink->lock);
 	devlink->dpipe_headers = dpipe_headers;
 	mutex_unlock(&devlink->lock);
@@ -6785,6 +6848,9 @@ int devlink_dpipe_table_register(struct devlink *devlink,
 	if (devlink_dpipe_table_find(&devlink->dpipe_table_list, table_name))
 		return -EEXIST;
 
+	if (WARN_ON(!devlink_obj_name_valid(table_name)))
+		return -EINVAL;
+
 	if (WARN_ON(!table_ops->size_get))
 		return -EINVAL;
 
@@ -6852,6 +6918,9 @@ int devlink_resource_register(struct devlink *devlink,
 	int err = 0;
 
 	top_hierarchy = parent_resource_id == DEVLINK_RESOURCE_ID_PARENT_TOP;
+
+	if (WARN_ON(!devlink_obj_name_valid(resource_name)))
+		return -EINVAL;
 
 	mutex_lock(&devlink->lock);
 	resource = devlink_resource_find(devlink, NULL, resource_id);
@@ -7044,6 +7113,10 @@ static int devlink_param_verify(const struct devlink_param *param)
 {
 	if (!param || !param->name || !param->supported_cmodes)
 		return -EINVAL;
+
+	if (WARN_ON(!devlink_obj_name_valid(param->name)))
+		return -EINVAL;
+
 	if (param->generic)
 		return devlink_param_generic_verify(param);
 	else
@@ -7650,6 +7723,9 @@ static int devlink_trap_verify(const struct devlink_trap *trap)
 	if (!trap || !trap->name || !trap->group.name)
 		return -EINVAL;
 
+	if (WARN_ON(!devlink_obj_name_valid(trap->name)))
+		return -EINVAL;
+
 	if (trap->generic)
 		return devlink_trap_generic_verify(trap);
 	else
@@ -7686,6 +7762,9 @@ devlink_trap_group_driver_verify(const struct devlink_trap_group *group)
 
 static int devlink_trap_group_verify(const struct devlink_trap_group *group)
 {
+	if (WARN_ON(!devlink_obj_name_valid(group->name)))
+		return -EINVAL;
+
 	if (group->generic)
 		return devlink_trap_group_generic_verify(group);
 	else
