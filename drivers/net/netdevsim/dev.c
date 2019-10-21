@@ -154,7 +154,7 @@ static int nsim_dev_resources_register(struct devlink *devlink)
 		return err;
 	}
 
-	err = devlink_resource_register(devlink, "fib-rules", (u64)-1,
+	err = devlink_resource_register(devlink, "fib_rules", (u64)-1,
 					NSIM_RESOURCE_IPV4_FIB_RULES,
 					NSIM_RESOURCE_IPV4, &params);
 	if (err) {
@@ -180,7 +180,7 @@ static int nsim_dev_resources_register(struct devlink *devlink)
 		return err;
 	}
 
-	err = devlink_resource_register(devlink, "fib-rules", (u64)-1,
+	err = devlink_resource_register(devlink, "fib_rules", (u64)-1,
 					NSIM_RESOURCE_IPV6_FIB_RULES,
 					NSIM_RESOURCE_IPV6, &params);
 	if (err) {
