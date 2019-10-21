@@ -33,7 +33,7 @@
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ethernet[] = {
 	{
-		.name = "destination mac",
+		.name = "destination_mac",
 		.id = DEVLINK_DPIPE_FIELD_ETHERNET_DST_MAC,
 		.bitwidth = 48,
 	},
@@ -50,7 +50,7 @@ EXPORT_SYMBOL(devlink_dpipe_header_ethernet);
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ipv4[] = {
 	{
-		.name = "destination ip",
+		.name = "destination_ip",
 		.id = DEVLINK_DPIPE_FIELD_IPV4_DST_IP,
 		.bitwidth = 32,
 	},
@@ -67,7 +67,7 @@ EXPORT_SYMBOL(devlink_dpipe_header_ipv4);
 
 static struct devlink_dpipe_field devlink_dpipe_fields_ipv6[] = {
 	{
-		.name = "destination ip",
+		.name = "destination_ip",
 		.id = DEVLINK_DPIPE_FIELD_IPV6_DST_IP,
 		.bitwidth = 128,
 	},
