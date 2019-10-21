@@ -160,8 +160,8 @@ static int __mlxsw_sp_dcbnl_ieee_setets(struct mlxsw_sp_port *mlxsw_sp_port,
 		u8 weight = ets->tc_tx_bw[i];
 
 		err = mlxsw_sp_port_ets_set(mlxsw_sp_port,
-					    MLXSW_REG_QEEC_HIERARCY_SUBGROUP, i,
-					    0, dwrr, weight);
+					    MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+					    i, 0, dwrr, weight);
 		if (err) {
 			netdev_err(dev, "Failed to link subgroup ETS element %d to group\n",
 				   i);
@@ -198,8 +198,8 @@ err_port_ets_set:
 		u8 weight = my_ets->tc_tx_bw[i];
 
 		err = mlxsw_sp_port_ets_set(mlxsw_sp_port,
-					    MLXSW_REG_QEEC_HIERARCY_SUBGROUP, i,
-					    0, dwrr, weight);
+					    MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+					    i, 0, dwrr, weight);
 	}
 	return err;
 }
@@ -507,9 +507,9 @@ static int mlxsw_sp_dcbnl_ieee_setmaxrate(struct net_device *dev,
 
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 		err = mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
-						    MLXSW_REG_QEEC_HIERARCY_SUBGROUP,
-						    i, 0,
-						    maxrate->tc_maxrate[i]);
+					    MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
+					    i, 0,
+					    maxrate->tc_maxrate[i]);
 		if (err) {
 			netdev_err(dev, "Failed to set maxrate for TC %d\n", i);
 			goto err_port_ets_maxrate_set;
@@ -523,7 +523,7 @@ static int mlxsw_sp_dcbnl_ieee_setmaxrate(struct net_device *dev,
 err_port_ets_maxrate_set:
 	for (i--; i >= 0; i--)
 		mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
-					      MLXSW_REG_QEEC_HIERARCY_SUBGROUP,
+					      MLXSW_REG_QEEC_HIERARCHY_SUBGROUP,
 					      i, 0, my_maxrate->tc_maxrate[i]);
 	return err;
 }
