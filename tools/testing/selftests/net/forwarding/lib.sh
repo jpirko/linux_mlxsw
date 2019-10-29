@@ -1074,7 +1074,7 @@ start_traffic()
 	local dmac=$1; shift
 
 	$MZ $h_in -p 8000 -A $sip -B $dip -c 0 \
-		-a own -b $dmac -t udp -q &
+		-a own -b $dmac -t udp -q "$@" &
 	sleep 1
 }
 
