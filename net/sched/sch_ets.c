@@ -164,6 +164,20 @@ static int ets_offload_dump(struct Qdisc *sch)
 	return qdisc_offload_dump_helper(sch, TC_SETUP_QDISC_ETS, &qopt);
 }
 
+static int ets_offload_class_dump(struct Qdisc *sch, struct ets_class *cl)
+{
+	struct tc_ets_qopt_offload qopt;
+
+	qopt.command = TC_ETS_CLASS_STATS;
+	qopt.handle = sch->handle;
+	qopt.parent = sch->parent;
+	qopt.class_stats.stats.bstats = &cl->qdisc->bstats;
+	qopt.class_stats.stats.qstats = &cl->qdisc->qstats;
+	qopt.class_stats.classid = ets_class_id(sch, cl);
+
+	return qdisc_offload_dump_helper(sch, TC_SETUP_QDISC_ETS, &qopt);
+}
+
 static bool ets_class_is_strict(struct ets_sched *q, struct ets_class *cl)
 {
 	unsigned int band = cl - q->classes;
@@ -296,6 +310,11 @@ static int ets_class_dump_stats(struct Qdisc *sch, unsigned long arg,
 {
 	struct ets_class *cl = ets_class_from_arg(sch, arg);
 	struct Qdisc *cl_q = cl->qdisc;
+	int err;
+
+	err = ets_offload_class_dump(sch, cl);
+	if (err)
+		return err;
 
 	if (gnet_stats_copy_basic(qdisc_root_sleeping_running(sch),
 				  d, NULL, &cl_q->bstats) < 0 ||

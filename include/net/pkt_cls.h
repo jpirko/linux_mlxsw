@@ -834,6 +834,7 @@ enum tc_ets_command {
 	TC_ETS_REPLACE,
 	TC_ETS_DESTROY,
 	TC_ETS_STATS,
+	TC_ETS_CLASS_STATS,
 	TC_ETS_GRAFT,
 };
 
@@ -857,6 +858,7 @@ struct tc_ets_qopt_offload {
 	union {
 		struct tc_ets_qopt_offload_replace_params replace_params;
 		struct tc_qopt_offload_stats stats;
+		struct tc_qopt_offload_class_stats class_stats;
 		struct tc_ets_qopt_offload_graft_params graft_params;
 	};
 };
