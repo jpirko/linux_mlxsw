@@ -36,6 +36,10 @@ struct mlxsw_sp_qdisc_ops {
 	int (*get_xstats)(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			  void *xstats_ptr);
+	int (*get_class_stats)(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			       u32 classid,
+			       struct tc_qopt_offload_stats *stats_ptr);
 	void (*clean_stats)(struct mlxsw_sp_port *mlxsw_sp_port,
 			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc);
 	/* unoffload - to be used for a qdisc that stops being offloaded without
@@ -178,6 +182,22 @@ mlxsw_sp_qdisc_get_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc->ops->get_stats(mlxsw_sp_port,
 						      mlxsw_sp_qdisc,
 						      stats_ptr);
+
+	return -EOPNOTSUPP;
+}
+
+static int
+mlxsw_sp_qdisc_get_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			       u32 classid,
+			       struct tc_qopt_offload_stats *stats_ptr)
+{
+	if (mlxsw_sp_qdisc && mlxsw_sp_qdisc->ops &&
+	    mlxsw_sp_qdisc->ops->get_class_stats)
+		return mlxsw_sp_qdisc->ops->get_class_stats(mlxsw_sp_port,
+							    mlxsw_sp_qdisc,
+							    classid,
+							    stats_ptr);
 
 	return -EOPNOTSUPP;
 }
@@ -647,6 +667,19 @@ __mlxsw_sp_qdisc_get_prio_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static int
+mlxsw_sp_qdisc_get_prio_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+				    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+				    u32 classid,
+				    struct tc_qopt_offload_stats *stats_ptr)
+{
+	int tclass = MLXSW_SP_PRIO_CHILD_TO_TCLASS(TC_H_MIN(classid));
+
+	__mlxsw_sp_qdisc_get_prio_class_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+					      tclass, stats_ptr);
+	return 0;
+}
+
+static int
 mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			      struct tc_qopt_offload_stats *stats_ptr)
@@ -692,6 +725,7 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_prio = {
 	.unoffload = mlxsw_sp_qdisc_prio_unoffload,
 	.destroy = mlxsw_sp_qdisc_prio_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_prio_stats,
+	.get_class_stats = mlxsw_sp_qdisc_get_prio_class_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_prio_clean_stats,
 };
 
@@ -741,6 +775,7 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_ets = {
 	.unoffload = mlxsw_sp_qdisc_ets_unoffload,
 	.destroy = mlxsw_sp_qdisc_ets_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_prio_stats,
+	.get_class_stats = mlxsw_sp_qdisc_get_prio_class_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_prio_clean_stats,
 };
 
@@ -807,6 +842,11 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 	case TC_PRIO_STATS:
 		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
 						&p->stats);
+	case TC_PRIO_CLASS_STATS:
+		return mlxsw_sp_qdisc_get_class_stats(mlxsw_sp_port,
+						      mlxsw_sp_qdisc,
+						      p->class_stats.classid,
+						      &p->class_stats.stats);
 	case TC_PRIO_GRAFT:
 		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
 						  p->graft_params.band,
@@ -841,6 +881,11 @@ int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
 	case TC_ETS_STATS:
 		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
 						&p->stats);
+	case TC_ETS_CLASS_STATS:
+		return mlxsw_sp_qdisc_get_class_stats(mlxsw_sp_port,
+						      mlxsw_sp_qdisc,
+						      p->class_stats.classid,
+						      &p->class_stats.stats);
 	case TC_ETS_GRAFT:
 		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
 						  p->graft_params.band,
