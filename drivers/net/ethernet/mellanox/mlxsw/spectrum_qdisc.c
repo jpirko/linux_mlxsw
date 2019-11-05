@@ -394,45 +394,91 @@ mlxsw_sp_qdisc_get_red_xstats(struct mlxsw_sp_port *mlxsw_sp_port,
 	return 0;
 }
 
+static void
+mlxsw_sp_qdisc_collect_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+				   u64 *p_tx_bytes, u64 *p_tx_packets,
+				   u64 *p_drops, u64 *p_backlog_cells)
+{
+	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
+	struct mlxsw_sp_port_xstats *xstats;
+	u64 tx_bytes, tx_packets;
+
+	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
+	mlxsw_sp_qdisc_bstats_per_priority_get(xstats,
+					       mlxsw_sp_qdisc->prio_bitmap,
+					       &tx_packets, &tx_bytes);
+
+	*p_tx_packets += tx_packets;
+	*p_tx_bytes += tx_bytes;
+	*p_drops += mlxsw_sp_xstats_tail_drop(xstats, tclass_num) +
+		    xstats->wred_drop[tclass_num];
+	*p_backlog_cells += mlxsw_sp_xstats_backlog(xstats, tclass_num);
+}
+
+static void
+mlxsw_sp_qdisc_update_stats(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			    u64 tx_bytes, u64 tx_packets,
+			    u64 drops, u64 backlog_cells,
+			    struct tc_qopt_offload_stats *stats_ptr)
+{
+	struct mlxsw_sp_qdisc_stats *stats_base = &mlxsw_sp_qdisc->stats_base;
+
+	tx_bytes -= stats_base->tx_bytes;
+	tx_packets -= stats_base->tx_packets;
+	drops -= stats_base->drops;
+	backlog_cells -= stats_base->backlog;
+
+	_bstats_update(stats_ptr->bstats, tx_bytes, tx_packets);
+	stats_ptr->qstats->drops += drops;
+	stats_ptr->qstats->backlog += mlxsw_sp_cells_bytes(mlxsw_sp,
+							   backlog_cells);
+
+	stats_base->backlog += backlog_cells;
+	stats_base->drops += drops;
+	stats_base->tx_bytes += tx_bytes;
+	stats_base->tx_packets += tx_packets;
+}
+
+static void
+mlxsw_sp_qdisc_get_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			       struct tc_qopt_offload_stats *stats_ptr)
+{
+	u64 backlog_cells = 0;
+	u64 tx_packets = 0;
+	u64 tx_bytes = 0;
+	u64 drops = 0;
+
+	mlxsw_sp_qdisc_collect_class_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+					   &tx_bytes, &tx_packets,
+					   &drops, &backlog_cells);
+	mlxsw_sp_qdisc_update_stats(mlxsw_sp_port->mlxsw_sp, mlxsw_sp_qdisc,
+				    tx_bytes, tx_packets, drops, backlog_cells,
+				    stats_ptr);
+}
+
 static int
 mlxsw_sp_qdisc_get_red_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			     struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			     struct tc_qopt_offload_stats *stats_ptr)
 {
-	u64 tx_bytes, tx_packets, overlimits, drops, backlog;
 	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
 	struct mlxsw_sp_qdisc_stats *stats_base;
 	struct mlxsw_sp_port_xstats *xstats;
+	u64 overlimits;
 
 	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
 	stats_base = &mlxsw_sp_qdisc->stats_base;
 
-	mlxsw_sp_qdisc_bstats_per_priority_get(xstats,
-					       mlxsw_sp_qdisc->prio_bitmap,
-					       &tx_packets, &tx_bytes);
-	tx_bytes = tx_bytes - stats_base->tx_bytes;
-	tx_packets = tx_packets - stats_base->tx_packets;
-
+	mlxsw_sp_qdisc_get_class_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+				       stats_ptr);
 	overlimits = xstats->wred_drop[tclass_num] - stats_base->overlimits;
-	drops = xstats->wred_drop[tclass_num] +
-		mlxsw_sp_xstats_tail_drop(xstats, tclass_num) -
-		stats_base->drops;
-	backlog = mlxsw_sp_xstats_backlog(xstats, tclass_num);
 
-	_bstats_update(stats_ptr->bstats, tx_bytes, tx_packets);
 	stats_ptr->qstats->overlimits += overlimits;
-	stats_ptr->qstats->drops += drops;
-	stats_ptr->qstats->backlog +=
-				mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
-						     backlog) -
-				mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
-						     stats_base->backlog);
-
-	stats_base->backlog = backlog;
-	stats_base->drops +=  drops;
 	stats_base->overlimits += overlimits;
-	stats_base->tx_bytes += tx_bytes;
-	stats_base->tx_packets += tx_packets;
+
 	return 0;
 }
 
@@ -623,37 +669,23 @@ mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			      struct tc_qopt_offload_stats *stats_ptr)
 {
-	u64 tx_bytes, tx_packets, drops = 0, backlog = 0;
-	struct mlxsw_sp_qdisc_stats *stats_base;
-	struct mlxsw_sp_port_xstats *xstats;
-	struct rtnl_link_stats64 *stats;
-	int i;
+	struct mlxsw_sp_qdisc *tc_qdisc;
+	u64 backlog_cells = 0;
+	u64 tx_packets = 0;
+	u64 tx_bytes = 0;
+	u64 drops = 0;
+	int tclass;
 
-	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
-	stats = &mlxsw_sp_port->periodic_hw_stats.stats;
-	stats_base = &mlxsw_sp_qdisc->stats_base;
-
-	tx_bytes = stats->tx_bytes - stats_base->tx_bytes;
-	tx_packets = stats->tx_packets - stats_base->tx_packets;
-
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		drops += mlxsw_sp_xstats_tail_drop(xstats, i);
-		drops += xstats->wred_drop[i];
-		backlog += mlxsw_sp_xstats_backlog(xstats, i);
+	for (tclass = 0; tclass < IEEE_8021QAZ_MAX_TCS; tclass++) {
+		tc_qdisc = &mlxsw_sp_port->tclass_qdiscs[tclass];
+		mlxsw_sp_qdisc_collect_class_stats(mlxsw_sp_port, tc_qdisc,
+						   &tx_bytes, &tx_packets,
+						   &drops, &backlog_cells);
 	}
-	drops = drops - stats_base->drops;
 
-	_bstats_update(stats_ptr->bstats, tx_bytes, tx_packets);
-	stats_ptr->qstats->drops += drops;
-	stats_ptr->qstats->backlog +=
-				mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
-						     backlog) -
-				mlxsw_sp_cells_bytes(mlxsw_sp_port->mlxsw_sp,
-						     stats_base->backlog);
-	stats_base->backlog = backlog;
-	stats_base->drops += drops;
-	stats_base->tx_bytes += tx_bytes;
-	stats_base->tx_packets += tx_packets;
+	mlxsw_sp_qdisc_update_stats(mlxsw_sp_port->mlxsw_sp, mlxsw_sp_qdisc,
+				    tx_bytes, tx_packets, drops, backlog_cells,
+				    stats_ptr);
 	return 0;
 }
 
