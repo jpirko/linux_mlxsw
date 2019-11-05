@@ -261,6 +261,22 @@ static int prio_dump_offload(struct Qdisc *sch)
 	return qdisc_offload_dump_helper(sch, TC_SETUP_QDISC_PRIO, &hw_stats);
 }
 
+static int prio_dump_class_stats_offload(struct Qdisc *sch, unsigned long arg)
+{
+	struct prio_sched_data *q = qdisc_priv(sch);
+	struct Qdisc *cl_q = q->queues[arg - 1];
+	struct tc_prio_qopt_offload qopt;
+
+	qopt.command = TC_PRIO_CLASS_STATS;
+	qopt.handle = sch->handle;
+	qopt.parent = sch->parent;
+	qopt.class_stats.stats.bstats = &cl_q->bstats;
+	qopt.class_stats.stats.qstats = &cl_q->qstats;
+	qopt.class_stats.classid = TC_H_MAKE(sch->handle, arg);
+
+	return qdisc_offload_dump_helper(sch, TC_SETUP_QDISC_PRIO, &qopt);
+}
+
 static int prio_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
 	struct prio_sched_data *q = qdisc_priv(sch);
@@ -357,6 +373,11 @@ static int prio_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 {
 	struct prio_sched_data *q = qdisc_priv(sch);
 	struct Qdisc *cl_q;
+	int err;
+
+	err = prio_dump_class_stats_offload(sch, cl);
+	if (err)
+		return err;
 
 	cl_q = q->queues[cl - 1];
 	if (gnet_stats_copy_basic(qdisc_root_sleeping_running(sch),

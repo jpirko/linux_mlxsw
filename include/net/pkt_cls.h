@@ -686,6 +686,11 @@ struct tc_qopt_offload_stats {
 	struct gnet_stats_queue *qstats;
 };
 
+struct tc_qopt_offload_class_stats {
+	struct tc_qopt_offload_stats stats;
+	u32 classid;
+};
+
 enum tc_mq_command {
 	TC_MQ_CREATE,
 	TC_MQ_DESTROY,
@@ -785,6 +790,7 @@ enum tc_prio_command {
 	TC_PRIO_REPLACE,
 	TC_PRIO_DESTROY,
 	TC_PRIO_STATS,
+	TC_PRIO_CLASS_STATS,
 	TC_PRIO_GRAFT,
 };
 
@@ -809,6 +815,7 @@ struct tc_prio_qopt_offload {
 	union {
 		struct tc_prio_qopt_offload_params replace_params;
 		struct tc_qopt_offload_stats stats;
+		struct tc_qopt_offload_class_stats class_stats;
 		struct tc_prio_qopt_offload_graft_params graft_params;
 	};
 };
