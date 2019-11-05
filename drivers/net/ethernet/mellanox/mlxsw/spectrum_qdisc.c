@@ -607,29 +607,30 @@ mlxsw_sp_qdisc_prio_unoffload(struct mlxsw_sp_port *mlxsw_sp_port,
 				       p->qstats);
 }
 
-static int
-mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
-			      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			      struct tc_qopt_offload_stats *stats_ptr)
+static void
+__mlxsw_sp_qdisc_get_prio_class_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+				      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+				      int tclass,
+				      struct tc_qopt_offload_stats *stats_ptr)
 {
-	u64 tx_bytes, tx_packets, drops = 0, backlog = 0;
+	struct mlxsw_sp_qdisc *tc_qdisc = &mlxsw_sp_port->tclass_qdiscs[tclass];
+	u64 tx_bytes = 0, tx_packets = 0, drops = 0, backlog = 0;
 	struct mlxsw_sp_qdisc_stats *stats_base;
 	struct mlxsw_sp_port_xstats *xstats;
 	struct rtnl_link_stats64 *stats;
-	int i;
 
 	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
 	stats = &mlxsw_sp_port->periodic_hw_stats.stats;
-	stats_base = &mlxsw_sp_qdisc->stats_base;
+	stats_base = &tc_qdisc->stats_base;
 
-	tx_bytes = stats->tx_bytes - stats_base->tx_bytes;
-	tx_packets = stats->tx_packets - stats_base->tx_packets;
+	mlxsw_sp_qdisc_bstats_per_priority_get(xstats, tc_qdisc->prio_bitmap,
+					       &tx_packets, &tx_bytes);
+	tx_bytes -= stats_base->tx_bytes;
+	tx_packets -= stats_base->tx_packets;
 
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		drops += xstats->tail_drop[i];
-		drops += xstats->wred_drop[i];
-		backlog += xstats->backlog[i];
-	}
+	drops += xstats->tail_drop[tclass];
+	drops += xstats->wred_drop[tclass];
+	backlog += xstats->backlog[tclass];
 	drops = drops - stats_base->drops;
 
 	_bstats_update(stats_ptr->bstats, tx_bytes, tx_packets);
@@ -643,6 +644,19 @@ mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	stats_base->drops += drops;
 	stats_base->tx_bytes += tx_bytes;
 	stats_base->tx_packets += tx_packets;
+}
+
+static int
+mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
+			      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			      struct tc_qopt_offload_stats *stats_ptr)
+{
+	int tclass;
+
+	for (tclass = 0; tclass < IEEE_8021QAZ_MAX_TCS; tclass++)
+		__mlxsw_sp_qdisc_get_prio_class_stats(mlxsw_sp_port,
+						      mlxsw_sp_qdisc,
+						      tclass, stats_ptr);
 	return 0;
 }
 
