@@ -75,6 +75,7 @@ test_span_dir_ips()
 	local ip1=$1; shift
 	local ip2=$1; shift
 
+	read -p Ready.
 	quick_test_span_dir_ips "$dev" "$direction" "$ip1" "$ip2"
 
 	icmp_capture_install $dev "type $forward_type"

@@ -4106,12 +4106,29 @@ static void mlxsw_sp_pude_event_func(const struct mlxsw_reg_info *reg,
 static void mlxsw_sp1_ptp_fifo_event_func(struct mlxsw_sp *mlxsw_sp,
 					  char *mtpptr_pl, bool ingress)
 {
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	u64 *tss_per_record;
 	u8 local_port;
 	u8 num_rec;
 	int i;
 
 	local_port = mlxsw_reg_mtpptr_local_port_get(mtpptr_pl);
 	num_rec = mlxsw_reg_mtpptr_num_rec_get(mtpptr_pl);
+
+	if (!num_rec) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: got zero timestamps in a record\n",
+				     local_port);
+		return;
+	}
+
+	mlxsw_sp_port = mlxsw_sp->ports[local_port];
+	if (mlxsw_sp_port) {
+		tss_per_record = ingress ?
+			mlxsw_sp_port->ptp.stats.rx_tss_per_record :
+			mlxsw_sp_port->ptp.stats.tx_tss_per_record;
+		tss_per_record[num_rec - 1]++;
+	}
+
 	for (i = 0; i < num_rec; i++) {
 		u8 domain_number;
 		u8 message_type;

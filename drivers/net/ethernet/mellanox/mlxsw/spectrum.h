@@ -233,6 +233,12 @@ struct mlxsw_sp_ptp_port_dir_stats {
 struct mlxsw_sp_ptp_port_stats {
 	struct mlxsw_sp_ptp_port_dir_stats rx_gcd;
 	struct mlxsw_sp_ptp_port_dir_stats tx_gcd;
+	struct mlxsw_sp_ptp_port_dir_stats rx;
+	struct mlxsw_sp_ptp_port_dir_stats tx;
+	u64 rx_tss_per_record[4];
+	u64 tx_tss_per_record[4];
+	u64 accepted_tss;
+	u64 processed_tss;
 };
 
 struct mlxsw_sp_port {

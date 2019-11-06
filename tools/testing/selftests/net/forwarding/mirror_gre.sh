@@ -109,7 +109,7 @@ test_two_spans()
 test_gretap()
 {
 	full_test_span_gre_dir gt4 ingress 8 0 "mirror to gretap"
-	full_test_span_gre_dir gt4 egress 0 8 "mirror to gretap"
+	#full_test_span_gre_dir gt4 egress 0 8 "mirror to gretap"
 }
 
 test_ip6gretap()
@@ -147,7 +147,7 @@ setup_prepare
 setup_wait
 
 tcflags="skip_hw"
-test_all
+#test_all
 
 if ! tc_offload_check; then
 	echo "WARN: Could not test offloaded functionality"

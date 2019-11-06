@@ -424,7 +424,8 @@ mlxsw_sp1_ptp_unmatched_remove(struct mlxsw_sp *mlxsw_sp,
  *    This case is similar to 2) above.
  */
 static void mlxsw_sp1_ptp_packet_finish(struct mlxsw_sp *mlxsw_sp,
-					struct sk_buff *skb, u8 local_port,
+					struct sk_buff *skb,
+					u8 message_type, u8 local_port,
 					bool ingress,
 					struct skb_shared_hwtstamps *hwtstamps)
 {
@@ -441,8 +442,14 @@ static void mlxsw_sp1_ptp_packet_finish(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	if (ingress) {
+		if (message_type == 1) { // delay req
+			static unsigned int i;
+			if (i++ % 2)
+				goto skip;
+		}
 		if (hwtstamps)
 			*skb_hwtstamps(skb) = *hwtstamps;
+	skip:
 		mlxsw_sp_rx_listener_no_mark_func(skb, local_port, mlxsw_sp);
 	} else {
 		/* skb_tstamp_tx() allows hwtstamps to be NULL. */
@@ -464,7 +471,7 @@ static void mlxsw_sp1_packet_timestamp(struct mlxsw_sp *mlxsw_sp,
 	spin_unlock_bh(&mlxsw_sp->clock->lock);
 
 	hwtstamps.hwtstamp = ns_to_ktime(nsec);
-	mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb,
+	mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb, key.message_type,
 				    key.local_port, key.ingress, &hwtstamps);
 }
 
@@ -472,12 +479,19 @@ static void
 mlxsw_sp1_ptp_unmatched_finish(struct mlxsw_sp *mlxsw_sp,
 			       struct mlxsw_sp1_ptp_unmatched *unmatched)
 {
+	struct mlxsw_sp_port *mlxsw_sp_port;
+
+	mlxsw_sp_port = mlxsw_sp->ports[unmatched->key.local_port];
+	if (mlxsw_sp_port && unmatched->timestamp)
+		mlxsw_sp_port->ptp.stats.processed_tss++;
+
 	if (unmatched->skb && unmatched->timestamp)
 		mlxsw_sp1_packet_timestamp(mlxsw_sp, unmatched->key,
 					   unmatched->skb,
 					   unmatched->timestamp);
 	else if (unmatched->skb)
 		mlxsw_sp1_ptp_packet_finish(mlxsw_sp, unmatched->skb,
+					    unmatched->key.message_type,
 					    unmatched->key.local_port,
 					    unmatched->key.ingress, NULL);
 	kfree_rcu(unmatched, rcu);
@@ -500,10 +514,20 @@ static void mlxsw_sp1_ptp_got_piece(struct mlxsw_sp *mlxsw_sp,
 				    struct sk_buff *skb, u64 timestamp)
 {
 	struct mlxsw_sp1_ptp_unmatched *unmatched;
+	struct mlxsw_sp_ptp_port_dir_stats *stats;
+	struct mlxsw_sp_port *mlxsw_sp_port;
 	int length;
 	int err;
 
 	rcu_read_lock();
+
+	mlxsw_sp_port = mlxsw_sp->ports[key.local_port];
+	stats = key.ingress ? &mlxsw_sp_port->ptp.stats.rx :
+			      &mlxsw_sp_port->ptp.stats.tx;
+	if (skb)
+		stats->packets++;
+	else
+		stats->timestamps++;
 
 	spin_lock(&mlxsw_sp->ptp_state->unmatched_lock);
 
@@ -523,6 +547,7 @@ static void mlxsw_sp1_ptp_got_piece(struct mlxsw_sp *mlxsw_sp,
 			err = -E2BIG;
 		if (err && skb)
 			mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb,
+						    key.message_type,
 						    key.local_port,
 						    key.ingress, NULL);
 		unmatched = NULL;
@@ -551,13 +576,19 @@ static void mlxsw_sp1_ptp_got_packet(struct mlxsw_sp *mlxsw_sp,
 	int err;
 
 	mlxsw_sp_port = mlxsw_sp->ports[local_port];
-	if (!mlxsw_sp_port)
+	if (!mlxsw_sp_port) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: PTP packet received for non-existent port\n",
+				     local_port);
 		goto immediate;
+	}
 
 	types = ingress ? mlxsw_sp_port->ptp.ing_types :
 			  mlxsw_sp_port->ptp.egr_types;
-	if (!types)
+	if (!types) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: PTP packet on non-timestamped port\n",
+				     local_port);
 		goto immediate;
+	}
 
 	memset(&key, 0, sizeof(key));
 	key.local_port = local_port;
@@ -565,20 +596,26 @@ static void mlxsw_sp1_ptp_got_packet(struct mlxsw_sp *mlxsw_sp,
 
 	err = mlxsw_sp_ptp_parse(skb, &key.domain_number, &key.message_type,
 				 &key.sequence_id);
-	if (err)
+	if (err) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: unparseable PTP packet\n",
+				     local_port);
 		goto immediate;
+	}
 
 	/* For packets whose timestamping was not enabled on this port, don't
 	 * bother trying to match the timestamp.
 	 */
-	if (!((1 << key.message_type) & types))
+	if (!((1 << key.message_type) & types)) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: alien PTP packet\n",
+				     local_port);
 		goto immediate;
+	}
 
 	mlxsw_sp1_ptp_got_piece(mlxsw_sp, key, skb, 0);
 	return;
 
 immediate:
-	mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb, local_port, ingress, NULL);
+	mlxsw_sp1_ptp_packet_finish(mlxsw_sp, skb, 15, local_port, ingress, NULL);
 }
 
 void mlxsw_sp1_ptp_got_timestamp(struct mlxsw_sp *mlxsw_sp, bool ingress,
@@ -591,8 +628,11 @@ void mlxsw_sp1_ptp_got_timestamp(struct mlxsw_sp *mlxsw_sp, bool ingress,
 	u8 types;
 
 	mlxsw_sp_port = mlxsw_sp->ports[local_port];
-	if (!mlxsw_sp_port)
+	if (!mlxsw_sp_port) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: timestamp received for non-existent port\n",
+				     local_port);
 		return;
+	}
 
 	types = ingress ? mlxsw_sp_port->ptp.ing_types :
 			  mlxsw_sp_port->ptp.egr_types;
@@ -600,8 +640,11 @@ void mlxsw_sp1_ptp_got_timestamp(struct mlxsw_sp *mlxsw_sp, bool ingress,
 	/* For message types whose timestamping was not enabled on this port,
 	 * don't bother with the timestamp.
 	 */
-	if (!((1 << message_type) & types))
+	if (!((1 << message_type) & types)) {
+		dev_warn_ratelimited(mlxsw_sp->bus_info->dev, "Port %d: alien timestamp\n",
+				     local_port);
 		return;
+	}
 
 	memset(&key, 0, sizeof(key));
 	key.local_port = local_port;
@@ -610,6 +653,7 @@ void mlxsw_sp1_ptp_got_timestamp(struct mlxsw_sp *mlxsw_sp, bool ingress,
 	key.sequence_id = sequence_id;
 	key.ingress = ingress;
 
+	mlxsw_sp_port->ptp.stats.accepted_tss++;
 	mlxsw_sp1_ptp_got_piece(mlxsw_sp, key, NULL, timestamp);
 }
 
@@ -1129,6 +1173,20 @@ static const struct mlxsw_sp_ptp_port_stat mlxsw_sp_ptp_port_stats[] = {
 	MLXSW_SP_PTP_PORT_STAT("ptp_rx_gcd_timestamps", rx_gcd.timestamps),
 	MLXSW_SP_PTP_PORT_STAT("ptp_tx_gcd_packets",    tx_gcd.packets),
 	MLXSW_SP_PTP_PORT_STAT("ptp_tx_gcd_timestamps", tx_gcd.timestamps),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_packets",        rx.packets),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_timestamps",     rx.timestamps),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_packets",        tx.packets),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_timestamps",     tx.timestamps),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_tsspr_1",        rx_tss_per_record[0]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_tsspr_2",        rx_tss_per_record[1]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_tsspr_3",        rx_tss_per_record[2]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_rx_tsspr_4",        rx_tss_per_record[3]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_tsspr_1",        tx_tss_per_record[0]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_tsspr_2",        tx_tss_per_record[1]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_tsspr_3",        tx_tss_per_record[2]),
+	MLXSW_SP_PTP_PORT_STAT("ptp_tx_tsspr_4",        tx_tss_per_record[3]),
+	MLXSW_SP_PTP_PORT_STAT("accepted_tss",          accepted_tss),
+	MLXSW_SP_PTP_PORT_STAT("processed_tss",         processed_tss),
 };
 
 #undef MLXSW_SP_PTP_PORT_STAT
