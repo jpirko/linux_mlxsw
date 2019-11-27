@@ -140,6 +140,7 @@ struct mlxsw_sp_sb_vals;
 struct mlxsw_sp_port_type_speed_ops;
 struct mlxsw_sp_ptp_state;
 struct mlxsw_sp_ptp_ops;
+struct mlxsw_sp_ets_ops;
 
 struct mlxsw_sp_port_mapping {
 	u8 module;
@@ -185,6 +186,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_sb_vals *sb_vals;
 	const struct mlxsw_sp_port_type_speed_ops *port_type_speed_ops;
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
+	const struct mlxsw_sp_ets_ops *ets_ops;
 	const struct mlxsw_listener *listeners;
 	size_t listeners_count;
 };

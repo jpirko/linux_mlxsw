@@ -197,6 +197,12 @@ struct mlxsw_sp_ptp_ops {
 			  u64 *data, int data_index);
 };
 
+struct mlxsw_sp_ets_ops {
+	int (*min_bw_set)(struct mlxsw_sp_port *mlxsw_sp_port,
+			  enum mlxsw_reg_qeec_hr hr, u8 index,
+			  u8 next_index, u32 minrate);
+};
+
 static int mlxsw_sp_component_query(struct mlxfw_dev *mlxfw_dev,
 				    u16 component_index, u32 *p_max_size,
 				    u8 *p_align_bits, u16 *p_max_write_size)
@@ -3570,7 +3576,7 @@ int mlxsw_sp_port_ets_maxrate_set(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int mlxsw_sp_port_min_bw_set(struct mlxsw_sp_port *mlxsw_sp_port,
 				    enum mlxsw_reg_qeec_hr hr, u8 index,
-				    u8 next_index, u32 minrate)
+				    u8 next_index, u32 minrate, u32 bs)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char qeec_pl[MLXSW_REG_QEEC_LEN];
@@ -3579,8 +3585,25 @@ static int mlxsw_sp_port_min_bw_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			    next_index);
 	mlxsw_reg_qeec_mise_set(qeec_pl, true);
 	mlxsw_reg_qeec_min_shaper_rate_set(qeec_pl, minrate);
+	mlxsw_reg_qeec_min_shaper_bs_set(qeec_pl, bs);
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(qeec), qeec_pl);
+}
+
+static int mlxsw_sp1_port_min_bw_set(struct mlxsw_sp_port *mlxsw_sp_port,
+				     enum mlxsw_reg_qeec_hr hr, u8 index,
+				     u8 next_index, u32 minrate)
+{
+	return mlxsw_sp_port_min_bw_set(mlxsw_sp_port, hr, index, next_index,
+					minrate, 5);
+}
+
+static int mlxsw_sp2_port_min_bw_set(struct mlxsw_sp_port *mlxsw_sp_port,
+				     enum mlxsw_reg_qeec_hr hr, u8 index,
+				     u8 next_index, u32 minrate)
+{
+	return mlxsw_sp_port_min_bw_set(mlxsw_sp_port, hr, index, next_index,
+					minrate, 11);
 }
 
 int mlxsw_sp_port_prio_tc_set(struct mlxsw_sp_port *mlxsw_sp_port,
@@ -3596,6 +3619,8 @@ int mlxsw_sp_port_prio_tc_set(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
+	const struct mlxsw_sp_ets_ops *ets_ops =
+		mlxsw_sp_port->mlxsw_sp->ets_ops;
 	int err, i;
 
 	/* Setup the elements hierarcy, so that each TC is linked to
@@ -3663,10 +3688,10 @@ static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 
 	/* Configure the min shaper for multicast TCs. */
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		err = mlxsw_sp_port_min_bw_set(mlxsw_sp_port,
-					       MLXSW_REG_QEEC_HIERARCY_TC,
-					       i + 8, i,
-					       MLXSW_REG_QEEC_MIS_MIN);
+		err = ets_ops->min_bw_set(mlxsw_sp_port,
+					  MLXSW_REG_QEEC_HIERARCY_TC,
+					  i + 8, i,
+					  MLXSW_REG_QEEC_MIS_MIN);
 		if (err)
 			return err;
 	}
@@ -3680,6 +3705,14 @@ static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 
 	return 0;
 }
+
+static struct mlxsw_sp_ets_ops mlxsw_sp1_ets_ops = {
+	.min_bw_set = mlxsw_sp1_port_min_bw_set,
+};
+
+static struct mlxsw_sp_ets_ops mlxsw_sp2_ets_ops = {
+	.min_bw_set = mlxsw_sp2_port_min_bw_set,
+};
 
 static int mlxsw_sp_port_tc_mc_mode_set(struct mlxsw_sp_port *mlxsw_sp_port,
 					bool enable)
@@ -5098,6 +5131,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->sb_vals = &mlxsw_sp1_sb_vals;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp1_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp1_ptp_ops;
+	mlxsw_sp->ets_ops = &mlxsw_sp1_ets_ops;
 	mlxsw_sp->listeners = mlxsw_sp1_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp1_listener);
 
@@ -5123,6 +5157,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->sb_vals = &mlxsw_sp2_sb_vals;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
+	mlxsw_sp->ets_ops = &mlxsw_sp2_ets_ops;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);
 }
