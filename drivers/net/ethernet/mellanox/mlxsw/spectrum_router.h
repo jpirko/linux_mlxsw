@@ -140,6 +140,7 @@ void mlxsw_sp_nexthop_counter_alloc(struct mlxsw_sp *mlxsw_sp,
 				    struct mlxsw_sp_nexthop *nh);
 void mlxsw_sp_nexthop_counter_free(struct mlxsw_sp *mlxsw_sp,
 				   struct mlxsw_sp_nexthop *nh);
+int mlxsw_sp_ralue_write(struct mlxsw_sp *mlxsw_sp, char *ralue_pl);
 
 static inline bool mlxsw_sp_l3addr_eq(const union mlxsw_sp_l3addr *addr1,
 				      const union mlxsw_sp_l3addr *addr2)

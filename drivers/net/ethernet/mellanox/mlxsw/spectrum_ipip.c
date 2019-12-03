@@ -191,7 +191,7 @@ mlxsw_sp_ipip_fib_entry_op_gre4_ralue(struct mlxsw_sp *mlxsw_sp,
 	mlxsw_reg_ralue_pack4(ralue_pl, MLXSW_REG_RALXX_PROTOCOL_IPV4, op,
 			      ul_vr_id, prefix_len, dip);
 	mlxsw_reg_ralue_act_ip2me_tun_pack(ralue_pl, tunnel_index);
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl);
+	return mlxsw_sp_ralue_write(mlxsw_sp, ralue_pl);
 }
 
 static int mlxsw_sp_ipip_fib_entry_op_gre4(struct mlxsw_sp *mlxsw_sp,
