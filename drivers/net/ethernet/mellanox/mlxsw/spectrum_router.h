@@ -48,6 +48,10 @@ struct mlxsw_sp_router {
 	bool adj_discard_index_valid;
 	struct mlxsw_sp_router_nve_decap nve_decap_config;
 	struct mutex lock; /* Protects shared router resources */
+	struct list_head bulk_list;
+	struct mutex bulk_list_lock;	/* Protects 'bulk_list' */
+	struct delayed_work bulk_dw;
+#define MLXSW_SP_BULK_LIST_DELAY 10 /* ms */
 };
 
 struct mlxsw_sp_rif_ipip_lb;

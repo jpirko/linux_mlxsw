@@ -954,6 +954,15 @@ static void mlxsw_sp_vrs_fini(struct mlxsw_sp *mlxsw_sp)
 	 * writer.
 	 */
 	mlxsw_core_flush_owq();
+	/* The bulk delayed work is still active and it can trigger
+	 * an abort if it encounters an error, which will cause the
+	 * FIB tables to be flushed. Since we're about to flush the
+	 * tables, mark the router as aborted and prevent the delayed
+	 * work from potentially trying to flush them again.
+	 */
+	mutex_lock(&mlxsw_sp->router->lock);
+	mlxsw_sp->router->aborted = true;
+	mutex_unlock(&mlxsw_sp->router->lock);
 	mlxsw_sp_router_fib_flush(mlxsw_sp);
 	kfree(mlxsw_sp->router->vrs);
 }
@@ -4330,7 +4339,18 @@ err_ratr_write:
 
 int mlxsw_sp_ralue_write(struct mlxsw_sp *mlxsw_sp, char *ralue_pl)
 {
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl);
+	int err;
+
+	mutex_lock(&mlxsw_sp->router->bulk_list_lock);
+	err = mlxsw_reg_trans_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl,
+				    &mlxsw_sp->router->bulk_list, NULL, 0);
+	mutex_unlock(&mlxsw_sp->router->bulk_list_lock);
+
+	if (!err)
+		mlxsw_core_schedule_dw(&mlxsw_sp->router->bulk_dw,
+				       MLXSW_SP_BULK_LIST_DELAY);
+
+	return err;
 }
 
 static int mlxsw_sp_fib_entry_op_remote(struct mlxsw_sp *mlxsw_sp,
@@ -7993,6 +8013,47 @@ static void mlxsw_sp_ipips_fini(struct mlxsw_sp *mlxsw_sp)
 	WARN_ON(!list_empty(&mlxsw_sp->router->ipip_list));
 }
 
+static void mlxsw_sp_router_bulk_process(struct work_struct *work)
+{
+	struct delayed_work *bulk_dw = to_delayed_work(work);
+	struct mlxsw_sp_router *router;
+	LIST_HEAD(bulk_list);
+	int err;
+
+	router = container_of(bulk_dw, struct mlxsw_sp_router, bulk_dw);
+
+	mutex_lock(&router->bulk_list_lock);
+	list_splice_init(&router->bulk_list, &bulk_list);
+	mutex_unlock(&router->bulk_list_lock);
+
+	err = mlxsw_reg_trans_bulk_wait(&bulk_list);
+	if (err) {
+		mutex_lock(&router->lock);
+		mlxsw_sp_router_fib_abort(router->mlxsw_sp);
+		mutex_unlock(&router->lock);
+		return;
+	}
+}
+
+static void mlxsw_sp_router_bulk_init(struct mlxsw_sp *mlxsw_sp)
+{
+	INIT_LIST_HEAD(&mlxsw_sp->router->bulk_list);
+	mutex_init(&mlxsw_sp->router->bulk_list_lock);
+	INIT_DELAYED_WORK(&mlxsw_sp->router->bulk_dw,
+			  mlxsw_sp_router_bulk_process);
+}
+
+static void mlxsw_sp_router_bulk_fini(struct mlxsw_sp *mlxsw_sp)
+{
+	cancel_delayed_work_sync(&mlxsw_sp->router->bulk_dw);
+	mutex_destroy(&mlxsw_sp->router->bulk_list_lock);
+	/* Wait on pending transactions that were not processed due to the
+	 * cancellation of the delayed work.
+	 */
+	mlxsw_reg_trans_bulk_wait(&mlxsw_sp->router->bulk_list);
+	WARN_ON(!list_empty(&mlxsw_sp->router->bulk_list));
+}
+
 static void mlxsw_sp_router_fib_dump_flush(struct notifier_block *nb)
 {
 	struct mlxsw_sp_router *router;
@@ -8137,6 +8198,8 @@ int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp,
 	mlxsw_sp->router = router;
 	router->mlxsw_sp = mlxsw_sp;
 
+	mlxsw_sp_router_bulk_init(mlxsw_sp);
+
 	router->inetaddr_nb.notifier_call = mlxsw_sp_inetaddr_event;
 	err = register_inetaddr_notifier(&router->inetaddr_nb);
 	if (err)
@@ -8237,6 +8300,7 @@ err_router_init:
 err_register_inet6addr_notifier:
 	unregister_inetaddr_notifier(&router->inetaddr_nb);
 err_register_inetaddr_notifier:
+	mlxsw_sp_router_bulk_fini(mlxsw_sp);
 	mutex_destroy(&mlxsw_sp->router->lock);
 	kfree(mlxsw_sp->router);
 	return err;
@@ -8258,6 +8322,7 @@ void mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp)
 	__mlxsw_sp_router_fini(mlxsw_sp);
 	unregister_inet6addr_notifier(&mlxsw_sp->router->inet6addr_nb);
 	unregister_inetaddr_notifier(&mlxsw_sp->router->inetaddr_nb);
+	mlxsw_sp_router_bulk_fini(mlxsw_sp);
 	mutex_destroy(&mlxsw_sp->router->lock);
 	kfree(mlxsw_sp->router);
 }
