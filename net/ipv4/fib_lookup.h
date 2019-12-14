@@ -16,6 +16,9 @@ struct fib_alias {
 	u8			fa_slen;
 	u32			tb_id;
 	s16			fa_default;
+	u8			offload:1,
+				trap:1,
+				unused:6;
 	struct rcu_head		rcu;
 };
 
@@ -28,6 +31,9 @@ struct fib_rt_info {
 	int			dst_len;
 	u8			tos;
 	u8			type;
+	u8			offload:1,
+				trap:1,
+				unused:6;
 };
 
 /* Dont write on fa_state unless needed, to keep it shared on all cpus */

@@ -1012,6 +1012,56 @@ static struct fib_alias *fib_find_alias(struct hlist_head *fah, u8 slen,
 	return NULL;
 }
 
+static struct fib_alias *
+fib_find_matching_alias(struct net *net, u32 dst, int dst_len,
+			const struct fib_info *fi, u8 tos, u8 type, u32 tb_id)
+{
+	u8 slen = KEYLENGTH - dst_len;
+	struct key_vector *l, *tp;
+	struct fib_table *tb;
+	struct fib_alias *fa;
+	struct trie *t;
+
+	tb = fib_get_table(net, tb_id);
+	if (!tb)
+		return NULL;
+
+	t = (struct trie *)tb->tb_data;
+	l = fib_find_node(t, &tp, dst);
+	if (!l)
+		return NULL;
+
+	hlist_for_each_entry_rcu(fa, &l->leaf, fa_list) {
+		if (fa->fa_slen == slen && fa->tb_id == tb_id &&
+		    fa->fa_tos == tos && fa->fa_info == fi &&
+		    fa->fa_type == type)
+			return fa;
+	}
+
+	return NULL;
+}
+
+void fib_alias_hw_flags_set(struct net *net, u32 dst, int dst_len,
+			    const struct fib_info *fi, u8 tos, u8 type,
+			    u32 tb_id, bool offload, bool trap)
+{
+	struct fib_alias *fa_match;
+
+	rcu_read_lock();
+
+	fa_match = fib_find_matching_alias(net, dst, dst_len, fi, tos, type,
+					   tb_id);
+	if (!fa_match)
+		goto out;
+
+	fa_match->offload = offload;
+	fa_match->trap = trap;
+
+out:
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(fib_alias_hw_flags_set);
+
 static void trie_rebalance(struct trie *t, struct key_vector *tn)
 {
 	while (!IS_TRIE(tn))
@@ -1220,6 +1270,8 @@ int fib_table_insert(struct net *net, struct fib_table *tb,
 			new_fa->fa_slen = fa->fa_slen;
 			new_fa->tb_id = tb->tb_id;
 			new_fa->fa_default = -1;
+			new_fa->offload = 0;
+			new_fa->trap = 0;
 
 			hlist_replace_rcu(&fa->fa_list, &new_fa->fa_list);
 
@@ -1278,6 +1330,8 @@ int fib_table_insert(struct net *net, struct fib_table *tb,
 	new_fa->fa_slen = slen;
 	new_fa->tb_id = tb->tb_id;
 	new_fa->fa_default = -1;
+	new_fa->offload = 0;
+	new_fa->trap = 0;
 
 	/* Insert new entry to the list. */
 	err = fib_insert_alias(t, tp, l, new_fa, fa, key);
@@ -2202,6 +2256,8 @@ static int fn_trie_dump_leaf(struct key_vector *l, struct fib_table *tb,
 				fri.dst_len = KEYLENGTH - fa->fa_slen;
 				fri.tos = fa->fa_tos;
 				fri.type = fa->fa_type;
+				fri.offload = fa->offload;
+				fri.trap = fa->trap;
 				err = fib_dump_info(skb,
 						    NETLINK_CB(cb->skb).portid,
 						    cb->nlh->nlmsg_seq,
