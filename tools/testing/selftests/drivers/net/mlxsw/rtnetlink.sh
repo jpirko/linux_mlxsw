@@ -29,6 +29,7 @@ ALL_TESTS="
 	bridge_extern_learn_test
 	neigh_offload_test
 	nexthop_offload_test
+	override_zero_route_test
 	devlink_reload_test
 "
 NUM_NETIFS=2
@@ -652,6 +653,20 @@ nexthop_offload_test()
 	simple_if_fini $swp2 192.0.2.2/24 2001:db8:1::2/64
 	simple_if_fini $swp1 192.0.2.1/24 2001:db8:1::1/64
 	sysctl_restore net.ipv6.conf.$swp2.keep_addr_on_down
+}
+
+override_zero_route_test()
+{
+	# The driver programs a route to 0.0.0.0/32 so that IPv4 packets with
+	# an unspecified destination IP are discarded, in accordance with the
+	# kernel data path. Test that this route cannot be overridden.
+	RET=0
+
+	ip link set dev $swp1 up
+	ip route add 0.0.0.0/32 dev $swp1 &>/dev/null
+	check_fail $? "managed to create route to 0.0.0.0/32"
+
+	log_test "override zero route"
 }
 
 devlink_reload_test()
