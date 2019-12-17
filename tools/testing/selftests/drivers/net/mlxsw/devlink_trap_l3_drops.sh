@@ -50,6 +50,7 @@ ALL_TESTS="
 	ipv6_mc_dip_reserved_scope_test
 	ipv6_mc_dip_interface_local_scope_test
 	blackhole_route_test
+	ipv4_dip_is_unspecified_test
 "
 
 NUM_NETIFS=4
@@ -551,6 +552,30 @@ blackhole_route_test()
 {
 	__blackhole_route_test "4" "198.51.100.0/30" "ip" $h2_ipv4
 	__blackhole_route_test "6" "2001:db8:2::/120" "ipv6" $h2_ipv6 "icmpv6"
+}
+
+ipv4_dip_is_unspecified_test()
+{
+	local dip=0.0.0.0
+	local trap_name="ipv4_dip_is_unspecified"
+	local group_name="l3_drops"
+	local mz_pid
+
+	RET=0
+
+	ping_check $trap_name
+
+	tc filter add dev $rp2 egress protocol ip pref 1 handle 101 \
+		flower dst_ip $dip action drop
+
+	$MZ $h1 -t udp "sp=54321,dp=12345" -c 0 -d 1msec -b $rp1mac -B $dip -q &
+	mz_pid=$!
+
+	devlink_trap_drop_test $trap_name $group_name $rp2
+
+	log_test "IPv4 destination IP is unspecified"
+
+	devlink_trap_drop_cleanup $mz_pid $rp2 "ip"
 }
 
 trap cleanup EXIT
