@@ -223,6 +223,10 @@ be added to the following table:
    * - ``ipv6_lpm_miss``
      - ``exception``
      - Traps unicast IPv6 packets that did not match any route
+   * - ``ipv4_dip_is_unspecified``
+     - ``drop``
+     - Trap IPv4 packets that the device decided to drop because they need to
+       be routed and their destination IP is unspecified (i.e., 0.0.0.0/32)
 
 Driver-specific Packet Traps
 ============================
