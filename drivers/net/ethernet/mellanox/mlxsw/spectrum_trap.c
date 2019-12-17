@@ -58,6 +58,7 @@ static struct devlink_trap mlxsw_sp_traps_arr[] = {
 	MLXSW_SP_TRAP_EXCEPTION(UNRESOLVED_NEIGH, L3_DROPS),
 	MLXSW_SP_TRAP_EXCEPTION(IPV4_LPM_UNICAST_MISS, L3_DROPS),
 	MLXSW_SP_TRAP_EXCEPTION(IPV6_LPM_UNICAST_MISS, L3_DROPS),
+	MLXSW_SP_TRAP_DROP(IPV4_DIP_UNSPECIFIED, L3_DROPS),
 };
 
 static struct mlxsw_listener mlxsw_sp_listeners_arr[] = {
@@ -89,6 +90,7 @@ static struct mlxsw_listener mlxsw_sp_listeners_arr[] = {
 			       TRAP_EXCEPTION_TO_CPU),
 	MLXSW_SP_RXL_EXCEPTION(DISCARD_ROUTER_LPM6, ROUTER_EXP,
 			       TRAP_EXCEPTION_TO_CPU),
+	MLXSW_SP_RXL_DISCARD(ROUTER3, L3_DISCARDS),
 };
 
 /* Mapping between hardware trap and devlink trap. Multiple hardware traps can
@@ -122,6 +124,7 @@ static u16 mlxsw_sp_listener_devlink_map[] = {
 	DEVLINK_TRAP_GENERIC_ID_UNRESOLVED_NEIGH,
 	DEVLINK_TRAP_GENERIC_ID_IPV4_LPM_UNICAST_MISS,
 	DEVLINK_TRAP_GENERIC_ID_IPV6_LPM_UNICAST_MISS,
+	DEVLINK_TRAP_GENERIC_ID_IPV4_DIP_UNSPECIFIED,
 };
 
 static int mlxsw_sp_rx_listener(struct mlxsw_sp *mlxsw_sp, struct sk_buff *skb,

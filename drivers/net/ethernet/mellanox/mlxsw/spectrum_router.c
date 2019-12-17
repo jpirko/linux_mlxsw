@@ -77,8 +77,10 @@ struct mlxsw_sp_router {
 	struct notifier_block inet6addr_nb;
 	const struct mlxsw_sp_rif_ops **rif_ops_arr;
 	const struct mlxsw_sp_ipip_ops **ipip_ops_arr;
-	u32 adj_discard_index;
+	u32 adj_discard_index; /* adjacency index for unresolved nexthop */
 	bool adj_discard_index_valid;
+	u32 adj_discard_index2; /* adjacency index for zero destination IP */
+	bool adj_discard_index2_valid;
 };
 
 struct mlxsw_sp_rif {
@@ -154,6 +156,10 @@ static int mlxsw_sp_vr_lpm_tree_bind(struct mlxsw_sp *mlxsw_sp,
 				     u8 tree_id);
 static int mlxsw_sp_vr_lpm_tree_unbind(struct mlxsw_sp *mlxsw_sp,
 				       const struct mlxsw_sp_fib *fib);
+static struct mlxsw_sp_rif *
+mlxsw_sp_ul_rif_create(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_vr *vr,
+		       struct netlink_ext_ack *extack);
+static void mlxsw_sp_ul_rif_destroy(struct mlxsw_sp_rif *ul_rif);
 
 static unsigned int *
 mlxsw_sp_rif_p_counter_get(struct mlxsw_sp_rif *rif,
@@ -781,6 +787,97 @@ static struct mlxsw_sp_fib *mlxsw_sp_vr_fib(const struct mlxsw_sp_vr *vr,
 	return NULL;
 }
 
+static int mlxsw_sp_adj_discard2_write(struct mlxsw_sp *mlxsw_sp,
+				       struct mlxsw_sp_vr *vr)
+{
+	enum mlxsw_reg_ratr_trap_action trap_action;
+	char ratr_pl[MLXSW_REG_RATR_LEN];
+	struct mlxsw_sp_rif *rif;
+	int err;
+
+	if (mlxsw_sp->router->adj_discard_index2_valid)
+		return 0;
+
+	/* Add a temporary RIF in order to program the adjacency entry.
+	 * It can later be removed because the entry never forwards packets to
+	 * this RIF.
+	 */
+	rif = mlxsw_sp_ul_rif_create(mlxsw_sp, vr, NULL);
+	if (IS_ERR(rif))
+		return PTR_ERR(rif);
+
+	err = mlxsw_sp_kvdl_alloc(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
+				  &mlxsw_sp->router->adj_discard_index2);
+	if (err)
+		goto err_adj_alloc;
+
+	trap_action = MLXSW_REG_RATR_TRAP_ACTION_DISCARD_ERRORS;
+	mlxsw_reg_ratr_pack(ratr_pl, MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY,
+			    true, MLXSW_REG_RATR_TYPE_ETHERNET,
+			    mlxsw_sp->router->adj_discard_index2,
+			    rif->rif_index);
+	mlxsw_reg_ratr_trap_action_set(ratr_pl, trap_action);
+
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ratr), ratr_pl);
+	if (err)
+		goto err_ratr_write;
+
+	mlxsw_sp_ul_rif_destroy(rif);
+	mlxsw_sp->router->adj_discard_index2_valid = true;
+
+	return 0;
+
+err_ratr_write:
+	mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
+			   mlxsw_sp->router->adj_discard_index2);
+err_adj_alloc:
+	mlxsw_sp_ul_rif_destroy(rif);
+	return err;
+}
+
+static int mlxsw_sp_discard_route_create(struct mlxsw_sp *mlxsw_sp,
+					 struct mlxsw_sp_vr *vr)
+{
+	char ralue_pl[MLXSW_REG_RALUE_LEN];
+	int err;
+
+	err = mlxsw_sp_adj_discard2_write(mlxsw_sp, vr);
+	if (err)
+		return err;
+
+	/* Add a discard route to 0.0.0.0/32 in the virtual router, so that the
+	 * ASIC will drop IPv4 packets with an unspecified destination IP, in
+	 * accordance with the kernel data path.
+	 */
+	mlxsw_reg_ralue_pack4(ralue_pl, MLXSW_REG_RALXX_PROTOCOL_IPV4,
+			      MLXSW_REG_RALUE_OP_WRITE_WRITE, vr->id, 32, 0);
+	mlxsw_reg_ralue_act_remote_pack(ralue_pl,
+					MLXSW_REG_RALUE_TRAP_ACTION_NOP, 0,
+					mlxsw_sp->router->adj_discard_index2,
+					1);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl);
+	if (err)
+		goto err_ralue_write;
+
+	return 0;
+
+err_ralue_write:
+	mlxsw_sp->router->adj_discard_index2_valid = false;
+	mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
+			   mlxsw_sp->router->adj_discard_index2);
+	return err;
+}
+
+static void mlxsw_sp_discard_route_destroy(struct mlxsw_sp *mlxsw_sp,
+					   struct mlxsw_sp_vr *vr)
+{
+	char ralue_pl[MLXSW_REG_RALUE_LEN];
+
+	mlxsw_reg_ralue_pack4(ralue_pl, MLXSW_REG_RALXX_PROTOCOL_IPV4,
+			      MLXSW_REG_RALUE_OP_WRITE_DELETE, vr->id, 32, 0);
+	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ralue), ralue_pl);
+}
+
 static struct mlxsw_sp_vr *mlxsw_sp_vr_create(struct mlxsw_sp *mlxsw_sp,
 					      u32 tb_id,
 					      struct netlink_ext_ack *extack)
@@ -817,6 +914,10 @@ static struct mlxsw_sp_vr *mlxsw_sp_vr_create(struct mlxsw_sp *mlxsw_sp,
 		goto err_mr6_table_create;
 	}
 
+	err = mlxsw_sp_discard_route_create(mlxsw_sp, vr);
+	if (err)
+		goto err_discard_route_create;
+
 	vr->fib4 = fib4;
 	vr->fib6 = fib6;
 	vr->mr_table[MLXSW_SP_L3_PROTO_IPV4] = mr4_table;
@@ -824,6 +925,8 @@ static struct mlxsw_sp_vr *mlxsw_sp_vr_create(struct mlxsw_sp *mlxsw_sp,
 	vr->tb_id = tb_id;
 	return vr;
 
+err_discard_route_create:
+	mlxsw_sp_mr_table_destroy(mr6_table);
 err_mr6_table_create:
 	mlxsw_sp_mr_table_destroy(mr4_table);
 err_mr4_table_create:
@@ -836,6 +939,7 @@ err_fib6_create:
 static void mlxsw_sp_vr_destroy(struct mlxsw_sp *mlxsw_sp,
 				struct mlxsw_sp_vr *vr)
 {
+	mlxsw_sp_discard_route_destroy(mlxsw_sp, vr);
 	mlxsw_sp_mr_table_destroy(vr->mr_table[MLXSW_SP_L3_PROTO_IPV6]);
 	vr->mr_table[MLXSW_SP_L3_PROTO_IPV6] = NULL;
 	mlxsw_sp_mr_table_destroy(vr->mr_table[MLXSW_SP_L3_PROTO_IPV4]);
@@ -5763,11 +5867,17 @@ static void mlxsw_sp_router_fib_flush(struct mlxsw_sp *mlxsw_sp)
 	 * using the adjacency index that is discarding packets, so free it in
 	 * case it was allocated.
 	 */
-	if (!mlxsw_sp->router->adj_discard_index_valid)
-		return;
-	mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
-			   mlxsw_sp->router->adj_discard_index);
-	mlxsw_sp->router->adj_discard_index_valid = false;
+	if (mlxsw_sp->router->adj_discard_index_valid) {
+		mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
+				   mlxsw_sp->router->adj_discard_index);
+		mlxsw_sp->router->adj_discard_index_valid = false;
+	}
+
+	if (mlxsw_sp->router->adj_discard_index2_valid) {
+		mlxsw_sp_kvdl_free(mlxsw_sp, MLXSW_SP_KVDL_ENTRY_TYPE_ADJ, 1,
+				   mlxsw_sp->router->adj_discard_index2);
+		mlxsw_sp->router->adj_discard_index2_valid = false;
+	}
 }
 
 static void mlxsw_sp_router_fib_abort(struct mlxsw_sp *mlxsw_sp)
@@ -6118,6 +6228,10 @@ static int mlxsw_sp_router_fib_event(struct notifier_block *nb,
 			}
 			if (fen_info->fi->nh) {
 				NL_SET_ERR_MSG_MOD(info->extack, "IPv4 route with nexthop objects is not supported");
+				return notifier_from_errno(-EINVAL);
+			}
+			if (fen_info->dst == 0 && fen_info->dst_len == 32) {
+				NL_SET_ERR_MSG_MOD(info->extack, "0.0.0.0/32 route cannot be overridden");
 				return notifier_from_errno(-EINVAL);
 			}
 		} else if (info->family == AF_INET6) {
