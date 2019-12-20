@@ -588,6 +588,15 @@ ethtool_stats_get()
 	ethtool -S $dev | grep "^ *$stat:" | head -n 1 | cut -d: -f2
 }
 
+qdisc_stats_get()
+{
+	local handle=$1; shift
+	local selector=$1; shift
+
+	tc -j -s qdisc show dev "$swp3" \
+	    | jq '.[] | select(.handle == "'"$handle"'") | '"$selector"
+}
+
 mac_get()
 {
 	local if_name=$1
