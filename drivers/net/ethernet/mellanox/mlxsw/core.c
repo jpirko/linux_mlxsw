@@ -565,6 +565,7 @@ static int mlxsw_emad_transmit(struct mlxsw_core *mlxsw_core,
 			       struct mlxsw_reg_trans *trans)
 {
 	struct sk_buff *skb;
+	unsigned long end;
 	int err;
 
 	skb = skb_copy(trans->tx_skb, GFP_KERNEL);
@@ -576,11 +577,19 @@ static int mlxsw_emad_transmit(struct mlxsw_core *mlxsw_core,
 			    skb->len - mlxsw_core->driver->txhdr_len);
 
 	atomic_set(&trans->active, 1);
-	err = mlxsw_core_skb_transmit(mlxsw_core, skb, &trans->tx_info);
-	if (err) {
-		dev_kfree_skb(skb);
-		return err;
-	}
+	end = jiffies + msecs_to_jiffies(MLXSW_EMAD_TIMEOUT_MS);
+	do {
+		err = mlxsw_core_skb_transmit(mlxsw_core, skb,
+					      &trans->tx_info);
+		if (!err)
+			goto out;
+		if (err != -EAGAIN) {
+			dev_kfree_skb(skb);
+			return err;
+		}
+		cond_resched();
+	} while (time_before(jiffies, end));
+out:
 	mlxsw_emad_trans_timeout_schedule(trans);
 	return 0;
 }
