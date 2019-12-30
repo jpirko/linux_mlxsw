@@ -398,6 +398,8 @@ struct mlxsw_bus {
 			u8 *p_status);
 	u32 (*read_frc_h)(void *bus_priv);
 	u32 (*read_frc_l)(void *bus_priv);
+	void (*fw_crdump_collect)(void *bus_priv, u32 *cr_data,
+				  u32 crdump_size);
 	u8 features;
 };
 
@@ -416,7 +418,8 @@ struct mlxsw_bus_info {
 	u8 vsd[MLXSW_CMD_BOARDINFO_VSD_LEN];
 	u8 psid[MLXSW_CMD_BOARDINFO_PSID_LEN];
 	u8 low_frequency:1,
-	   read_frc_capable:1;
+	   read_frc_capable:1,
+	   fw_crdump_capable:1;
 };
 
 struct mlxsw_hwmon;
