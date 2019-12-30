@@ -82,6 +82,9 @@ struct mlxsw_core {
 	struct mlxsw_core_port *ports;
 	unsigned int max_ports;
 	bool fw_flash_in_progress;
+	struct {
+		struct devlink_health_reporter *fw_crdump_reporter;
+	} health;
 	unsigned long driver_priv[0];
 	/* driver_priv has to be always the last item */
 };
@@ -1422,6 +1425,59 @@ reload_fail_deinit:
 	devlink_free(devlink);
 }
 EXPORT_SYMBOL(mlxsw_core_bus_device_unregister);
+
+static int
+mlxsw_core_health_fw_crdump(struct devlink_health_reporter *reporter,
+			    struct devlink_fmsg *fmsg, void *priv_ctx,
+			    struct netlink_ext_ack *extack)
+{
+	struct mlxsw_core *mlxsw_core = devlink_health_reporter_priv(reporter);
+	u32 crdump_size = 244168 * 4; /* size in bytes */
+	u32 *cr_data;
+	int err;
+
+	cr_data = kvmalloc(crdump_size, GFP_KERNEL);
+	if (!cr_data)
+		return -ENOMEM;
+
+	mlxsw_core->bus->fw_crdump_collect(mlxsw_core->bus_priv,
+					   cr_data, crdump_size / 4);
+
+	err = devlink_fmsg_binary_pair_put(fmsg, "crdump_data", cr_data, crdump_size);
+
+	kvfree(cr_data);
+	return err;
+}
+
+static const struct devlink_health_reporter_ops
+mlxsw_health_fw_crdump_reporter_ops = {
+	.name = "fw_crdump",
+	.dump = mlxsw_core_health_fw_crdump,
+};
+
+void mlxsw_core_health_reporters_create(struct mlxsw_core *mlxsw_core)
+{
+	struct devlink *devlink = priv_to_devlink(mlxsw_core);
+
+	if (mlxsw_core->bus_info->fw_crdump_capable) {
+		mlxsw_core->health.fw_crdump_reporter =
+			devlink_health_reporter_create(devlink,
+						       &mlxsw_health_fw_crdump_reporter_ops,
+						       0, false, mlxsw_core);
+		if (IS_ERR(mlxsw_core->health.fw_crdump_reporter))
+			dev_err(mlxsw_core->bus_info->dev,
+				"Failed to create fw crdump reporter, err = %ld\n",
+				PTR_ERR(mlxsw_core->health.fw_crdump_reporter));
+	}
+}
+EXPORT_SYMBOL(mlxsw_core_health_reporters_create);
+
+void mlxsw_core_health_reporters_destroy(struct mlxsw_core *mlxsw_core)
+{
+	if (!IS_ERR_OR_NULL(mlxsw_core->health.fw_crdump_reporter))
+		devlink_health_reporter_destroy(mlxsw_core->health.fw_crdump_reporter);
+}
+EXPORT_SYMBOL(mlxsw_core_health_reporters_destroy);
 
 bool mlxsw_core_skb_transmit_busy(struct mlxsw_core *mlxsw_core,
 				  const struct mlxsw_tx_info *tx_info)

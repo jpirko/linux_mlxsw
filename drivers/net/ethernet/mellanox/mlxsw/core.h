@@ -46,6 +46,9 @@ int mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 				   struct netlink_ext_ack *extack);
 void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core, bool reload);
 
+void mlxsw_core_health_reporters_create(struct mlxsw_core *mlxsw_core);
+void mlxsw_core_health_reporters_destroy(struct mlxsw_core *mlxsw_core);
+
 struct mlxsw_tx_info {
 	u8 local_port;
 	bool is_emad;
