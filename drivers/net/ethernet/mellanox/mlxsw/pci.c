@@ -21,6 +21,7 @@
 #include "cmd.h"
 #include "port.h"
 #include "resources.h"
+#include "addr_map.h"
 
 #define mlxsw_pci_write32(mlxsw_pci, reg, val) \
 	iowrite32be(val, (mlxsw_pci)->hw_addr + (MLXSW_PCI_ ## reg))
@@ -1742,7 +1743,15 @@ static void mlxsw_pci_fw_crdump_collect(void *bus_priv, u32 *cr_data,
 					u32 crdump_size)
 {
 	struct mlxsw_pci *mlxsw_pci = bus_priv;
-	return;
+	u32 base_addr, offset;
+	int i, cr_idx;
+
+	for (i = 0, cr_idx = 0;
+	     i < CR_ADDR_MAP_LEN && cr_idx < crdump_size; i++) {
+		base_addr = cr_addr_map[i].addr;
+		for (offset = 0; offset < cr_addr_map[i].size; offset++, cr_idx++)
+			cr_data[cr_idx] = mlxsw_pci_cr_read32(mlxsw_pci, base_addr + offset * 4);
+	}
 }
 
 static const struct mlxsw_bus mlxsw_pci_bus = {
