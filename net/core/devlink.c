@@ -4530,6 +4530,9 @@ int devlink_fmsg_string_pair_put(struct devlink_fmsg *fmsg, const char *name,
 }
 EXPORT_SYMBOL_GPL(devlink_fmsg_string_pair_put);
 
+#define DEVLINK_FMSG_BINARY_MAX_SIZE \
+	(DEVLINK_FMSG_MAX_SIZE - (DEVLINK_FMSG_MAX_SIZE % 16))
+
 int devlink_fmsg_binary_pair_put(struct devlink_fmsg *fmsg, const char *name,
 				 const void *value, u32 value_len)
 {
@@ -4543,8 +4546,8 @@ int devlink_fmsg_binary_pair_put(struct devlink_fmsg *fmsg, const char *name,
 
 	for (offset = 0; offset < value_len; offset += data_size) {
 		data_size = value_len - offset;
-		if (data_size > DEVLINK_FMSG_MAX_SIZE)
-			data_size = DEVLINK_FMSG_MAX_SIZE;
+		if (data_size > DEVLINK_FMSG_BINARY_MAX_SIZE)
+			data_size = DEVLINK_FMSG_BINARY_MAX_SIZE;
 		err = devlink_fmsg_binary_put(fmsg, value + offset, data_size);
 		if (err)
 			return err;
