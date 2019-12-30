@@ -8,7 +8,7 @@
 
 #include "item.h"
 
-#define MLXSW_PCI_BAR0_SIZE		(1024 * 1024) /* 1MB */
+#define MLXSW_PCI_BAR0_SIZE		(1024 * 1024 * 4) /* 4MB for SP-1 */
 #define MLXSW_PCI_PAGE_SIZE		4096
 
 #define MLXSW_PCI_CIR_BASE			0x71000
