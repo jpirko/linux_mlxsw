@@ -5054,6 +5054,8 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		}
 	}
 
+	mlxsw_core_health_reporters_create(mlxsw_core);
+
 	/* Initialize netdevice notifier after router and SPAN is initialized,
 	 * so that the event handler can use router structures and call SPAN
 	 * respin.
@@ -5094,6 +5096,7 @@ err_dpipe_init:
 	unregister_netdevice_notifier_net(mlxsw_sp_net(mlxsw_sp),
 					  &mlxsw_sp->netdevice_nb);
 err_netdev_notifier:
+	mlxsw_core_health_reporters_destroy(mlxsw_core);
 	if (mlxsw_sp->clock)
 		mlxsw_sp->ptp_ops->fini(mlxsw_sp->ptp_state);
 err_ptp_init:
