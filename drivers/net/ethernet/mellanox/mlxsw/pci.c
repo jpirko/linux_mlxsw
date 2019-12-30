@@ -26,6 +26,8 @@
 	iowrite32be(val, (mlxsw_pci)->hw_addr + (MLXSW_PCI_ ## reg))
 #define mlxsw_pci_read32(mlxsw_pci, reg) \
 	ioread32be((mlxsw_pci)->hw_addr + (MLXSW_PCI_ ## reg))
+#define mlxsw_pci_cr_read32(mlxsw_pci, offset) \
+	ioread32be((mlxsw_pci)->hw_addr + (offset))
 
 enum mlxsw_pci_queue_type {
 	MLXSW_PCI_QUEUE_TYPE_SDQ,
@@ -1736,6 +1738,13 @@ static u32 mlxsw_pci_read_frc_l(void *bus_priv)
 	return mlxsw_pci_read32(mlxsw_pci, FREE_RUNNING_CLOCK_L(frc_offset));
 }
 
+static void mlxsw_pci_fw_crdump_collect(void *bus_priv, u32 *cr_data,
+					u32 crdump_size)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	return;
+}
+
 static const struct mlxsw_bus mlxsw_pci_bus = {
 	.kind			= "pci",
 	.init			= mlxsw_pci_init,
@@ -1745,6 +1754,7 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.cmd_exec		= mlxsw_pci_cmd_exec,
 	.read_frc_h		= mlxsw_pci_read_frc_h,
 	.read_frc_l		= mlxsw_pci_read_frc_l,
+	.fw_crdump_collect	= mlxsw_pci_fw_crdump_collect,
 	.features		= MLXSW_BUS_F_TXRX | MLXSW_BUS_F_RESET,
 };
 
@@ -1807,6 +1817,7 @@ static int mlxsw_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mlxsw_pci->bus_info.device_name = pci_name(mlxsw_pci->pdev);
 	mlxsw_pci->bus_info.dev = &pdev->dev;
 	mlxsw_pci->bus_info.read_frc_capable = true;
+	mlxsw_pci->bus_info.fw_crdump_capable = true;
 	mlxsw_pci->id = id;
 
 	err = mlxsw_core_bus_device_register(&mlxsw_pci->bus_info,
