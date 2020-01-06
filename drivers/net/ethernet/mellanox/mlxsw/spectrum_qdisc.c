@@ -767,7 +767,7 @@ __mlxsw_sp_qdisc_ets_graft(struct mlxsw_sp_port *mlxsw_sp_port,
 	    mlxsw_sp_port->tclass_qdiscs[tclass_num].handle == child_handle)
 		return 0;
 
-	if (!p->child_handle) {
+	if (!child_handle) {
 		/* This is an invisible FIFO replacing the original Qdisc.
 		 * Ignore it--the original Qdisc's destroy will follow.
 		 */
