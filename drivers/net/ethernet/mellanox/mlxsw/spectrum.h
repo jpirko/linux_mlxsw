@@ -187,6 +187,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
 	const struct mlxsw_listener *listeners;
 	size_t listeners_count;
+	u32 lowest_shaper_bs;
 };
 
 static inline struct mlxsw_sp_upper *
