@@ -89,16 +89,23 @@ ETS_CHANGE_QDISC=
 
 priomap_mode()
 {
-	echo "Running in priomap mode"
+	echo "Running in ETS priomap mode"
 	ets_delete_qdisc
 	ETS_CHANGE_QDISC=ets_change_qdisc_priomap
 }
 
 classifier_mode()
 {
-	echo "Running in classifier mode"
+	echo "Running in ETS classifier mode"
 	ets_delete_qdisc
 	ETS_CHANGE_QDISC=ets_change_qdisc_classifier
+}
+
+prio_priomap_mode()
+{
+	echo "Running in PRIO priomap mode"
+	ets_delete_qdisc
+	ETS_CHANGE_QDISC=prio_change_qdisc_priomap
 }
 
 ets_change_qdisc_priomap()
@@ -141,6 +148,31 @@ ets_change_qdisc_classifier()
 			((prio++))
 		done
 	fi
+	QDISC_DEV=$dev
+}
+
+prio_change_qdisc_priomap()
+{
+	local dev=$1; shift
+	local nstrict=$1; shift
+	local priomap=$1; shift
+	local quanta=("${@}")
+
+	if ((nstrict < 3)); then
+		check_err 1 "PRIO Qdisc requires at least 3 strict bands"
+		log_test "Change PRIO Qdisc"
+		return
+	fi
+	if ((${#quanta[@]})); then
+		check_err 1 "PRIO Qdisc does not support DWRR bands"
+		log_test "Change PRIO Qdisc"
+		return
+	fi
+
+	local op=$(if [[ -n $QDISC_DEV ]]; then echo change; else echo add; fi)
+
+	tc qdisc $op dev $dev $PARENT handle 10: prio \
+	   bands $nstrict priomap $priomap
 	QDISC_DEV=$dev
 }
 
