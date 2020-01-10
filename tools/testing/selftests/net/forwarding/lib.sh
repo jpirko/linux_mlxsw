@@ -1407,7 +1407,6 @@ __start_traffic()
 
 	$MZ $h_in -p $pktsize -A $sip -B $dip -c 0 \
 		-a own -b $dmac -t "$proto" -q "$@" &
-	sleep 1
 }
 
 start_traffic_pktsize()

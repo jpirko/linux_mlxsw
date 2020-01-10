@@ -233,12 +233,14 @@ test_mc_aware()
 
 	local -a uc_rate
 	start_traffic $h2.111 192.0.2.129 192.0.2.130 $h3mac
+	sleep 1
 	uc_rate=($(measure_rate $swp2 $h3 rx_octets_prio_1 "UC-only"))
 	check_err $? "Could not get high enough UC-only ingress rate"
 	stop_traffic
 	local ucth1=${uc_rate[1]}
 
 	start_traffic $h1 192.0.2.65 bc bc
+	sleep 1
 
 	local d0=$(date +%s)
 	local t0=$(ethtool_stats_get $h3 rx_octets_prio_0)
@@ -246,6 +248,7 @@ test_mc_aware()
 
 	local -a uc_rate_2
 	start_traffic $h2.111 192.0.2.129 192.0.2.130 $h3mac
+	sleep 1
 	uc_rate_2=($(measure_rate $swp2 $h3 rx_octets_prio_1 "UC+MC"))
 	check_err $? "Could not get high enough UC+MC ingress rate"
 	stop_traffic
