@@ -1209,7 +1209,6 @@ __start_traffic()
 
 	$MZ $h_in -p 8000 -A $sip -B $dip -c 0 \
 		-a own -b $dmac -t "$proto" -q "$@" &
-	sleep 1
 }
 
 start_traffic()
