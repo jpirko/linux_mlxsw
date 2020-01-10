@@ -367,6 +367,7 @@ do_ecn_test()
 	# Main stream.
 	start_tcp_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 3 $vlan) \
 			  $h3_mac tos=0x01
+	sleep 1
 
 	# Build the below-the-limit backlog using UDP. We could use TCP just
 	# fine, but this way we get a proof that UDP is accepted when queue
