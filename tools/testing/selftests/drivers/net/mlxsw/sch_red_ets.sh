@@ -5,6 +5,7 @@ ALL_TESTS="
 	ping_ipv4
 	ecn_test
 	red_test
+	mc_backlog_test
 "
 : ${QDISC:=ets}
 source sch_red_core.sh
@@ -55,6 +56,18 @@ red_test()
 
 	do_red_test 10 $BACKLOG1
 	do_red_test 11 $BACKLOG2
+
+	uninstall_qdisc
+}
+
+mc_backlog_test()
+{
+	install_qdisc
+
+	# Note that the backlog numbers here do not correspond to RED
+	# configuration, but are arbitrary.
+	do_mc_backlog_test 10 $BACKLOG1
+	do_mc_backlog_test 11 $BACKLOG2
 
 	uninstall_qdisc
 }

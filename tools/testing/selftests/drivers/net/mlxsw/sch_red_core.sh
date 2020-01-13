@@ -188,12 +188,17 @@ switch_create()
 	ip link set dev br1_11 up
 	ip link set dev br2_10 up
 	ip link set dev br2_11 up
+
+	local size=$(devlink_pool_size_thtype 0 | cut -d' ' -f 1)
+	devlink_port_pool_th_set $swp3 8 $size
 }
 
 switch_destroy()
 {
 	local intf
 	local vlan
+
+	devlink_port_pool_th_restore $swp3 8
 
 	tc qdisc del dev $swp3 root 2>/dev/null
 
@@ -427,6 +432,27 @@ do_red_test()
 	((0 <= pct && pct <= 5))
 	check_err $? "backlog $backlog / $limit expected <= 5% distance"
 	log_test "TC $((vlan - 10)): RED backlog > limit"
+
+	stop_traffic
+	sleep 1
+}
+
+do_mc_backlog_test()
+{
+	local vlan=$1; shift
+	local limit=$1; shift
+	local backlog
+	local pct
+
+	start_tcp_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 3 $vlan) \
+			  bc tos=0x01
+
+	RET=0
+	backlog=$(build_backlog $vlan $limit tcp tos=0x01)
+	check_err $? "Could not build the requested backlog"
+	pct=$(check_marking $vlan "== 0")
+	check_err $? "backlog $backlog / $limit Got $pct% marked packets, expected == 0."
+	log_test "TC $((vlan - 10)): Qdisc reports MC backlog"
 
 	stop_traffic
 	sleep 1
