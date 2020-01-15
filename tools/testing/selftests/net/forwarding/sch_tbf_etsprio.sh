@@ -30,7 +30,7 @@ tbf_test()
 	# This test is used for both ETS and PRIO. Even though we only need two
 	# bands, PRIO demands a minimum of three.
 	tc qdisc add dev $swp2 root handle 10: $QDISC 3 priomap 2 1 0
-	tbf_test_one 128K
+	tbf_bursts_each tbf_test_one
 	tc qdisc del dev $swp2 root
 }
 
