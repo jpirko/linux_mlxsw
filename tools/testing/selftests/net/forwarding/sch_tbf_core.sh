@@ -207,13 +207,30 @@ tbf_get_counter()
 	tc_rule_stats_get $h2 10$vlan ingress .bytes
 }
 
+tbf_bursts_each()
+{
+	local _1M=$((1024 * 1024))
+	local bs
+
+	for bs in $((4 * _1M)) $((8 * _1M)) $((16 * _1M)) \
+		  $((32 * _1M)) $((64 * _1M)); do
+		"$@" $bs
+	done
+}
+
 do_tbf_test()
 {
 	local vlan=$1; shift
 	local mbit=$1; shift
+	local bs=$1; shift
+	local T=4
 
+	sleep 5 # Allow observing burst spike.
+
+	local t0=$(busywait_for_counter 1000 +1 tbf_get_counter $vlan)
 	start_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 2 $vlan) $h2_mac
-	sleep 5 # Wait for the burst to dwindle
+	sleep $T # Wait for the burst to dwindle
+	local t1=$(tbf_get_counter $vlan)
 
 	local t2=$(busywait_for_counter 1000 +1 tbf_get_counter $vlan)
 	sleep 10
@@ -229,5 +246,10 @@ do_tbf_test()
 	((-5 <= nr_pct && nr_pct <= 5))
 	check_err $? "Expected rate $(humanize $er), got $(humanize $nr), which is $nr_pct% off. Required accuracy is +-5%."
 
-	log_test "TC $((vlan - 10)): TBF rate ${mbit}Mbit"
+	local bs_seen=$((t1 - t0 - ($T * er / 8)))
+	local bs_pct=$((100 * (bs_seen - bs) / bs))
+	((-5 <= bs_pct && bs_pct <= 5))
+	check_err $? "Burst size $(humanize $bs_seen B), expected $(humanize $bs B), which is $bs_pct% off. Required accuracy is +-5%."
+
+	log_test "TC $((vlan - 10)): TBF rate ${mbit}Mbit burst $(humanize $bs B)"
 }
