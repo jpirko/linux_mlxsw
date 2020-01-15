@@ -19,7 +19,7 @@ tbf_test_one()
 
 tbf_test()
 {
-	tbf_test_one 128K
+	tbf_bursts_each tbf_test_one
 	tc qdisc del dev $swp2 root
 }
 
