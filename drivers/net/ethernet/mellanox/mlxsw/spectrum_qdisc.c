@@ -231,7 +231,7 @@ mlxsw_sp_qdisc_bstats_per_priority_get(struct mlxsw_sp_port_xstats *xstats,
 static int
 mlxsw_sp_tclass_congestion_enable(struct mlxsw_sp_port *mlxsw_sp_port,
 				  int tclass_num, u32 min, u32 max,
-				  u32 probability, bool is_ecn)
+				  u32 probability, bool is_wred, bool is_ecn)
 {
 	char cwtpm_cmd[MLXSW_REG_CWTPM_LEN];
 	char cwtp_cmd[MLXSW_REG_CWTP_LEN];
@@ -249,7 +249,7 @@ mlxsw_sp_tclass_congestion_enable(struct mlxsw_sp_port *mlxsw_sp_port,
 		return err;
 
 	mlxsw_reg_cwtpm_pack(cwtpm_cmd, mlxsw_sp_port->local_port, tclass_num,
-			     MLXSW_REG_CWTP_DEFAULT_PROFILE, true, is_ecn);
+			     MLXSW_REG_CWTP_DEFAULT_PROFILE, is_wred, is_ecn);
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(cwtpm), cwtpm_cmd);
 }
@@ -352,8 +352,9 @@ mlxsw_sp_qdisc_red_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 	prob = DIV_ROUND_UP(prob, 1 << 16);
 	min = mlxsw_sp_bytes_cells(mlxsw_sp, p->min);
 	max = mlxsw_sp_bytes_cells(mlxsw_sp, p->max);
-	return mlxsw_sp_tclass_congestion_enable(mlxsw_sp_port, tclass_num, min,
-						 max, prob, p->is_ecn);
+	return mlxsw_sp_tclass_congestion_enable(mlxsw_sp_port, tclass_num,
+						 min, max, prob,
+						 !p->is_taildrop, p->is_ecn);
 }
 
 static void
