@@ -114,34 +114,31 @@ ping_ipv4()
 	ping_test $h1 192.0.2.2
 }
 
-wait_for_packets()
+rx_frames_prio()
 {
-	local t0=$1; shift
 	local prio_observe=$1; shift
 
-	local t1=$(ethtool_stats_get $swp1 rx_frames_prio_$prio_observe)
-	local delta=$((t1 - t0))
-	echo $delta
-	((delta >= 10))
+	ethtool_stats_get $swp1 rx_frames_prio_$prio_observe
 }
 
 __test_defprio()
 {
 	local prio_install=$1; shift
 	local prio_observe=$1; shift
-	local delta
 	local key
+	local t1
 	local i
 
 	RET=0
 
 	defprio_install $swp1 $prio_install
 
-	local t0=$(ethtool_stats_get $swp1 rx_frames_prio_$prio_observe)
+	local t0=$(rx_frames_prio $prio_observe)
 	mausezahn -q $h1 -d 100m -c 10 -t arp reply
-	delta=$(busywait "$HIT_TIMEOUT" wait_for_packets $t0 $prio_observe)
+	t1=$(busywait "$HIT_TIMEOUT"
+		until_counter_is $((t0 + 10)) rx_frames_prio $prio_observe)
 
-	check_err $? "Default priority $prio_install/$prio_observe: Expected to capture 10 packets, got $delta."
+	check_err $? "Default priority $prio_install/$prio_observe: Expected to capture 10 packets, got $((t1 - t0))."
 	log_test "Default priority $prio_install/$prio_observe"
 
 	defprio_uninstall $swp1 $prio_install
