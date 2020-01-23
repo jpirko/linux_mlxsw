@@ -809,6 +809,12 @@ static int mlxsw_emad_reg_access(struct mlxsw_core *mlxsw_core,
 	err = mlxsw_emad_transmit(mlxsw_core, trans);
 	if (err)
 		goto err_out;
+
+	pr_info_ratelimited("EMAD reg access (tid=%llx,reg_id=%x(%s),type=%s)\n",
+			    trans->tid, trans->reg->id,
+			    mlxsw_reg_id_str(trans->reg->id),
+			    mlxsw_core_reg_access_type_str(trans->type));
+
 	return 0;
 
 err_out:
