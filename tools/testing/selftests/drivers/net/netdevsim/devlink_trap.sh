@@ -103,6 +103,10 @@ trap_metadata_test()
 	for trap_name in $(devlink_traps_get); do
 		devlink_trap_metadata_test $trap_name "input_port"
 		check_err $? "Input port not reported as metadata of trap $trap_name"
+		if [ $trap_name == "acl" ]; then
+			devlink_trap_metadata_test $trap_name "flow_action_cookie"
+			check_err $? "Flow action cookie not reported as metadata of trap $trap_name"
+		fi
 	done
 
 	log_test "Trap metadata"
