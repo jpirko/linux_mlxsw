@@ -4965,9 +4965,9 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->core = mlxsw_core;
 	mlxsw_sp->bus_info = mlxsw_bus_info;
 
-	err = mlxsw_sp_fw_rev_validate(mlxsw_sp);
-	if (err)
-		return err;
+	//err = mlxsw_sp_fw_rev_validate(mlxsw_sp);
+	//if (err)
+	//	return err;
 
 	mlxsw_core_emad_string_tlv_enable(mlxsw_core);
 
