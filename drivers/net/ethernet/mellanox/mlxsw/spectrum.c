@@ -3241,6 +3241,7 @@ mlxsw_sp2_to_ptys_upper_speed(struct mlxsw_sp *mlxsw_sp, u32 upper_speed)
 	u32 ptys_proto = 0;
 	int i;
 
+	return 0x2;
 	for (i = 0; i < MLXSW_SP2_PORT_LINK_MODE_LEN; i++) {
 		if (mlxsw_sp2_port_link_mode[i].speed <= upper_speed)
 			ptys_proto |= mlxsw_sp2_port_link_mode[i].mask;
@@ -3277,6 +3278,7 @@ mlxsw_sp2_port_speed_base(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		return 0;
 	}
 
+	return 0;
 	return -EIO;
 }
 
@@ -3524,16 +3526,17 @@ mlxsw_sp_port_speed_by_width_set(struct mlxsw_sp_port *mlxsw_sp_port)
 	char ptys_pl[MLXSW_REG_PTYS_LEN];
 	u32 eth_proto_admin;
 	u32 upper_speed;
-	u32 base_speed;
+	u32 base_speed = 0x2;
 	int err;
 
 	ops = mlxsw_sp->port_type_speed_ops;
 
-	err = ops->port_speed_base(mlxsw_sp, mlxsw_sp_port->local_port,
-				   &base_speed);
-	if (err)
-		return err;
-	upper_speed = base_speed * mlxsw_sp_port->mapping.width;
+	//err = ops->port_speed_base(mlxsw_sp, mlxsw_sp_port->local_port,
+	//			   &base_speed);
+	//if (err)
+	//	return err;
+	//upper_speed = base_speed * mlxsw_sp_port->mapping.width;
+	upper_speed = base_speed;
 
 	eth_proto_admin = ops->to_ptys_upper_speed(mlxsw_sp, upper_speed);
 	ops->reg_ptys_eth_pack(mlxsw_sp, ptys_pl, mlxsw_sp_port->local_port,
