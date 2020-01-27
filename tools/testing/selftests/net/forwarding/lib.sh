@@ -677,8 +677,9 @@ qdisc_parent_stats_get()
 humanize()
 {
 	local speed=$1; shift
+	local suffix=${1:-bps}; shift
 
-	for unit in bps Kbps Mbps Gbps; do
+	for unit in "$suffix" "K$suffix" "M$suffix" "G$suffix"; do
 		if (($(echo "$speed < 1024" | bc))); then
 			break
 		fi
