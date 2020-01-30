@@ -72,6 +72,11 @@ static const struct nla_policy ets_quanta_policy[TCA_ETS_MAX + 1] = {
 
 static const struct nla_policy ets_class_policy[TCA_ETS_MAX + 1] = {
 	[TCA_ETS_QUANTA_BAND] = { .type = NLA_U32 },
+	[TCA_ETS_PRIOLIST] = { .type = NLA_NESTED },
+};
+
+static const struct nla_policy ets_priolist_policy[TCA_ETS_MAX + 1] = {
+	[TCA_ETS_PRIOLIST_PRIO] = { .type = NLA_U8 },
 };
 
 static int ets_quantum_parse(struct Qdisc *sch, const struct nlattr *attr,
@@ -194,6 +199,46 @@ static bool ets_class_is_strict(struct ets_sched *q, const struct ets_class *cl)
 	return band < q->nstrict;
 }
 
+static int ets_qdisc_priolist_parse(struct Qdisc *sch,
+				    struct nlattr *priolist_attr,
+				    u8 *priolist, int *p_priolist_len,
+				    struct netlink_ext_ack *extack)
+{
+	const struct nlattr *attr;
+	int prio;
+	int rem;
+	int err;
+
+	err = __nla_validate_nested(priolist_attr, TCA_ETS_MAX,
+				    ets_priolist_policy, NL_VALIDATE_STRICT,
+				    extack);
+	if (err)
+		return err;
+
+	nla_for_each_nested(attr, priolist_attr, rem) {
+		switch (nla_type(attr)) {
+		case TCA_ETS_PRIOLIST_PRIO:
+			if (*p_priolist_len > TC_PRIO_MAX) {
+				NL_SET_ERR_MSG_MOD(extack, "Too many priorities in ETS priolist");
+				return -EINVAL;
+			}
+			prio = nla_get_u8(attr);
+			if (prio > TC_PRIO_MAX) {
+				NL_SET_ERR_MSG_MOD(extack, "Invalid priority in ETS class priolist");
+				return -EINVAL;
+			}
+			priolist[*p_priolist_len] = prio;
+			++*p_priolist_len;
+			break;
+		default:
+			WARN_ON_ONCE(1); /* Validate should have caught this. */
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static int ets_class_change(struct Qdisc *sch, u32 classid, u32 parentid,
 			    struct nlattr **tca, unsigned long *arg,
 			    struct netlink_ext_ack *extack)
@@ -201,9 +246,13 @@ static int ets_class_change(struct Qdisc *sch, u32 classid, u32 parentid,
 	struct ets_class *cl = ets_class_from_arg(sch, *arg);
 	struct ets_sched *q = qdisc_priv(sch);
 	struct nlattr *opt = tca[TCA_OPTIONS];
+	unsigned int band = cl - q->classes;
 	struct nlattr *tb[TCA_ETS_MAX + 1];
-	unsigned int quantum;
+	u8 priolist[TC_PRIO_MAX + 1];
+	unsigned int quantum = 0;
+	int priolist_len = 0;
 	int err;
+	int i;
 
 	/* Classes can be added and removed only through Qdisc_ops.change
 	 * interface.
@@ -222,22 +271,30 @@ static int ets_class_change(struct Qdisc *sch, u32 classid, u32 parentid,
 	if (err < 0)
 		return err;
 
-	if (!tb[TCA_ETS_QUANTA_BAND])
-		/* Nothing to configure. */
-		return 0;
-
-	if (ets_class_is_strict(q, cl)) {
-		NL_SET_ERR_MSG(extack, "Strict bands do not have a configurable quantum");
-		return -EINVAL;
+	if (tb[TCA_ETS_PRIOLIST]) {
+		err = ets_qdisc_priolist_parse(sch, tb[TCA_ETS_PRIOLIST],
+					       priolist, &priolist_len, extack);
+		if (err)
+			return err;
 	}
 
-	err = ets_quantum_parse(sch, tb[TCA_ETS_QUANTA_BAND], &quantum,
-				extack);
-	if (err)
-		return err;
+	if (tb[TCA_ETS_QUANTA_BAND]) {
+		if (ets_class_is_strict(q, cl)) {
+			NL_SET_ERR_MSG(extack, "Strict bands do not have a configurable quantum");
+			return -EINVAL;
+		}
+
+		err = ets_quantum_parse(sch, tb[TCA_ETS_QUANTA_BAND], &quantum,
+					extack);
+		if (err)
+			return err;
+	}
 
 	sch_tree_lock(sch);
-	cl->quantum = quantum;
+	if (quantum)
+		cl->quantum = quantum;
+	for (i = 0; i < priolist_len; i++)
+		q->prio2band[priolist[i]] = band;
 	sch_tree_unlock(sch);
 
 	ets_offload_change(sch);
