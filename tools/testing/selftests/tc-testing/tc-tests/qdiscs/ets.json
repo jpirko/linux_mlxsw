@@ -839,6 +839,44 @@
         ]
     },
     {
+        "id": "4eec",
+        "name": "A large quantum",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true"
+        ],
+        "cmdUnderTest": "$TC qdisc add dev $DUMMY handle 1: root ets quanta 1048576",
+        "expExitCode": "0",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets.*bands 1 quanta 1048576",
+        "matchCount": "1",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
+    },
+    {
+        "id": "c4ad",
+        "name": "Overlarge quantum",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true"
+        ],
+        "cmdUnderTest": "$TC qdisc add dev $DUMMY handle 1: root ets quanta 1048577",
+        "expExitCode": "2",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets",
+        "matchCount": "0",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
+    },
+    {
         "id": "d6e6",
         "name": "No values after the quanta keyword",
         "category": [
