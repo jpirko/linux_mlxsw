@@ -88,6 +88,10 @@ static int ets_quantum_parse(struct Qdisc *sch, const struct nlattr *attr,
 		NL_SET_ERR_MSG(extack, "ETS quantum cannot be zero");
 		return -EINVAL;
 	}
+	if (*quantum > (1 << 20)) {
+		NL_SET_ERR_MSG(extack, "ETS quantum is too large");
+		return -EINVAL;
+	}
 	return 0;
 }
 
