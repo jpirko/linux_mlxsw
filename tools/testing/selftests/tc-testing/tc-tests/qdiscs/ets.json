@@ -936,5 +936,85 @@
         "teardown": [
             "$IP link del dev $DUMMY type dummy"
         ]
+    },
+    {
+        "id": "d6ca",
+        "name": "Update ETS priomap through class",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true",
+            "$TC qdisc add dev $DUMMY handle 1: root ets strict 5"
+        ],
+        "cmdUnderTest": "$TC class change dev $DUMMY classid 1:1 ets prio 15",
+        "expExitCode": "0",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets .* priomap 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 0",
+        "matchCount": "1",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
+    },
+    {
+        "id": "c2e9",
+        "name": "Update ETS priomap through class -- all priorities",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true",
+            "$TC qdisc add dev $DUMMY handle 1: root ets strict 5"
+        ],
+        "cmdUnderTest": "$TC class change dev $DUMMY classid 1:2 ets prio 2 0 4 7 10 11 12 1 9 13 3 8 5 15 6 14",
+        "expExitCode": "0",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets .* priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1",
+        "matchCount": "1",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
+    },
+    {
+        "id": "7ce4",
+        "name": "Update ETS priomap through class -- too many priorities",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true",
+            "$TC qdisc add dev $DUMMY handle 1: root ets strict 5"
+        ],
+        "cmdUnderTest": "$TC class change dev $DUMMY classid 1:2 ets prio 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 0",
+        "expExitCode": "1",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets .* priomap 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4",
+        "matchCount": "1",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
+    },
+    {
+        "id": "d223",
+        "name": "Update ETS priomap through class -- too large priority",
+        "category": [
+            "qdisc",
+            "ets"
+        ],
+        "setup": [
+            "$IP link add dev $DUMMY type dummy || /bin/true",
+            "$TC qdisc add dev $DUMMY handle 1: root ets strict 5"
+        ],
+        "cmdUnderTest": "$TC class change dev $DUMMY classid 1:2 ets prio 16",
+        "expExitCode": "1",
+        "verifyCmd": "$TC qdisc show dev $DUMMY",
+        "matchPattern": "qdisc ets .* priomap 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4",
+        "matchCount": "1",
+        "teardown": [
+            "$IP link del dev $DUMMY type dummy"
+        ]
     }
 ]
