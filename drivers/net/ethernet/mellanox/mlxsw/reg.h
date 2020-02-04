@@ -5515,6 +5515,16 @@ MLXSW_ITEM32(reg, pddr, trblsh_group_opcode, 0x08, 0, 16);
  */
 MLXSW_ITEM32(reg, pddr, trblsh_status_opcode, 0x0C, 0, 16);
 
+#define MLXSW_REG_PDDR_TRBLSH_STATUS_MESSAGE_SIZE 236
+
+/* reg_pddr_status_message
+ * ASCII code message
+ * All Messages are terminated by a Null character ‘\0’
+ * Access: RO
+ */
+MLXSW_ITEM_BUF(reg, pddr, trblsh_status_message, 0x0C,
+	       MLXSW_REG_PDDR_TRBLSH_STATUS_MESSAGE_SIZE);
+
 static inline void mlxsw_reg_pddr_pack(char *payload, u8 local_port,
 				       u8 page_select)
 {

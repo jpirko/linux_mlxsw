@@ -3621,12 +3621,18 @@ static int mlxsw_sp_port_fill_link_down_reason(struct sk_buff *skb,
 
 	err = mlxsw_reg_query(mlxsw_sp_port->mlxsw_sp->core,
 			      MLXSW_REG(pddr), pddr_pl);
-	if (err)
+	if (err) {
+		printk(KERN_WARNING "pddr query failed %d\n", err);
 		return err;
+	}
 
+	print_hex_dump(KERN_ALERT, "PDDR: ", DUMP_PREFIX_ADDRESS,
+		       16, 1, pddr_pl, MLXSW_REG_PDDR_LEN, 1);
 	status_opcode = mlxsw_reg_pddr_trblsh_status_opcode_get(pddr_pl);
-	if (!status_opcode)
+	if (!status_opcode) {
+		printk(KERN_WARNING "no status opcode %d\n", err);
 		return 0;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(mlxsw_sp_ldr_opcode_map); ++i) {
 		if (mlxsw_sp_ldr_opcode_map[i].status_opcode == status_opcode) {
