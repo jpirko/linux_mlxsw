@@ -4923,7 +4923,7 @@ u32 mlxsw_sp_span_buffsize_get(struct mlxsw_sp *mlxsw_sp, int mtu, u32 speed)
 {
 	u32 buffsize = mlxsw_sp->span_ops->buffsize_get(speed, mtu);
 
-	return mlxsw_sp_bytes_cells(mlxsw_sp, buffsize) + 1;
+	return (mlxsw_sp_bytes_cells(mlxsw_sp, buffsize) + 2) / 2 * 2;
 }
 
 static int mlxsw_sp_netdevice_event(struct notifier_block *unused,
