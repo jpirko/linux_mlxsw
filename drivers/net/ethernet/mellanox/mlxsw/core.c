@@ -2201,6 +2201,8 @@ int mlxsw_core_module_max_width(struct mlxsw_core *mlxsw_core, u8 module)
 	/* Here we need to get the module width according to the module type. */
 
 	switch (module_type) {
+	case MLXSW_REG_PMTM_MODULE_TYPE_TMP_SOMETHING_NEW:
+		return 8;
 	case MLXSW_REG_PMTM_MODULE_TYPE_BP_4X: /* fall through */
 	case MLXSW_REG_PMTM_MODULE_TYPE_BP_QSFP:
 		return 4;

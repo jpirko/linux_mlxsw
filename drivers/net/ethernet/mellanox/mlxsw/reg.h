@@ -5449,6 +5449,8 @@ enum mlxsw_reg_pmtm_module_type {
 	MLXSW_REG_PMTM_MODULE_TYPE_BP_2X = 8,
 	/* Chip2Chip */
 	MLXSW_REG_PMTM_MODULE_TYPE_C2C = 10,
+	/* TMP Something new - not in PRM */
+	MLXSW_REG_PMTM_MODULE_TYPE_TMP_SOMETHING_NEW = 14,
 };
 
 /* reg_pmtm_module_type
