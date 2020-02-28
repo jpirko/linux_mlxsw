@@ -4954,6 +4954,12 @@ MLXSW_ITEM64(reg, ppcnt, dot3in_pause_frames,
 MLXSW_ITEM64(reg, ppcnt, ecn_marked,
 	     MLXSW_REG_PPCNT_COUNTERS_OFFSET + 0x08, 0, 64);
 
+/* reg_ppcnt_no_buffer_discard_mc
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, ppcnt, no_buffer_discard_mc,
+	     MLXSW_REG_PPCNT_COUNTERS_OFFSET + 0x10, 0, 64);
+
 /* Ethernet Discard Counter Group Counters */
 
 /* reg_ppcnt_ingress_general

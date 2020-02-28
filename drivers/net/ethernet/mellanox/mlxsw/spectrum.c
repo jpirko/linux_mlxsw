@@ -2233,6 +2233,10 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_ext_stats[] = {
 		.str = "ecn_marked",
 		.getter = mlxsw_reg_ppcnt_ecn_marked_get,
 	},
+	{
+		.str = "no_buffer_discard_mc",
+		.getter = mlxsw_reg_ppcnt_no_buffer_discard_mc_get,
+	},
 };
 
 #define MLXSW_SP_PORT_HW_EXT_STATS_LEN ARRAY_SIZE(mlxsw_sp_port_hw_ext_stats)
