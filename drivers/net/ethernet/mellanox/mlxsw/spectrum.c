@@ -2324,6 +2324,14 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_prio_stats[] = {
 		.str = "tx_pause_duration_prio",
 		.getter = mlxsw_reg_ppcnt_tx_pause_duration_get,
 	},
+	{
+		/* These are technically per-TC, not per-PRIO. But mlxsw
+		 * configures TCs 8-15 for MC use, and therefore there is no
+		 * point exposing a UC-specific counter for these TCs.
+		 */
+		.str = "tc_no_buffer_discard_uc_tc",
+		.getter = mlxsw_reg_ppcnt_tc_no_buffer_discard_uc_get,
+	},
 };
 
 #define MLXSW_SP_PORT_HW_PRIO_STATS_LEN ARRAY_SIZE(mlxsw_sp_port_hw_prio_stats)
@@ -2333,10 +2341,6 @@ static struct mlxsw_sp_port_hw_stats mlxsw_sp_port_hw_tc_stats[] = {
 		.str = "tc_transmit_queue_tc",
 		.getter = mlxsw_reg_ppcnt_tc_transmit_queue_get,
 		.cells_bytes = true,
-	},
-	{
-		.str = "tc_no_buffer_discard_uc_tc",
-		.getter = mlxsw_reg_ppcnt_tc_no_buffer_discard_uc_get,
 	},
 };
 
