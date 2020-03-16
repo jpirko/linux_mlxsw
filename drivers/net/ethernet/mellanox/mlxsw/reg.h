@@ -9455,6 +9455,68 @@ MLXSW_ITEM32(reg, mogcr, ptp_iftc, 0x00, 1, 1);
  */
 MLXSW_ITEM32(reg, mogcr, ptp_eftc, 0x00, 0, 1);
 
+/* MAFTI - Monitoring AccuFlow Read Increment Register Layout
+ * -----------------------------------------------------------
+ */
+
+#define MLXSW_REG_MAFTI_ID 0x908B
+#define MLXSW_REG_MAFTI_BASE_LEN 0x10 /* base length, without records */
+#define MLXSW_REG_MAFTI_REC_LEN 0x10 /* record length */
+#define MLXSW_REG_MAFTI_REC_MAX_COUNT 128
+#define MLXSW_REG_MAFTI_LEN (MLXSW_REG_MAFTI_BASE_LEN +	\
+			     MLXSW_REG_MAFTI_REC_LEN *	\
+			     MLXSW_REG_MAFTI_REC_MAX_COUNT)
+
+MLXSW_REG_DEFINE(mafti, MLXSW_REG_MAFTI_ID, MLXSW_REG_MAFTI_LEN);
+
+/* reg_mafti_num_rec
+ * Number of records
+ * Range 1..64
+ * Access: RO
+ */
+MLXSW_ITEM32(reg, mafti, num_rec, 0x00, 0, 8);
+
+static inline void mlxsw_reg_mafti_unpack(char *payload, u8 *p_num_rec)
+{
+	*p_num_rec = mlxsw_reg_mafti_num_rec_get(payload);
+}
+
+/* reg_mafti_rec_counter_index
+ * Counter index for flow counters.
+ * Access: RO
+ */
+MLXSW_ITEM32_INDEXED(reg, mafti, rec_counter_index, MLXSW_REG_MAFTI_BASE_LEN,
+		     0, 32, MLXSW_REG_MAFTI_REC_LEN, 0x04, false);
+
+/* reg_mafti_rec_bytes_inc
+ * Bytes to increment to bytes counter
+ * Unit is 512B
+ * Access: RO
+ */
+MLXSW_ITEM32_INDEXED(reg, mafti, rec_bytes_inc, MLXSW_REG_MAFTI_BASE_LEN,
+		     0, 32, MLXSW_REG_MAFTI_REC_LEN, 0x04, false);
+
+/* reg_mafti_rec_packets_inc
+ * Packets to increment to packets counter
+ * Unit is 4 packets
+ * Access: RO
+ */
+MLXSW_ITEM32_INDEXED(reg, mafti, rec_packets_inc, MLXSW_REG_MAFTI_BASE_LEN,
+		     0, 32, MLXSW_REG_MAFTI_REC_LEN, 0x08, false);
+
+static inline void mlxsw_reg_mafti_rec_unpack(char *payload, int rec_index,
+					      u32 *p_counter_index,
+					      u32 *p_bytes_inc,
+					      u32 *p_packets_inc)
+{
+	*p_counter_index = mlxsw_reg_mafti_rec_counter_index_get(payload,
+								 rec_index);
+	*p_bytes_inc = mlxsw_reg_mafti_rec_bytes_inc_get(payload,
+							 rec_index);
+	*p_packets_inc = mlxsw_reg_mafti_rec_packets_inc_get(payload,
+							     rec_index);
+}
+
 /* MTPPPC - Time Precision Packet Port Configuration
  * -------------------------------------------------
  * This register serves for configuration of which PTP messages should be
@@ -10805,6 +10867,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(mgpc),
 	MLXSW_REG(mprs),
 	MLXSW_REG(mogcr),
+	MLXSW_REG(mafti),
 	MLXSW_REG(mtpppc),
 	MLXSW_REG(mtpptr),
 	MLXSW_REG(mtptpt),
