@@ -318,3 +318,9 @@ int mlxsw_sp_counter_resources_register(struct mlxsw_core *mlxsw_core)
 
 	return 0;
 }
+
+void mlxsw_sp_counter_accu_flow_inc(struct mlxsw_sp *mlxsw_sp,
+				    u32 counter_index, u32 bytes_inc,
+				    u32 packets_inc)
+{
+}

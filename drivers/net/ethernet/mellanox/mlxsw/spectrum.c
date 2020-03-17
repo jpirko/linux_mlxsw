@@ -4615,6 +4615,10 @@ static int mlxsw_sp_cpu_policers_set(struct mlxsw_core *mlxsw_core)
 			rate = 360;
 			burst_size = 7;
 			break;
+		case MLXSW_REG_HTGT_TRAP_GROUP_SP_ACCU_FLOW_INC:
+			rate = 24 * 1024;
+			burst_size = 12;
+			break;
 		default:
 			continue;
 		}
@@ -4656,6 +4660,7 @@ static int mlxsw_sp_trap_groups_set(struct mlxsw_core *mlxsw_core)
 		case MLXSW_REG_HTGT_TRAP_GROUP_SP_PIM:
 		case MLXSW_REG_HTGT_TRAP_GROUP_SP_PTP0:
 		case MLXSW_REG_HTGT_TRAP_GROUP_SP_VRRP:
+		case MLXSW_REG_HTGT_TRAP_GROUP_SP_ACCU_FLOW_INC:
 			priority = 5;
 			tc = 5;
 			break;
@@ -5014,6 +5019,12 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_counter_init;
 	}
 
+	err = mlxsw_sp->counter_af_ops->init(mlxsw_sp);
+	if (err) {
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to init AccuFlow counters\n");
+		goto err_counter_af_init;
+	}
+
 	err = mlxsw_sp_afa_init(mlxsw_sp);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to initialize ACL actions\n");
@@ -5114,6 +5125,8 @@ err_acl_init:
 err_nve_init:
 	mlxsw_sp_afa_fini(mlxsw_sp);
 err_afa_init:
+	mlxsw_sp->counter_af_ops->fini(mlxsw_sp);
+err_counter_af_init:
 	mlxsw_sp_counter_fini(mlxsw_sp);
 err_counter_init:
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
@@ -5154,6 +5167,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp1_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp1_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp1_span_ops;
+	mlxsw_sp->counter_af_ops = &mlxsw_sp1_counter_af_ops;
 	mlxsw_sp->listeners = mlxsw_sp1_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp1_listener);
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP1;
@@ -5181,6 +5195,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp2_span_ops;
+	mlxsw_sp->counter_af_ops = &mlxsw_sp2_counter_af_ops;
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP2;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);
@@ -5204,6 +5219,7 @@ static int mlxsw_sp3_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp3_span_ops;
+	mlxsw_sp->counter_af_ops = &mlxsw_sp2_counter_af_ops;
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP3;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);
@@ -5226,6 +5242,7 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_acl_fini(mlxsw_sp);
 	mlxsw_sp_nve_fini(mlxsw_sp);
 	mlxsw_sp_afa_fini(mlxsw_sp);
+	mlxsw_sp->counter_af_ops->fini(mlxsw_sp);
 	mlxsw_sp_counter_fini(mlxsw_sp);
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
 	mlxsw_sp_span_fini(mlxsw_sp);
@@ -5465,6 +5482,10 @@ static int mlxsw_sp2_resources_register(struct mlxsw_core *mlxsw_core)
 		goto err_resources_span_register;
 
 	err = mlxsw_sp_counter_resources_register(mlxsw_core);
+	if (err)
+		goto err_resources_counter_register;
+
+	err = mlxsw_sp2_counter_af_resources_register(mlxsw_core);
 	if (err)
 		goto err_resources_counter_register;
 

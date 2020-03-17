@@ -50,6 +50,8 @@
 #define MLXSW_SP_RESOURCE_NAME_COUNTERS_FLOW "flow"
 #define MLXSW_SP_RESOURCE_NAME_COUNTERS_RIF "rif"
 
+#define MLXSW_SP_RESOURCE_NAME_ACCU_FLOW_COUNTERS "accu_flow_counters"
+
 enum mlxsw_sp_resource_id {
 	MLXSW_SP_RESOURCE_KVD = 1,
 	MLXSW_SP_RESOURCE_KVD_LINEAR,
@@ -62,6 +64,7 @@ enum mlxsw_sp_resource_id {
 	MLXSW_SP_RESOURCE_COUNTERS,
 	MLXSW_SP_RESOURCE_COUNTERS_FLOW,
 	MLXSW_SP_RESOURCE_COUNTERS_RIF,
+	MLXSW_SP_RESOURCE_ACCU_FLOW_COUNTERS,
 };
 
 struct mlxsw_sp_port;
@@ -134,6 +137,7 @@ struct mlxsw_sp_router;
 struct mlxsw_sp_mr;
 struct mlxsw_sp_acl;
 struct mlxsw_sp_counter_pool;
+struct mlxsw_sp_counter_af;
 struct mlxsw_sp_fid_core;
 struct mlxsw_sp_kvdl;
 struct mlxsw_sp_nve;
@@ -175,6 +179,7 @@ struct mlxsw_sp {
 	struct mlxsw_sp_ptp_clock *clock;
 	struct mlxsw_sp_ptp_state *ptp_state;
 	struct mlxsw_sp_counter_pool *counter_pool;
+	struct mlxsw_sp_counter_af *counter_af;
 	struct mlxsw_sp_span *span;
 	struct mlxsw_sp_trap *trap;
 	const struct mlxsw_fw_rev *req_rev;
@@ -190,6 +195,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_port_type_speed_ops *port_type_speed_ops;
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
 	const struct mlxsw_sp_span_ops *span_ops;
+	const struct mlxsw_sp_counter_af_ops *counter_af_ops;
 	const struct mlxsw_listener *listeners;
 	size_t listeners_count;
 	u32 lowest_shaper_bs;
@@ -1033,6 +1039,25 @@ int
 mlxsw_sp_trap_policer_counter_get(struct mlxsw_core *mlxsw_core,
 				  const struct devlink_trap_policer *policer,
 				  u64 *p_drops);
+
+/* spectrum_cnt_af.c */
+struct mlxsw_sp_counter_af_ops {
+	int (*init)(struct mlxsw_sp *mlxsw_sp);
+	void (*fini)(struct mlxsw_sp *mlxsw_sp);
+	bool (*counter_index_check)(struct mlxsw_sp *mlxsw_sp,
+				    unsigned int counter_index);
+	int (*counter_alloc)(struct mlxsw_sp *mlxsw_sp,
+			     unsigned int *p_counter_index);
+	void (*counter_free)(struct mlxsw_sp *mlxsw_sp,
+			     unsigned int counter_index);
+	void (*counter_get)(struct mlxsw_sp *mlxsw_sp,
+			    unsigned int counter_index,
+			    u64 *p_bytes, u64 *p_packets);
+};
+
+extern const struct mlxsw_sp_counter_af_ops mlxsw_sp1_counter_af_ops;
+extern const struct mlxsw_sp_counter_af_ops mlxsw_sp2_counter_af_ops;
+int mlxsw_sp2_counter_af_resources_register(struct mlxsw_core *mlxsw_core);
 
 static inline struct net *mlxsw_sp_net(struct mlxsw_sp *mlxsw_sp)
 {
