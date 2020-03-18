@@ -117,7 +117,7 @@ static u64 mlxsw_sp_counter_pool_occ_get(void *priv)
 	return atomic_read(&pool->active_entries_count);
 }
 
-int mlxsw_sp_counter_pool_init(struct mlxsw_sp *mlxsw_sp)
+static int mlxsw_sp_counter_pool_init(struct mlxsw_sp *mlxsw_sp)
 {
 	unsigned int sub_pools_count = ARRAY_SIZE(mlxsw_sp_counter_sub_pools);
 	struct devlink *devlink = priv_to_devlink(mlxsw_sp->core);
@@ -168,7 +168,7 @@ err_pool_resource_size_get:
 	return err;
 }
 
-void mlxsw_sp_counter_pool_fini(struct mlxsw_sp *mlxsw_sp)
+static void mlxsw_sp_counter_pool_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_counter_pool *pool = mlxsw_sp->counter_pool;
 	struct devlink *devlink = priv_to_devlink(mlxsw_sp->core);
@@ -181,6 +181,16 @@ void mlxsw_sp_counter_pool_fini(struct mlxsw_sp *mlxsw_sp)
 	devlink_resource_occ_get_unregister(devlink,
 					    MLXSW_SP_RESOURCE_COUNTERS);
 	kfree(pool);
+}
+
+int mlxsw_sp_counter_init(struct mlxsw_sp *mlxsw_sp)
+{
+	return mlxsw_sp_counter_pool_init(mlxsw_sp);
+}
+
+void mlxsw_sp_counter_fini(struct mlxsw_sp *mlxsw_sp)
+{
+	mlxsw_sp_counter_pool_fini(mlxsw_sp);
 }
 
 int mlxsw_sp_counter_alloc(struct mlxsw_sp *mlxsw_sp,

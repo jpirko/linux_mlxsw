@@ -5008,10 +5008,10 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_switchdev_init;
 	}
 
-	err = mlxsw_sp_counter_pool_init(mlxsw_sp);
+	err = mlxsw_sp_counter_init(mlxsw_sp);
 	if (err) {
 		dev_err(mlxsw_sp->bus_info->dev, "Failed to init counter pool\n");
-		goto err_counter_pool_init;
+		goto err_counter_init;
 	}
 
 	err = mlxsw_sp_afa_init(mlxsw_sp);
@@ -5114,8 +5114,8 @@ err_acl_init:
 err_nve_init:
 	mlxsw_sp_afa_fini(mlxsw_sp);
 err_afa_init:
-	mlxsw_sp_counter_pool_fini(mlxsw_sp);
-err_counter_pool_init:
+	mlxsw_sp_counter_fini(mlxsw_sp);
+err_counter_init:
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
 err_switchdev_init:
 	mlxsw_sp_span_fini(mlxsw_sp);
@@ -5226,7 +5226,7 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_acl_fini(mlxsw_sp);
 	mlxsw_sp_nve_fini(mlxsw_sp);
 	mlxsw_sp_afa_fini(mlxsw_sp);
-	mlxsw_sp_counter_pool_fini(mlxsw_sp);
+	mlxsw_sp_counter_fini(mlxsw_sp);
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
 	mlxsw_sp_span_fini(mlxsw_sp);
 	mlxsw_sp_lag_fini(mlxsw_sp);
