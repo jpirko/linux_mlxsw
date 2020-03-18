@@ -192,6 +192,9 @@ static int nsim_dev_debugfs_init(struct nsim_dev *nsim_dev)
 			    &nsim_dev->fail_reload);
 	debugfs_create_file("trap_flow_action_cookie", 0600, nsim_dev->ddir,
 			    nsim_dev, &nsim_dev_trap_fa_cookie_fops);
+	debugfs_create_bool("fail_trap_policer_counter_get", 0600,
+			    nsim_dev->ddir,
+			    &nsim_dev->fail_trap_policer_counter_get);
 	return 0;
 }
 
@@ -363,6 +366,7 @@ struct nsim_trap_item {
 struct nsim_trap_data {
 	struct delayed_work trap_report_dw;
 	struct nsim_trap_item *trap_items_arr;
+	u64 *trap_policers_cnt_arr;
 	struct nsim_dev *nsim_dev;
 	spinlock_t trap_lock;	/* Protects trap_items_arr */
 };
@@ -396,6 +400,12 @@ enum {
 			    NSIM_TRAP_NAME_##_id,			      \
 			    DEVLINK_TRAP_GROUP_GENERIC_ID_##_group_id,	      \
 			    NSIM_TRAP_METADATA)
+
+static const struct devlink_trap_policer nsim_trap_policers_arr[] = {
+	DEVLINK_TRAP_POLICER(1, 1000, 128),
+	DEVLINK_TRAP_POLICER(2, 2000, 256),
+	DEVLINK_TRAP_POLICER(3, 3000, 512),
+};
 
 static const struct devlink_trap_group nsim_trap_groups_arr[] = {
 	DEVLINK_TRAP_GROUP_GENERIC(L2_DROPS),
@@ -539,6 +549,7 @@ static void nsim_dev_trap_report_work(struct work_struct *work)
 
 static int nsim_dev_traps_init(struct devlink *devlink)
 {
+	size_t policers_count = ARRAY_SIZE(nsim_trap_policers_arr);
 	struct nsim_dev *nsim_dev = devlink_priv(devlink);
 	struct nsim_trap_data *nsim_trap_data;
 	int err;
@@ -555,6 +566,14 @@ static int nsim_dev_traps_init(struct devlink *devlink)
 		goto err_trap_data_free;
 	}
 
+	nsim_trap_data->trap_policers_cnt_arr = kcalloc(policers_count,
+							sizeof(u64),
+							GFP_KERNEL);
+	if (!nsim_trap_data->trap_policers_cnt_arr) {
+		err = -ENOMEM;
+		goto err_trap_items_free;
+	}
+
 	/* The lock is used to protect the action state of the registered
 	 * traps. The value is written by user and read in delayed work when
 	 * iterating over all the traps.
@@ -563,10 +582,15 @@ static int nsim_dev_traps_init(struct devlink *devlink)
 	nsim_trap_data->nsim_dev = nsim_dev;
 	nsim_dev->trap_data = nsim_trap_data;
 
+	err = devlink_trap_policers_register(devlink, nsim_trap_policers_arr,
+					     policers_count);
+	if (err)
+		goto err_trap_policers_cnt_free;
+
 	err = devlink_trap_groups_register(devlink, nsim_trap_groups_arr,
 					   ARRAY_SIZE(nsim_trap_groups_arr));
 	if (err)
-		goto err_trap_items_free;
+		goto err_trap_policers_unregister;
 
 	err = devlink_traps_register(devlink, nsim_traps_arr,
 				     ARRAY_SIZE(nsim_traps_arr), NULL);
@@ -583,6 +607,11 @@ static int nsim_dev_traps_init(struct devlink *devlink)
 err_trap_groups_unregister:
 	devlink_trap_groups_unregister(devlink, nsim_trap_groups_arr,
 				       ARRAY_SIZE(nsim_trap_groups_arr));
+err_trap_policers_unregister:
+	devlink_trap_policers_unregister(devlink, nsim_trap_policers_arr,
+					 ARRAY_SIZE(nsim_trap_policers_arr));
+err_trap_policers_cnt_free:
+	kfree(nsim_trap_data->trap_policers_cnt_arr);
 err_trap_items_free:
 	kfree(nsim_trap_data->trap_items_arr);
 err_trap_data_free:
@@ -599,6 +628,9 @@ static void nsim_dev_traps_exit(struct devlink *devlink)
 				 ARRAY_SIZE(nsim_traps_arr));
 	devlink_trap_groups_unregister(devlink, nsim_trap_groups_arr,
 				       ARRAY_SIZE(nsim_trap_groups_arr));
+	devlink_trap_policers_unregister(devlink, nsim_trap_policers_arr,
+					 ARRAY_SIZE(nsim_trap_policers_arr));
+	kfree(nsim_dev->trap_data->trap_policers_cnt_arr);
 	kfree(nsim_dev->trap_data->trap_items_arr);
 	kfree(nsim_dev->trap_data);
 }
@@ -737,6 +769,66 @@ nsim_dev_devlink_trap_action_set(struct devlink *devlink,
 	return 0;
 }
 
+#define NSIM_DEV_TRAP_POLICER_MIN_RATE	1
+#define NSIM_DEV_TRAP_POLICER_MAX_RATE	8000
+#define NSIM_DEV_TRAP_POLICER_MIN_BURST	8
+#define NSIM_DEV_TRAP_POLICER_MAX_BURST	65536
+
+static int
+nsim_dev_devlink_trap_policer_set(struct devlink *devlink,
+				  const struct devlink_trap_policer *policer,
+				  u64 rate, u64 burst,
+				  struct netlink_ext_ack *extack)
+{
+	int bs = fls64(burst);
+
+	if (rate < NSIM_DEV_TRAP_POLICER_MIN_RATE) {
+		NL_SET_ERR_MSG_MOD(extack, "Policer rate lower than limit");
+		return -EINVAL;
+	}
+
+	if (rate > NSIM_DEV_TRAP_POLICER_MAX_RATE) {
+		NL_SET_ERR_MSG_MOD(extack, "Policer rate higher than limit");
+		return -EINVAL;
+	}
+
+	if (burst < NSIM_DEV_TRAP_POLICER_MIN_BURST) {
+		NL_SET_ERR_MSG_MOD(extack, "Policer burst size lower than limit");
+		return -EINVAL;
+	}
+
+	if (burst > NSIM_DEV_TRAP_POLICER_MAX_BURST) {
+		NL_SET_ERR_MSG_MOD(extack, "Policer burst size higher than limit");
+		return -EINVAL;
+	}
+
+	--bs;
+	if (burst != (1 << bs)) {
+		NL_SET_ERR_MSG_MOD(extack, "Policer burst size is not power of two");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+nsim_dev_devlink_trap_policer_counter_get(struct devlink *devlink,
+					  const struct devlink_trap_policer *policer,
+					  u64 *p_drops)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+	u64 *cnt;
+
+	if (nsim_dev->fail_trap_policer_counter_get)
+		return -EINVAL;
+
+	cnt = &nsim_dev->trap_data->trap_policers_cnt_arr[policer->id - 1];
+	*p_drops = *cnt;
+	*cnt += jiffies % 64;
+
+	return 0;
+}
+
 static const struct devlink_ops nsim_dev_devlink_ops = {
 	.reload_down = nsim_dev_reload_down,
 	.reload_up = nsim_dev_reload_up,
@@ -744,6 +836,8 @@ static const struct devlink_ops nsim_dev_devlink_ops = {
 	.flash_update = nsim_dev_flash_update,
 	.trap_init = nsim_dev_devlink_trap_init,
 	.trap_action_set = nsim_dev_devlink_trap_action_set,
+	.trap_policer_set = nsim_dev_devlink_trap_policer_set,
+	.trap_policer_counter_get = nsim_dev_devlink_trap_policer_counter_get,
 };
 
 #define NSIM_DEV_MAX_MACS_DEFAULT 32
