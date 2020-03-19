@@ -515,8 +515,8 @@ err_counter_clear:
 void mlxsw_sp_flow_counter_free(struct mlxsw_sp *mlxsw_sp,
 				unsigned int counter_index)
 {
-	 mlxsw_sp_counter_free(mlxsw_sp, MLXSW_SP_COUNTER_SUB_POOL_FLOW,
-			       counter_index);
+	mlxsw_sp_counter_free(mlxsw_sp, MLXSW_SP_COUNTER_SUB_POOL_FLOW,
+			      counter_index);
 }
 
 static void mlxsw_sp_txhdr_construct(struct sk_buff *skb,
