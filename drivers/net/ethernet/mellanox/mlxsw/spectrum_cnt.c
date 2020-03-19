@@ -200,14 +200,14 @@ int mlxsw_sp_counter_alloc(struct mlxsw_sp *mlxsw_sp,
 	spin_lock(&pool->counter_pool_lock);
 	entry_index = find_next_zero_bit(pool->usage, stop_index, entry_index);
 	if (entry_index == stop_index) {
-		err = -ENOBUFS;
+		err = -ENOSPC;
 		goto err_alloc;
 	}
 	/* The sub-pools can contain non-integer number of entries
 	 * so we must check for overflow
 	 */
 	if (entry_index + sub_pool->entry_size > stop_index) {
-		err = -ENOBUFS;
+		err = -ENOSPC;
 		goto err_alloc;
 	}
 	for (i = 0; i < sub_pool->entry_size; i++)
