@@ -45,6 +45,14 @@ enum {
 						* or when it gets async stats update
 						* from the device.
 						*/
+#define TCA_ACT_HW_STATS_TYPE_INACCURATE (1 << 2) /* Means that in dump, user gets
+						   * HW stats that might be not only
+						   * out of date for some time, but
+						   * also not accurate in a sense that
+						   * the number might be rounded
+						   * up or down. The main usage
+						   * is to get gross overview.
+						   */
 
 #define TCA_ACT_MAX __TCA_ACT_MAX
 #define TCA_OLD_COMPAT (TCA_ACT_MAX+1)

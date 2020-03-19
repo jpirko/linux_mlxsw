@@ -54,7 +54,8 @@ struct tc_action {
 #define tcf_lock	common.tcfa_lock
 
 #define TCA_ACT_HW_STATS_TYPE_ANY (TCA_ACT_HW_STATS_TYPE_IMMEDIATE | \
-				   TCA_ACT_HW_STATS_TYPE_DELAYED)
+				   TCA_ACT_HW_STATS_TYPE_DELAYED | \
+				   TCA_ACT_HW_STATS_TYPE_INACCURATE)
 
 /* Update lastuse only if needed, to avoid dirtying a cache line.
  * We use a temp variable to avoid fetching jiffies twice.
