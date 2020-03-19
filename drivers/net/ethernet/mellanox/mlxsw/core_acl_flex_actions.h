@@ -19,7 +19,8 @@ struct mlxsw_afa_ops {
 				     bool *activity);
 	int (*kvdl_fwd_entry_add)(void *priv, u32 *p_kvdl_index, u8 local_port);
 	void (*kvdl_fwd_entry_del)(void *priv, u32 kvdl_index);
-	int (*counter_index_get)(void *priv, unsigned int *p_counter_index);
+	int (*counter_index_get)(void *priv, unsigned int *p_counter_index,
+				 bool want_inaccurate);
 	void (*counter_index_put)(void *priv, unsigned int counter_index);
 	int (*mirror_add)(void *priv, u8 local_in_port,
 			  const struct net_device *out_dev,
@@ -68,7 +69,7 @@ int mlxsw_afa_block_append_qos_switch_prio(struct mlxsw_afa_block *block,
 int mlxsw_afa_block_append_allocated_counter(struct mlxsw_afa_block *block,
 					     u32 counter_index);
 int mlxsw_afa_block_append_counter(struct mlxsw_afa_block *block,
-				   u32 *p_counter_index,
+				   u32 *p_counter_index, bool want_inaccurate,
 				   struct netlink_ext_ack *extack);
 int mlxsw_afa_block_append_fid_set(struct mlxsw_afa_block *block, u16 fid,
 				   struct netlink_ext_ack *extack);

@@ -33,7 +33,8 @@ static int mlxsw_sp_flower_parse_actions(struct mlxsw_sp *mlxsw_sp,
 	if (act->hw_stats_type == FLOW_ACTION_HW_STATS_ANY ||
 	    act->hw_stats_type == FLOW_ACTION_HW_STATS_IMMEDIATE) {
 		/* Count action is inserted first */
-		err = mlxsw_sp_acl_rulei_act_count(mlxsw_sp, rulei, extack);
+		err = mlxsw_sp_acl_rulei_act_count(mlxsw_sp, rulei,
+						   false, extack);
 		if (err)
 			return err;
 	} else if (act->hw_stats_type != FLOW_ACTION_HW_STATS_DISABLED) {

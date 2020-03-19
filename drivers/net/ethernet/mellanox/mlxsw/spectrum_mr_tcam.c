@@ -298,7 +298,8 @@ mlxsw_sp_mr_tcam_route_create(struct mlxsw_sp *mlxsw_sp, void *priv,
 		goto err_erif_populate;
 
 	/* Create the flow counter */
-	err = mlxsw_sp_flow_counter_alloc(mlxsw_sp, &route->counter_index);
+	err = mlxsw_sp_flow_counter_alloc(mlxsw_sp,
+					  &route->counter_index, false);
 	if (err)
 		goto err_counter_alloc;
 

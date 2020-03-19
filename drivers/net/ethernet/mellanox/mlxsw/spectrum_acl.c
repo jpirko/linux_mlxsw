@@ -657,12 +657,14 @@ int mlxsw_sp_acl_rulei_act_priority(struct mlxsw_sp *mlxsw_sp,
 
 int mlxsw_sp_acl_rulei_act_count(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_acl_rule_info *rulei,
+				 bool want_inaccurate,
 				 struct netlink_ext_ack *extack)
 {
 	int err;
 
 	err = mlxsw_afa_block_append_counter(rulei->act_block,
-					     &rulei->counter_index, extack);
+					     &rulei->counter_index,
+					     want_inaccurate, extack);
 	if (err)
 		return err;
 	rulei->counter_valid = true;

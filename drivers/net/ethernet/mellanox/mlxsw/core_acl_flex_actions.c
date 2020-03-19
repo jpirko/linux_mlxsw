@@ -669,7 +669,7 @@ mlxsw_afa_counter_destructor(struct mlxsw_afa_block *block,
 }
 
 static struct mlxsw_afa_counter *
-mlxsw_afa_counter_create(struct mlxsw_afa_block *block)
+mlxsw_afa_counter_create(struct mlxsw_afa_block *block, bool want_inaccurate)
 {
 	struct mlxsw_afa_counter *counter;
 	int err;
@@ -679,7 +679,8 @@ mlxsw_afa_counter_create(struct mlxsw_afa_block *block)
 		return ERR_PTR(-ENOMEM);
 
 	err = block->afa->ops->counter_index_get(block->afa->ops_priv,
-						 &counter->counter_index);
+						 &counter->counter_index,
+						 want_inaccurate);
 	if (err)
 		goto err_counter_index_get;
 	counter->resource.destructor = mlxsw_afa_counter_destructor;
@@ -1418,14 +1419,14 @@ int mlxsw_afa_block_append_allocated_counter(struct mlxsw_afa_block *block,
 EXPORT_SYMBOL(mlxsw_afa_block_append_allocated_counter);
 
 int mlxsw_afa_block_append_counter(struct mlxsw_afa_block *block,
-				   u32 *p_counter_index,
+				   u32 *p_counter_index, bool want_inaccurate,
 				   struct netlink_ext_ack *extack)
 {
 	struct mlxsw_afa_counter *counter;
 	u32 counter_index;
 	int err;
 
-	counter = mlxsw_afa_counter_create(block);
+	counter = mlxsw_afa_counter_create(block, want_inaccurate);
 	if (IS_ERR(counter)) {
 		NL_SET_ERR_MSG_MOD(extack, "Cannot create count action");
 		return PTR_ERR(counter);

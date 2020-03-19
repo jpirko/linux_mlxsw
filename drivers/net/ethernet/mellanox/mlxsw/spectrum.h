@@ -506,7 +506,8 @@ int mlxsw_sp_flow_counter_get(struct mlxsw_sp *mlxsw_sp,
 			      unsigned int counter_index, u64 *packets,
 			      u64 *bytes);
 int mlxsw_sp_flow_counter_alloc(struct mlxsw_sp *mlxsw_sp,
-				unsigned int *p_counter_index);
+				unsigned int *p_counter_index,
+				bool want_inaccurate);
 void mlxsw_sp_flow_counter_free(struct mlxsw_sp *mlxsw_sp,
 				unsigned int counter_index);
 u32 mlxsw_sp_span_buffsize_get(struct mlxsw_sp *mlxsw_sp, int mtu, u32 speed);
@@ -758,6 +759,7 @@ int mlxsw_sp_acl_rulei_act_priority(struct mlxsw_sp *mlxsw_sp,
 				    u32 prio, struct netlink_ext_ack *extack);
 int mlxsw_sp_acl_rulei_act_count(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_acl_rule_info *rulei,
+				 bool want_inaccurate,
 				 struct netlink_ext_ack *extack);
 int mlxsw_sp_acl_rulei_act_fid_set(struct mlxsw_sp *mlxsw_sp,
 				   struct mlxsw_sp_acl_rule_info *rulei,

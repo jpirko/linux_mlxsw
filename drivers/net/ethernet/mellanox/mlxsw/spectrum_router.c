@@ -2088,7 +2088,8 @@ mlxsw_sp_neigh_counter_alloc(struct mlxsw_sp *mlxsw_sp,
 	if (!mlxsw_sp_neigh_counter_should_alloc(mlxsw_sp, neigh_entry))
 		return;
 
-	if (mlxsw_sp_flow_counter_alloc(mlxsw_sp, &neigh_entry->counter_index))
+	if (mlxsw_sp_flow_counter_alloc(mlxsw_sp,
+					&neigh_entry->counter_index, false))
 		return;
 
 	neigh_entry->counter_valid = true;
@@ -2799,7 +2800,7 @@ void mlxsw_sp_nexthop_counter_alloc(struct mlxsw_sp *mlxsw_sp,
 						 MLXSW_SP_DPIPE_TABLE_NAME_ADJ))
 		return;
 
-	if (mlxsw_sp_flow_counter_alloc(mlxsw_sp, &nh->counter_index))
+	if (mlxsw_sp_flow_counter_alloc(mlxsw_sp, &nh->counter_index, false))
 		return;
 
 	nh->counter_valid = true;

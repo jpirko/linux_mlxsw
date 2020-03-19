@@ -463,12 +463,46 @@ static int mlxsw_sp_flash_update(struct mlxsw_core *mlxsw_core,
 	return err;
 }
 
+static bool mlxsw_sp_accuflow_counter_index_check(struct mlxsw_sp *mlxsw_sp,
+						  unsigned int counter_index)
+{
+	return mlxsw_sp->counter_af_ops->counter_index_check(mlxsw_sp,
+							     counter_index);
+}
+
+static void mlxsw_sp_accuflow_counter_get(struct mlxsw_sp *mlxsw_sp,
+					  unsigned int counter_index,
+					  u64 *packets, u64 *bytes)
+{
+	mlxsw_sp->counter_af_ops->counter_get(mlxsw_sp, counter_index,
+					      packets, bytes);
+}
+
+static int mlxsw_sp_accuflow_counter_alloc(struct mlxsw_sp *mlxsw_sp,
+					   unsigned int *p_counter_index)
+{
+	return mlxsw_sp->counter_af_ops->counter_alloc(mlxsw_sp,
+						       p_counter_index);
+}
+
+static void mlxsw_sp_accuflow_counter_free(struct mlxsw_sp *mlxsw_sp,
+					   unsigned int counter_index)
+{
+	mlxsw_sp->counter_af_ops->counter_free(mlxsw_sp, counter_index);
+}
+
 int mlxsw_sp_flow_counter_get(struct mlxsw_sp *mlxsw_sp,
 			      unsigned int counter_index, u64 *packets,
 			      u64 *bytes)
 {
 	char mgpc_pl[MLXSW_REG_MGPC_LEN];
 	int err;
+
+	if (mlxsw_sp_accuflow_counter_index_check(mlxsw_sp, counter_index)) {
+		mlxsw_sp_accuflow_counter_get(mlxsw_sp, counter_index,
+					      packets, bytes);
+		return 0;
+	}
 
 	mlxsw_reg_mgpc_pack(mgpc_pl, counter_index, MLXSW_REG_MGPC_OPCODE_NOP,
 			    MLXSW_REG_FLOW_COUNTER_SET_TYPE_PACKETS_BYTES);
@@ -493,9 +527,14 @@ static int mlxsw_sp_flow_counter_clear(struct mlxsw_sp *mlxsw_sp,
 }
 
 int mlxsw_sp_flow_counter_alloc(struct mlxsw_sp *mlxsw_sp,
-				unsigned int *p_counter_index)
+				unsigned int *p_counter_index,
+				bool want_inaccurate)
 {
 	int err;
+
+	if (want_inaccurate)
+		return mlxsw_sp_accuflow_counter_alloc(mlxsw_sp,
+						       p_counter_index);
 
 	err = mlxsw_sp_counter_alloc(mlxsw_sp, MLXSW_SP_COUNTER_SUB_POOL_FLOW,
 				     p_counter_index);
@@ -515,6 +554,9 @@ err_counter_clear:
 void mlxsw_sp_flow_counter_free(struct mlxsw_sp *mlxsw_sp,
 				unsigned int counter_index)
 {
+	if (mlxsw_sp_accuflow_counter_index_check(mlxsw_sp, counter_index))
+		return mlxsw_sp_accuflow_counter_free(mlxsw_sp, counter_index);
+
 	mlxsw_sp_counter_free(mlxsw_sp, MLXSW_SP_COUNTER_SUB_POOL_FLOW,
 			      counter_index);
 }

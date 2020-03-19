@@ -116,11 +116,13 @@ static void mlxsw_sp_act_kvdl_fwd_entry_del(void *priv, u32 kvdl_index)
 }
 
 static int
-mlxsw_sp_act_counter_index_get(void *priv, unsigned int *p_counter_index)
+mlxsw_sp_act_counter_index_get(void *priv, unsigned int *p_counter_index,
+			       bool want_inaccurate)
 {
 	struct mlxsw_sp *mlxsw_sp = priv;
 
-	return mlxsw_sp_flow_counter_alloc(mlxsw_sp, p_counter_index);
+	return mlxsw_sp_flow_counter_alloc(mlxsw_sp, p_counter_index,
+					   want_inaccurate);
 }
 
 static void
