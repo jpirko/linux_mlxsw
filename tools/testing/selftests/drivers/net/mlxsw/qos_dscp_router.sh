@@ -187,10 +187,8 @@ dscp_ping_test()
 	eval "local -A dev1_t0s=($(dscp_fetch_stats $dev1 0))"
 	eval "local -A dev2_t0s=($(dscp_fetch_stats $dev2 0))"
 
-	local ping_timeout=$((PING_TIMEOUT * 5))
-	ip vrf exec $vrf_name \
-	   ${PING} -Q $dscp ${sip:+-I $sip} $dip \
-		   -c 10 -i 0.5 -w $ping_timeout &> /dev/null
+	$MZ $vrf_name ${sip:+-A $sip} -B $dip -a own -b bc -q \
+	    -c 10 -d 100ms -t icmp type=8,tos=$(printf %#x $dscp)
 
 	eval "local -A dev1_t1s=($(dscp_fetch_stats $dev1 0))"
 	eval "local -A dev2_t1s=($(dscp_fetch_stats $dev2 0))"
