@@ -5150,6 +5150,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->afa_ops = &mlxsw_sp1_act_afa_ops;
 	mlxsw_sp->afk_ops = &mlxsw_sp1_afk_ops;
 	mlxsw_sp->mr_tcam_ops = &mlxsw_sp1_mr_tcam_ops;
+	mlxsw_sp->acl_ops = &mlxsw_sp1_acl_ops;
 	mlxsw_sp->acl_tcam_ops = &mlxsw_sp1_acl_tcam_ops;
 	mlxsw_sp->nve_ops_arr = mlxsw_sp1_nve_ops_arr;
 	mlxsw_sp->mac_mask = mlxsw_sp1_mac_mask;
@@ -5177,6 +5178,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->afa_ops = &mlxsw_sp2_act_afa_ops;
 	mlxsw_sp->afk_ops = &mlxsw_sp2_afk_ops;
 	mlxsw_sp->mr_tcam_ops = &mlxsw_sp2_mr_tcam_ops;
+	mlxsw_sp->acl_ops = &mlxsw_sp2_acl_ops;
 	mlxsw_sp->acl_tcam_ops = &mlxsw_sp2_acl_tcam_ops;
 	mlxsw_sp->nve_ops_arr = mlxsw_sp2_nve_ops_arr;
 	mlxsw_sp->mac_mask = mlxsw_sp2_mac_mask;
@@ -5200,6 +5202,7 @@ static int mlxsw_sp3_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->afa_ops = &mlxsw_sp2_act_afa_ops;
 	mlxsw_sp->afk_ops = &mlxsw_sp2_afk_ops;
 	mlxsw_sp->mr_tcam_ops = &mlxsw_sp2_mr_tcam_ops;
+	mlxsw_sp->acl_ops = &mlxsw_sp2_acl_ops;
 	mlxsw_sp->acl_tcam_ops = &mlxsw_sp2_acl_tcam_ops;
 	mlxsw_sp->nve_ops_arr = mlxsw_sp2_nve_ops_arr;
 	mlxsw_sp->mac_mask = mlxsw_sp2_mac_mask;
