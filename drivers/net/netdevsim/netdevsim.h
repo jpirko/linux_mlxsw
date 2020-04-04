@@ -183,6 +183,9 @@ struct nsim_dev {
 	bool fail_trap_group_set;
 	bool fail_trap_policer_set;
 	bool fail_trap_policer_counter_get;
+	enum devlink_eswitch_mode eswitch_mode;
+	enum devlink_eswitch_inline_mode eswitch_inline_mode;
+	enum devlink_eswitch_encap_mode eswitch_encap_mode;
 };
 
 static inline struct net *nsim_dev_net(struct nsim_dev *nsim_dev)

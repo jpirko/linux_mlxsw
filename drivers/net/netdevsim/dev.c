@@ -720,6 +720,67 @@ static int nsim_dev_reload_up(struct devlink *devlink,
 	return nsim_dev_reload_create(nsim_dev, extack);
 }
 
+static int nsim_dev_eswitch_mode_get(struct devlink *devlink,
+				     enum devlink_eswitch_mode *p_mode)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	*p_mode = nsim_dev->eswitch_mode;
+	return 0;
+}
+
+static int nsim_dev_eswitch_mode_set(struct devlink *devlink,
+				     enum devlink_eswitch_mode mode,
+				     struct netlink_ext_ack *extack)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	nsim_dev->eswitch_mode = mode;
+	return 0;
+}
+
+static int
+nsim_dev_eswitch_inline_mode_get(struct devlink *devlink,
+				 enum devlink_eswitch_inline_mode *p_inline_mode)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	*p_inline_mode = nsim_dev->eswitch_inline_mode;
+	return 0;
+}
+
+static int
+nsim_dev_eswitch_inline_mode_set(struct devlink *devlink,
+				 enum devlink_eswitch_inline_mode inline_mode,
+				 struct netlink_ext_ack *extack)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	nsim_dev->eswitch_inline_mode = inline_mode;
+	return 0;
+}
+
+static int
+nsim_dev_eswitch_encap_mode_get(struct devlink *devlink,
+				enum devlink_eswitch_encap_mode *p_encap_mode)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	*p_encap_mode = nsim_dev->eswitch_encap_mode;
+	return 0;
+}
+
+static int
+nsim_dev_eswitch_encap_mode_set(struct devlink *devlink,
+				enum devlink_eswitch_encap_mode encap_mode,
+				struct netlink_ext_ack *extack)
+{
+	struct nsim_dev *nsim_dev = devlink_priv(devlink);
+
+	nsim_dev->eswitch_encap_mode = encap_mode;
+	return 0;
+}
+
 static int nsim_dev_info_get(struct devlink *devlink,
 			     struct devlink_info_req *req,
 			     struct netlink_ext_ack *extack)
@@ -867,6 +928,12 @@ nsim_dev_devlink_trap_policer_counter_get(struct devlink *devlink,
 static const struct devlink_ops nsim_dev_devlink_ops = {
 	.reload_down = nsim_dev_reload_down,
 	.reload_up = nsim_dev_reload_up,
+	.eswitch_mode_get = nsim_dev_eswitch_mode_get,
+	.eswitch_mode_set = nsim_dev_eswitch_mode_set,
+	.eswitch_inline_mode_get = nsim_dev_eswitch_inline_mode_get,
+	.eswitch_inline_mode_set = nsim_dev_eswitch_inline_mode_set,
+	.eswitch_encap_mode_get = nsim_dev_eswitch_encap_mode_get,
+	.eswitch_encap_mode_set = nsim_dev_eswitch_encap_mode_set,
 	.info_get = nsim_dev_info_get,
 	.flash_update = nsim_dev_flash_update,
 	.trap_init = nsim_dev_devlink_trap_init,
