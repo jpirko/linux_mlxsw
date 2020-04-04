@@ -2398,8 +2398,8 @@ static int devlink_dpipe_table_counters_set(struct devlink *devlink,
 	return 0;
 }
 
-static int devlink_nl_cmd_dpipe_table_counters_set(struct sk_buff *skb,
-						   struct genl_info *info)
+static int devlink_nl_cmd_dpipe_table_set(struct sk_buff *skb,
+					  struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	const char *table_name;
@@ -6817,9 +6817,9 @@ static const struct genl_ops devlink_nl_ops[] = {
 		/* can be retrieved by unprivileged users */
 	},
 	{
-		.cmd = DEVLINK_CMD_DPIPE_TABLE_COUNTERS_SET,
+		.cmd = DEVLINK_CMD_DPIPE_TABLE_SET,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = devlink_nl_cmd_dpipe_table_counters_set,
+		.doit = devlink_nl_cmd_dpipe_table_set,
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = DEVLINK_NL_FLAG_NEED_DEVLINK,
 	},
