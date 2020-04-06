@@ -440,12 +440,16 @@ struct mlx5_esw_flow_attr {
 	struct mlx5e_tc_flow_parse_attr *parse_attr;
 };
 
-int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
+int mlx5_devlink_eswitch_mode_set(struct devlink *devlink,
+				  enum devlink_eswitch_mode mode,
 				  struct netlink_ext_ack *extack);
-int mlx5_devlink_eswitch_mode_get(struct devlink *devlink, u16 *mode);
-int mlx5_devlink_eswitch_inline_mode_set(struct devlink *devlink, u8 mode,
+int mlx5_devlink_eswitch_mode_get(struct devlink *devlink,
+				  enum devlink_eswitch_mode *mode);
+int mlx5_devlink_eswitch_inline_mode_set(struct devlink *devlink,
+					 enum devlink_eswitch_inline_mode mode,
 					 struct netlink_ext_ack *extack);
-int mlx5_devlink_eswitch_inline_mode_get(struct devlink *devlink, u8 *mode);
+int mlx5_devlink_eswitch_inline_mode_get(struct devlink *devlink,
+					 enum devlink_eswitch_inline_mode *mode);
 int mlx5_devlink_eswitch_encap_mode_set(struct devlink *devlink,
 					enum devlink_eswitch_encap_mode encap,
 					struct netlink_ext_ack *extack);

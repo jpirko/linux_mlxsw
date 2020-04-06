@@ -153,14 +153,16 @@ nfp_devlink_sb_pool_set(struct devlink *devlink, unsigned int sb_index,
 				       size, threshold_type);
 }
 
-static int nfp_devlink_eswitch_mode_get(struct devlink *devlink, u16 *mode)
+static int nfp_devlink_eswitch_mode_get(struct devlink *devlink,
+					enum devlink_eswitch_mode *mode)
 {
 	struct nfp_pf *pf = devlink_priv(devlink);
 
 	return nfp_app_eswitch_mode_get(pf->app, mode);
 }
 
-static int nfp_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
+static int nfp_devlink_eswitch_mode_set(struct devlink *devlink,
+					enum devlink_eswitch_mode mode,
 					struct netlink_ext_ack *extack)
 {
 	struct nfp_pf *pf = devlink_priv(devlink);

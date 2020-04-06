@@ -1594,11 +1594,8 @@ static int devlink_nl_eswitch_fill(struct sk_buff *msg, struct devlink *devlink,
 				   u32 seq, int flags)
 {
 	const struct devlink_ops *ops = devlink->ops;
-	enum devlink_eswitch_encap_mode encap_mode;
-	u8 inline_mode;
 	void *hdr;
 	int err = 0;
-	u16 mode;
 
 	hdr = genlmsg_put(msg, portid, seq, &devlink_nl_family, flags, cmd);
 	if (!hdr)
@@ -1609,6 +1606,8 @@ static int devlink_nl_eswitch_fill(struct sk_buff *msg, struct devlink *devlink,
 		goto nla_put_failure;
 
 	if (ops->eswitch_mode_get) {
+		enum devlink_eswitch_mode mode;
+
 		err = ops->eswitch_mode_get(devlink, &mode);
 		if (err)
 			goto nla_put_failure;
@@ -1618,6 +1617,8 @@ static int devlink_nl_eswitch_fill(struct sk_buff *msg, struct devlink *devlink,
 	}
 
 	if (ops->eswitch_inline_mode_get) {
+		enum devlink_eswitch_inline_mode inline_mode;
+
 		err = ops->eswitch_inline_mode_get(devlink, &inline_mode);
 		if (err)
 			goto nla_put_failure;
@@ -1628,6 +1629,8 @@ static int devlink_nl_eswitch_fill(struct sk_buff *msg, struct devlink *devlink,
 	}
 
 	if (ops->eswitch_encap_mode_get) {
+		enum devlink_eswitch_encap_mode encap_mode;
+
 		err = ops->eswitch_encap_mode_get(devlink, &encap_mode);
 		if (err)
 			goto nla_put_failure;

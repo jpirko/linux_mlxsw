@@ -3120,7 +3120,8 @@ static int liquidio_set_vf_link_state(struct net_device *netdev, int vfidx,
 }
 
 static int
-liquidio_eswitch_mode_get(struct devlink *devlink, u16 *mode)
+liquidio_eswitch_mode_get(struct devlink *devlink,
+			  enum devlink_eswitch_mode *mode)
 {
 	struct lio_devlink_priv *priv;
 	struct octeon_device *oct;
@@ -3134,7 +3135,8 @@ liquidio_eswitch_mode_get(struct devlink *devlink, u16 *mode)
 }
 
 static int
-liquidio_eswitch_mode_set(struct devlink *devlink, u16 mode,
+liquidio_eswitch_mode_set(struct devlink *devlink,
+			  enum devlink_eswitch_mode mode,
 			  struct netlink_ext_ack *extack)
 {
 	struct lio_devlink_priv *priv;

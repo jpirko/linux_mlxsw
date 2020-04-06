@@ -142,7 +142,7 @@ struct nfp_app_type {
 	void (*sriov_disable)(struct nfp_app *app);
 
 	enum devlink_eswitch_mode (*eswitch_mode_get)(struct nfp_app *app);
-	int (*eswitch_mode_set)(struct nfp_app *app, u16 mode);
+	int (*eswitch_mode_set)(struct nfp_app *app, enum devlink_eswitch_mode);
 	struct net_device *(*dev_get)(struct nfp_app *app, u32 id,
 				      bool *redir_egress);
 };
@@ -368,7 +368,8 @@ nfp_app_ctrl_rx_raw(struct nfp_app *app, const void *data, unsigned int len)
 	app->type->ctrl_msg_rx_raw(app, data, len);
 }
 
-static inline int nfp_app_eswitch_mode_get(struct nfp_app *app, u16 *mode)
+static inline int nfp_app_eswitch_mode_get(struct nfp_app *app,
+					   enum devlink_eswitch_mode *mode)
 {
 	if (!app->type->eswitch_mode_get)
 		return -EOPNOTSUPP;
@@ -378,7 +379,8 @@ static inline int nfp_app_eswitch_mode_get(struct nfp_app *app, u16 *mode)
 	return 0;
 }
 
-static inline int nfp_app_eswitch_mode_set(struct nfp_app *app, u16 mode)
+static inline int nfp_app_eswitch_mode_set(struct nfp_app *app,
+					   enum devlink_eswitch_mode mode)
 {
 	if (!app->type->eswitch_mode_set)
 		return -EOPNOTSUPP;

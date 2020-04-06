@@ -236,7 +236,8 @@ err_kill_all_reprs:
 	return err;
 }
 
-static int nfp_abm_eswitch_mode_set(struct nfp_app *app, u16 mode)
+static int nfp_abm_eswitch_mode_set(struct nfp_app *app,
+				    enum devlink_eswitch_mode mode)
 {
 	struct nfp_abm *abm = app->priv;
 

@@ -2425,7 +2425,7 @@ void esw_offloads_disable(struct mlx5_eswitch *esw)
 	esw->offloads.encap = DEVLINK_ESWITCH_ENCAP_MODE_NONE;
 }
 
-static int esw_mode_from_devlink(u16 mode, u16 *mlx5_mode)
+static int esw_mode_from_devlink(enum devlink_eswitch_mode mode, u16 *mlx5_mode)
 {
 	switch (mode) {
 	case DEVLINK_ESWITCH_MODE_LEGACY:
@@ -2441,7 +2441,7 @@ static int esw_mode_from_devlink(u16 mode, u16 *mlx5_mode)
 	return 0;
 }
 
-static int esw_mode_to_devlink(u16 mlx5_mode, u16 *mode)
+static int esw_mode_to_devlink(u16 mlx5_mode, enum devlink_eswitch_mode *mode)
 {
 	switch (mlx5_mode) {
 	case MLX5_ESWITCH_LEGACY:
@@ -2457,7 +2457,8 @@ static int esw_mode_to_devlink(u16 mlx5_mode, u16 *mode)
 	return 0;
 }
 
-static int esw_inline_mode_from_devlink(u8 mode, u8 *mlx5_mode)
+static int esw_inline_mode_from_devlink(enum devlink_eswitch_inline_mode mode,
+					u8 *mlx5_mode)
 {
 	switch (mode) {
 	case DEVLINK_ESWITCH_INLINE_MODE_NONE:
@@ -2479,7 +2480,8 @@ static int esw_inline_mode_from_devlink(u8 mode, u8 *mlx5_mode)
 	return 0;
 }
 
-static int esw_inline_mode_to_devlink(u8 mlx5_mode, u8 *mode)
+static int esw_inline_mode_to_devlink(u8 mlx5_mode,
+				      enum devlink_eswitch_inline_mode *mode)
 {
 	switch (mlx5_mode) {
 	case MLX5_INLINE_MODE_NONE:
@@ -2521,7 +2523,8 @@ static int eswitch_devlink_esw_mode_check(const struct mlx5_eswitch *esw)
 		!mlx5_core_is_ecpf_esw_manager(esw->dev)) ? -EOPNOTSUPP : 0;
 }
 
-int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
+int mlx5_devlink_eswitch_mode_set(struct devlink *devlink,
+				  enum devlink_eswitch_mode mode,
 				  struct netlink_ext_ack *extack)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
@@ -2558,7 +2561,8 @@ unlock:
 	return err;
 }
 
-int mlx5_devlink_eswitch_mode_get(struct devlink *devlink, u16 *mode)
+int mlx5_devlink_eswitch_mode_get(struct devlink *devlink,
+				  enum devlink_eswitch_mode *mode)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
 	struct mlx5_eswitch *esw = dev->priv.eswitch;
@@ -2579,7 +2583,8 @@ unlock:
 	return err;
 }
 
-int mlx5_devlink_eswitch_inline_mode_set(struct devlink *devlink, u8 mode,
+int mlx5_devlink_eswitch_inline_mode_set(struct devlink *devlink,
+					 enum devlink_eswitch_inline_mode mode,
 					 struct netlink_ext_ack *extack)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
@@ -2644,7 +2649,8 @@ out:
 	return err;
 }
 
-int mlx5_devlink_eswitch_inline_mode_get(struct devlink *devlink, u8 *mode)
+int mlx5_devlink_eswitch_inline_mode_get(struct devlink *devlink,
+					 enum devlink_eswitch_inline_mode *mode)
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
 	struct mlx5_eswitch *esw = dev->priv.eswitch;

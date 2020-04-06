@@ -471,7 +471,8 @@ err:
 }
 
 /* Devlink related routines */
-int bnxt_dl_eswitch_mode_get(struct devlink *devlink, u16 *mode)
+int bnxt_dl_eswitch_mode_get(struct devlink *devlink,
+			     enum devlink_eswitch_mode *mode)
 {
 	struct bnxt *bp = bnxt_get_bp_from_dl(devlink);
 
@@ -479,7 +480,8 @@ int bnxt_dl_eswitch_mode_get(struct devlink *devlink, u16 *mode)
 	return 0;
 }
 
-int bnxt_dl_eswitch_mode_set(struct devlink *devlink, u16 mode,
+int bnxt_dl_eswitch_mode_set(struct devlink *devlink,
+			     enum devlink_eswitch_mode mode,
 			     struct netlink_ext_ack *extack)
 {
 	struct bnxt *bp = bnxt_get_bp_from_dl(devlink);
