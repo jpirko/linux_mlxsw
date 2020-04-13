@@ -398,6 +398,10 @@ def main():
         else:
             max_lanes = lane
             while lane > 1:
+                # Currently, due to Bug SW #2133886 we cannot split into 8
+                # ports on Spectrum-3. Skip it.
+                if isinstance(m.get_asic_type(), SPC3) and lane == 8:
+                    lane = 4
                 if not should_block(m, int(lane), max_lanes):
                     split_splittable_ports(m, int(lane), max_lanes)
                 else:
