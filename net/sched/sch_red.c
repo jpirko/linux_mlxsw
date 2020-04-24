@@ -71,6 +71,7 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 {
 	struct red_sched_data *q = qdisc_priv(sch);
 	struct Qdisc *child = q->qdisc;
+	struct tcf_result res;
 	int ret;
 
 	q->vars.qavg = red_calc_qavg(&q->parms,
@@ -130,6 +131,21 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	return ret;
 
 congestion_drop:
+	printk(KERN_WARNING "congestion_drop\n");
+	switch (tcf_exts_exec(skb, &q->drop_exts, &res)) {
+	case TC_ACT_STOLEN:
+	case TC_ACT_QUEUED:
+	case TC_ACT_TRAP:
+		return NET_XMIT_SUCCESS | __NET_XMIT_STOLEN;
+	case TC_ACT_SHOT:
+		return 0; // xxx?
+	case TC_ACT_UNSPEC:
+	case TC_ACT_OK:
+		// xxx for early drop pass could mean, enqueue it after all. But
+		// for tail drop?
+		break;
+	}
+
 	qdisc_drop(skb, sch, to_free);
 	return NET_XMIT_CN;
 }

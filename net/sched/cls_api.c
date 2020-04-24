@@ -2048,7 +2048,7 @@ static int tc_new_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 	struct Qdisc *q = NULL;
 	struct tcf_chain_info chain_info;
 	struct tcf_chain *chain = NULL;
-	struct tcf_block *block;
+	struct tcf_block *block = NULL;
 	struct tcf_proto *tp;
 	unsigned long cl;
 	int qevent_hook;
@@ -2255,9 +2255,10 @@ errout_tp:
 		if (!tp_created)
 			tcf_chain_put(chain);
 	}
-	tcf_block_release(q, block, rtnl_held);
 
 done:
+	tcf_block_release(q, block, rtnl_held);
+
 	if (rtnl_held)
 		rtnl_unlock();
 
