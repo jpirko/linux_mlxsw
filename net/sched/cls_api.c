@@ -1074,7 +1074,7 @@ static void tcf_block_flush_all_chains(struct tcf_block *block, bool rtnl_held)
 
 static int __tcf_qdisc_find(struct net *net, struct Qdisc **q,
 			    u32 *parent, int ifindex, bool rtnl_held,
-			    struct netlink_ext_ack *extack)
+			    u32 qevent_hook, struct netlink_ext_ack *extack)
 {
 	const struct Qdisc_class_ops *cops;
 	struct net_device *dev;
@@ -1120,10 +1120,18 @@ static int __tcf_qdisc_find(struct net *net, struct Qdisc **q,
 		goto errout_qdisc;
 	}
 
-	if (!cops->tcf_block) {
-		NL_SET_ERR_MSG(extack, "Class doesn't support blocks");
-		err = -EOPNOTSUPP;
-		goto errout_qdisc;
+	if (qevent_hook) {
+		if (!cops->qevent_change) {
+			NL_SET_ERR_MSG(extack, "Class doesn't support qevents");
+			err = -EOPNOTSUPP;
+			goto errout_qdisc;
+		}
+	} else {
+		if (!cops->tcf_block) {
+			NL_SET_ERR_MSG(extack, "Class doesn't support blocks");
+			err = -EOPNOTSUPP;
+			goto errout_qdisc;
+		}
 	}
 
 errout_rcu:
@@ -1251,7 +1259,8 @@ static struct tcf_block *tcf_block_find(struct net *net, struct Qdisc **q,
 
 	ASSERT_RTNL();
 
-	err = __tcf_qdisc_find(net, q, parent, ifindex, true, extack);
+	err = __tcf_qdisc_find(net, q, parent, ifindex, true,
+			       QEVENT_NONE, extack);
 	if (err)
 		goto errout;
 
@@ -1981,6 +1990,49 @@ static void tfilter_put(struct tcf_proto *tp, void *fh)
 		tp->ops->put(tp, fh);
 }
 
+static const struct nla_policy tc_qevent_policy[TCA_QEVENT_MAX + 1] = {
+	// xxx mark strict
+	// xxx HOOK will be on top level
+	[TCA_QEVENT_HOOK]	= { .type = NLA_U32 },
+	[TCA_QEVENT_FLAGS]	= { .type = NLA_U32 },
+};
+
+static int tc_add_qevent_action(struct net *net, struct Qdisc *q,
+				unsigned long cl, int qevent_hook,
+				struct nlattr **tca, bool ovr, bool rtnl_held,
+				struct netlink_ext_ack *extack)
+{
+	struct nlattr *tb[TCA_QEVENT_MAX + 1];
+	struct tcf_exts *exts;
+	int err;
+
+	printk(KERN_WARNING "parsing\n");
+	// xxx make strict
+	err = nla_parse_nested_deprecated(tb, TCA_QEVENT_MAX,
+					  tca[TCA_OPTIONS], tc_qevent_policy,
+					  NULL);
+	if (err)
+		return err;
+
+	// xxx flags
+
+	printk(KERN_WARNING "get exts\n");
+	exts = q->ops->cl_ops->qevent_change(q, cl, qevent_hook, tca, extack);
+	if (!exts) {
+		NL_SET_ERR_MSG(extack, "Class doesn't support this qevent");
+		return -EOPNOTSUPP;
+	}
+
+	printk(KERN_WARNING "validate\n");
+	err = tcf_exts_validate(net, NULL, tb, tca[TCA_RATE], exts, ovr,
+				rtnl_held, extack);
+	if (err)
+		return err;
+
+	printk(KERN_WARNING "it's done\n");
+	return 0;
+}
+
 static int tc_new_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 			  struct netlink_ext_ack *extack)
 {
@@ -1999,7 +2051,9 @@ static int tc_new_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 	struct tcf_block *block;
 	struct tcf_proto *tp;
 	unsigned long cl;
+	int qevent_hook;
 	void *fh;
+	bool ovr;
 	int err;
 	int tp_created;
 	bool rtnl_held = false;
@@ -2039,15 +2093,22 @@ replay:
 
 	/* Find head of filter chain. */
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
-	if (err)
-		return err;
-
 	if (tcf_proto_check_kind(tca[TCA_KIND], name)) {
 		NL_SET_ERR_MSG(extack, "Specified TC filter name too long");
-		err = -EINVAL;
-		goto errout;
+		return -EINVAL;
 	}
+
+	if (!strcmp(name, "qevent")) {
+		// xxx need to actually parse it out
+		qevent_hook = QEVENT_DROP;
+	} else {
+		qevent_hook = QEVENT_NONE;
+	}
+
+	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false,
+			       qevent_hook, extack);
+	if (err)
+		return err;
 
 	/* Take rtnl mutex if rtnl_held was set to true on previous iteration,
 	 * block is shared (no qdisc found), qdisc is not unlocked, classifier
@@ -2063,6 +2124,14 @@ replay:
 	err = __tcf_qdisc_cl_find(q, parent, &cl, t->tcm_ifindex, extack);
 	if (err)
 		goto errout;
+
+	ovr = n->nlmsg_flags & NLM_F_CREATE ?
+		TCA_ACT_NOREPLACE : TCA_ACT_REPLACE;
+	if (qevent_hook) {
+		err = tc_add_qevent_action(net, q, cl, qevent_hook,
+					   tca, ovr, rtnl_held, extack);
+		goto done;
+	}
 
 	block = __tcf_block_find(net, q, cl, t->tcm_ifindex, t->tcm_block_index,
 				 extack);
@@ -2165,8 +2234,7 @@ replay:
 		goto errout;
 	}
 
-	err = tp->ops->change(net, skb, tp, cl, t->tcm_handle, tca, &fh,
-			      n->nlmsg_flags & NLM_F_CREATE ? TCA_ACT_NOREPLACE : TCA_ACT_REPLACE,
+	err = tp->ops->change(net, skb, tp, cl, t->tcm_handle, tca, &fh, ovr,
 			      rtnl_held, extack);
 	if (err == 0) {
 		tfilter_notify(net, skb, n, tp, block, q, parent, fh,
@@ -2189,6 +2257,7 @@ errout_tp:
 	}
 	tcf_block_release(q, block, rtnl_held);
 
+done:
 	if (rtnl_held)
 		rtnl_unlock();
 
@@ -2248,7 +2317,8 @@ static int tc_del_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 
 	/* Find head of filter chain. */
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
+	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false,
+			       QEVENT_NONE, extack);
 	if (err)
 		return err;
 
@@ -2405,7 +2475,8 @@ static int tc_get_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 
 	/* Find head of filter chain. */
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
+	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false,
+			       QEVENT_NONE, extack);
 	if (err)
 		return err;
 

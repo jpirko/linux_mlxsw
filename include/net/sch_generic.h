@@ -217,6 +217,11 @@ struct Qdisc_class_ops {
 	unsigned long		(*bind_tcf)(struct Qdisc *, unsigned long,
 					u32 classid);
 	void			(*unbind_tcf)(struct Qdisc *, unsigned long);
+	struct tcf_exts *	(*qevent_change)(struct Qdisc *sch,
+						 unsigned long arg,
+						 int qevent_hook,
+						 struct nlattr **tca,
+						 struct netlink_ext_ack *extack);
 
 	/* rtnetlink specific */
 	int			(*dump)(struct Qdisc *, unsigned long,

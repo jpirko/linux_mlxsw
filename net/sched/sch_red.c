@@ -46,6 +46,7 @@ struct red_sched_data {
 	struct red_vars		vars;
 	struct red_stats	stats;
 	struct Qdisc		*qdisc;
+	struct tcf_exts		drop_exts;
 };
 
 static const u32 red_supported_flags = TC_RED_HISTORIC_FLAGS | TC_RED_NODROP;
@@ -202,6 +203,9 @@ static void red_destroy(struct Qdisc *sch)
 {
 	struct red_sched_data *q = qdisc_priv(sch);
 
+	// xxx check it's kosher to call this under RTNL without further dances.
+	// mall_destroy is quite a bit more involved.
+	tcf_exts_destroy(&q->drop_exts);
 	del_timer_sync(&q->adapt_timer);
 	red_offload(sch, false);
 	qdisc_put(q->qdisc);
@@ -324,11 +328,28 @@ static int red_init(struct Qdisc *sch, struct nlattr *opt,
 		    struct netlink_ext_ack *extack)
 {
 	struct red_sched_data *q = qdisc_priv(sch);
+	struct net_device *dev = qdisc_dev(sch);
+	struct net *net = dev_net(dev);
+	int err;
 
 	q->qdisc = &noop_qdisc;
 	q->sch = sch;
 	timer_setup(&q->adapt_timer, red_adaptative_timer, 0);
-	return red_change(sch, opt, extack);
+
+	// xxx cls_api should be doing this
+	err = tcf_exts_init(&q->drop_exts, net, TCA_QEVENT_ACT, 0);
+	if (err)
+		return err;
+
+	err = red_change(sch, opt, extack);
+	if (err)
+		goto err_drop_exts_init;
+
+	return err;
+
+err_drop_exts_init:
+	tcf_exts_destroy(&q->drop_exts);
+	return err;
 }
 
 static int red_dump_offload_stats(struct Qdisc *sch)
@@ -417,6 +438,20 @@ static int red_dump_class(struct Qdisc *sch, unsigned long cl,
 	return 0;
 }
 
+static struct tcf_exts *red_qevent_change(struct Qdisc *sch, unsigned long cl,
+					  int qevent_hook, struct nlattr **tca,
+					  struct netlink_ext_ack *extack)
+{
+	struct red_sched_data *q = qdisc_priv(sch);
+
+	switch (qevent_hook) {
+	case QEVENT_DROP:
+		return &q->drop_exts;
+	}
+
+	return NULL;
+}
+
 static void red_graft_offload(struct Qdisc *sch,
 			      struct Qdisc *new, struct Qdisc *old,
 			      struct netlink_ext_ack *extack)
@@ -475,6 +510,7 @@ static const struct Qdisc_class_ops red_class_ops = {
 	.find		=	red_find,
 	.walk		=	red_walk,
 	.dump		=	red_dump_class,
+	.qevent_change	=	red_qevent_change,
 };
 
 static struct Qdisc_ops red_qdisc_ops __read_mostly = {
