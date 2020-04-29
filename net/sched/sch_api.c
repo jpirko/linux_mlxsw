@@ -2225,6 +2225,33 @@ done:
 	return skb->len;
 }
 
+static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
+			 struct netlink_ext_ack *extack)
+{
+	printk(KERN_WARNING "tc_new_qevent\n");
+	return 0;
+}
+
+static int tc_del_qevent(struct sk_buff *skb, struct nlmsghdr *n,
+			 struct netlink_ext_ack *extack)
+{
+	printk(KERN_WARNING "tc_del_qevent\n");
+	return 0;
+}
+
+static int tc_get_qevent(struct sk_buff *skb, struct nlmsghdr *n,
+			 struct netlink_ext_ack *extack)
+{
+	printk(KERN_WARNING "tc_get_qevent\n");
+	return 0;
+}
+
+static int tc_dump_qevent(struct sk_buff *skb, struct netlink_callback *cb)
+{
+	printk(KERN_WARNING "tc_dump_qevent\n");
+	return 0;
+}
+
 #ifdef CONFIG_PROC_FS
 static int psched_show(struct seq_file *seq, void *v)
 {
@@ -2292,6 +2319,10 @@ static int __init pktsched_init(void)
 	rtnl_register(PF_UNSPEC, RTM_NEWTCLASS, tc_ctl_tclass, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_DELTCLASS, tc_ctl_tclass, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_GETTCLASS, tc_ctl_tclass, tc_dump_tclass,
+		      0);
+	rtnl_register(PF_UNSPEC, RTM_NEWQEVENT, tc_new_qevent, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_DELQEVENT, tc_del_qevent, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_GETQEVENT, tc_get_qevent, tc_dump_qevent,
 		      0);
 
 	return 0;

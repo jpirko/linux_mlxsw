@@ -743,25 +743,4 @@ enum {
 	TCF_EM_OPND_LT
 };
 
-/* Qdisc Event Classifier */
-
-enum {
-	TCA_QEVENT_UNSPEC,
-	// xxx for the real code, this should perhaps be TCA_QEVENT in
-	// rtnetlink.h, instead of hardcoding the "qevent" string for TCA_KIND.
-	TCA_QEVENT_HOOK,	/* u32 */
-	TCA_QEVENT_ACT,
-	TCA_QEVENT_FLAGS,
-	__TCA_QEVENT_MAX,
-};
-
-#define TCA_QEVENT_MAX (__TCA_QEVENT_MAX - 1)
-
-enum {
-	QEVENT_NONE,
-	QEVENT_DROP,
-};
-
-#define TCA_EVENT_MAX (__TCA_EVENT_MAX - 1)
-
 #endif
