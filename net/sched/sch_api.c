@@ -2225,11 +2225,233 @@ done:
 	return skb->len;
 }
 
+struct sch_qevent_ops {
+	const char *id; // xxx drop this?
+	enum sch_qevent_kind kind;
+	size_t parms_size;
+};
+
+/* Drop qevent */
+
+static struct sch_qevent_ops sch_qevent_drop_ops = {
+	.id = "drop",
+	.kind = SCH_QEVENT_DROP,
+	.parms_size = sizeof(struct sch_qevent_parms),
+};
+
+static struct sch_qevent_ops *sch_all_qevent_ops[] = {
+	&sch_qevent_drop_ops,
+};
+
+static struct sch_qevent_ops *sch_qevent_lookup_ops(struct nlattr *kind)
+{
+	struct sch_qevent_ops *ops;
+	int i;
+
+	if (kind) {
+		for (i = 0; i < ARRAY_SIZE(sch_all_qevent_ops); i++) {
+			ops = sch_all_qevent_ops[i];
+			if (nla_strcmp(kind, ops->id) == 0)
+				return ops;
+		}
+	}
+
+	return NULL;
+}
+const struct nla_policy rtm_tca_qevent_policy[TCA_MAX + 1] = {
+	[TCA_KIND]		= { .type = NLA_STRING },
+	[TCA_DUMP_INVISIBLE]	= { .type = NLA_FLAG },
+	[TCA_OPTIONS]		= { .type = NLA_NESTED },
+};
+
+static const u32 sch_qevent_flags = TCA_CLS_FLAGS_SKIP_HW |
+				    TCA_CLS_FLAGS_SKIP_SW;
+
+const struct nla_policy sch_qevent_opts_policy[TCA_MAX + 1] = {
+	[TCA_QEVENT_FLAGS]	= { .type = NLA_BITFIELD32,
+				    .validation_data = &sch_qevent_flags },
+	[TCA_QEVENT_ACT]	= { .type = NLA_NESTED },
+};
+
+// xxx looks like this could be reused as a building block for __tcf_qdisc_find.
+static int sch_qdisc_find(struct net *net, struct Qdisc **q,
+			  u32 *parent, int ifindex,
+			  struct netlink_ext_ack *extack)
+{
+	struct net_device *dev;
+	int err = 0;
+
+	// xxx needed? now that we hold RTNL...
+	rcu_read_lock();
+
+	/* Find link */
+	dev = dev_get_by_index_rcu(net, ifindex);
+	if (!dev) {
+		err = -ENODEV;
+		goto out_rcu;
+	}
+
+	/* Find qdisc */
+	if (!*parent) {
+		*q = dev->qdisc;
+		*parent = (*q)->handle;
+	} else {
+		*q = qdisc_lookup_rcu(dev, TC_H_MAJ(*parent));
+		if (!*q) {
+			NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
+			err = -EINVAL;
+			goto out_rcu;
+		}
+	}
+
+	*q = qdisc_refcount_inc_nz(*q);
+	if (!*q) {
+		NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
+		err = -EINVAL;
+		goto out_rcu;
+	}
+	if (*q == &noop_qdisc) {
+		NL_SET_ERR_MSG(extack, "Noop qdisc not supported");
+		err = -EINVAL;
+		goto errout_qdisc;
+	}
+
+	/* At this point we know that qdisc is not noop_qdisc,
+	 * which means that qdisc holds a reference to net_device
+	 * and we hold a reference to qdisc, so it is safe to release
+	 * rcu read lock.
+	 */
+
+out_rcu:
+	rcu_read_unlock();
+	return err;
+
+errout_qdisc:
+	qdisc_put(*q);
+	*q = NULL;
+	goto out_rcu;
+
+}
+
+// xxx move to a header
+int __tcf_qdisc_cl_find(struct Qdisc *q, u32 parent, unsigned long *cl,
+			int ifindex, struct netlink_ext_ack *extack);
+
 static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 			 struct netlink_ext_ack *extack)
 {
+	struct nlattr *tb[TCA_QEVENT_MAX + 1];
+	struct net *net = sock_net(skb->sk);
+	struct nla_bitfield32 flags = {0};
+	struct nlattr *tca[TCA_MAX + 1];
+	struct tcmsg *t = nlmsg_data(n);
+	struct sch_qevent_parms *parms;
+	struct sch_qevent_ops *ops;
+	struct Qdisc *q = NULL;
+	unsigned long cl = 0;
+	u32 parent;
+	bool ovr;
+	int err;
+
 	printk(KERN_WARNING "tc_new_qevent\n");
-	return 0;
+
+	if (!netlink_ns_capable(skb, net->user_ns, CAP_NET_ADMIN))
+		return -EPERM;
+
+	err = nlmsg_parse_deprecated(n, sizeof(*t), tca, TCA_MAX,
+				     rtm_tca_qevent_policy, extack);
+	if (err < 0)
+		return err;
+
+	printk(KERN_WARNING "parsed tca\n");
+
+	ops = sch_qevent_lookup_ops(tca[TCA_KIND]);
+	if (!ops) {
+		NL_SET_ERR_MSG(extack, "Unknown qevent kind");
+		return -EINVAL;
+	}
+
+	printk(KERN_WARNING "have ops\n");
+	if (!tca[TCA_OPTIONS]) {
+		NL_SET_ERR_MSG(extack, "No qevent options");
+		return -EINVAL;
+	}
+
+	err = nla_parse_nested(tb, TCA_QEVENT_MAX, tca[TCA_OPTIONS],
+			       sch_qevent_opts_policy, extack);
+	if (err < 0)
+		return err;
+	printk(KERN_WARNING "parsed options\n");
+
+	parms = kzalloc(ops->parms_size, GFP_KERNEL);
+	if (!parms)
+		return -ENOMEM;
+
+	if (!tb[TCA_QEVENT_ACT]) {
+		// xxx this should be legal for some user actions
+		NL_SET_ERR_MSG(extack, "No action specified");
+		err = -EINVAL;
+		goto errout_free;
+	}
+
+	// xxx note that BITFIELD32 can be used to tweak the flags, when
+	// selector != full scope. Make that somehow work / reject / whatever.
+	if (tb[TCA_QEVENT_FLAGS]) {
+		flags = nla_get_bitfield32(tb[TCA_QEVENT_FLAGS]);
+		if (!tc_flags_valid(flags.value)) {
+			NL_SET_ERR_MSG(extack, "Invalid qevent flags");
+			err = -EINVAL;
+			goto errout_free;
+		}
+	}
+
+	printk(KERN_WARNING "about to change qevent\n");
+	parms->kind = ops->kind;
+	parms->flags = flags.value;
+	parms->tb = tb;
+	ovr = n->nlmsg_flags & NLM_F_CREATE ?
+		TCA_ACT_NOREPLACE : TCA_ACT_REPLACE;
+
+replay:
+	parent = t->tcm_parent;
+	err = sch_qdisc_find(net, &q, &parent, t->tcm_ifindex, extack);
+	if (err)
+		goto errout_free;
+	if (!q) {
+		err = -EINVAL;
+		goto errout_free;
+	}
+	if (!q->ops->cl_ops->qevent_change) {
+		NL_SET_ERR_MSG(extack, "Class doesn't support qevents");
+		err = -EOPNOTSUPP;
+		goto errout_qdisc;
+	}
+	printk(KERN_WARNING "have qdisc\n");
+
+	err = __tcf_qdisc_cl_find(q, parent, &cl, t->tcm_ifindex, extack);
+	if (err)
+		goto errout_qdisc;
+	if (!cl) {
+		err = -EINVAL;
+		goto errout_qdisc;
+	}
+	printk(KERN_WARNING "have class\n");
+
+	err = q->ops->cl_ops->qevent_change(q, cl, parms, ovr, true,
+					    extack);
+
+errout_qdisc:
+	qdisc_put_unlocked(q);
+
+	if (err == -EAGAIN) {
+		printk(KERN_WARNING "replaying\n");
+		goto replay;
+	}
+
+errout_free:
+	kfree(parms);
+	printk(KERN_WARNING "done\n");
+	return err;
 }
 
 static int tc_del_qevent(struct sk_buff *skb, struct nlmsghdr *n,

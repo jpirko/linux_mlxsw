@@ -192,6 +192,16 @@ static inline int qdisc_avail_bulklimit(const struct netdev_queue *txq)
 #endif
 }
 
+enum sch_qevent_kind {
+	SCH_QEVENT_DROP,
+};
+
+struct sch_qevent_parms {
+	enum sch_qevent_kind kind;
+	struct nlattr **tb;
+	unsigned int flags;
+};
+
 struct Qdisc_class_ops {
 	unsigned int		flags;
 	/* Child qdisc manipulation */
@@ -217,10 +227,11 @@ struct Qdisc_class_ops {
 	unsigned long		(*bind_tcf)(struct Qdisc *, unsigned long,
 					u32 classid);
 	void			(*unbind_tcf)(struct Qdisc *, unsigned long);
-	struct tcf_exts *	(*qevent_change)(struct Qdisc *sch,
+	// xxx can't be class op so that it works for FIFO
+	int			(*qevent_change)(struct Qdisc *sch,
 						 unsigned long arg,
-						 int qevent_hook,
-						 struct nlattr **tca,
+						 struct sch_qevent_parms *parms,
+						 bool ovr, bool rtnl_held,
 						 struct netlink_ext_ack *extack);
 
 	/* rtnetlink specific */

@@ -1260,7 +1260,7 @@ enum {
 
 enum {
 	TCA_QEVENT_UNSPEC,
-	TCA_QEVENT_FLAGS,	/* u32; TCA_CLS_FLAGS_* */
+	TCA_QEVENT_FLAGS,	/* bitfield32; TCA_CLS_FLAGS_* */
 	TCA_QEVENT_ACT,		/* nested */
 	__TCA_QEVENT_MAX,
 };
