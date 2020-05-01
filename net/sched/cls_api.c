@@ -1071,49 +1071,76 @@ static void tcf_block_flush_all_chains(struct tcf_block *block, bool rtnl_held)
 /* Lookup Qdisc and increments its reference counter.
  * Set parent, if necessary.
  */
-
-int __tcf_qdisc_find(struct net *net, struct Qdisc **q,
-		     u32 *parent, int ifindex, bool rtnl_held,
-		     struct netlink_ext_ack *extack)
+struct Qdisc *__tcf_qdisc_find(struct net *net, u32 *parent, int ifindex,
+			       bool rtnl_held, struct netlink_ext_ack *extack)
 {
-	const struct Qdisc_class_ops *cops;
 	struct net_device *dev;
-	int err = 0;
-
-	if (ifindex == TCM_IFINDEX_MAGIC_BLOCK)
-		return 0;
+	struct Qdisc *q;
 
 	rcu_read_lock();
 
 	/* Find link */
 	dev = dev_get_by_index_rcu(net, ifindex);
 	if (!dev) {
-		rcu_read_unlock();
-		return -ENODEV;
+		q = ERR_PTR(-ENODEV);
+		goto out_rcu;
 	}
 
 	/* Find qdisc */
 	if (!*parent) {
-		*q = dev->qdisc;
-		*parent = (*q)->handle;
+		q = dev->qdisc;
+		*parent = q->handle;
 	} else {
-		*q = qdisc_lookup_rcu(dev, TC_H_MAJ(*parent));
-		if (!*q) {
-			NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
-			err = -EINVAL;
-			goto errout_rcu;
+		q = qdisc_lookup_rcu(dev, TC_H_MAJ(*parent));
+		if (!q) {
+			NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exist");
+			q = ERR_PTR(-EINVAL);
+			goto out_rcu;
 		}
 	}
 
-	*q = qdisc_refcount_inc_nz(*q);
-	if (!*q) {
-		NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
-		err = -EINVAL;
-		goto errout_rcu;
+	if (q == &noop_qdisc) {
+		NL_SET_ERR_MSG(extack, "Parent Qdisc is noop");
+		q = ERR_PTR(-EINVAL);
+		goto out_rcu;
 	}
 
-	/* Is it classful? */
-	cops = (*q)->ops->cl_ops;
+	q = qdisc_refcount_inc_nz(q);
+	if (!q) {
+		NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exist");
+		q = ERR_PTR(-EINVAL);
+		goto out_rcu;
+	}
+
+	/* At this point we know that qdisc is not noop_qdisc,
+	 * which means that qdisc holds a reference to net_device
+	 * and we hold a reference to qdisc, so it is safe to release
+	 * rcu read lock.
+	 */
+out_rcu:
+	rcu_read_unlock();
+	return q;
+}
+
+// xxx if __tcf_qdisc_find is moved to sch_generic, the
+// __tcf_qdisc_find_with_blocks can be renamed back to __tcf_qdisc_find.
+static int __tcf_qdisc_find_with_blocks(struct net *net, struct Qdisc **pq,
+					u32 *parent, int ifindex,
+					bool rtnl_held,
+					struct netlink_ext_ack *extack)
+{
+	const struct Qdisc_class_ops *cops;
+	struct Qdisc *q;
+	int err;
+
+	if (ifindex == TCM_IFINDEX_MAGIC_BLOCK)
+		return 0;
+
+	q = __tcf_qdisc_find(net, parent, ifindex, rtnl_held, extack);
+	if (IS_ERR(q))
+		return PTR_ERR(q);
+
+	cops = q->ops->cl_ops;
 	if (!cops) {
 		NL_SET_ERR_MSG(extack, "Qdisc not classful");
 		err = -EINVAL;
@@ -1126,24 +1153,11 @@ int __tcf_qdisc_find(struct net *net, struct Qdisc **q,
 		goto errout_qdisc;
 	}
 
-errout_rcu:
-	/* At this point we know that qdisc is not noop_qdisc,
-	 * which means that qdisc holds a reference to net_device
-	 * and we hold a reference to qdisc, so it is safe to release
-	 * rcu read lock.
-	 */
-	rcu_read_unlock();
-	return err;
+	*pq = q;
+	return 0;
 
 errout_qdisc:
-	rcu_read_unlock();
-
-	if (rtnl_held)
-		qdisc_put(*q);
-	else
-		qdisc_put_unlocked(*q);
-	*q = NULL;
-
+	qdisc_put_maybe_unlocked(q, rtnl_held);
 	return err;
 }
 
@@ -1251,7 +1265,8 @@ static struct tcf_block *tcf_block_find(struct net *net, struct Qdisc **q,
 
 	ASSERT_RTNL();
 
-	err = __tcf_qdisc_find(net, q, parent, ifindex, true, extack);
+	err = __tcf_qdisc_find_with_blocks(net, q, parent, ifindex, true,
+					   extack);
 	if (err)
 		goto errout;
 
@@ -2045,7 +2060,8 @@ replay:
 		return -EINVAL;
 	}
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
+	err = __tcf_qdisc_find_with_blocks(net, &q, &parent, t->tcm_ifindex,
+					   false, extack);
 	if (err)
 		return err;
 
@@ -2251,7 +2267,8 @@ static int tc_del_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 
 	/* Find head of filter chain. */
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
+	err = __tcf_qdisc_find_with_blocks(net, &q, &parent, t->tcm_ifindex,
+					   false, extack);
 	if (err)
 		return err;
 
@@ -2408,7 +2425,8 @@ static int tc_get_tfilter(struct sk_buff *skb, struct nlmsghdr *n,
 
 	/* Find head of filter chain. */
 
-	err = __tcf_qdisc_find(net, &q, &parent, t->tcm_ifindex, false, extack);
+	err = __tcf_qdisc_find_with_blocks(net, &q, &parent, t->tcm_ifindex,
+					   false, extack);
 	if (err)
 		return err;
 

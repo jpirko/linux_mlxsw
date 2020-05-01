@@ -656,6 +656,15 @@ void qdisc_reset(struct Qdisc *qdisc);
 void qdisc_put(struct Qdisc *qdisc);
 void qdisc_put_unlocked(struct Qdisc *qdisc);
 void qdisc_tree_reduce_backlog(struct Qdisc *qdisc, int n, int len);
+
+static inline void qdisc_put_maybe_unlocked(struct Qdisc *q, bool rtnl_held)
+{
+	if (rtnl_held)
+		qdisc_put(q);
+	else
+		qdisc_put_unlocked(q);
+}
+
 #ifdef CONFIG_NET_SCHED
 int qdisc_offload_dump_helper(struct Qdisc *q, enum tc_setup_type type,
 			      void *type_data);

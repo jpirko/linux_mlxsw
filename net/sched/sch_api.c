@@ -2273,64 +2273,33 @@ const struct nla_policy sch_qevent_opts_policy[TCA_MAX + 1] = {
 	[TCA_QEVENT_ACT]	= { .type = NLA_NESTED },
 };
 
-// xxx looks like this could be reused as a building block for __tcf_qdisc_find.
-static int sch_qdisc_find(struct net *net, struct Qdisc **q,
+// xxx move to a header file. Maybe move to sch_generic.c
+struct Qdisc *__tcf_qdisc_find(struct net *net, u32 *parent, int ifindex,
+			       bool rtnl_held, struct netlink_ext_ack *extack);
+
+static int sch_qdisc_find(struct net *net, struct Qdisc **pq,
 			  u32 *parent, int ifindex,
 			  struct netlink_ext_ack *extack)
 {
-	struct net_device *dev;
-	int err = 0;
+	struct Qdisc *q;
+	int err;
 
-	// xxx needed? now that we hold RTNL...
-	rcu_read_lock();
+	q = __tcf_qdisc_find(net, parent, ifindex, true, extack);
+	if (IS_ERR(q))
+		return PTR_ERR(q);
 
-	/* Find link */
-	dev = dev_get_by_index_rcu(net, ifindex);
-	if (!dev) {
-		err = -ENODEV;
-		goto out_rcu;
-	}
-
-	/* Find qdisc */
-	if (!*parent) {
-		*q = dev->qdisc;
-		*parent = (*q)->handle;
-	} else {
-		*q = qdisc_lookup_rcu(dev, TC_H_MAJ(*parent));
-		if (!*q) {
-			NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
-			err = -EINVAL;
-			goto out_rcu;
-		}
-	}
-
-	*q = qdisc_refcount_inc_nz(*q);
-	if (!*q) {
-		NL_SET_ERR_MSG(extack, "Parent Qdisc doesn't exists");
-		err = -EINVAL;
-		goto out_rcu;
-	}
-	if (*q == &noop_qdisc) {
-		NL_SET_ERR_MSG(extack, "Noop qdisc not supported");
-		err = -EINVAL;
+	if (!q->ops->cl_ops->qevent_change) {
+		NL_SET_ERR_MSG(extack, "Class doesn't support qevents");
+		err = -EOPNOTSUPP;
 		goto errout_qdisc;
 	}
 
-	/* At this point we know that qdisc is not noop_qdisc,
-	 * which means that qdisc holds a reference to net_device
-	 * and we hold a reference to qdisc, so it is safe to release
-	 * rcu read lock.
-	 */
-
-out_rcu:
-	rcu_read_unlock();
-	return err;
+	*pq = q;
+	return 0;
 
 errout_qdisc:
-	qdisc_put(*q);
-	*q = NULL;
-	goto out_rcu;
-
+	qdisc_put(q);
+	return err;
 }
 
 // xxx move to a header
@@ -2417,15 +2386,6 @@ replay:
 	err = sch_qdisc_find(net, &q, &parent, t->tcm_ifindex, extack);
 	if (err)
 		goto errout_free;
-	if (!q) {
-		err = -EINVAL;
-		goto errout_free;
-	}
-	if (!q->ops->cl_ops->qevent_change) {
-		NL_SET_ERR_MSG(extack, "Class doesn't support qevents");
-		err = -EOPNOTSUPP;
-		goto errout_qdisc;
-	}
 	printk(KERN_WARNING "have qdisc\n");
 
 	err = __tcf_qdisc_cl_find(q, parent, &cl, t->tcm_ifindex, extack);
