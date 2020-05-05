@@ -16,13 +16,39 @@
 
 /* 1 band FIFO pseudo-"scheduler" */
 
+struct fifo_sched {
+	struct tcf_exts		drop_exts;
+};
+
+static int fifo_handle_qevent_drop(struct sk_buff *skb, struct Qdisc *sch,
+				   struct sk_buff **to_free)
+{
+	struct fifo_sched *q = qdisc_priv(sch);
+	struct tcf_result res;
+
+	printk(KERN_WARNING "tail_drop\n");
+	switch (tcf_exts_exec(skb, &q->drop_exts, &res)) {
+	case TC_ACT_STOLEN:
+	case TC_ACT_QUEUED:
+	case TC_ACT_TRAP:
+		return NET_XMIT_SUCCESS | __NET_XMIT_STOLEN;
+	case TC_ACT_SHOT:
+		return 0; // xxx?
+	case TC_ACT_UNSPEC:
+	case TC_ACT_OK:
+		break;
+	}
+
+	return qdisc_drop(skb, sch, to_free);
+}
+
 static int bfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			 struct sk_buff **to_free)
 {
 	if (likely(sch->qstats.backlog + qdisc_pkt_len(skb) <= sch->limit))
 		return qdisc_enqueue_tail(skb, sch);
 
-	return qdisc_drop(skb, sch, to_free);
+	return fifo_handle_qevent_drop(skb, sch, to_free);
 }
 
 static int pfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -31,7 +57,7 @@ static int pfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	if (likely(sch->q.qlen < sch->limit))
 		return qdisc_enqueue_tail(skb, sch);
 
-	return qdisc_drop(skb, sch, to_free);
+	return fifo_handle_qevent_drop(skb, sch, to_free);
 }
 
 static int pfifo_tail_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -128,8 +154,8 @@ static int __fifo_init(struct Qdisc *sch, struct nlattr *opt,
 	return 0;
 }
 
-static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
-		     struct netlink_ext_ack *extack)
+static int fifo_change(struct Qdisc *sch, struct nlattr *opt,
+		       struct netlink_ext_ack *extack)
 {
 	int err;
 
@@ -141,6 +167,76 @@ static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 	return 0;
 }
 
+static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
+		     struct netlink_ext_ack *extack)
+{
+	struct net_device *dev = qdisc_dev(sch);
+	struct fifo_sched *q = qdisc_priv(sch);
+	struct net *net = dev_net(dev);
+	int err;
+
+	err = tcf_exts_init(&q->drop_exts, net, TCA_QEVENT_ACT, 0);
+	if (err)
+		return err;
+
+	err = fifo_change(sch, opt, extack);
+	if (err)
+		goto err_drop_exts_init;
+
+	return 0;
+
+err_drop_exts_init:
+	tcf_exts_destroy(&q->drop_exts);
+	return err;
+}
+
+static struct tcf_exts *fifo_qevent_get_exts(struct fifo_sched *q,
+					     enum sch_qevent_kind kind,
+					     struct netlink_ext_ack *extack)
+{
+	switch (kind) {
+	case SCH_QEVENT_DROP:
+		return &q->drop_exts;
+	default:
+		NL_SET_ERR_MSG(extack, "Qevent not supported");
+		return ERR_PTR(-EOPNOTSUPP);
+	}
+}
+
+static int fifo_qevent_change(struct Qdisc *sch, unsigned long cl,
+			      struct sch_qevent_parms *parms, bool ovr,
+			      struct netlink_ext_ack *extack)
+{
+	struct net_device *dev = qdisc_dev(sch);
+	struct fifo_sched *q = qdisc_priv(sch);
+	struct net *net = dev_net(dev);
+	struct tcf_exts *exts;
+
+	exts = fifo_qevent_get_exts(q, parms->kind, extack);
+	if (IS_ERR(exts))
+		return PTR_ERR(exts);
+
+	// xxx change this to qevent_get, which will just yield the exts. The
+	// rest of the handling should be done by the sch_api?
+	return tcf_exts_validate(net, NULL, parms->tb, NULL, exts, ovr,
+				 true, extack);
+}
+
+static int fifo_qevent_delete(struct Qdisc *sch, unsigned long cl,
+			      enum sch_qevent_kind kind,
+			      struct netlink_ext_ack *extack)
+{
+	struct fifo_sched *q = qdisc_priv(sch);
+	struct tcf_exts *exts;
+
+	exts = fifo_qevent_get_exts(q, kind, extack);
+	if (IS_ERR(exts))
+		return PTR_ERR(exts);
+
+	tcf_exts_destroy(exts);
+	return 0;
+}
+
 static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
 			struct netlink_ext_ack *extack)
 {
@@ -149,7 +245,10 @@ static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
 
 static void fifo_destroy(struct Qdisc *sch)
 {
+	struct fifo_sched *q = qdisc_priv(sch);
+
 	fifo_offload_destroy(sch);
+	tcf_exts_destroy(&q->drop_exts);
 }
 
 static int __fifo_dump(struct Qdisc *sch, struct sk_buff *skb)
@@ -182,14 +281,16 @@ static int fifo_hd_dump(struct Qdisc *sch, struct sk_buff *skb)
 
 struct Qdisc_ops pfifo_qdisc_ops __read_mostly = {
 	.id		=	"pfifo",
-	.priv_size	=	0,
+	.priv_size	=	sizeof(struct fifo_sched),
 	.enqueue	=	pfifo_enqueue,
 	.dequeue	=	qdisc_dequeue_head,
 	.peek		=	qdisc_peek_head,
 	.init		=	fifo_init,
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
-	.change		=	fifo_init,
+	.change		=	fifo_change,
+	.qevent_change	=	fifo_qevent_change,
+	.qevent_delete	=	fifo_qevent_delete,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };
@@ -197,14 +298,16 @@ EXPORT_SYMBOL(pfifo_qdisc_ops);
 
 struct Qdisc_ops bfifo_qdisc_ops __read_mostly = {
 	.id		=	"bfifo",
-	.priv_size	=	0,
+	.priv_size	=	sizeof(struct fifo_sched),
 	.enqueue	=	bfifo_enqueue,
 	.dequeue	=	qdisc_dequeue_head,
 	.peek		=	qdisc_peek_head,
 	.init		=	fifo_init,
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
-	.change		=	fifo_init,
+	.change		=	fifo_change,
+	.qevent_change	=	fifo_qevent_change,
+	.qevent_delete	=	fifo_qevent_delete,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };

@@ -2288,8 +2288,14 @@ static int sch_qdisc_find(struct net *net, struct Qdisc **pq,
 	if (IS_ERR(q))
 		return PTR_ERR(q);
 
-	if (!q->ops->cl_ops->qevent_change) {
-		NL_SET_ERR_MSG(extack, "Class doesn't support qevents");
+	if (!q->ops->qevent_change) {
+		NL_SET_ERR_MSG(extack, "Qdisc does not support qevents");
+		err = -EOPNOTSUPP;
+		goto errout_qdisc;
+	}
+
+	if (TC_H_MIN(*parent) && !q->ops->cl_ops) {
+		NL_SET_ERR_MSG(extack, "Class requested in classless qdisc");
 		err = -EOPNOTSUPP;
 		goto errout_qdisc;
 	}
@@ -2332,15 +2338,12 @@ static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 	if (err < 0)
 		return err;
 
-	printk(KERN_WARNING "parsed tca\n");
-
 	ops = sch_qevent_lookup_ops(tca[TCA_KIND]);
 	if (!ops) {
 		NL_SET_ERR_MSG(extack, "Unknown qevent kind");
 		return -EINVAL;
 	}
 
-	printk(KERN_WARNING "have ops\n");
 	if (!tca[TCA_OPTIONS]) {
 		NL_SET_ERR_MSG(extack, "No qevent options");
 		return -EINVAL;
@@ -2350,7 +2353,6 @@ static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 			       sch_qevent_opts_policy, extack);
 	if (err < 0)
 		return err;
-	printk(KERN_WARNING "parsed options\n");
 
 	parms = kzalloc(ops->parms_size, GFP_KERNEL);
 	if (!parms)
@@ -2386,19 +2388,13 @@ replay:
 	err = sch_qdisc_find(net, &q, &parent, t->tcm_ifindex, extack);
 	if (err)
 		goto errout_free;
-	printk(KERN_WARNING "have qdisc\n");
 
 	err = __tcf_qdisc_cl_find(q, parent, &cl, t->tcm_ifindex, extack);
 	if (err)
 		goto errout_qdisc;
-	if (!cl) {
-		err = -EINVAL;
-		goto errout_qdisc;
-	}
 	printk(KERN_WARNING "have class\n");
 
-	err = q->ops->cl_ops->qevent_change(q, cl, parms, ovr, true,
-					    extack);
+	err = q->ops->qevent_change(q, cl, parms, ovr, extack);
 
 errout_qdisc:
 	qdisc_put_unlocked(q);
@@ -2417,8 +2413,54 @@ errout_free:
 static int tc_del_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 			 struct netlink_ext_ack *extack)
 {
+	struct net *net = sock_net(skb->sk);
+	struct nlattr *tca[TCA_MAX + 1];
+	struct tcmsg *t = nlmsg_data(n);
+	struct sch_qevent_ops *ops;
+	struct Qdisc *q = NULL;
+	unsigned long cl = 0;
+	u32 parent;
+	int err;
+
 	printk(KERN_WARNING "tc_del_qevent\n");
-	return 0;
+
+	if (!netlink_ns_capable(skb, net->user_ns, CAP_NET_ADMIN))
+		return -EPERM;
+
+	err = nlmsg_parse_deprecated(n, sizeof(*t), tca, TCA_MAX,
+				     rtm_tca_qevent_policy, extack);
+	if (err < 0)
+		return err;
+
+	ops = sch_qevent_lookup_ops(tca[TCA_KIND]);
+	if (!ops) {
+		NL_SET_ERR_MSG(extack, "Unknown qevent kind");
+		return -EINVAL;
+	}
+
+	if (tca[TCA_OPTIONS]) {
+		NL_SET_ERR_MSG(extack, "Qevent options not expected for delete op");
+		return -EINVAL;
+	}
+
+	printk(KERN_WARNING "about to delete qevent\n");
+	parent = t->tcm_parent;
+	err = sch_qdisc_find(net, &q, &parent, t->tcm_ifindex, extack);
+	if (err)
+		return err;
+	printk(KERN_WARNING "have qdisc\n");
+
+	err = __tcf_qdisc_cl_find(q, parent, &cl, t->tcm_ifindex, extack);
+	if (err)
+		goto errout_qdisc;
+	printk(KERN_WARNING "have class\n");
+
+	err = q->ops->qevent_delete(q, cl, ops->kind, extack);
+
+errout_qdisc:
+	qdisc_put_unlocked(q);
+	printk(KERN_WARNING "done\n");
+	return err;
 }
 
 static int tc_get_qevent(struct sk_buff *skb, struct nlmsghdr *n,

@@ -227,12 +227,6 @@ struct Qdisc_class_ops {
 	unsigned long		(*bind_tcf)(struct Qdisc *, unsigned long,
 					u32 classid);
 	void			(*unbind_tcf)(struct Qdisc *, unsigned long);
-	// xxx can't be class op so that it works for FIFO
-	int			(*qevent_change)(struct Qdisc *sch,
-						 unsigned long arg,
-						 struct sch_qevent_parms *parms,
-						 bool ovr, bool rtnl_held,
-						 struct netlink_ext_ack *extack);
 
 	/* rtnetlink specific */
 	int			(*dump)(struct Qdisc *, unsigned long,
@@ -280,6 +274,19 @@ struct Qdisc_ops {
 						    u32 block_index);
 	u32			(*ingress_block_get)(struct Qdisc *sch);
 	u32			(*egress_block_get)(struct Qdisc *sch);
+
+	/* For qevent ops, arg is 0 for qdisc-global op and a result of
+	 * cl_ops->find for class op.
+	 */
+	int			(*qevent_change)(struct Qdisc *sch,
+						 unsigned long arg,
+						 struct sch_qevent_parms *parms,
+						 bool ovr,
+						 struct netlink_ext_ack *extack);
+	int			(*qevent_delete)(struct Qdisc *sch,
+						 unsigned long arg,
+						 enum sch_qevent_kind kind,
+						 struct netlink_ext_ack *extack);
 
 	struct module		*owner;
 };

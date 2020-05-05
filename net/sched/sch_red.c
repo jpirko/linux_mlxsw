@@ -352,7 +352,6 @@ static int red_init(struct Qdisc *sch, struct nlattr *opt,
 	q->sch = sch;
 	timer_setup(&q->adapt_timer, red_adaptative_timer, 0);
 
-	// xxx cls_api should be doing this
 	err = tcf_exts_init(&q->drop_exts, net, TCA_QEVENT_ACT, 0);
 	if (err)
 		return err;
@@ -366,6 +365,51 @@ static int red_init(struct Qdisc *sch, struct nlattr *opt,
 err_drop_exts_init:
 	tcf_exts_destroy(&q->drop_exts);
 	return err;
+}
+
+static struct tcf_exts *red_qevent_get_exts(struct red_sched_data *q,
+					    enum sch_qevent_kind kind,
+					    struct netlink_ext_ack *extack)
+{
+	switch (kind) {
+	case SCH_QEVENT_DROP:
+		return &q->drop_exts;
+	default:
+		NL_SET_ERR_MSG(extack, "Qevent not supported");
+		return ERR_PTR(-EOPNOTSUPP);
+	}
+}
+
+static int red_qevent_change(struct Qdisc *sch, unsigned long cl,
+			     struct sch_qevent_parms *parms, bool ovr,
+			     struct netlink_ext_ack *extack)
+{
+	struct red_sched_data *q = qdisc_priv(sch);
+	struct net_device *dev = qdisc_dev(sch);
+	struct net *net = dev_net(dev);
+	struct tcf_exts *exts;
+
+	exts = red_qevent_get_exts(q, parms->kind, extack);
+	if (IS_ERR(exts))
+		return PTR_ERR(exts);
+
+	return tcf_exts_validate(net, NULL, parms->tb, NULL, exts, ovr,
+				 true, extack);
+}
+
+static int red_qevent_delete(struct Qdisc *sch, unsigned long cl,
+			     enum sch_qevent_kind kind,
+			     struct netlink_ext_ack *extack)
+{
+	struct red_sched_data *q = qdisc_priv(sch);
+	struct tcf_exts *exts;
+
+	exts = red_qevent_get_exts(q, kind, extack);
+	if (IS_ERR(exts))
+		return PTR_ERR(exts);
+
+	tcf_exts_destroy(exts);
+	return 0;
 }
 
 static int red_dump_offload_stats(struct Qdisc *sch)
@@ -454,34 +498,6 @@ static int red_dump_class(struct Qdisc *sch, unsigned long cl,
 	return 0;
 }
 
-static int red_qevent_change_drop(struct Qdisc *sch,
-				  struct sch_qevent_parms *parms,
-				  bool ovr, bool rtnl_held,
-				  struct netlink_ext_ack *extack)
-{
-	struct red_sched_data *q = qdisc_priv(sch);
-	struct net_device *dev = qdisc_dev(sch);
-	struct net *net = dev_net(dev);
-
-	return tcf_exts_validate(net, NULL, parms->tb, NULL, &q->drop_exts,
-				 ovr, rtnl_held, extack);
-}
-
-static int red_qevent_change(struct Qdisc *sch, unsigned long cl,
-			     struct sch_qevent_parms *parms,
-			     bool ovr, bool rtnl_held,
-			     struct netlink_ext_ack *extack)
-{
-	switch (parms->kind) {
-	case SCH_QEVENT_DROP:
-		return red_qevent_change_drop(sch, parms, ovr, rtnl_held,
-					      extack);
-	default:
-		NL_SET_ERR_MSG(extack, "Qevent not supported");
-		return -EOPNOTSUPP;
-	}
-}
-
 static void red_graft_offload(struct Qdisc *sch,
 			      struct Qdisc *new, struct Qdisc *old,
 			      struct netlink_ext_ack *extack)
@@ -540,7 +556,6 @@ static const struct Qdisc_class_ops red_class_ops = {
 	.find		=	red_find,
 	.walk		=	red_walk,
 	.dump		=	red_dump_class,
-	.qevent_change	=	red_qevent_change,
 };
 
 static struct Qdisc_ops red_qdisc_ops __read_mostly = {
@@ -554,6 +569,8 @@ static struct Qdisc_ops red_qdisc_ops __read_mostly = {
 	.reset		=	red_reset,
 	.destroy	=	red_destroy,
 	.change		=	red_change,
+	.qevent_change	=	red_qevent_change,
+	.qevent_delete	=	red_qevent_delete,
 	.dump		=	red_dump,
 	.dump_stats	=	red_dump_stats,
 	.owner		=	THIS_MODULE,
