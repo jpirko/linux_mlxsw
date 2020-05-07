@@ -197,8 +197,6 @@ enum sch_qevent_kind {
 };
 
 struct sch_qevent_parms {
-	enum sch_qevent_kind kind;
-	struct nlattr **tb;
 	unsigned int flags;
 };
 
@@ -275,18 +273,16 @@ struct Qdisc_ops {
 	u32			(*ingress_block_get)(struct Qdisc *sch);
 	u32			(*egress_block_get)(struct Qdisc *sch);
 
-	/* For qevent ops, arg is 0 for qdisc-global op and a result of
-	 * cl_ops->find for class op.
+	/* For qevent ops, `arg` is 0 for qdisc-global op and a result of
+	 * cl_ops->find for class op. `parms` is a valid pointer for operations
+	 * that will update the exts, and NULL for operations that will destroy
+	 * it.
 	 */
-	int			(*qevent_change)(struct Qdisc *sch,
-						 unsigned long arg,
-						 struct sch_qevent_parms *parms,
-						 bool ovr,
-						 struct netlink_ext_ack *extack);
-	int			(*qevent_delete)(struct Qdisc *sch,
-						 unsigned long arg,
-						 enum sch_qevent_kind kind,
-						 struct netlink_ext_ack *extack);
+	struct tcf_exts *	(*qevent_exts_get)(struct Qdisc *sch,
+						   unsigned long arg,
+						   enum sch_qevent_kind kind,
+						   struct sch_qevent_parms *parms,
+						   struct netlink_ext_ack *extack);
 
 	struct module		*owner;
 };

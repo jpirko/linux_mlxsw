@@ -170,12 +170,10 @@ static int fifo_change(struct Qdisc *sch, struct nlattr *opt,
 static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 		     struct netlink_ext_ack *extack)
 {
-	struct net_device *dev = qdisc_dev(sch);
 	struct fifo_sched *q = qdisc_priv(sch);
-	struct net *net = dev_net(dev);
 	int err;
 
-	err = tcf_exts_init(&q->drop_exts, net, TCA_QEVENT_ACT, 0);
+	err = tc_qevent_exts_init(sch, &q->drop_exts);
 	if (err)
 		return err;
 
@@ -190,51 +188,20 @@ err_drop_exts_init:
 	return err;
 }
 
-static struct tcf_exts *fifo_qevent_get_exts(struct fifo_sched *q,
+static struct tcf_exts *fifo_qevent_exts_get(struct Qdisc *sch,
+					     unsigned long cl,
 					     enum sch_qevent_kind kind,
+					     struct sch_qevent_parms *parms,
 					     struct netlink_ext_ack *extack)
 {
+	struct fifo_sched *q = qdisc_priv(sch);
+
 	switch (kind) {
 	case SCH_QEVENT_DROP:
 		return &q->drop_exts;
 	default:
-		NL_SET_ERR_MSG(extack, "Qevent not supported");
 		return ERR_PTR(-EOPNOTSUPP);
 	}
-}
-
-static int fifo_qevent_change(struct Qdisc *sch, unsigned long cl,
-			      struct sch_qevent_parms *parms, bool ovr,
-			      struct netlink_ext_ack *extack)
-{
-	struct net_device *dev = qdisc_dev(sch);
-	struct fifo_sched *q = qdisc_priv(sch);
-	struct net *net = dev_net(dev);
-	struct tcf_exts *exts;
-
-	exts = fifo_qevent_get_exts(q, parms->kind, extack);
-	if (IS_ERR(exts))
-		return PTR_ERR(exts);
-
-	// xxx change this to qevent_get, which will just yield the exts. The
-	// rest of the handling should be done by the sch_api?
-	return tcf_exts_validate(net, NULL, parms->tb, NULL, exts, ovr,
-				 true, extack);
-}
-
-static int fifo_qevent_delete(struct Qdisc *sch, unsigned long cl,
-			      enum sch_qevent_kind kind,
-			      struct netlink_ext_ack *extack)
-{
-	struct fifo_sched *q = qdisc_priv(sch);
-	struct tcf_exts *exts;
-
-	exts = fifo_qevent_get_exts(q, kind, extack);
-	if (IS_ERR(exts))
-		return PTR_ERR(exts);
-
-	tcf_exts_destroy(exts);
-	return 0;
 }
 
 static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
@@ -289,8 +256,7 @@ struct Qdisc_ops pfifo_qdisc_ops __read_mostly = {
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
 	.change		=	fifo_change,
-	.qevent_change	=	fifo_qevent_change,
-	.qevent_delete	=	fifo_qevent_delete,
+	.qevent_exts_get=	fifo_qevent_exts_get,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };
@@ -306,8 +272,7 @@ struct Qdisc_ops bfifo_qdisc_ops __read_mostly = {
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
 	.change		=	fifo_change,
-	.qevent_change	=	fifo_qevent_change,
-	.qevent_delete	=	fifo_qevent_delete,
+	.qevent_exts_get=	fifo_qevent_exts_get,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };

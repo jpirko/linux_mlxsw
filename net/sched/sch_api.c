@@ -2273,10 +2273,6 @@ const struct nla_policy sch_qevent_opts_policy[TCA_MAX + 1] = {
 	[TCA_QEVENT_ACT]	= { .type = NLA_NESTED },
 };
 
-// xxx move to a header file. Maybe move to sch_generic.c
-struct Qdisc *__tcf_qdisc_find(struct net *net, u32 *parent, int ifindex,
-			       bool rtnl_held, struct netlink_ext_ack *extack);
-
 static int sch_qdisc_find(struct net *net, struct Qdisc **pq,
 			  u32 *parent, int ifindex,
 			  struct netlink_ext_ack *extack)
@@ -2288,7 +2284,7 @@ static int sch_qdisc_find(struct net *net, struct Qdisc **pq,
 	if (IS_ERR(q))
 		return PTR_ERR(q);
 
-	if (!q->ops->qevent_change) {
+	if (!q->ops->qevent_exts_get) {
 		NL_SET_ERR_MSG(extack, "Qdisc does not support qevents");
 		err = -EOPNOTSUPP;
 		goto errout_qdisc;
@@ -2312,6 +2308,36 @@ errout_qdisc:
 int __tcf_qdisc_cl_find(struct Qdisc *q, u32 parent, unsigned long *cl,
 			int ifindex, struct netlink_ext_ack *extack);
 
+static int tc_qevent_exts_get(struct Qdisc *q, unsigned long cl,
+			      enum sch_qevent_kind kind,
+			      struct sch_qevent_parms *parms,
+			      struct netlink_ext_ack *extack,
+			      struct tcf_exts **p_exts)
+{
+	struct tcf_exts *exts;
+	int err;
+
+	exts = q->ops->qevent_exts_get(q, cl, kind, parms, extack);
+	if (IS_ERR(exts)) {
+		err = PTR_ERR(exts);
+		if (err == -EOPNOTSUPP)
+			NL_SET_ERR_MSG(extack, "Qevent not supported");
+		return err;
+	}
+
+	*p_exts = exts;
+	return 0;
+}
+
+int tc_qevent_exts_init(struct Qdisc *sch, struct tcf_exts *exts)
+{
+	struct net_device *dev = qdisc_dev(sch);
+	struct net *net = dev_net(dev);
+
+	return tcf_exts_init(exts, net, TCA_QEVENT_ACT, 0);
+}
+EXPORT_SYMBOL(tc_qevent_exts_init);
+
 static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 			 struct netlink_ext_ack *extack)
 {
@@ -2323,6 +2349,7 @@ static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 	struct sch_qevent_parms *parms;
 	struct sch_qevent_ops *ops;
 	struct Qdisc *q = NULL;
+	struct tcf_exts *exts;
 	unsigned long cl = 0;
 	u32 parent;
 	bool ovr;
@@ -2367,6 +2394,8 @@ static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 
 	// xxx note that BITFIELD32 can be used to tweak the flags, when
 	// selector != full scope. Make that somehow work / reject / whatever.
+	// xxx also, replace should destroy & recreate, pretty sure that doesn't
+	// work now.
 	if (tb[TCA_QEVENT_FLAGS]) {
 		flags = nla_get_bitfield32(tb[TCA_QEVENT_FLAGS]);
 		if (!tc_flags_valid(flags.value)) {
@@ -2377,9 +2406,7 @@ static int tc_new_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 	}
 
 	printk(KERN_WARNING "about to change qevent\n");
-	parms->kind = ops->kind;
 	parms->flags = flags.value;
-	parms->tb = tb;
 	ovr = n->nlmsg_flags & NLM_F_CREATE ?
 		TCA_ACT_NOREPLACE : TCA_ACT_REPLACE;
 
@@ -2394,7 +2421,12 @@ replay:
 		goto errout_qdisc;
 	printk(KERN_WARNING "have class\n");
 
-	err = q->ops->qevent_change(q, cl, parms, ovr, extack);
+	err = tc_qevent_exts_get(q, cl, ops->kind, parms, extack, &exts);
+	if (err)
+		goto errout_qdisc;
+
+	err = tcf_exts_validate(net, NULL, tb, NULL, exts, ovr,
+				true, extack);
 
 errout_qdisc:
 	qdisc_put_unlocked(q);
@@ -2418,6 +2450,8 @@ static int tc_del_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 	struct tcmsg *t = nlmsg_data(n);
 	struct sch_qevent_ops *ops;
 	struct Qdisc *q = NULL;
+	struct tcf_exts new_exts;
+	struct tcf_exts *exts;
 	unsigned long cl = 0;
 	u32 parent;
 	int err;
@@ -2455,7 +2489,17 @@ static int tc_del_qevent(struct sk_buff *skb, struct nlmsghdr *n,
 		goto errout_qdisc;
 	printk(KERN_WARNING "have class\n");
 
-	err = q->ops->qevent_delete(q, cl, ops->kind, extack);
+	err = tc_qevent_exts_get(q, cl, ops->kind, NULL, extack, &exts);
+	if (err)
+		goto errout_qdisc;
+
+	/* This can fail, so do it before destroying the old exts. */
+	err = tc_qevent_exts_init(q, &new_exts);
+	if (err)
+		goto errout_qdisc;
+
+	tcf_exts_destroy(exts);
+	*exts = new_exts;
 
 errout_qdisc:
 	qdisc_put_unlocked(q);

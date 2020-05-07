@@ -120,6 +120,7 @@ void qdisc_warn_nonwc(const char *txt, struct Qdisc *qdisc);
 bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 		     struct net_device *dev, struct netdev_queue *txq,
 		     spinlock_t *root_lock, bool validate);
+int tc_qevent_exts_init(struct Qdisc *q, struct tcf_exts *exts);
 
 void __qdisc_run(struct Qdisc *q);
 

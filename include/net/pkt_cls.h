@@ -327,6 +327,12 @@ void tcf_exts_change(struct tcf_exts *dst, struct tcf_exts *src);
 int tcf_exts_dump(struct sk_buff *skb, struct tcf_exts *exts);
 int tcf_exts_dump_stats(struct sk_buff *skb, struct tcf_exts *exts);
 
+// xxx rename these?
+struct Qdisc *__tcf_qdisc_find(struct net *net, u32 *parent, int ifindex,
+			       bool rtnl_held, struct netlink_ext_ack *extack);
+int __tcf_qdisc_cl_find(struct Qdisc *q, u32 parent, unsigned long *cl,
+			int ifindex, struct netlink_ext_ack *extack);
+
 /**
  * struct tcf_pkt_info - packet information
  */

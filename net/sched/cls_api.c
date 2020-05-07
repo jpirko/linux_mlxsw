@@ -1121,6 +1121,7 @@ out_rcu:
 	rcu_read_unlock();
 	return q;
 }
+EXPORT_SYMBOL(__tcf_qdisc_find);
 
 // xxx if __tcf_qdisc_find is moved to sch_generic, the
 // __tcf_qdisc_find_with_blocks can be renamed back to __tcf_qdisc_find.
@@ -1180,6 +1181,7 @@ int __tcf_qdisc_cl_find(struct Qdisc *q, u32 parent, unsigned long *cl,
 
 	return 0;
 }
+EXPORT_SYMBOL(__tcf_qdisc_cl_find);
 
 static struct tcf_block *__tcf_block_find(struct net *net, struct Qdisc *q,
 					  unsigned long cl, int ifindex,
