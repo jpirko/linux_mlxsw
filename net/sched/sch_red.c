@@ -46,6 +46,12 @@ struct red_sched_data {
 	struct red_vars		vars;
 	struct red_stats	stats;
 	struct Qdisc		*qdisc;
+	struct tcf_block	*mark_block;
+	struct tcf_block	*red_block;
+	struct tcf_block_ext_info mark_block_info;
+	struct tcf_block_ext_info red_block_info;
+	struct tcf_proto __rcu *mark_filter_chain;
+	struct tcf_proto __rcu *red_filter_chain;
 };
 
 #define TC_RED_SUPPORTED_FLAGS (TC_RED_HISTORIC_FLAGS | TC_RED_NODROP)
@@ -63,6 +69,24 @@ static inline int red_use_harddrop(struct red_sched_data *q)
 static int red_use_nodrop(struct red_sched_data *q)
 {
 	return q->flags & TC_RED_NODROP;
+}
+
+static int qdisc_handle_qevent(struct sk_buff *skb,
+			       struct tcf_proto *filter_chain)
+{
+	struct tcf_result cl_res;
+
+	// xxx #ifdef CONFIG_NET_CLS_ACT
+	switch (tcf_classify(skb, filter_chain, &cl_res, false)) {
+	case TC_ACT_STOLEN:
+	case TC_ACT_QUEUED:
+	case TC_ACT_TRAP:
+		return NET_XMIT_SUCCESS | __NET_XMIT_STOLEN;
+	case TC_ACT_SHOT:
+		return NET_XMIT_SUCCESS | __NET_XMIT_BYPASS;
+	default:
+		return 0;
+	}
 }
 
 static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -129,6 +153,9 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	return ret;
 
 congestion_drop:
+	printk(KERN_WARNING "congestion_drop\n");
+	if (q->red_block)
+		qdisc_handle_qevent(skb, q->red_filter_chain);
 	qdisc_drop(skb, sch, to_free);
 	return NET_XMIT_CN;
 }
@@ -202,6 +229,10 @@ static void red_destroy(struct Qdisc *sch)
 {
 	struct red_sched_data *q = qdisc_priv(sch);
 
+	if (q->mark_block)
+		tcf_block_put_ext(q->mark_block, sch, &q->mark_block_info);
+	if (q->red_block)
+		tcf_block_put_ext(q->red_block, sch, &q->red_block_info);
 	del_timer_sync(&q->adapt_timer);
 	red_offload(sch, false);
 	qdisc_put(q->qdisc);
@@ -213,7 +244,57 @@ static const struct nla_policy red_policy[TCA_RED_MAX + 1] = {
 	[TCA_RED_STAB]	= { .len = RED_STAB_SIZE },
 	[TCA_RED_MAX_P] = { .type = NLA_U32 },
 	[TCA_RED_FLAGS] = NLA_POLICY_BITFIELD32(TC_RED_SUPPORTED_FLAGS),
+	[TCA_RED_RED_BLOCK] = { .type = NLA_U32 },
+	[TCA_RED_MARK_BLOCK] = { .type = NLA_U32 },
 };
+
+// xxx extract to sch_generic.h or somewhere
+static int qdisc_get_block_index(struct nlattr *attr, u32 *p_block_idx,
+				 struct netlink_ext_ack *extack)
+{
+	if (!attr) {
+		*p_block_idx = 0;
+		return 0;
+	}
+
+	*p_block_idx = nla_get_u32(attr);
+	if (!*p_block_idx) {
+		NL_SET_ERR_MSG(extack, "Block number may not be zero");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+// xxx copied over from cls_api.c
+static void tcf_chain_head_change_dflt(struct tcf_proto *tp_head, void *priv)
+{
+	struct tcf_proto __rcu **p_filter_chain = priv;
+
+	rcu_assign_pointer(*p_filter_chain, tp_head);
+}
+
+static int qdisc_init_block(struct tcf_block **p_block,
+			    struct tcf_block_ext_info *p_block_info,
+			    struct tcf_proto **p_filter_chain,
+			    u32 block_idx, struct Qdisc *sch,
+			    struct netlink_ext_ack *extack)
+{
+	if (*p_block) {
+		if (p_block_info->block_index != block_idx) {
+			NL_SET_ERR_MSG(extack, "Change of blocks is not supported");
+			return -EINVAL;
+		}
+		return 0;
+	}
+
+	p_block_info->binder_type = FLOW_BLOCK_BINDER_TYPE_UNSPEC;
+	p_block_info->chain_head_change = tcf_chain_head_change_dflt;
+	p_block_info->chain_head_change_priv = p_filter_chain;
+	p_block_info->block_index = block_idx;
+
+	return tcf_block_get_ext(p_block, sch, p_block_info, extack);
+}
 
 static int red_change(struct Qdisc *sch, struct nlattr *opt,
 		      struct netlink_ext_ack *extack)
@@ -225,6 +306,8 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	struct tc_red_qopt *ctl;
 	unsigned char userbits;
 	unsigned char flags;
+	u32 mark_block_idx = 0;
+	u32 red_block_idx = 0;
 	int err;
 	u32 max_P;
 
@@ -240,6 +323,16 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	    tb[TCA_RED_STAB] == NULL)
 		return -EINVAL;
 
+	err = qdisc_get_block_index(tb[TCA_RED_MARK_BLOCK], &mark_block_idx,
+				    extack);
+	if (err)
+		return err;
+
+	err = qdisc_get_block_index(tb[TCA_RED_RED_BLOCK], &red_block_idx,
+				    extack);
+	if (err)
+		return err;
+
 	max_P = tb[TCA_RED_MAX_P] ? nla_get_u32(tb[TCA_RED_MAX_P]) : 0;
 
 	ctl = nla_data(tb[TCA_RED_PARMS]);
@@ -252,10 +345,26 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	if (err)
 		return err;
 
+	err = qdisc_init_block(&q->mark_block,
+			       &q->mark_block_info,
+			       &q->mark_filter_chain,
+			       mark_block_idx, sch, extack);
+	if (err)
+		return err;
+
+	err = qdisc_init_block(&q->red_block,
+			       &q->red_block_info,
+			       &q->red_filter_chain,
+			       red_block_idx, sch, extack);
+	if (err)
+		// xxx deinit mark_block
+		goto unlock_out;
+
 	if (ctl->limit > 0) {
 		child = fifo_create_dflt(sch, &bfifo_qdisc_ops, ctl->limit,
 					 extack);
 		if (IS_ERR(child))
+			// xxx deinit blocks
 			return PTR_ERR(child);
 
 		/* child is fifo, no need to check for noop_qdisc */
