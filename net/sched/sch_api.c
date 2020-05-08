@@ -1146,6 +1146,97 @@ static int qdisc_block_indexes_set(struct Qdisc *sch, struct nlattr **tca,
 	return 0;
 }
 
+struct sch_qevent_ops {
+	const char *id; // xxx drop this?
+	enum sch_qevent_kind kind;
+	size_t parms_size;
+};
+
+/* Queue drop qevent */
+
+static struct sch_qevent_ops sch_qevent_queue_drop_ops = {
+	.id = "queue_drop",
+	.kind = SCH_QEVENT_QUEUE_DROP,
+};
+
+/* Mark qevent */
+
+static struct sch_qevent_ops sch_qevent_mark_ops = {
+	.id = "mark",
+	.kind = SCH_QEVENT_MARK,
+};
+
+static struct sch_qevent_ops *sch_all_qevent_ops[] = {
+	&sch_qevent_queue_drop_ops,
+	&sch_qevent_mark_ops,
+};
+
+static struct sch_qevent_ops *sch_qevent_lookup_ops(struct nlattr *kind)
+{
+	struct sch_qevent_ops *ops;
+	int i;
+
+	if (kind) {
+		for (i = 0; i < ARRAY_SIZE(sch_all_qevent_ops); i++) {
+			ops = sch_all_qevent_ops[i];
+			if (nla_strcmp(kind, ops->id) == 0)
+				return ops;
+		}
+	}
+
+	return NULL;
+}
+static const struct nla_policy sch_qevent_policy[TCA_QEVENT_MAX + 1] = {
+	[TCA_QEVENT_KIND]	= { .type = NLA_STRING },
+	[TCA_QEVENT_BLOCK]	= { .type = NLA_U32 },
+};
+
+static int qdisc_qevents_set(struct Qdisc *sch, struct nlattr **tca,
+			     struct netlink_ext_ack *extack)
+{
+	struct nlattr *tb[TCA_QEVENT_MAX + 1];
+	struct sch_qevent_ops *ops;
+	u32 block_index;
+	int err;
+
+	if (!tca[TCA_QEVENTS])
+		return 0;
+
+	/*if (!sch->ops->qevent_block_set)*/ {
+		NL_SET_ERR_MSG(extack, "Qdisc does not support qevents");
+		return -EOPNOTSUPP;
+	}
+
+	// xxx should be a bunch of these, not just one
+	err = nla_parse_nested(tb, TCA_QEVENT_MAX, tca[TCA_QEVENTS],
+			       sch_qevent_policy, extack);
+	if (err < 0)
+		return err;
+
+	ops = sch_qevent_lookup_ops(tb[TCA_QEVENT_KIND]);
+	if (!ops) {
+		NL_SET_ERR_MSG(extack, "Unknown qevent kind");
+		return -EINVAL;
+	}
+
+	if (!tb[TCA_QEVENT_BLOCK]) {
+		NL_SET_ERR_MSG(extack, "Missing qevent block");
+		return -EINVAL;
+	}
+
+	block_index = nla_get_u32(tb[TCA_QEVENT_BLOCK]);
+	if (!block_index) {
+		NL_SET_ERR_MSG(extack, "Qevent block index cannot be 0");
+		return -EINVAL;
+	}
+
+	err = 0;//sch->ops->qevent_block_set(sch, ops->kind, block_index);
+	if (err) {
+		NL_SET_ERR_MSG(extack, "Qdisc does not support this qevent");
+		return err;
+	}
+}
+
 /*
    Allocate and initialize new qdisc.
 
@@ -1240,6 +1331,10 @@ static struct Qdisc *qdisc_create(struct net_device *dev,
 	if (err)
 		goto err_out3;
 
+	err = qdisc_qevents_set(sch, tca, extack);
+	if (err)
+		goto err_out3;
+
 	if (ops->init) {
 		err = ops->init(sch, tca[TCA_OPTIONS], extack);
 		if (err != 0)
@@ -1321,7 +1416,8 @@ static int qdisc_change(struct Qdisc *sch, struct nlattr **tca,
 			NL_SET_ERR_MSG(extack, "Change operation not supported by specified qdisc");
 			return -EINVAL;
 		}
-		if (tca[TCA_INGRESS_BLOCK] || tca[TCA_EGRESS_BLOCK]) {
+		if (tca[TCA_INGRESS_BLOCK] || tca[TCA_EGRESS_BLOCK] ||
+		    tca[TCA_QEVENTS]) {
 			NL_SET_ERR_MSG(extack, "Change of blocks is not supported");
 			return -EOPNOTSUPP;
 		}
@@ -2099,6 +2195,10 @@ static int tc_ctl_tclass(struct sk_buff *skb, struct nlmsghdr *n,
 
 	if (tca[TCA_INGRESS_BLOCK] || tca[TCA_EGRESS_BLOCK]) {
 		NL_SET_ERR_MSG(extack, "Shared blocks are not supported for classes");
+		return -EOPNOTSUPP;
+	}
+	if (tca[TCA_QEVENTS]) {
+		NL_SET_ERR_MSG(extack, "Qevents are not supported for classes");
 		return -EOPNOTSUPP;
 	}
 
