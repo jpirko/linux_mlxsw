@@ -46,12 +46,12 @@ struct red_sched_data {
 	struct red_vars		vars;
 	struct red_stats	stats;
 	struct Qdisc		*qdisc;
+	struct tcf_block	*early_block;
 	struct tcf_block	*mark_block;
-	struct tcf_block	*red_block;
+	struct tcf_block_ext_info early_block_info;
 	struct tcf_block_ext_info mark_block_info;
-	struct tcf_block_ext_info red_block_info;
+	struct tcf_proto __rcu *early_filter_chain;
 	struct tcf_proto __rcu *mark_filter_chain;
-	struct tcf_proto __rcu *red_filter_chain;
 };
 
 #define TC_RED_SUPPORTED_FLAGS (TC_RED_HISTORIC_FLAGS | TC_RED_NODROP)
@@ -154,8 +154,8 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 congestion_drop:
 	printk(KERN_WARNING "congestion_drop\n");
-	if (q->red_block)
-		qdisc_handle_qevent(skb, q->red_filter_chain);
+	if (q->early_block)
+		qdisc_handle_qevent(skb, q->early_filter_chain);
 	qdisc_drop(skb, sch, to_free);
 	return NET_XMIT_CN;
 }
@@ -231,8 +231,8 @@ static void red_destroy(struct Qdisc *sch)
 
 	if (q->mark_block)
 		tcf_block_put_ext(q->mark_block, sch, &q->mark_block_info);
-	if (q->red_block)
-		tcf_block_put_ext(q->red_block, sch, &q->red_block_info);
+	if (q->early_block)
+		tcf_block_put_ext(q->early_block, sch, &q->early_block_info);
 	del_timer_sync(&q->adapt_timer);
 	red_offload(sch, false);
 	qdisc_put(q->qdisc);
@@ -244,7 +244,7 @@ static const struct nla_policy red_policy[TCA_RED_MAX + 1] = {
 	[TCA_RED_STAB]	= { .len = RED_STAB_SIZE },
 	[TCA_RED_MAX_P] = { .type = NLA_U32 },
 	[TCA_RED_FLAGS] = NLA_POLICY_BITFIELD32(TC_RED_SUPPORTED_FLAGS),
-	[TCA_RED_RED_BLOCK] = { .type = NLA_U32 },
+	[TCA_RED_EARLY_BLOCK] = { .type = NLA_U32 },
 	[TCA_RED_MARK_BLOCK] = { .type = NLA_U32 },
 };
 
@@ -278,6 +278,7 @@ static int qdisc_init_block(struct tcf_block **p_block,
 			    struct tcf_block_ext_info *p_block_info,
 			    struct tcf_proto **p_filter_chain,
 			    u32 block_idx, struct Qdisc *sch,
+			    enum flow_block_binder_type binder_type,
 			    struct netlink_ext_ack *extack)
 {
 	if (*p_block) {
@@ -288,7 +289,7 @@ static int qdisc_init_block(struct tcf_block **p_block,
 		return 0;
 	}
 
-	p_block_info->binder_type = FLOW_BLOCK_BINDER_TYPE_UNSPEC;
+	p_block_info->binder_type = binder_type;
 	p_block_info->chain_head_change = tcf_chain_head_change_dflt;
 	p_block_info->chain_head_change_priv = p_filter_chain;
 	p_block_info->block_index = block_idx;
@@ -304,10 +305,10 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	struct nlattr *tb[TCA_RED_MAX + 1];
 	struct nla_bitfield32 flags_bf;
 	struct tc_red_qopt *ctl;
+	u32 early_block_idx = 0;
+	u32 mark_block_idx = 0;
 	unsigned char userbits;
 	unsigned char flags;
-	u32 mark_block_idx = 0;
-	u32 red_block_idx = 0;
 	int err;
 	u32 max_P;
 
@@ -323,12 +324,12 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	    tb[TCA_RED_STAB] == NULL)
 		return -EINVAL;
 
-	err = qdisc_get_block_index(tb[TCA_RED_MARK_BLOCK], &mark_block_idx,
+	err = qdisc_get_block_index(tb[TCA_RED_EARLY_BLOCK], &early_block_idx,
 				    extack);
 	if (err)
 		return err;
 
-	err = qdisc_get_block_index(tb[TCA_RED_RED_BLOCK], &red_block_idx,
+	err = qdisc_get_block_index(tb[TCA_RED_MARK_BLOCK], &mark_block_idx,
 				    extack);
 	if (err)
 		return err;
@@ -345,26 +346,10 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	if (err)
 		return err;
 
-	err = qdisc_init_block(&q->mark_block,
-			       &q->mark_block_info,
-			       &q->mark_filter_chain,
-			       mark_block_idx, sch, extack);
-	if (err)
-		return err;
-
-	err = qdisc_init_block(&q->red_block,
-			       &q->red_block_info,
-			       &q->red_filter_chain,
-			       red_block_idx, sch, extack);
-	if (err)
-		// xxx deinit mark_block
-		goto unlock_out;
-
 	if (ctl->limit > 0) {
 		child = fifo_create_dflt(sch, &bfifo_qdisc_ops, ctl->limit,
 					 extack);
 		if (IS_ERR(child))
-			// xxx deinit blocks
 			return PTR_ERR(child);
 
 		/* child is fifo, no need to check for noop_qdisc */
@@ -404,6 +389,30 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 	sch_tree_unlock(sch);
 
 	red_offload(sch, true);
+
+	if (early_block_idx) {
+		err = qdisc_init_block(&q->early_block,
+				       &q->early_block_info,
+				       &q->early_filter_chain,
+				       early_block_idx, sch,
+				       FLOW_BLOCK_BINDER_TYPE_RED_EARLY,
+				       extack);
+		if (err)
+			// xxx cleanup above, goto unlock
+			return err;
+	}
+
+	if (mark_block_idx) {
+		err = qdisc_init_block(&q->mark_block,
+				       &q->mark_block_info,
+				       &q->mark_filter_chain,
+				       mark_block_idx, sch,
+				       FLOW_BLOCK_BINDER_TYPE_RED_MARK,
+				       extack);
+		if (err)
+			// xxx cleanup above, goto unlock
+			return err;
+	}
 
 	if (old_child)
 		qdisc_put(old_child);

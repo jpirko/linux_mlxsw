@@ -632,6 +632,7 @@ static void tc_indr_block_cmd(struct net_device *dev, struct tcf_block *block,
 				  FLOW_BLOCK_BINDER_TYPE_CLSACT_EGRESS,
 		.net		= dev_net(dev),
 		.block_shared	= tcf_block_non_null_shared(block),
+		// xxx .sch = ???
 	};
 	INIT_LIST_HEAD(&bo.cb_list);
 
@@ -666,6 +667,9 @@ static struct tcf_block *tc_dev_block(struct net_device *dev, bool ingress)
 
 	if (!ingress && !strcmp("ingress", ops->id))
 		return NULL;
+	// xxx guard on clsact as well? Otherwise this looks like it would be
+	// called for the qevent binds as well. Not relevant for RED / FIFO,
+	// because !cops->tcf_block, but better to safeguard this.
 
 	cops = ops->cl_ops;
 	if (!cops)
@@ -706,6 +710,7 @@ static void tc_indr_block_call(struct tcf_block *block,
 		.block		= &block->flow_block,
 		.block_shared	= tcf_block_shared(block),
 		.extack		= extack,
+		// xxx .sch = ???
 	};
 	INIT_LIST_HEAD(&bo.cb_list);
 
@@ -719,11 +724,12 @@ static bool tcf_block_offload_in_use(struct tcf_block *block)
 }
 
 static int tcf_block_offload_cmd(struct tcf_block *block,
-				 struct net_device *dev,
+				 struct Qdisc *q,
 				 struct tcf_block_ext_info *ei,
 				 enum flow_block_command command,
 				 struct netlink_ext_ack *extack)
 {
+	struct net_device *dev = q->dev_queue->dev;
 	struct flow_block_offload bo = {};
 	int err;
 
@@ -733,6 +739,7 @@ static int tcf_block_offload_cmd(struct tcf_block *block,
 	bo.block = &block->flow_block;
 	bo.block_shared = tcf_block_shared(block);
 	bo.extack = extack;
+	bo.sch = q;
 	INIT_LIST_HEAD(&bo.cb_list);
 
 	err = dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_BLOCK, &bo);
@@ -765,7 +772,7 @@ static int tcf_block_offload_bind(struct tcf_block *block, struct Qdisc *q,
 		goto err_unlock;
 	}
 
-	err = tcf_block_offload_cmd(block, dev, ei, FLOW_BLOCK_BIND, extack);
+	err = tcf_block_offload_cmd(block, q, ei, FLOW_BLOCK_BIND, extack);
 	if (err == -EOPNOTSUPP)
 		goto no_offload_dev_inc;
 	if (err)
@@ -799,7 +806,7 @@ static void tcf_block_offload_unbind(struct tcf_block *block, struct Qdisc *q,
 
 	if (!dev->netdev_ops->ndo_setup_tc)
 		goto no_offload_dev_dec;
-	err = tcf_block_offload_cmd(block, dev, ei, FLOW_BLOCK_UNBIND, NULL);
+	err = tcf_block_offload_cmd(block, q, ei, FLOW_BLOCK_UNBIND, NULL);
 	if (err == -EOPNOTSUPP)
 		goto no_offload_dev_dec;
 	up_write(&block->cb_lock);

@@ -657,7 +657,7 @@ struct mlxsw_sp_flow_block {
 
 struct mlxsw_sp_flow_block_binding {
 	struct list_head list;
-	struct net_device *dev;
+	//struct net_device *dev;
 	struct mlxsw_sp_port *mlxsw_sp_port;
 	bool ingress;
 };
@@ -715,8 +715,9 @@ mlxsw_sp_flow_block_is_mixed_bound(const struct mlxsw_sp_flow_block *block)
 struct mlxsw_sp_flow_block *mlxsw_sp_flow_block_create(struct mlxsw_sp *mlxsw_sp,
 						       struct net *net);
 void mlxsw_sp_flow_block_destroy(struct mlxsw_sp_flow_block *block);
-int mlxsw_sp_setup_tc_block(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct flow_block_offload *f);
+int mlxsw_sp_setup_tc_block_clsact(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct flow_block_offload *f,
+				   bool ingress);
 
 /* spectrum_acl.c */
 struct mlxsw_sp_acl_ruleset;
@@ -955,6 +956,8 @@ int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct tc_tbf_qopt_offload *p);
 int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct tc_fifo_qopt_offload *p);
+int mlxsw_sp_setup_tc_block_qevent(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct flow_block_offload *f);
 
 /* spectrum_fid.c */
 bool mlxsw_sp_fid_is_dummy(struct mlxsw_sp *mlxsw_sp, u16 fid_index);

@@ -211,6 +211,7 @@ static int mlxsw_sp_setup_tc_block_bind(struct mlxsw_sp_port *mlxsw_sp_port,
 	block_cb = flow_block_cb_lookup(f->block, mlxsw_sp_flow_block_cb,
 					mlxsw_sp);
 	if (!block_cb) {
+		printk(KERN_WARNING "creating new flow block\n");
 		flow_block = mlxsw_sp_flow_block_create(mlxsw_sp, f->net);
 		if (!flow_block)
 			return -ENOMEM;
@@ -219,11 +220,11 @@ static int mlxsw_sp_setup_tc_block_bind(struct mlxsw_sp_port *mlxsw_sp_port,
 					       mlxsw_sp_tc_block_release);
 		if (IS_ERR(block_cb)) {
 			mlxsw_sp_flow_block_destroy(flow_block);
-			err = PTR_ERR(block_cb);
-			goto err_cb_register;
+			return PTR_ERR(block_cb);
 		}
 		register_block = true;
 	} else {
+		printk(KERN_WARNING "taking existing flow block\n");
 		flow_block = flow_block_cb_priv(block_cb);
 	}
 	flow_block_cb_incref(block_cb);
@@ -247,7 +248,6 @@ static int mlxsw_sp_setup_tc_block_bind(struct mlxsw_sp_port *mlxsw_sp_port,
 err_block_bind:
 	if (!flow_block_cb_decref(block_cb))
 		flow_block_cb_free(block_cb);
-err_cb_register:
 	return err;
 }
 
@@ -279,18 +279,10 @@ static void mlxsw_sp_setup_tc_block_unbind(struct mlxsw_sp_port *mlxsw_sp_port,
 	}
 }
 
-int mlxsw_sp_setup_tc_block(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct flow_block_offload *f)
+int mlxsw_sp_setup_tc_block_clsact(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct flow_block_offload *f,
+				   bool ingress)
 {
-	bool ingress;
-
-	if (f->binder_type == FLOW_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
-		ingress = true;
-	else if (f->binder_type == FLOW_BLOCK_BINDER_TYPE_CLSACT_EGRESS)
-		ingress = false;
-	else
-		return -EOPNOTSUPP;
-
 	f->driver_block_list = &mlxsw_sp_block_cb_list;
 
 	switch (f->command) {
