@@ -893,7 +893,7 @@ static int __nsim_dev_port_add(struct nsim_dev *nsim_dev,
 
 	devlink_port = &nsim_dev_port->devlink_port;
 	devlink_port_attrs_set(devlink_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
-			       port_index + 1, 0, 0,
+			       port_index + 1, 0, 0, 0,
 			       nsim_dev->switch_id.id,
 			       nsim_dev->switch_id.id_len);
 	err = devlink_port_register(priv_to_devlink(nsim_dev), devlink_port,

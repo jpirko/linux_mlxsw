@@ -368,7 +368,7 @@ int nfp_devlink_port_register(struct nfp_app *app, struct nfp_port *port)
 	serial_len = nfp_cpp_serial(port->app->cpp, &serial);
 	devlink_port_attrs_set(&port->dl_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
 			       eth_port.label_port, eth_port.is_split,
-			       eth_port.label_subport, serial, serial_len);
+			       eth_port.label_subport, 0, serial, serial_len);
 
 	devlink = priv_to_devlink(app->pf);
 

@@ -275,7 +275,7 @@ static int dsa_port_setup(struct dsa_port *dp)
 	case DSA_PORT_TYPE_CPU:
 		memset(dlp, 0, sizeof(*dlp));
 		devlink_port_attrs_set(dlp, DEVLINK_PORT_FLAVOUR_CPU,
-				       dp->index, false, 0, id, len);
+				       dp->index, false, 0, 0, id, len);
 		err = devlink_port_register(dl, dlp, dp->index);
 		if (err)
 			break;
@@ -295,7 +295,7 @@ static int dsa_port_setup(struct dsa_port *dp)
 	case DSA_PORT_TYPE_DSA:
 		memset(dlp, 0, sizeof(*dlp));
 		devlink_port_attrs_set(dlp, DEVLINK_PORT_FLAVOUR_DSA,
-				       dp->index, false, 0, id, len);
+				       dp->index, false, 0, 0, id, len);
 		err = devlink_port_register(dl, dlp, dp->index);
 		if (err)
 			break;
@@ -315,7 +315,7 @@ static int dsa_port_setup(struct dsa_port *dp)
 	case DSA_PORT_TYPE_USER:
 		memset(dlp, 0, sizeof(*dlp));
 		devlink_port_attrs_set(dlp, DEVLINK_PORT_FLAVOUR_PHYSICAL,
-				       dp->index, false, 0, id, len);
+				       dp->index, false, 0, 0, id, len);
 		err = devlink_port_register(dl, dlp, dp->index);
 		if (err)
 			break;

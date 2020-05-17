@@ -68,6 +68,7 @@ struct devlink_port_attrs {
 	u8 set:1,
 	   split:1,
 	   switch_port:1;
+	u32 width;
 	enum devlink_port_flavour flavour;
 	struct netdev_phys_item_id switch_id;
 	union {
@@ -972,6 +973,7 @@ void devlink_port_attrs_set(struct devlink_port *devlink_port,
 			    enum devlink_port_flavour flavour,
 			    u32 port_number, bool split,
 			    u32 split_subport_number,
+			    u32 width,
 			    const unsigned char *switch_id,
 			    unsigned char switch_id_len);
 void devlink_port_attrs_pci_pf_set(struct devlink_port *devlink_port,

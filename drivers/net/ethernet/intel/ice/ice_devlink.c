@@ -297,7 +297,7 @@ int ice_devlink_create_port(struct ice_pf *pf)
 	}
 
 	devlink_port_attrs_set(&pf->devlink_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
-			       pf->hw.pf_id, false, 0, NULL, 0);
+			       pf->hw.pf_id, false, 0, 0, NULL, 0);
 	err = devlink_port_register(devlink, &pf->devlink_port, pf->hw.pf_id);
 	if (err) {
 		dev_err(dev, "devlink_port_register failed: %d\n", err);

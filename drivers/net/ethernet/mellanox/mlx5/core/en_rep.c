@@ -2050,7 +2050,7 @@ static int register_devlink_port(struct mlx5_core_dev *dev,
 	if (rep->vport == MLX5_VPORT_UPLINK)
 		devlink_port_attrs_set(&rpriv->dl_port,
 				       DEVLINK_PORT_FLAVOUR_PHYSICAL,
-				       pfnum, false, 0,
+				       pfnum, false, 0, 0,
 				       &ppid.id[0], ppid.id_len);
 	else if (rep->vport == MLX5_VPORT_PF)
 		devlink_port_attrs_pci_pf_set(&rpriv->dl_port,

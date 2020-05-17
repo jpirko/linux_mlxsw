@@ -2134,7 +2134,7 @@ static int __mlxsw_core_port_init(struct mlxsw_core *mlxsw_core, u8 local_port,
 
 	mlxsw_core_port->local_port = local_port;
 	devlink_port_attrs_set(devlink_port, flavour, port_number,
-			       split, split_port_subnumber,
+			       split, split_port_subnumber, width,
 			       switch_id, switch_id_len);
 	err = devlink_port_register(devlink, devlink_port, local_port);
 	if (err)

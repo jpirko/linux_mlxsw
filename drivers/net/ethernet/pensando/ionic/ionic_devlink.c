@@ -82,7 +82,7 @@ int ionic_devlink_register(struct ionic *ionic)
 		return 0;
 
 	devlink_port_attrs_set(&ionic->dl_port, DEVLINK_PORT_FLAVOUR_PHYSICAL,
-			       0, false, 0, NULL, 0);
+			       0, false, 0, 0, NULL, 0);
 	err = devlink_port_register(dl, &ionic->dl_port, 0);
 	if (err)
 		dev_err(ionic->dev, "devlink_port_register failed: %d\n", err);
