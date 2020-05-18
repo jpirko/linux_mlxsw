@@ -1930,11 +1930,14 @@ static inline void
 mlxsw_reg_cwtp_profile_pack(char *payload, u8 profile, u32 min, u32 max,
 			    u32 probability)
 {
-	u8 index = MLXSW_REG_CWTP_PROFILE_TO_INDEX(profile);
+	int i;
 
-	mlxsw_reg_cwtp_profile_min_set(payload, index, min);
-	mlxsw_reg_cwtp_profile_max_set(payload, index, max);
-	mlxsw_reg_cwtp_profile_percent_set(payload, index, probability);
+	printk(KERN_WARNING "reg_cwtp_profile_pack\n");
+	for (i = 0; i <= MLXSW_REG_CWTP_MAX_PROFILE; i++) {
+		mlxsw_reg_cwtp_profile_min_set(payload, i, min);
+		mlxsw_reg_cwtp_profile_max_set(payload, i, max);
+		mlxsw_reg_cwtp_profile_percent_set(payload, i, probability);
+	}
 }
 
 /* CWTPM - Congestion WRED ECN TClass and Pool Mapping

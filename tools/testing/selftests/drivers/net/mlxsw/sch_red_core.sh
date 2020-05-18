@@ -425,6 +425,7 @@ do_ecn_test()
 	local limit=$1; shift
 	local name=ECN
 
+	read -p Ready.
 	start_tcp_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 3 $vlan) \
 			  $h3_mac tos=0x01
 	sleep 1
@@ -440,6 +441,7 @@ do_ecn_test()
 	log_test "TC $((vlan - 10)): $name backlog > limit: UDP early-dropped"
 
 	stop_traffic
+	read -p Ready.
 	sleep 1
 }
 

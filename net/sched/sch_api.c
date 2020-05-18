@@ -2267,7 +2267,7 @@ const struct nla_policy rtm_tca_qevent_policy[TCA_MAX + 1] = {
 static const u32 sch_qevent_flags = TCA_CLS_FLAGS_SKIP_HW |
 				    TCA_CLS_FLAGS_SKIP_SW;
 
-const struct nla_policy sch_qevent_opts_policy[TCA_MAX + 1] = {
+const struct nla_policy sch_qevent_opts_policy[TCA_QEVENT_MAX + 1] = {
 	[TCA_QEVENT_FLAGS]	= { .type = NLA_BITFIELD32,
 				    .validation_data = &sch_qevent_flags },
 	[TCA_QEVENT_ACT]	= { .type = NLA_NESTED },

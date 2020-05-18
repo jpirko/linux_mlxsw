@@ -4,9 +4,6 @@
 ALL_TESTS="
 	ping_ipv4
 	ecn_test
-	ecn_nodrop_test
-	red_test
-	mc_backlog_test
 "
 source sch_red_core.sh
 
