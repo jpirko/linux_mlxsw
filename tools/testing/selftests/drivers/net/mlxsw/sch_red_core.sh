@@ -643,8 +643,8 @@ do_drop_test()
 
 	build_backlog $vlan $((2 * limit / 3)) udp >/dev/null
 
-	busywait 1100 until_counter_is ">= $((base + 1))" $fetch_counter >/dev/null
-	check_fail $? "Spurious packets observed without buffer pressure"
+	count=$(busywait 1100 until_counter_is ">= $((base + 1))" $fetch_counter)
+	check_fail $? "Spurious packets ($base -> $count) observed without buffer pressure"
 
 	# Push to the queue until it's at the limit. The configured limit is
 	# rounded by the qdisc and then by the driver, so this is the best we

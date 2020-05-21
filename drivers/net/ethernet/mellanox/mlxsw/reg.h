@@ -10762,6 +10762,7 @@ MLXSW_ITEM32(reg, momte, type, 0x04, 0, 8);
  * Access: RW
  */
 MLXSW_ITEM_BIT_ARRAY(reg, momte, tclass_en, 0x08, 0x08, 1);
+MLXSW_ITEM32(reg, momte, _tclass_en, 0x0C, 0, 32);
 
 static inline void mlxsw_reg_momte_pack(char *payload, u16 local_port,
 					enum mlxsw_reg_momte_type type)
