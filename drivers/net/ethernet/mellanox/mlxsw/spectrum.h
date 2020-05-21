@@ -128,6 +128,7 @@ struct mlxsw_sp_ptp_state;
 struct mlxsw_sp_ptp_ops;
 struct mlxsw_sp_span_ops;
 struct mlxsw_sp_qdisc_state;
+struct mlxsw_sp_qevent_ops;
 
 struct mlxsw_sp_port_mapping {
 	u8 module;
@@ -172,6 +173,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
 	const struct mlxsw_sp_span_ops *span_ops;
 	const struct mlxsw_sp_trap_ops *trap_ops;
+	const struct mlxsw_sp_qevent_ops *qevent_ops;
 	const struct mlxsw_listener *listeners;
 	size_t listeners_count;
 	u32 lowest_shaper_bs;
@@ -968,6 +970,11 @@ int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct tc_tbf_qopt_offload *p);
 int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct tc_fifo_qopt_offload *p);
+
+extern const struct mlxsw_sp_qevent_ops mlxsw_sp1_qevent_ops;
+extern const struct mlxsw_sp_qevent_ops mlxsw_sp2_qevent_ops;
+int mlxsw_sp_setup_tc_block_qevent(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct flow_block_offload *f);
 
 /* spectrum_fid.c */
 bool mlxsw_sp_fid_is_dummy(struct mlxsw_sp *mlxsw_sp, u16 fid_index);
