@@ -1395,6 +1395,7 @@ static int mlxsw_sp_feature_hw_tc(struct net_device *dev, bool enable)
 			netdev_err(dev, "Active offloaded tc filters, can't turn hw_tc_offload off\n");
 			return -EINVAL;
 		}
+		// xxx do we need to do this for qevent blocks as well?
 		mlxsw_sp_flow_block_disable_inc(mlxsw_sp_port->ing_flow_block);
 		mlxsw_sp_flow_block_disable_inc(mlxsw_sp_port->eg_flow_block);
 	} else {
