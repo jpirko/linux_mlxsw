@@ -121,6 +121,7 @@ h1_destroy()
 h2_create()
 {
 	host_create $h2 2
+	tc qdisc add dev $h2 clsact
 
 	# Some of the tests in this suite use multicast traffic. As this traffic
 	# enters BR2_10 resp. BR2_11, it is flooded to all other ports. Thus
@@ -141,6 +142,7 @@ h2_create()
 h2_destroy()
 {
 	ethtool -s $h2 autoneg on
+	tc qdisc del dev $h2 clsact
 	host_destroy $h2
 }
 
@@ -321,6 +323,14 @@ get_mc_transmit_queue()
 	ethtool_stats_get $swp3 tc_transmit_queue_tc_$tc
 }
 
+get_ingress_frames()
+{
+	local vlan=$1; shift
+
+	local prio=$((vlan - 10))
+	ethtool_stats_get $h2 rx_frames_prio_$prio
+}
+
 get_nmarked()
 {
 	local vlan=$1; shift
@@ -334,6 +344,17 @@ get_qdisc_npackets()
 
 	busywait_for_counter 1100 +1 \
 		qdisc_stats_get $swp3 $(get_qdisc_handle $vlan) .packets
+}
+
+send_packets()
+{
+	local vlan=$1; shift
+	local proto=$1; shift
+	local pkts=$1; shift
+
+	$MZ $h2.$vlan -p 8000 -a own -b $h3_mac \
+	    -A $(ipaddr 2 $vlan) -B $(ipaddr 3 $vlan) \
+	    -t $proto -q -c $pkts "$@"
 }
 
 # This sends traffic in an attempt to build a backlog of $size. Returns 0 on
@@ -364,9 +385,7 @@ build_backlog()
 			return 1
 		fi
 
-		$MZ $h2.$vlan -p 8000 -a own -b $h3_mac \
-		    -A $(ipaddr 2 $vlan) -B $(ipaddr 3 $vlan) \
-		    -t $proto -q -c $pkts "$@"
+		send_packets $vlan $proto $pkts
 	done
 }
 
@@ -530,4 +549,111 @@ do_mc_backlog_test()
 	stop_traffic
 
 	log_test "TC $((vlan - 10)): Qdisc reports MC backlog"
+}
+
+do_ecn_mirror_test()
+{
+	local vlan=$1; shift
+	local limit=$1; shift
+	local backlog
+	local pct
+
+	RET=0
+
+	# Use ECN-capable TCP to verify there's no marking even though the queue
+	# is above limit.
+	start_tcp_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 3 $vlan) \
+			  $h3_mac tos=0x01
+
+	build_backlog $vlan $((2 * limit / 3)) tcp tos=0x01 >/dev/null
+
+	tc filter add block 10 pref 1234 handle 102 \
+	   matchall skip_sw \
+	   action mirred egress mirror dev $swp2
+
+	tc filter add dev $h2 ingress pref 1 handle 101 prot ip \
+	   flower skip_sw ip_proto tcp \
+	   action drop
+
+	# At 2/3 of backlog limit, there should be no ECN, and therefore no
+	# mirrored packets.
+	busywait 1100 until_counter_is ">= 20" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_fail $? "Spurious TCP packets mirrored"
+
+	# Above limit, everything should be mirrored, we should see lots of
+	# packets.
+	build_backlog $vlan $((3 * limit / 2)) tcp tos=0x01 >/dev/null
+	busywait 1100 until_counter_is ">= 10000" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_err $? "Packets that were supposed to be ECN-marked not mirrored"
+
+	# When the rule is uninstalled, there should be no mirroring.
+	tc filter del block 10 pref 1234 handle 102 matchall
+	tc filter del dev $h2 ingress pref 1 handle 101 flower
+	tc filter add dev $h2 ingress pref 1 handle 101 prot ip \
+	   flower skip_sw ip_proto tcp \
+	   action drop
+	busywait 1100 until_counter_is ">= 20" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_fail $? "Spurious TCP packets mirrored after uninstall"
+
+	tc filter del dev $h2 ingress pref 1 handle 101 flower
+	log_test "TC $((vlan - 10)): RED mirrors marked packets"
+
+	stop_traffic
+	sleep 1
+}
+
+do_red_mirror_test()
+{
+	local vlan=$1; shift
+	local limit=$1; shift
+	local backlog
+	local pct
+
+	RET=0
+
+	# Use ECN-capable TCP to verify there's no marking even though the queue
+	# is above limit.
+	start_tcp_traffic $h1.$vlan $(ipaddr 1 $vlan) $(ipaddr 3 $vlan) \
+			  $h3_mac tos=0x01
+
+	# Push to the queue until it's at the limit. The configured limit is
+	# rounded by the qdisc and then by the driver, so this is the best we
+	# can do to get to the real limit of the system.
+	build_backlog $vlan $((3 * limit / 2)) tcp tos=0x01 >/dev/null
+
+	tc filter add block 10 pref 1234 handle 102 \
+	   matchall skip_sw \
+	   action mirred egress mirror dev $swp2
+
+	tc filter add dev $h2 ingress pref 1 handle 101 prot ip \
+	   flower skip_sw ip_proto tcp \
+	   action drop
+
+	# Check drops.
+	send_packets $vlan tcp 11
+
+	busywait 1100 until_counter_is ">= 10" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_err $? "Packets that were supposed to be early-dropped not mirrored"
+
+	# When no extra traffic is injected, there should be no mirroring.
+	busywait 1100 until_counter_is ">= 20" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_fail $? "Spurious TCP packets mirrored"
+
+	# When the rule is uninstalled, there should be no mirroring.
+	tc filter del block 10 pref 1234 handle 102 matchall
+	send_packets $vlan tcp 11
+	busywait 1100 until_counter_is ">= 20" \
+		 tc_rule_handle_stats_get "dev $h2 ingress" 101 >/dev/null
+	check_fail $? "Spurious TCP packets mirrored after uninstall"
+
+	tc filter del dev $h2 ingress pref 1 handle 101 flower
+	log_test "TC $((vlan - 10)): RED mirrors early-dropped packets"
+
+	stop_traffic
+	sleep 1
 }
