@@ -439,6 +439,7 @@ struct flow_block_offload {
 	struct list_head cb_list;
 	struct list_head *driver_block_list;
 	struct netlink_ext_ack *extack;
+	struct Qdisc *sch;
 };
 
 enum tc_setup_type;
