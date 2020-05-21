@@ -1699,6 +1699,7 @@ static int mlxsw_sp_qevent_span_configure(struct mlxsw_sp *mlxsw_sp,
 		goto err_trigger_enable;
 
 	*p_span_id = span_id;
+	printk(KERN_WARNING "configured\n");
 	return 0;
 
 err_trigger_enable:
@@ -1727,6 +1728,7 @@ static void mlxsw_sp_qevent_span_deconfigure(struct mlxsw_sp *mlxsw_sp,
 				   &trigger_parms);
 	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, ingress);
 	mlxsw_sp_span_agent_put(mlxsw_sp, span_id);
+	printk(KERN_WARNING "deconfigured\n");
 }
 
 static int mlxsw_sp_qevent_mirror_configure(struct mlxsw_sp *mlxsw_sp,
@@ -1737,6 +1739,7 @@ static int mlxsw_sp_qevent_mirror_configure(struct mlxsw_sp *mlxsw_sp,
 		.to_dev = mall_entry->mirror.to_dev,
 	};
 
+	printk(KERN_WARNING "configuring mirror\n");
 	return mlxsw_sp_qevent_span_configure(mlxsw_sp, mall_entry, qevent_binding,
 					      &agent_parms, &mall_entry->mirror.span_id);
 }
@@ -1745,6 +1748,7 @@ static void mlxsw_sp_qevent_mirror_deconfigure(struct mlxsw_sp *mlxsw_sp,
 					       struct mlxsw_sp_mall_entry *mall_entry,
 					       struct mlxsw_sp_qevent_binding *qevent_binding)
 {
+	printk(KERN_WARNING "deconfiguring mirror\n");
 	mlxsw_sp_qevent_span_deconfigure(mlxsw_sp, qevent_binding, mall_entry->mirror.span_id);
 }
 
@@ -1762,6 +1766,7 @@ static int mlxsw_sp_qevent_trap_configure(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		return err;
 
+	printk(KERN_WARNING "configuring trap\n");
 	return mlxsw_sp_qevent_span_configure(mlxsw_sp, mall_entry, qevent_binding,
 					      &agent_parms, &mall_entry->trap.span_id);
 }
@@ -1770,6 +1775,7 @@ static void mlxsw_sp_qevent_trap_deconfigure(struct mlxsw_sp *mlxsw_sp,
 					     struct mlxsw_sp_mall_entry *mall_entry,
 					     struct mlxsw_sp_qevent_binding *qevent_binding)
 {
+	printk(KERN_WARNING "deconfiguring trap\n");
 	mlxsw_sp_qevent_span_deconfigure(mlxsw_sp, qevent_binding, mall_entry->trap.span_id);
 }
 
@@ -1777,6 +1783,12 @@ static int mlxsw_sp_qevent_entry_configure(struct mlxsw_sp *mlxsw_sp,
 					   struct mlxsw_sp_mall_entry *mall_entry,
 					   struct mlxsw_sp_qevent_binding *qevent_binding)
 {
+	printk(KERN_WARNING "%d @ %s TC%d: configure %d\n",
+	       qevent_binding->span_trigger,
+	       qevent_binding->mlxsw_sp_port->dev->name,
+	       qevent_binding->tclass_num,
+	       mall_entry->type);
+
 	switch (mall_entry->type) {
 	case MLXSW_SP_MALL_ACTION_TYPE_MIRROR:
 		return mlxsw_sp_qevent_mirror_configure(mlxsw_sp, mall_entry, qevent_binding);
@@ -1793,6 +1805,12 @@ static void mlxsw_sp_qevent_entry_deconfigure(struct mlxsw_sp *mlxsw_sp,
 					      struct mlxsw_sp_mall_entry *mall_entry,
 					      struct mlxsw_sp_qevent_binding *qevent_binding)
 {
+	printk(KERN_WARNING "%d @ %s TC%d: deconfigure %d\n",
+	       qevent_binding->span_trigger,
+	       qevent_binding->mlxsw_sp_port->dev->name,
+	       qevent_binding->tclass_num,
+	       mall_entry->type);
+
 	switch (mall_entry->type) {
 	case MLXSW_SP_MALL_ACTION_TYPE_MIRROR:
 		return mlxsw_sp_qevent_mirror_deconfigure(mlxsw_sp, mall_entry, qevent_binding);

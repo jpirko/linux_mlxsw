@@ -182,6 +182,10 @@ mlxsw_sp_span_entry_phys_configure(struct mlxsw_sp_span_entry *span_entry,
 	char mpat_pl[MLXSW_REG_MPAT_LEN];
 	int pa_id = span_entry->id;
 
+	printk(KERN_WARNING "MPAT pa_id %d local_port %d enable %d encap %d pide %d pid %d\n",
+	       pa_id, local_port, true, MLXSW_REG_MPAT_SPAN_TYPE_LOCAL_ETH,
+	       sparms.policer_enable, sparms.policer_id);
+
 	/* Create a new port analayzer entry for local_port. */
 	mlxsw_reg_mpat_pack(mpat_pl, pa_id, local_port, true,
 			    MLXSW_REG_MPAT_SPAN_TYPE_LOCAL_ETH);
@@ -200,6 +204,9 @@ mlxsw_sp_span_entry_deconfigure_common(struct mlxsw_sp_span_entry *span_entry,
 	u8 local_port = dest_port->local_port;
 	char mpat_pl[MLXSW_REG_MPAT_LEN];
 	int pa_id = span_entry->id;
+
+	printk(KERN_WARNING "MPAT pa_id %d local_port %d enable %d encap %d \n",
+	       pa_id, local_port, false, span_type);
 
 	mlxsw_reg_mpat_pack(mpat_pl, pa_id, local_port, false, span_type);
 	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(mpat), mpat_pl);
@@ -1221,6 +1228,8 @@ __mlxsw_sp_span_trigger_port_bind(struct mlxsw_sp_span *span,
 		return -EINVAL;
 	}
 
+	printk(KERN_WARNING "MPAR local_port %d i_e %d enable %d span_id %d\n",
+	       trigger_entry->local_port, i_e, enable, trigger_entry->parms.span_id);
 	mlxsw_reg_mpar_pack(mpar_pl, trigger_entry->local_port, i_e, enable,
 			    trigger_entry->parms.span_id);
 	return mlxsw_reg_write(span->mlxsw_sp->core, MLXSW_REG(mpar), mpar_pl);
@@ -1356,6 +1365,8 @@ mlxsw_sp2_span_trigger_global_bind(struct mlxsw_sp_span_trigger_entry *
 		return -EINVAL;
 	}
 
+	printk(KERN_WARNING "MPAGR trigger %d span_id %d prob %d\n",
+	       trigger, trigger_entry->parms.span_id, 1);
 	mlxsw_reg_mpagr_pack(mpagr_pl, trigger, trigger_entry->parms.span_id,
 			     1);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(mpagr), mpagr_pl);
@@ -1414,6 +1425,8 @@ __mlxsw_sp2_span_trigger_global_enable(struct mlxsw_sp_span_trigger_entry *
 		return err;
 
 	mlxsw_reg_momte_tclass_en_set(momte_pl, tc, enable);
+	printk(KERN_WARNING "MOMTE local_port %d type %#x tc %#x\n",
+	       mlxsw_sp_port->local_port, type, mlxsw_reg_momte__tclass_en_get(momte_pl));
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(momte), momte_pl);
 }
 
@@ -1707,6 +1720,7 @@ static int mlxsw_sp2_span_policer_id_base_set(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		return err;
 
+	printk(KERN_WARNING "MOGCR pid_base %d\n", policer_id_base);
 	mlxsw_reg_mogcr_mirroring_pid_base_set(mogcr_pl, policer_id_base);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(mogcr), mogcr_pl);
 }
