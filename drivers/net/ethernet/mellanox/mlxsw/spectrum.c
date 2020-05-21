@@ -6267,6 +6267,16 @@ static int mlxsw_sp_netdevice_vxlan_event(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
+static int mlxsw_sp_block_setup(struct net_device *dev, void *cb_priv,
+				enum tc_setup_type type, void *type_data)
+{
+	struct flow_block_offload *bo = type_data;
+
+	printk(KERN_WARNING "%s: block_setup type %d sch %#lx\n",
+	       dev->name, type, (unsigned long)bo->sch);
+	return 0;
+}
+
 static int mlxsw_sp_netdevice_event(struct notifier_block *nb,
 				    unsigned long event, void *ptr)
 {
@@ -6282,6 +6292,18 @@ static int mlxsw_sp_netdevice_event(struct notifier_block *nb,
 			mlxsw_sp_span_entry_invalidate(mlxsw_sp, span_entry);
 	}
 	mlxsw_sp_span_respin(mlxsw_sp);
+
+	switch (event) {
+	case NETDEV_REGISTER:
+		__flow_indr_block_cb_register(dev, mlxsw_sp,
+					      mlxsw_sp_block_setup,
+					      mlxsw_sp);
+		break;
+	case NETDEV_UNREGISTER:
+		__flow_indr_block_cb_unregister(dev, mlxsw_sp_block_setup,
+						mlxsw_sp);
+		break;
+	}
 
 	if (netif_is_vxlan(dev))
 		err = mlxsw_sp_netdevice_vxlan_event(mlxsw_sp, dev, event, ptr);
