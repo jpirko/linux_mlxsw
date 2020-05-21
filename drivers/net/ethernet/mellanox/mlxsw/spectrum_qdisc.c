@@ -8,6 +8,7 @@
 #include <net/red.h>
 
 #include "spectrum.h"
+#include "spectrum_span.h"
 #include "reg.h"
 
 #define MLXSW_SP_PRIO_BAND_TO_TCLASS(band) (IEEE_8021QAZ_MAX_TCS - band - 1)
@@ -1267,6 +1268,543 @@ int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
 		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
 						  p->graft_params.band,
 						  p->graft_params.child_handle);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+struct mlxsw_sp_qevent_block {
+	struct list_head binding_list;
+	struct list_head mall_entry_list;
+	struct mlxsw_sp *mlxsw_sp;
+};
+
+// xxx really similar to flow_block_binding. Probably can be united.
+struct mlxsw_sp_qevent_binding {
+	struct list_head list;
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	int tclass_num;
+	enum mlxsw_sp_span_trigger span_trigger;
+};
+
+static LIST_HEAD(mlxsw_sp_qevent_block_cb_list);
+
+static int
+mlxsw_sp_qevent_mirror_configure(struct mlxsw_sp *mlxsw_sp,
+				 struct mlxsw_sp_mall_entry *mall_entry,
+				 struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = qevent_binding->mlxsw_sp_port;
+	struct mlxsw_sp_span_trigger_parms trigger_parms = {};
+	struct mlxsw_sp_span_agent_parms agent_parms = {
+		.to_dev = mall_entry->mirror.to_dev,
+	};
+	int span_id;
+	int err;
+
+	err = mlxsw_sp_span_agent_get(mlxsw_sp, &span_id, &agent_parms);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_span_analyzed_port_get(mlxsw_sp_port, false);
+	if (err)
+		goto err_analyzed_port_get;
+
+	trigger_parms.span_id = span_id;
+	err = mlxsw_sp_span_agent_bind(mlxsw_sp, qevent_binding->span_trigger,
+				       mlxsw_sp_port, &trigger_parms);
+	if (err)
+		goto err_agent_bind;
+
+	err = mlxsw_sp_span_trigger_enable(mlxsw_sp_port,
+					   qevent_binding->span_trigger,
+					   qevent_binding->tclass_num);
+	if (err)
+		goto err_trigger_enable;
+
+	printk(KERN_WARNING "configured mirror\n");
+	mall_entry->mirror.span_id = span_id;
+	return 0;
+
+err_trigger_enable:
+	mlxsw_sp_span_agent_unbind(mlxsw_sp, qevent_binding->span_trigger,
+				   mlxsw_sp_port, &trigger_parms);
+err_agent_bind:
+	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, false);
+err_analyzed_port_get:
+	mlxsw_sp_span_agent_put(mlxsw_sp, span_id);
+	return err;
+}
+
+static void
+mlxsw_sp_qevent_mirror_deconfigure(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_mall_entry *mall_entry,
+				struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = qevent_binding->mlxsw_sp_port;
+	struct mlxsw_sp_span_trigger_parms trigger_parms = {
+		.span_id = mall_entry->mirror.span_id,
+	};
+
+	printk(KERN_WARNING "deconfigured mirror\n");
+	mlxsw_sp_span_trigger_disable(mlxsw_sp_port,
+				      qevent_binding->span_trigger,
+				      qevent_binding->tclass_num);
+	mlxsw_sp_span_agent_unbind(mlxsw_sp, qevent_binding->span_trigger,
+				   mlxsw_sp_port, &trigger_parms);
+	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, false);
+	mlxsw_sp_span_agent_put(mlxsw_sp, mall_entry->mirror.span_id);
+}
+
+static int
+mlxsw_sp_qevent_entry_configure(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_mall_entry *mall_entry,
+				struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	printk(KERN_WARNING "%d @ %s TC%d: configure\n",
+	       qevent_binding->span_trigger,
+	       qevent_binding->mlxsw_sp_port->dev->name,
+	       qevent_binding->tclass_num);
+
+	switch (mall_entry->type) {
+	case MLXSW_SP_MALL_ACTION_TYPE_MIRROR:
+		return mlxsw_sp_qevent_mirror_configure(mlxsw_sp, mall_entry,
+							qevent_binding);
+
+	default:
+		// xxx WARN_ON(1), because this should have been validated away
+		return -EOPNOTSUPP;
+	}
+}
+
+static void
+mlxsw_sp_qevent_entry_deconfigure(struct mlxsw_sp *mlxsw_sp,
+				  struct mlxsw_sp_mall_entry *mall_entry,
+				  struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	printk(KERN_WARNING "%d @ %s TC%d: deconfigure\n",
+	       qevent_binding->span_trigger,
+	       qevent_binding->mlxsw_sp_port->dev->name,
+	       qevent_binding->tclass_num);
+
+	switch (mall_entry->type) {
+	case MLXSW_SP_MALL_ACTION_TYPE_MIRROR:
+		return mlxsw_sp_qevent_mirror_deconfigure(mlxsw_sp, mall_entry,
+							  qevent_binding);
+	default:
+		WARN_ON(1);
+		return;
+	}
+}
+
+static int
+mlxsw_sp_qevent_binding_configure(struct mlxsw_sp_qevent_block *qevent_block,
+				  struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	struct mlxsw_sp_mall_entry *mall_entry;
+	int err;
+
+	list_for_each_entry(mall_entry, &qevent_block->mall_entry_list, list) {
+		err = mlxsw_sp_qevent_entry_configure(qevent_block->mlxsw_sp,
+						      mall_entry, qevent_binding);
+		if (err)
+			goto err_entry_configure;
+	}
+
+	return 0;
+
+err_entry_configure:
+	list_for_each_entry_continue_reverse(mall_entry,
+					     &qevent_block->mall_entry_list,
+					     list)
+		mlxsw_sp_qevent_entry_deconfigure(qevent_block->mlxsw_sp,
+						  mall_entry, qevent_binding);
+	return err;
+}
+
+static void
+mlxsw_sp_qevent_binding_deconfigure(struct mlxsw_sp_qevent_block *qevent_block,
+				    struct mlxsw_sp_qevent_binding *qevent_binding)
+{
+	struct mlxsw_sp_mall_entry *mall_entry;
+
+	list_for_each_entry(mall_entry, &qevent_block->mall_entry_list, list)
+		mlxsw_sp_qevent_entry_deconfigure(qevent_block->mlxsw_sp,
+						  mall_entry, qevent_binding);
+}
+
+static int
+mlxsw_sp_qevent_block_configure(struct mlxsw_sp_qevent_block *qevent_block)
+{
+	struct mlxsw_sp_qevent_binding *qevent_binding;
+	int err;
+
+	list_for_each_entry(qevent_binding, &qevent_block->binding_list, list) {
+		err = mlxsw_sp_qevent_binding_configure(qevent_block,
+							qevent_binding);
+		if (err)
+			goto err_binding_configure;
+	}
+
+	return 0;
+
+err_binding_configure:
+	list_for_each_entry_continue_reverse(qevent_binding,
+					     &qevent_block->binding_list,
+					     list)
+		mlxsw_sp_qevent_binding_deconfigure(qevent_block,
+						    qevent_binding);
+	return err;
+}
+
+static void
+mlxsw_sp_qevent_block_deconfigure(struct mlxsw_sp_qevent_block *qevent_block)
+{
+	struct mlxsw_sp_qevent_binding *qevent_binding;
+
+	list_for_each_entry(qevent_binding, &qevent_block->binding_list, list)
+		mlxsw_sp_qevent_binding_deconfigure(qevent_block,
+						    qevent_binding);
+}
+
+static struct mlxsw_sp_mall_entry *
+mlxsw_sp_qevent_mall_entry_find(struct mlxsw_sp_qevent_block *block,
+				unsigned long cookie)
+{
+	struct mlxsw_sp_mall_entry *mall_entry;
+
+	list_for_each_entry(mall_entry, &block->mall_entry_list, list)
+		if (mall_entry->cookie == cookie)
+			return mall_entry;
+
+	return NULL;
+}
+
+static int
+mlxsw_sp_qevent_mall_replace(struct mlxsw_sp *mlxsw_sp,
+			     struct mlxsw_sp_qevent_block *qevent_block,
+			     struct tc_cls_matchall_offload *f)
+{
+	struct mlxsw_sp_mall_entry *mall_entry;
+	struct flow_action_entry *act;
+	int err;
+
+	/* It should not currently be possible to replace a matchall rule. So
+	 * this must be a new rule.
+	 */
+	if (!list_empty(&qevent_block->mall_entry_list)) {
+		NL_SET_ERR_MSG(f->common.extack, "At most one filter supported");
+		return -EOPNOTSUPP;
+	}
+	if (f->rule->action.num_entries != 1) {
+		NL_SET_ERR_MSG(f->common.extack, "Only singular actions supported");
+		return -EOPNOTSUPP;
+	}
+	if (f->common.chain_index) {
+		NL_SET_ERR_MSG(f->common.extack, "Only chain 0 is supported");
+		return -EOPNOTSUPP;
+	}
+	if (f->common.protocol != htons(ETH_P_ALL)) {
+		NL_SET_ERR_MSG(f->common.extack, "Protocol matching not supported");
+		return -EOPNOTSUPP;
+	}
+
+	printk(KERN_WARNING "mlxsw_sp_qevent_mall_replace\n");
+
+	mall_entry = kzalloc(sizeof(*mall_entry), GFP_KERNEL);
+	if (!mall_entry)
+		return -ENOMEM;
+	mall_entry->cookie = f->cookie;
+
+	act = &f->rule->action.entries[0];
+	if (act->id == FLOW_ACTION_MIRRED) {
+		mall_entry->type = MLXSW_SP_MALL_ACTION_TYPE_MIRROR;
+		mall_entry->mirror.to_dev = act->dev;
+	} else if (act->id == FLOW_ACTION_TRAP) {
+		mall_entry->type = MLXSW_SP_MALL_ACTION_TYPE_TRAP;
+	} else {
+		NL_SET_ERR_MSG(f->common.extack, "Unsupported action");
+		err = -EOPNOTSUPP;
+		goto err_unsupported_action;
+	}
+
+	list_add_tail(&mall_entry->list, &qevent_block->mall_entry_list);
+
+	err = mlxsw_sp_qevent_block_configure(qevent_block);
+	if (err)
+		goto err_block_configure;
+
+	return 0;
+
+err_block_configure:
+	list_del(&mall_entry->list);
+err_unsupported_action:
+	kfree(mall_entry);
+	return err;
+}
+
+static void
+mlxsw_sp_qevent_mall_destroy(struct mlxsw_sp_qevent_block *qevent_block,
+			     struct tc_cls_matchall_offload *f)
+{
+	struct mlxsw_sp_mall_entry *mall_entry;
+
+	mall_entry = mlxsw_sp_qevent_mall_entry_find(qevent_block, f->cookie);
+	if (!mall_entry)
+		return;
+
+	printk(KERN_WARNING "mlxsw_sp_qevent_mall_destroy\n");
+	mlxsw_sp_qevent_block_deconfigure(qevent_block);
+
+	list_del(&mall_entry->list);
+	kfree(mall_entry);
+}
+
+static int
+mlxsw_sp_qevent_block_mall_cb(struct mlxsw_sp_qevent_block *qevent_block,
+			      struct tc_cls_matchall_offload *f)
+{
+	struct mlxsw_sp *mlxsw_sp = qevent_block->mlxsw_sp;
+
+	switch (f->command) {
+	case TC_CLSMATCHALL_REPLACE:
+		return mlxsw_sp_qevent_mall_replace(mlxsw_sp, qevent_block, f);
+	case TC_CLSMATCHALL_DESTROY:
+		mlxsw_sp_qevent_mall_destroy(qevent_block, f);
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static int mlxsw_sp_qevent_block_cb(enum tc_setup_type type,
+				    void *type_data, void *cb_priv)
+{
+	struct mlxsw_sp_qevent_block *qevent_block = cb_priv;
+
+	switch (type) {
+	case TC_SETUP_CLSMATCHALL:
+		return mlxsw_sp_qevent_block_mall_cb(qevent_block, type_data);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static struct mlxsw_sp_qevent_block *
+mlxsw_sp_qevent_block_create(struct mlxsw_sp *mlxsw_sp, struct net *net)
+{
+	struct mlxsw_sp_qevent_block *qevent_block;
+
+	qevent_block = kzalloc(sizeof(*qevent_block), GFP_KERNEL);
+	if (!qevent_block)
+		return NULL;
+
+	INIT_LIST_HEAD(&qevent_block->binding_list);
+	INIT_LIST_HEAD(&qevent_block->mall_entry_list);
+	qevent_block->mlxsw_sp = mlxsw_sp;
+	return qevent_block;
+}
+
+static void
+mlxsw_sp_qevent_block_destroy(struct mlxsw_sp_qevent_block *qevent_block)
+{
+	WARN_ON(!list_empty(&qevent_block->binding_list));
+	WARN_ON(!list_empty(&qevent_block->mall_entry_list));
+	kfree(qevent_block);
+}
+
+static void mlxsw_sp_qevent_block_release(void *cb_priv)
+{
+	struct mlxsw_sp_qevent_block *qevent_block = cb_priv;
+
+	mlxsw_sp_qevent_block_destroy(qevent_block);
+}
+
+static struct mlxsw_sp_qevent_binding *
+mlxsw_sp_qevent_binding_create(struct mlxsw_sp_port *mlxsw_sp_port,
+			       int tclass_num,
+			       enum mlxsw_sp_span_trigger span_trigger)
+{
+	struct mlxsw_sp_qevent_binding *binding;
+
+	binding = kzalloc(sizeof(*binding), GFP_KERNEL);
+	if (!binding)
+		return ERR_PTR(-ENOMEM);
+
+	binding->mlxsw_sp_port = mlxsw_sp_port;
+	binding->tclass_num = tclass_num;
+	binding->span_trigger = span_trigger;
+	return binding;
+}
+
+static void
+mlxsw_sp_qevent_binding_destroy(struct mlxsw_sp_qevent_binding *binding)
+{
+	kfree(binding);
+}
+
+static struct mlxsw_sp_qevent_binding *
+mlxsw_sp_qevent_binding_lookup(struct mlxsw_sp_qevent_block *block,
+			       struct mlxsw_sp_port *mlxsw_sp_port,
+			       int tclass_num,
+			       enum mlxsw_sp_span_trigger span_trigger)
+{
+	struct mlxsw_sp_qevent_binding *qevent_binding;
+
+	list_for_each_entry(qevent_binding, &block->binding_list, list)
+		if (qevent_binding->mlxsw_sp_port == mlxsw_sp_port &&
+		    qevent_binding->tclass_num == tclass_num &&
+		    qevent_binding->span_trigger == span_trigger)
+			return qevent_binding;
+	return NULL;
+}
+
+static int mlxsw_sp_setup_tc_block_bind(struct mlxsw_sp_port *mlxsw_sp_port,
+					struct flow_block_offload *f,
+					enum mlxsw_sp_span_trigger span_trigger)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_qevent_binding *qevent_binding;
+	struct mlxsw_sp_qevent_block *qevent_block;
+	struct flow_block_cb *block_cb;
+	struct mlxsw_sp_qdisc *qdisc;
+	bool register_block = false;
+	int err;
+
+	block_cb = flow_block_cb_lookup(f->block, mlxsw_sp_qevent_block_cb,
+					mlxsw_sp);
+	if (!block_cb) {
+		printk(KERN_WARNING "creating new qevent block\n");
+		qevent_block = mlxsw_sp_qevent_block_create(mlxsw_sp, f->net);
+		if (!qevent_block)
+			return -ENOMEM;
+		block_cb = flow_block_cb_alloc(mlxsw_sp_qevent_block_cb,
+					    mlxsw_sp, qevent_block,
+					    mlxsw_sp_qevent_block_release);
+		if (IS_ERR(block_cb)) {
+			mlxsw_sp_qevent_block_destroy(qevent_block);
+			return PTR_ERR(block_cb);
+		}
+		register_block = true;
+	} else {
+		printk(KERN_WARNING "taking existing qevent block\n");
+		qevent_block = flow_block_cb_priv(block_cb);
+	}
+
+	flow_block_cb_incref(block_cb);
+
+	qdisc = mlxsw_sp_qdisc_find_by_handle(mlxsw_sp_port, f->sch->handle);
+	if (!qdisc) {
+		NL_SET_ERR_MSG(f->extack, "Qdisc not offloaded");
+		err = -ENOENT;
+		goto err_find_qdisc;
+	}
+
+	if (WARN_ON(mlxsw_sp_qevent_binding_lookup(qevent_block, mlxsw_sp_port,
+						   qdisc->tclass_num,
+						   span_trigger))) {
+		err = -EEXIST;
+		goto err_binding_exists;
+	}
+
+	qevent_binding = mlxsw_sp_qevent_binding_create(mlxsw_sp_port,
+							qdisc->tclass_num,
+							span_trigger);
+	if (IS_ERR(qevent_binding)) {
+		err = PTR_ERR(qevent_binding);
+		goto err_binding_create;
+	}
+
+	err = mlxsw_sp_qevent_binding_configure(qevent_block, qevent_binding);
+	if (err)
+		goto err_binding_configure;
+
+	list_add(&qevent_binding->list, &qevent_block->binding_list);
+
+	if (register_block) {
+		flow_block_cb_add(block_cb, f);
+		list_add_tail(&block_cb->driver_list,
+			      &mlxsw_sp_qevent_block_cb_list);
+	}
+
+	return 0;
+
+err_binding_configure:
+	mlxsw_sp_qevent_binding_destroy(qevent_binding);
+err_binding_create:
+err_binding_exists:
+err_find_qdisc:
+	if (!flow_block_cb_decref(block_cb))
+		flow_block_cb_free(block_cb);
+	return err;
+}
+
+static void
+mlxsw_sp_setup_tc_block_unbind(struct mlxsw_sp_port *mlxsw_sp_port,
+			       struct flow_block_offload *f,
+			       enum mlxsw_sp_span_trigger span_trigger)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_qevent_binding *qevent_binding;
+	struct mlxsw_sp_qevent_block *qevent_block;
+	struct flow_block_cb *block_cb;
+	int tclass, child_index;
+
+	block_cb = flow_block_cb_lookup(f->block, mlxsw_sp_qevent_block_cb,
+					mlxsw_sp);
+	if (!block_cb)
+		return;
+	qevent_block = flow_block_cb_priv(block_cb);
+
+	/* By the time unbind is called, the original qdisc may have been
+	 * unoffloaded and replaced by a FIFO. So figure out the TC directly
+	 * from the handle. We validate that the qdisc is offloaded during
+	 * binding, so the unbind request is legit, too.
+	 */
+	child_index = TC_H_MIN(f->sch->parent);
+	tclass = MLXSW_SP_PRIO_CHILD_TO_TCLASS(child_index);
+
+	qevent_binding = mlxsw_sp_qevent_binding_lookup(qevent_block,
+							mlxsw_sp_port, tclass,
+							span_trigger);
+	if (!qevent_binding)
+		return;
+
+	list_del(&qevent_binding->list);
+	mlxsw_sp_qevent_binding_deconfigure(qevent_block, qevent_binding);
+	mlxsw_sp_qevent_binding_destroy(qevent_binding);
+
+	if (!flow_block_cb_decref(block_cb)) {
+		flow_block_cb_remove(block_cb, f);
+		list_del(&block_cb->driver_list);
+	}
+}
+
+int mlxsw_sp_setup_tc_block_qevent(struct mlxsw_sp_port *mlxsw_sp_port,
+				   struct flow_block_offload *f)
+{
+	enum mlxsw_sp_span_trigger span_trigger;
+
+	switch (f->binder_type) {
+	case FLOW_BLOCK_BINDER_TYPE_RED_EARLY:
+		span_trigger = MLXSW_SP_SPAN_TRIGGER_EARLY_DROP;
+		break;
+	case FLOW_BLOCK_BINDER_TYPE_RED_MARK:
+		span_trigger = MLXSW_SP_SPAN_TRIGGER_ECN;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	f->driver_block_list = &mlxsw_sp_qevent_block_cb_list;
+
+	switch (f->command) {
+	case FLOW_BLOCK_BIND:
+		return mlxsw_sp_setup_tc_block_bind(mlxsw_sp_port, f,
+						    span_trigger);
+	case FLOW_BLOCK_UNBIND:
+		mlxsw_sp_setup_tc_block_unbind(mlxsw_sp_port, f, span_trigger);
+		return 0;
 	default:
 		return -EOPNOTSUPP;
 	}
