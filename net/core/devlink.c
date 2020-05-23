@@ -6095,7 +6095,7 @@ static int __devlink_trap_action_set(struct devlink *devlink,
 	}
 
 	err = devlink->ops->trap_action_set(devlink, trap_item->trap,
-					    trap_action);
+					    trap_action, extack);
 	if (err)
 		return err;
 
@@ -6385,7 +6385,8 @@ static int devlink_trap_group_set(struct devlink *devlink,
 	}
 	policer = policer_item ? policer_item->policer : NULL;
 
-	err = devlink->ops->trap_group_set(devlink, group_item->group, policer);
+	err = devlink->ops->trap_group_set(devlink, group_item->group, policer,
+					   extack);
 	if (err)
 		return err;
 
@@ -8789,7 +8790,8 @@ static void devlink_trap_disable(struct devlink *devlink,
 	if (WARN_ON_ONCE(!trap_item))
 		return;
 
-	devlink->ops->trap_action_set(devlink, trap, DEVLINK_TRAP_ACTION_DROP);
+	devlink->ops->trap_action_set(devlink, trap, DEVLINK_TRAP_ACTION_DROP,
+				      NULL);
 	trap_item->action = DEVLINK_TRAP_ACTION_DROP;
 }
 
