@@ -87,12 +87,9 @@ struct mlxsw_sp_qdisc_state {
 	bool future_fifos[IEEE_8021QAZ_MAX_TCS];
 };
 
-static bool
-mlxsw_sp_qdisc_compare(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, u32 handle,
-		       enum mlxsw_sp_qdisc_type type)
+static bool mlxsw_sp_qdisc_compare(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, u32 handle)
 {
 	return mlxsw_sp_qdisc && mlxsw_sp_qdisc->ops &&
-	       mlxsw_sp_qdisc->ops->type == type &&
 	       mlxsw_sp_qdisc->handle == handle;
 }
 
@@ -549,8 +546,7 @@ int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
 					      &mlxsw_sp_qdisc_ops_red,
 					      &p->set);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle,
-				    MLXSW_SP_QDISC_RED))
+	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
@@ -751,8 +747,7 @@ int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 					      &mlxsw_sp_qdisc_ops_tbf,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle,
-				    MLXSW_SP_QDISC_TBF))
+	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
@@ -858,8 +853,7 @@ int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 					      &mlxsw_sp_qdisc_ops_fifo, NULL);
 	}
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle,
-				    MLXSW_SP_QDISC_FIFO))
+	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
@@ -1221,8 +1215,7 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 					      &mlxsw_sp_qdisc_ops_prio,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle,
-				    MLXSW_SP_QDISC_PRIO))
+	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
@@ -1254,8 +1247,7 @@ int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
 					      &mlxsw_sp_qdisc_ops_ets,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle,
-				    MLXSW_SP_QDISC_ETS))
+	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
