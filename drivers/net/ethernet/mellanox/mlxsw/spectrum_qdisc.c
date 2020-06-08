@@ -25,11 +25,11 @@ enum mlxsw_sp_qdisc_type {
 };
 
 struct mlxsw_sp_qdisc;
+struct mlxsw_sp_qdisc_class;
 
 struct mlxsw_sp_qdisc_ops {
 	enum mlxsw_sp_qdisc_type type;
 	int (*check_params)(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			    void *params);
 	int (*replace)(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params);
@@ -48,12 +48,14 @@ struct mlxsw_sp_qdisc_ops {
 	 */
 	void (*unoffload)(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params);
+
+	struct mlxsw_sp_qdisc_class *(*find_class)(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+						   u32 parent);
+	unsigned int num_classes;
 };
 
 struct mlxsw_sp_qdisc {
 	u32 handle;
-	u8 tclass_num;
-	u8 prio_bitmap;
 	union {
 		struct red_stats red;
 	} xstats_base;
@@ -66,11 +68,20 @@ struct mlxsw_sp_qdisc {
 	} stats_base;
 
 	struct mlxsw_sp_qdisc_ops *ops;
+	struct mlxsw_sp_qdisc_class *classes;
+	struct mlxsw_sp_qdisc_class *parent_class;
+	unsigned int num_classes;
+};
+
+struct mlxsw_sp_qdisc_class {
+	struct mlxsw_sp_qdisc *qdisc;
+	struct mlxsw_sp_qdisc *parent_qdisc;
+	u8 tclass_num;
+	u8 prio_bitmap;
 };
 
 struct mlxsw_sp_qdisc_state {
-	struct mlxsw_sp_qdisc root_qdisc;
-	struct mlxsw_sp_qdisc tclass_qdiscs[IEEE_8021QAZ_MAX_TCS];
+	struct mlxsw_sp_qdisc_class root_class;
 
 	/* When a PRIO or ETS are added, the invisible FIFOs in their bands are
 	 * created first. When notifications for these FIFOs arrive, it is not
@@ -87,112 +98,224 @@ struct mlxsw_sp_qdisc_state {
 	bool future_fifos[IEEE_8021QAZ_MAX_TCS];
 };
 
+/* Filters out events pertaining to qdiscs that either never were offloaded or
+ * are already unoffloaded, e.g. due to having been replaced by a new qdisc.
+ */
 static bool mlxsw_sp_qdisc_compare(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, u32 handle)
 {
-	return mlxsw_sp_qdisc && mlxsw_sp_qdisc->ops &&
-	       mlxsw_sp_qdisc->handle == handle;
+	return mlxsw_sp_qdisc && mlxsw_sp_qdisc->handle == handle;
 }
 
-static struct mlxsw_sp_qdisc *
-mlxsw_sp_qdisc_find(struct mlxsw_sp_port *mlxsw_sp_port, u32 parent,
-		    bool root_only)
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_walk(struct mlxsw_sp_qdisc_class *class,
+		    struct mlxsw_sp_qdisc_class *(*pre)(struct mlxsw_sp_qdisc_class *, void *),
+		    void *data)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	int tclass, child_index;
+	struct mlxsw_sp_qdisc_class *tmp;
+	unsigned i;
 
+	if (pre) {
+		tmp = pre(class, data);
+		if (tmp)
+			return tmp;
+	}
+
+	if (class->qdisc) {
+		for (i = 0; i < class->qdisc->num_classes; i++) {
+			tmp = &class->qdisc->classes[i];
+			if (tmp->qdisc) {
+				tmp = mlxsw_sp_qdisc_walk(tmp, pre, data);
+				if (tmp)
+					return tmp;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_walk_cb_find_class(struct mlxsw_sp_qdisc_class *class, void *data)
+{
+	u32 parent = *(u32 *) data;
+
+	if (class->qdisc && TC_H_MAJ(class->qdisc->handle) == TC_H_MAJ(parent)) {
+		if (class->qdisc->ops->find_class)
+			return class->qdisc->ops->find_class(class->qdisc, parent);
+	}
+
+	return NULL;
+}
+
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_find_class(struct mlxsw_sp_port *mlxsw_sp_port, u32 parent)
+{
 	if (parent == TC_H_ROOT)
-		return &qdisc_state->root_qdisc;
+		return &mlxsw_sp_port->qdisc->root_class;
+	return mlxsw_sp_qdisc_walk(&mlxsw_sp_port->qdisc->root_class,
+				   mlxsw_sp_qdisc_walk_cb_find_class, &parent);
+}
 
-	if (root_only || !qdisc_state ||
-	    !qdisc_state->root_qdisc.ops ||
-	    TC_H_MAJ(parent) != qdisc_state->root_qdisc.handle ||
-	    TC_H_MIN(parent) > IEEE_8021QAZ_MAX_TCS)
-		return NULL;
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_walk_cb_find_by_handle(struct mlxsw_sp_qdisc_class *class, void *data)
+{
+	u32 handle = *(u32 *) data;
 
-	child_index = TC_H_MIN(parent);
-	tclass = MLXSW_SP_PRIO_CHILD_TO_TCLASS(child_index);
-	return &qdisc_state->tclass_qdiscs[tclass];
+	if (class->qdisc && class->qdisc->handle == handle)
+		return class;
+	return NULL;
 }
 
 static struct mlxsw_sp_qdisc *
 mlxsw_sp_qdisc_find_by_handle(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	int i;
+	struct mlxsw_sp_qdisc_class *class;
 
-	if (qdisc_state->root_qdisc.handle == handle)
-		return &qdisc_state->root_qdisc;
-
-	if (qdisc_state->root_qdisc.handle == TC_H_UNSPEC)
-		return NULL;
-
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
-		if (qdisc_state->tclass_qdiscs[i].handle == handle)
-			return &qdisc_state->tclass_qdiscs[i];
-
+	class = mlxsw_sp_qdisc_walk(&mlxsw_sp_port->qdisc->root_class,
+				    mlxsw_sp_qdisc_walk_cb_find_by_handle, &handle);
+	if (class)
+		return class->qdisc;
 	return NULL;
 }
 
-static int
-mlxsw_sp_qdisc_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
-		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_walk_cb_set_priomap(struct mlxsw_sp_qdisc_class *class, void *data)
 {
-	int err = 0;
+	class->prio_bitmap = *(u8 *) data;
+	return NULL;
+}
 
-	if (!mlxsw_sp_qdisc)
-		return 0;
+static void mlxsw_sp_qdisc_subtree_set_priomap(struct mlxsw_sp_qdisc_class *class, u8 prio_bitmap)
+{
+	mlxsw_sp_qdisc_walk(class, mlxsw_sp_qdisc_walk_cb_set_priomap, &prio_bitmap);
+}
 
-	if (mlxsw_sp_qdisc->ops && mlxsw_sp_qdisc->ops->destroy)
-		err = mlxsw_sp_qdisc->ops->destroy(mlxsw_sp_port,
-						   mlxsw_sp_qdisc);
+static void mlxsw_sp_qdisc_reduce_parent_backlog(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
+{
+	struct mlxsw_sp_qdisc *tmp;
 
-	mlxsw_sp_qdisc->handle = TC_H_UNSPEC;
-	mlxsw_sp_qdisc->ops = NULL;
-	return err;
+	for (tmp = mlxsw_sp_qdisc->parent_class->parent_qdisc; tmp;
+	     tmp = tmp->parent_class->parent_qdisc)
+		tmp->stats_base.backlog -= mlxsw_sp_qdisc->stats_base.backlog;
 }
 
 static int
-mlxsw_sp_qdisc_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
-		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-		       struct mlxsw_sp_qdisc_ops *ops, void *params)
+mlxsw_sp_qdisc_destroy(struct mlxsw_sp_port *mlxsw_sp_port, struct mlxsw_sp_qdisc_class *class)
 {
+	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc = class->qdisc;
+	int err = 0;
+
+	if (WARN_ON(!mlxsw_sp_qdisc))
+		return 0;
+
+	mlxsw_sp_qdisc_reduce_parent_backlog(mlxsw_sp_qdisc);
+	if (mlxsw_sp_qdisc->ops->destroy)
+		err = mlxsw_sp_qdisc->ops->destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+
+	kfree(mlxsw_sp_qdisc->classes);
+	kfree(mlxsw_sp_qdisc);
+	class->qdisc = NULL;
+	return err;
+}
+
+static int mlxsw_sp_qdisc_create(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
+				 struct mlxsw_sp_qdisc_class *class,
+				 struct mlxsw_sp_qdisc_ops *ops, void *params)
+{
+	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	unsigned int i;
 	int err;
 
-	if (mlxsw_sp_qdisc->ops && mlxsw_sp_qdisc->ops->type != ops->type)
-		/* In case this location contained a different qdisc of the
-		 * same type we can override the old qdisc configuration.
-		 * Otherwise, we need to remove the old qdisc before setting the
-		 * new one.
-		 */
-		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
-	err = ops->check_params(mlxsw_sp_port, mlxsw_sp_qdisc, params);
-	if (err)
-		goto err_bad_param;
+	printk(KERN_WARNING "qdisc_create\n");
+	mlxsw_sp_qdisc = kzalloc(sizeof(*mlxsw_sp_qdisc), GFP_KERNEL);
+	if (!mlxsw_sp_qdisc)
+		return -ENOMEM;
 
+	if (ops->num_classes) {
+		mlxsw_sp_qdisc->num_classes = ops->num_classes;
+		mlxsw_sp_qdisc->classes = kcalloc(ops->num_classes,
+						  sizeof(*mlxsw_sp_qdisc->classes), GFP_KERNEL);
+		if (!mlxsw_sp_qdisc->classes)
+			goto err_classes;
+
+		for (i = 0; i < ops->num_classes; i++)
+			mlxsw_sp_qdisc->classes[i].parent_qdisc = mlxsw_sp_qdisc;
+	}
+
+	mlxsw_sp_qdisc->ops = ops;
+	mlxsw_sp_qdisc->handle = handle;
+	mlxsw_sp_qdisc->parent_class = class;
 	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params);
 	if (err)
-		goto err_config;
+		goto err_replace;
+
+	class->qdisc = mlxsw_sp_qdisc;
+	return 0;
+
+err_replace:
+	kfree(mlxsw_sp_qdisc->classes);
+err_classes:
+	kfree(mlxsw_sp_qdisc);
+	return err;
+}
+
+static int mlxsw_sp_qdisc_change(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
+				 struct mlxsw_sp_qdisc_class *class,
+				 struct mlxsw_sp_qdisc_ops *ops, void *params)
+{
+	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc = class->qdisc;
+	int err;
+
+	printk(KERN_WARNING "qdisc_change\n");
+	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params);
+	if (err)
+		goto unoffload;
 
 	/* Check if the Qdisc changed. That includes a situation where an
 	 * invisible Qdisc replaces another one, or is being added for the
 	 * first time.
 	 */
-	if (mlxsw_sp_qdisc->handle != handle || handle == TC_H_UNSPEC) {
-		mlxsw_sp_qdisc->ops = ops;
+	if (mlxsw_sp_qdisc->handle != handle) {
 		if (ops->clean_stats)
 			ops->clean_stats(mlxsw_sp_port, mlxsw_sp_qdisc);
 	}
 
+	mlxsw_sp_qdisc->ops = ops;
 	mlxsw_sp_qdisc->handle = handle;
 	return 0;
 
-err_bad_param:
-err_config:
+unoffload:
 	if (mlxsw_sp_qdisc->handle == handle && ops->unoffload)
 		ops->unoffload(mlxsw_sp_port, mlxsw_sp_qdisc, params);
-
-	mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+	mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	return err;
+}
+
+static int
+mlxsw_sp_qdisc_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
+		       struct mlxsw_sp_qdisc_class *class,
+		       struct mlxsw_sp_qdisc_ops *ops, void *params)
+{
+	int err;
+
+	if (class->qdisc && class->qdisc->ops->type != ops->type) {
+		/* In case this location contained a different qdisc of the
+		 * same type we can override the old qdisc configuration.
+		 * Otherwise, we need to remove the old qdisc before setting the
+		 * new one.
+		 */
+		printk(KERN_WARNING "killing previous tenant\n");
+		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
+	}
+
+	err = ops->check_params(mlxsw_sp_port, params);
+	if (err)
+		return err;
+
+	if (!class->qdisc)
+		return mlxsw_sp_qdisc_create(mlxsw_sp_port, handle, class, ops, params);
+	else
+		return mlxsw_sp_qdisc_change(mlxsw_sp_port, handle, class, ops, params);
 }
 
 static int
@@ -256,18 +379,15 @@ mlxsw_sp_qdisc_bstats_per_priority_get(struct mlxsw_sp_port_xstats *xstats,
 
 static void
 mlxsw_sp_qdisc_collect_tc_stats(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+				u8 prio_bitmap, int tclass_num,
 				u64 *p_tx_bytes, u64 *p_tx_packets,
 				u64 *p_drops, u64 *p_backlog)
 {
-	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
 	struct mlxsw_sp_port_xstats *xstats;
 	u64 tx_bytes, tx_packets;
 
 	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
-	mlxsw_sp_qdisc_bstats_per_priority_get(xstats,
-					       mlxsw_sp_qdisc->prio_bitmap,
-					       &tx_packets, &tx_bytes);
+	mlxsw_sp_qdisc_bstats_per_priority_get(xstats, prio_bitmap, &tx_packets, &tx_bytes);
 
 	*p_tx_packets += tx_packets;
 	*p_tx_bytes += tx_bytes;
@@ -305,12 +425,14 @@ mlxsw_sp_qdisc_get_tc_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			    struct tc_qopt_offload_stats *stats_ptr)
 {
+	u8 prio_bitmap = mlxsw_sp_qdisc->parent_class->prio_bitmap;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	u64 tx_packets = 0;
 	u64 tx_bytes = 0;
 	u64 backlog = 0;
 	u64 drops = 0;
 
-	mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+	mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, prio_bitmap, tclass_num,
 					&tx_bytes, &tx_packets,
 					&drops, &backlog);
 	mlxsw_sp_qdisc_update_stats(mlxsw_sp_port->mlxsw_sp, mlxsw_sp_qdisc,
@@ -328,6 +450,8 @@ mlxsw_sp_tclass_congestion_enable(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	int err;
 
+	printk(KERN_WARNING "congestion_enable %s TC %d RED %d ECN %d\n",
+	       mlxsw_sp_port->dev->name, tclass_num, is_wred, is_ecn);
 	mlxsw_reg_cwtp_pack(cwtp_cmd, mlxsw_sp_port->local_port, tclass_num);
 	mlxsw_reg_cwtp_profile_pack(cwtp_cmd, MLXSW_REG_CWTP_DEFAULT_PROFILE,
 				    roundup(min, MLXSW_REG_CWTP_MIN_VALUE),
@@ -360,7 +484,8 @@ static void
 mlxsw_sp_setup_tc_qdisc_red_clean_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 					struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
 {
-	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
+	u8 prio_bitmap = mlxsw_sp_qdisc->parent_class->prio_bitmap;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	struct mlxsw_sp_qdisc_stats *stats_base;
 	struct mlxsw_sp_port_xstats *xstats;
 	struct red_stats *red_base;
@@ -369,8 +494,7 @@ mlxsw_sp_setup_tc_qdisc_red_clean_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	stats_base = &mlxsw_sp_qdisc->stats_base;
 	red_base = &mlxsw_sp_qdisc->xstats_base.red;
 
-	mlxsw_sp_qdisc_bstats_per_priority_get(xstats,
-					       mlxsw_sp_qdisc->prio_bitmap,
+	mlxsw_sp_qdisc_bstats_per_priority_get(xstats, prio_bitmap,
 					       &stats_base->tx_packets,
 					       &stats_base->tx_bytes);
 	red_base->prob_drop = xstats->wred_drop[tclass_num];
@@ -386,20 +510,12 @@ static int
 mlxsw_sp_qdisc_red_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *root_qdisc = &qdisc_state->root_qdisc;
-
-	if (root_qdisc != mlxsw_sp_qdisc)
-		root_qdisc->stats_base.backlog -=
-					mlxsw_sp_qdisc->stats_base.backlog;
-
 	return mlxsw_sp_tclass_congestion_disable(mlxsw_sp_port,
-						  mlxsw_sp_qdisc->tclass_num);
+						  mlxsw_sp_qdisc->parent_class->tclass_num);
 }
 
 static int
 mlxsw_sp_qdisc_red_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
@@ -430,11 +546,16 @@ mlxsw_sp_qdisc_red_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			   void *params)
 {
+	u8 prio_bitmap = mlxsw_sp_qdisc->parent_class->prio_bitmap;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct tc_red_qopt_offload_params *p = params;
-	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
 	u32 min, max;
 	u64 prob;
+
+	printk(KERN_WARNING "red_replace\n");
+	mlxsw_sp_qdisc->classes[0].tclass_num = tclass_num;
+	mlxsw_sp_qdisc->classes[0].prio_bitmap = prio_bitmap;
 
 	/* calculate probability in percentage */
 	prob = p->probability;
@@ -477,7 +598,7 @@ mlxsw_sp_qdisc_get_red_xstats(struct mlxsw_sp_port *mlxsw_sp_port,
 			      void *xstats_ptr)
 {
 	struct red_stats *xstats_base = &mlxsw_sp_qdisc->xstats_base.red;
-	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	struct mlxsw_sp_port_xstats *xstats;
 	struct red_stats *res = xstats_ptr;
 	int early_drops, pdrops;
@@ -501,7 +622,7 @@ mlxsw_sp_qdisc_get_red_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			     struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			     struct tc_qopt_offload_stats *stats_ptr)
 {
-	u8 tclass_num = mlxsw_sp_qdisc->tclass_num;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	struct mlxsw_sp_qdisc_stats *stats_base;
 	struct mlxsw_sp_port_xstats *xstats;
 	u64 overlimits;
@@ -518,6 +639,18 @@ mlxsw_sp_qdisc_get_red_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	return 0;
 }
 
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_leaf_find_class(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, u32 parent)
+{
+	if (WARN_ON(mlxsw_sp_qdisc->num_classes != 1))
+		return NULL;
+
+	/* RED and TBF are formally classful qdiscs, but all class references,
+	 * including X:0, just refer to the same one class.
+	 */
+	return &mlxsw_sp_qdisc->classes[0];
+}
+
 #define MLXSW_SP_PORT_DEFAULT_TCLASS 0
 
 static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_red = {
@@ -529,34 +662,37 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_red = {
 	.get_stats = mlxsw_sp_qdisc_get_red_stats,
 	.get_xstats = mlxsw_sp_qdisc_get_red_xstats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_red_clean_stats,
+	.find_class = mlxsw_sp_qdisc_leaf_find_class,
+	.num_classes = 1,
 };
 
 int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct tc_red_qopt_offload *p)
 {
-	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	struct mlxsw_sp_qdisc_class *class;
 
-	mlxsw_sp_qdisc = mlxsw_sp_qdisc_find(mlxsw_sp_port, p->parent, false);
-	if (!mlxsw_sp_qdisc)
+	class = mlxsw_sp_qdisc_find_class(mlxsw_sp_port, p->parent);
+	if (!class) {
+		printk(KERN_WARNING "no class %#x\n", p->parent);
 		return -EOPNOTSUPP;
+	}
 
 	if (p->command == TC_RED_REPLACE)
-		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
-					      mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle, class,
 					      &mlxsw_sp_qdisc_ops_red,
 					      &p->set);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
+	if (!mlxsw_sp_qdisc_compare(class->qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
 	case TC_RED_DESTROY:
-		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	case TC_RED_XSTATS:
-		return mlxsw_sp_qdisc_get_xstats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_xstats(mlxsw_sp_port, class->qdisc,
 						 p->xstats);
 	case TC_RED_STATS:
-		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, class->qdisc,
 						&p->stats);
 	default:
 		return -EOPNOTSUPP;
@@ -567,12 +703,14 @@ static void
 mlxsw_sp_setup_tc_qdisc_leaf_clean_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 					 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
 {
+	u8 prio_bitmap = mlxsw_sp_qdisc->parent_class->prio_bitmap;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	u64 backlog_cells = 0;
 	u64 tx_packets = 0;
 	u64 tx_bytes = 0;
 	u64 drops = 0;
 
-	mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+	mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, prio_bitmap, tclass_num,
 					&tx_bytes, &tx_packets,
 					&drops, &backlog_cells);
 
@@ -586,16 +724,11 @@ static int
 mlxsw_sp_qdisc_tbf_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *root_qdisc = &qdisc_state->root_qdisc;
-
-	if (root_qdisc != mlxsw_sp_qdisc)
-		root_qdisc->stats_base.backlog -=
-					mlxsw_sp_qdisc->stats_base.backlog;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 
 	return mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
 					     MLXSW_REG_QEEC_HR_SUBGROUP,
-					     mlxsw_sp_qdisc->tclass_num, 0,
+					     tclass_num, 0,
 					     MLXSW_REG_QEEC_MAS_DIS, 0);
 }
 
@@ -642,7 +775,6 @@ mlxsw_sp_qdisc_tbf_rate_kbps(struct tc_tbf_qopt_offload_replace_params *p)
 
 static int
 mlxsw_sp_qdisc_tbf_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct tc_tbf_qopt_offload_replace_params *p = params;
@@ -678,10 +810,15 @@ mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			   void *params)
 {
+	u8 prio_bitmap = mlxsw_sp_qdisc->parent_class->prio_bitmap;
+	u8 tclass_num = mlxsw_sp_qdisc->parent_class->tclass_num;
 	struct tc_tbf_qopt_offload_replace_params *p = params;
 	u64 rate_kbps = mlxsw_sp_qdisc_tbf_rate_kbps(p);
 	u8 burst_size;
 	int err;
+
+	mlxsw_sp_qdisc->classes[0].tclass_num = tclass_num;
+	mlxsw_sp_qdisc->classes[0].prio_bitmap = prio_bitmap;
 
 	err = mlxsw_sp_qdisc_tbf_bs(mlxsw_sp_port, p->max_size, &burst_size);
 	if (WARN_ON_ONCE(err))
@@ -698,7 +835,7 @@ mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 	 */
 	return mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
 					     MLXSW_REG_QEEC_HR_SUBGROUP,
-					     mlxsw_sp_qdisc->tclass_num, 0,
+					     tclass_num, 0,
 					     rate_kbps, burst_size);
 }
 
@@ -730,31 +867,32 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_tbf = {
 	.destroy = mlxsw_sp_qdisc_tbf_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_tbf_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_leaf_clean_stats,
+	.find_class = mlxsw_sp_qdisc_leaf_find_class,
+	.num_classes = 1,
 };
 
 int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct tc_tbf_qopt_offload *p)
 {
-	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	struct mlxsw_sp_qdisc_class *class;
 
-	mlxsw_sp_qdisc = mlxsw_sp_qdisc_find(mlxsw_sp_port, p->parent, false);
-	if (!mlxsw_sp_qdisc)
+	class = mlxsw_sp_qdisc_find_class(mlxsw_sp_port, p->parent);
+	if (!class)
 		return -EOPNOTSUPP;
 
 	if (p->command == TC_TBF_REPLACE)
-		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
-					      mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle, class,
 					      &mlxsw_sp_qdisc_ops_tbf,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
+	if (!mlxsw_sp_qdisc_compare(class->qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
 	case TC_TBF_DESTROY:
-		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	case TC_TBF_STATS:
-		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, class->qdisc,
 						&p->stats);
 	default:
 		return -EOPNOTSUPP;
@@ -762,21 +900,7 @@ int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static int
-mlxsw_sp_qdisc_fifo_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
-{
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *root_qdisc = &qdisc_state->root_qdisc;
-
-	if (root_qdisc != mlxsw_sp_qdisc)
-		root_qdisc->stats_base.backlog -=
-					mlxsw_sp_qdisc->stats_base.backlog;
-	return 0;
-}
-
-static int
 mlxsw_sp_qdisc_fifo_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				 void *params)
 {
 	return 0;
@@ -804,16 +928,16 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_fifo = {
 	.type = MLXSW_SP_QDISC_FIFO,
 	.check_params = mlxsw_sp_qdisc_fifo_check_params,
 	.replace = mlxsw_sp_qdisc_fifo_replace,
-	.destroy = mlxsw_sp_qdisc_fifo_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_fifo_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_leaf_clean_stats,
+	.num_classes = 0,
 };
 
 int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct tc_fifo_qopt_offload *p)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	struct mlxsw_sp_qdisc_class *class;
 	int tclass, child_index;
 	u32 parent_handle;
 
@@ -821,10 +945,12 @@ int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 	 * sure that not more than one qdisc is created for a port at a time.
 	 * RTNL is a simple proxy for that.
 	 */
+	// xxx all the class management stuff needs this property. Just
+	// introduce a qdisc lock.
 	ASSERT_RTNL();
 
-	mlxsw_sp_qdisc = mlxsw_sp_qdisc_find(mlxsw_sp_port, p->parent, false);
-	if (!mlxsw_sp_qdisc && p->handle == TC_H_UNSPEC) {
+	class = mlxsw_sp_qdisc_find_class(mlxsw_sp_port, p->parent);
+	if (!class && p->handle == TC_H_UNSPEC) {
 		parent_handle = TC_H_MAJ(p->parent);
 		if (parent_handle != qdisc_state->future_handle) {
 			/* This notifications is for a different Qdisc than
@@ -844,26 +970,21 @@ int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 				qdisc_state->future_fifos[tclass] = false;
 		}
 	}
-	if (!mlxsw_sp_qdisc)
+	if (!class)
 		return -EOPNOTSUPP;
 
-	if (p->command == TC_FIFO_REPLACE) {
-		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
-					      mlxsw_sp_qdisc,
+	if (p->command == TC_FIFO_REPLACE)
+		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle, class,
 					      &mlxsw_sp_qdisc_ops_fifo, NULL);
-	}
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
+	if (!mlxsw_sp_qdisc_compare(class->qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
 	case TC_FIFO_DESTROY:
-		if (p->handle == mlxsw_sp_qdisc->handle)
-			return mlxsw_sp_qdisc_destroy(mlxsw_sp_port,
-						      mlxsw_sp_qdisc);
-		return 0;
+		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	case TC_FIFO_STATS:
-		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, class->qdisc,
 						&p->stats);
 	case TC_FIFO_REPLACE: /* Handled above. */
 		break;
@@ -875,7 +996,7 @@ int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 static int
 __mlxsw_sp_qdisc_ets_destroy(struct mlxsw_sp_port *mlxsw_sp_port)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
+	//struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
 	int i;
 
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
@@ -884,9 +1005,11 @@ __mlxsw_sp_qdisc_ets_destroy(struct mlxsw_sp_port *mlxsw_sp_port)
 		mlxsw_sp_port_ets_set(mlxsw_sp_port,
 				      MLXSW_REG_QEEC_HR_SUBGROUP,
 				      i, 0, false, 0);
+		/* xxx this should have already been done, no? What's the path to trigger this?
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port,
 				       &qdisc_state->tclass_qdiscs[i]);
 		qdisc_state->tclass_qdiscs[i].prio_bitmap = 0;
+		*/
 	}
 
 	return 0;
@@ -910,7 +1033,6 @@ __mlxsw_sp_qdisc_ets_check_params(unsigned int nbands)
 
 static int
 mlxsw_sp_qdisc_prio_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				 void *params)
 {
 	struct tc_prio_qopt_offload_params *p = params;
@@ -919,24 +1041,25 @@ mlxsw_sp_qdisc_prio_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static int
-__mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
-			     unsigned int nbands,
+__mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port,
+			     struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			     u32 handle, unsigned int nbands,
 			     const unsigned int *quanta,
 			     const unsigned int *weights,
 			     const u8 *priomap)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *child_qdisc;
-	int tclass, i, band, backlog;
-	u8 old_priomap;
+	int i, band, backlog;
 	int err;
 
 	for (band = 0; band < nbands; band++) {
-		tclass = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
-		child_qdisc = &qdisc_state->tclass_qdiscs[tclass];
-		old_priomap = child_qdisc->prio_bitmap;
-		child_qdisc->prio_bitmap = 0;
+		struct mlxsw_sp_qdisc_class *class = &mlxsw_sp_qdisc->classes[band];
+		int tclass = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
+		u8 old_priomap = class->prio_bitmap;
+		u8 new_priomap = 0;
 
+		class->tclass_num = tclass;
+		class->prio_bitmap = 0;
 		err = mlxsw_sp_port_ets_set(mlxsw_sp_port,
 					    MLXSW_REG_QEEC_HR_SUBGROUP,
 					    tclass, 0, !!quanta[band],
@@ -946,7 +1069,7 @@ __mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 
 		for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 			if (priomap[i] == band) {
-				child_qdisc->prio_bitmap |= BIT(i);
+				new_priomap |= BIT(i);
 				if (BIT(i) & old_priomap)
 					continue;
 				err = mlxsw_sp_port_prio_tc_set(mlxsw_sp_port,
@@ -955,29 +1078,35 @@ __mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 					return err;
 			}
 		}
-		if (old_priomap != child_qdisc->prio_bitmap &&
-		    child_qdisc->ops && child_qdisc->ops->clean_stats) {
-			backlog = child_qdisc->stats_base.backlog;
-			child_qdisc->ops->clean_stats(mlxsw_sp_port,
-						      child_qdisc);
-			child_qdisc->stats_base.backlog = backlog;
+
+		mlxsw_sp_qdisc_subtree_set_priomap(class, new_priomap);
+
+		if (old_priomap != new_priomap &&
+		    class->qdisc && class->qdisc->ops->clean_stats) {
+			backlog = class->qdisc->stats_base.backlog;
+			class->qdisc->ops->clean_stats(mlxsw_sp_port, class->qdisc);
+			class->qdisc->stats_base.backlog = backlog;
 		}
 
 		if (handle == qdisc_state->future_handle &&
 		    qdisc_state->future_fifos[tclass]) {
 			err = mlxsw_sp_qdisc_replace(mlxsw_sp_port, TC_H_UNSPEC,
-						     child_qdisc,
-						     &mlxsw_sp_qdisc_ops_fifo,
-						     NULL);
+						     class, &mlxsw_sp_qdisc_ops_fifo, NULL);
 			if (err)
 				return err;
 		}
 	}
 	for (; band < IEEE_8021QAZ_MAX_TCS; band++) {
-		tclass = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
-		child_qdisc = &qdisc_state->tclass_qdiscs[tclass];
-		child_qdisc->prio_bitmap = 0;
-		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, child_qdisc);
+		struct mlxsw_sp_qdisc_class *class = &mlxsw_sp_qdisc->classes[band];
+		int tclass = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
+
+		class->tclass_num = tclass;
+		class->prio_bitmap = 0;
+		// xxx either this is not necessary because we get the
+		// notifications, or it is not enough because it needs to be
+		// done for the whole subtree
+		if (class->qdisc)
+			mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 		mlxsw_sp_port_ets_set(mlxsw_sp_port,
 				      MLXSW_REG_QEEC_HR_SUBGROUP,
 				      tclass, 0, false, 0);
@@ -996,7 +1125,7 @@ mlxsw_sp_qdisc_prio_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 	struct tc_prio_qopt_offload_params *p = params;
 	unsigned int zeroes[TCQ_ETS_MAX_BANDS] = {0};
 
-	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, handle, p->bands,
+	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, mlxsw_sp_qdisc, handle, p->bands,
 					    zeroes, zeroes, p->priomap);
 }
 
@@ -1028,8 +1157,6 @@ mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			      struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			      struct tc_qopt_offload_stats *stats_ptr)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	struct mlxsw_sp_qdisc *tc_qdisc;
 	u64 tx_packets = 0;
 	u64 tx_bytes = 0;
 	u64 backlog = 0;
@@ -1037,8 +1164,11 @@ mlxsw_sp_qdisc_get_prio_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	int i;
 
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		tc_qdisc = &qdisc_state->tclass_qdiscs[i];
-		mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, tc_qdisc,
+		struct mlxsw_sp_qdisc_class *class = &mlxsw_sp_qdisc->classes[i];
+		u8 prio_bitmap = class->prio_bitmap;
+		u8 tclass_num = class->tclass_num;
+
+		mlxsw_sp_qdisc_collect_tc_stats(mlxsw_sp_port, prio_bitmap, tclass_num,
 						&tx_bytes, &tx_packets,
 						&drops, &backlog);
 	}
@@ -1074,6 +1204,16 @@ mlxsw_sp_setup_tc_qdisc_prio_clean_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	mlxsw_sp_qdisc->stats_base.backlog = 0;
 }
 
+static struct mlxsw_sp_qdisc_class *
+mlxsw_sp_qdisc_prio_find_class(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, u32 parent)
+{
+	int child_index = TC_H_MIN(parent);
+
+	if (child_index < 1 || child_index > mlxsw_sp_qdisc->num_classes)
+		return NULL;
+	return &mlxsw_sp_qdisc->classes[child_index - 1];
+}
+
 static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_prio = {
 	.type = MLXSW_SP_QDISC_PRIO,
 	.check_params = mlxsw_sp_qdisc_prio_check_params,
@@ -1082,11 +1222,12 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_prio = {
 	.destroy = mlxsw_sp_qdisc_prio_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_prio_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_prio_clean_stats,
+	.find_class = mlxsw_sp_qdisc_prio_find_class,
+	.num_classes = 8,
 };
 
 static int
 mlxsw_sp_qdisc_ets_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct tc_ets_qopt_offload_replace_params *p = params;
@@ -1101,7 +1242,7 @@ mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 {
 	struct tc_ets_qopt_offload_replace_params *p = params;
 
-	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, handle, p->bands,
+	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, mlxsw_sp_qdisc, handle, p->bands,
 					    p->quanta, p->weights, p->priomap);
 }
 
@@ -1131,6 +1272,8 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_ets = {
 	.destroy = mlxsw_sp_qdisc_ets_destroy,
 	.get_stats = mlxsw_sp_qdisc_get_prio_stats,
 	.clean_stats = mlxsw_sp_setup_tc_qdisc_prio_clean_stats,
+	.find_class = mlxsw_sp_qdisc_prio_find_class,
+	.num_classes = 8,
 };
 
 /* Linux allows linking of Qdiscs to arbitrary classes (so long as the resulting
@@ -1163,31 +1306,34 @@ __mlxsw_sp_qdisc_ets_graft(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			   u8 band, u32 child_handle)
 {
-	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
-	int tclass_num = MLXSW_SP_PRIO_BAND_TO_TCLASS(band);
+	struct mlxsw_sp_qdisc_class *class;
 	struct mlxsw_sp_qdisc *old_qdisc;
 
-	if (band < IEEE_8021QAZ_MAX_TCS &&
-	    qdisc_state->tclass_qdiscs[tclass_num].handle == child_handle)
-		return 0;
+	if (band < mlxsw_sp_qdisc->num_classes) {
+		class = &mlxsw_sp_qdisc->classes[band];
+		if (class->qdisc && class->qdisc->handle == child_handle)
+			return 0;
+	}
 
 	if (!child_handle) {
 		/* This is an invisible FIFO replacing the original Qdisc.
 		 * Ignore it--the original Qdisc's destroy will follow.
 		 */
+		// xxx why is this necessary?
 		return 0;
 	}
 
 	/* See if the grafted qdisc is already offloaded on any tclass. If so,
 	 * unoffload it.
 	 */
-	old_qdisc = mlxsw_sp_qdisc_find_by_handle(mlxsw_sp_port,
-						  child_handle);
+	old_qdisc = mlxsw_sp_qdisc_find_by_handle(mlxsw_sp_port, child_handle);
 	if (old_qdisc)
-		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, old_qdisc);
+		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, old_qdisc->parent_class);
 
-	mlxsw_sp_qdisc_destroy(mlxsw_sp_port,
-			       &qdisc_state->tclass_qdiscs[tclass_num]);
+	class = mlxsw_sp_qdisc_prio_find_class(mlxsw_sp_qdisc, band);
+	if (!WARN_ON(!class))
+		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
+
 	return -EOPNOTSUPP;
 }
 
@@ -1203,29 +1349,28 @@ mlxsw_sp_qdisc_prio_graft(struct mlxsw_sp_port *mlxsw_sp_port,
 int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct tc_prio_qopt_offload *p)
 {
-	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	struct mlxsw_sp_qdisc_class *class;
 
-	mlxsw_sp_qdisc = mlxsw_sp_qdisc_find(mlxsw_sp_port, p->parent, true);
-	if (!mlxsw_sp_qdisc)
+	class = mlxsw_sp_qdisc_find_class(mlxsw_sp_port, p->parent);
+	if (!class)
 		return -EOPNOTSUPP;
 
 	if (p->command == TC_PRIO_REPLACE)
-		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
-					      mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle, class,
 					      &mlxsw_sp_qdisc_ops_prio,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
+	if (!mlxsw_sp_qdisc_compare(class->qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
 	case TC_PRIO_DESTROY:
-		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	case TC_PRIO_STATS:
-		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, class->qdisc,
 						&p->stats);
 	case TC_PRIO_GRAFT:
-		return mlxsw_sp_qdisc_prio_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_prio_graft(mlxsw_sp_port, class->qdisc,
 						 &p->graft_params);
 	default:
 		return -EOPNOTSUPP;
@@ -1235,29 +1380,28 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
 			  struct tc_ets_qopt_offload *p)
 {
-	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
+	struct mlxsw_sp_qdisc_class *class;
 
-	mlxsw_sp_qdisc = mlxsw_sp_qdisc_find(mlxsw_sp_port, p->parent, true);
-	if (!mlxsw_sp_qdisc)
+	class = mlxsw_sp_qdisc_find_class(mlxsw_sp_port, p->parent);
+	if (!class)
 		return -EOPNOTSUPP;
 
 	if (p->command == TC_ETS_REPLACE)
-		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
-					      mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle, class,
 					      &mlxsw_sp_qdisc_ops_ets,
 					      &p->replace_params);
 
-	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
+	if (!mlxsw_sp_qdisc_compare(class->qdisc, p->handle))
 		return -EOPNOTSUPP;
 
 	switch (p->command) {
 	case TC_ETS_DESTROY:
-		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
+		return mlxsw_sp_qdisc_destroy(mlxsw_sp_port, class);
 	case TC_ETS_STATS:
-		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return mlxsw_sp_qdisc_get_stats(mlxsw_sp_port, class->qdisc,
 						&p->stats);
 	case TC_ETS_GRAFT:
-		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, mlxsw_sp_qdisc,
+		return __mlxsw_sp_qdisc_ets_graft(mlxsw_sp_port, class->qdisc,
 						  p->graft_params.band,
 						  p->graft_params.child_handle);
 	default:
@@ -1715,14 +1859,14 @@ mlxsw_sp_setup_tc_block_qevent_bind(struct mlxsw_sp_port *mlxsw_sp_port,
 	}
 
 	if (WARN_ON(mlxsw_sp_qevent_binding_lookup(qevent_block, mlxsw_sp_port,
-						   qdisc->tclass_num,
+						   qdisc->parent_class->tclass_num,
 						   span_trigger))) {
 		err = -EEXIST;
 		goto err_binding_exists;
 	}
 
 	qevent_binding = mlxsw_sp_qevent_binding_create(mlxsw_sp_port,
-							qdisc->tclass_num,
+							qdisc->parent_class->tclass_num,
 							span_trigger);
 	if (IS_ERR(qevent_binding)) {
 		err = PTR_ERR(qevent_binding);
@@ -1762,7 +1906,7 @@ mlxsw_sp_setup_tc_block_qevent_unbind(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp_qevent_binding *qevent_binding;
 	struct mlxsw_sp_qevent_block *qevent_block;
 	struct flow_block_cb *block_cb;
-	int tclass, child_index;
+	int tclass_num, child_index;
 
 	block_cb = flow_block_cb_lookup(f->block, mlxsw_sp_qevent_block_cb,
 					mlxsw_sp);
@@ -1776,10 +1920,10 @@ mlxsw_sp_setup_tc_block_qevent_unbind(struct mlxsw_sp_port *mlxsw_sp_port,
 	 * binding, so the unbind request is legit, too.
 	 */
 	child_index = TC_H_MIN(f->sch->parent);
-	tclass = MLXSW_SP_PRIO_CHILD_TO_TCLASS(child_index);
+	tclass_num = MLXSW_SP_PRIO_CHILD_TO_TCLASS(child_index);
 
 	qevent_binding = mlxsw_sp_qevent_binding_lookup(qevent_block,
-							mlxsw_sp_port, tclass,
+							mlxsw_sp_port, tclass_num,
 							span_trigger);
 	if (!qevent_binding)
 		return;
@@ -1828,22 +1972,18 @@ int mlxsw_sp_setup_tc_block_qevent(struct mlxsw_sp_port *mlxsw_sp_port,
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state;
-	int i;
 
 	qdisc_state = kzalloc(sizeof(*qdisc_state), GFP_KERNEL);
 	if (!qdisc_state)
 		return -ENOMEM;
 
-	qdisc_state->root_qdisc.prio_bitmap = 0xff;
-	qdisc_state->root_qdisc.tclass_num = MLXSW_SP_PORT_DEFAULT_TCLASS;
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
-		qdisc_state->tclass_qdiscs[i].tclass_num = i;
-
+	qdisc_state->root_class.prio_bitmap = 0xff;
 	mlxsw_sp_port->qdisc = qdisc_state;
 	return 0;
 }
 
 void mlxsw_sp_tc_qdisc_fini(struct mlxsw_sp_port *mlxsw_sp_port)
 {
+	WARN_ON(mlxsw_sp_port->qdisc->root_class.qdisc);
 	kfree(mlxsw_sp_port->qdisc);
 }
