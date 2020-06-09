@@ -28,7 +28,6 @@ struct mlxsw_sp_qdisc;
 struct mlxsw_sp_qdisc_ops {
 	enum mlxsw_sp_qdisc_type type;
 	int (*check_params)(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			    void *params);
 	int (*replace)(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params);
@@ -167,7 +166,7 @@ mlxsw_sp_qdisc_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		 * new one.
 		 */
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
-	err = ops->check_params(mlxsw_sp_port, mlxsw_sp_qdisc, params);
+	err = ops->check_params(mlxsw_sp_port, params);
 	if (err)
 		goto err_bad_param;
 
@@ -401,7 +400,6 @@ mlxsw_sp_qdisc_red_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int
 mlxsw_sp_qdisc_red_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
@@ -645,7 +643,6 @@ mlxsw_sp_qdisc_tbf_rate_kbps(struct tc_tbf_qopt_offload_replace_params *p)
 
 static int
 mlxsw_sp_qdisc_tbf_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct tc_tbf_qopt_offload_replace_params *p = params;
@@ -780,7 +777,6 @@ mlxsw_sp_qdisc_fifo_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int
 mlxsw_sp_qdisc_fifo_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				 void *params)
 {
 	return 0;
@@ -915,7 +911,6 @@ __mlxsw_sp_qdisc_ets_check_params(unsigned int nbands)
 
 static int
 mlxsw_sp_qdisc_prio_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				 void *params)
 {
 	struct tc_prio_qopt_offload_params *p = params;
@@ -1091,7 +1086,6 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_prio = {
 
 static int
 mlxsw_sp_qdisc_ets_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
-				struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 				void *params)
 {
 	struct tc_ets_qopt_offload_replace_params *p = params;
