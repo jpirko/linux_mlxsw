@@ -678,7 +678,7 @@ static int tcf_block_offload_cmd(struct tcf_block *block,
 			       extack);
 
 	if (dev->netdev_ops->ndo_setup_tc)
-		err = dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_BLOCK, &bo);
+		err = dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_BLOCK, &bo, extack);
 	else
 		err = flow_indr_dev_setup_offload(dev, TC_SETUP_BLOCK, block,
 						  &bo, tc_block_indr_cleanup);

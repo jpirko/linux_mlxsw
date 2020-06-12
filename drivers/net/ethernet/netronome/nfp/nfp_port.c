@@ -47,7 +47,7 @@ int nfp_port_get_port_parent_id(struct net_device *netdev,
 }
 
 int nfp_port_setup_tc(struct net_device *netdev, enum tc_setup_type type,
-		      void *type_data)
+		      void *type_data, struct netlink_ext_ack *extack)
 {
 	struct nfp_port *port;
 

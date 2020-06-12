@@ -52,7 +52,7 @@ static int pfifo_tail_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	return NET_XMIT_CN;
 }
 
-static void fifo_offload_init(struct Qdisc *sch)
+static void fifo_offload_init(struct Qdisc *sch, struct netlink_ext_ack *extack)
 {
 	struct net_device *dev = qdisc_dev(sch);
 	struct tc_fifo_qopt_offload qopt;
@@ -63,7 +63,7 @@ static void fifo_offload_init(struct Qdisc *sch)
 	qopt.command = TC_FIFO_REPLACE;
 	qopt.handle = sch->handle;
 	qopt.parent = sch->parent;
-	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_FIFO, &qopt);
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_FIFO, &qopt, extack);
 }
 
 static void fifo_offload_destroy(struct Qdisc *sch)
@@ -77,7 +77,7 @@ static void fifo_offload_destroy(struct Qdisc *sch)
 	qopt.command = TC_FIFO_DESTROY;
 	qopt.handle = sch->handle;
 	qopt.parent = sch->parent;
-	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_FIFO, &qopt);
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_FIFO, &qopt, NULL);
 }
 
 static int fifo_offload_dump(struct Qdisc *sch)
@@ -137,7 +137,7 @@ static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 	if (err)
 		return err;
 
-	fifo_offload_init(sch);
+	fifo_offload_init(sch, extack);
 	return 0;
 }
 

@@ -360,7 +360,7 @@ static int aq_validate_mqprio_opt(struct aq_nic_s *self,
 }
 
 static int aq_ndo_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			   void *type_data)
+			   void *type_data, struct netlink_ext_ack *extack)
 {
 	struct tc_mqprio_qopt_offload *mqprio = type_data;
 	struct aq_nic_s *aq_nic = netdev_priv(dev);

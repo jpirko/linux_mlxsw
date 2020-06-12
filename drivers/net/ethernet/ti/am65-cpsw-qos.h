@@ -22,7 +22,7 @@ struct am65_cpsw_qos {
 };
 
 int am65_cpsw_qos_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
-			       void *type_data);
+			       void *type_data, struct netlink_ext_ack *extack);
 void am65_cpsw_qos_link_up(struct net_device *ndev, int link_speed);
 void am65_cpsw_qos_link_down(struct net_device *ndev);
 

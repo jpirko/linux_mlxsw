@@ -139,7 +139,8 @@ prio_reset(struct Qdisc *sch)
 	sch->q.qlen = 0;
 }
 
-static int prio_offload(struct Qdisc *sch, struct tc_prio_qopt *qopt)
+static int prio_offload(struct Qdisc *sch, struct tc_prio_qopt *qopt,
+			struct netlink_ext_ack *extack)
 {
 	struct net_device *dev = qdisc_dev(sch);
 	struct tc_prio_qopt_offload opt = {
@@ -160,7 +161,7 @@ static int prio_offload(struct Qdisc *sch, struct tc_prio_qopt *qopt)
 		opt.command = TC_PRIO_DESTROY;
 	}
 
-	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_PRIO, &opt);
+	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_PRIO, &opt, extack);
 }
 
 static void
@@ -170,7 +171,7 @@ prio_destroy(struct Qdisc *sch)
 	struct prio_sched_data *q = qdisc_priv(sch);
 
 	tcf_block_put(q->block);
-	prio_offload(sch, NULL);
+	prio_offload(sch, NULL, NULL);
 	for (prio = 0; prio < q->bands; prio++)
 		qdisc_put(q->queues[prio]);
 }
@@ -207,7 +208,7 @@ static int prio_tune(struct Qdisc *sch, struct nlattr *opt,
 		}
 	}
 
-	prio_offload(sch, qopt);
+	prio_offload(sch, qopt, extack);
 	sch_tree_lock(sch);
 	q->bands = qopt->bands;
 	memcpy(q->prio2band, qopt->priomap, TC_PRIO_MAX+1);

@@ -17,6 +17,6 @@ struct ocelot_port_tc {
 };
 
 int ocelot_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		    void *type_data);
+		    void *type_data, struct netlink_ext_ack *extack);
 
 #endif /* _MSCC_OCELOT_TC_H_ */

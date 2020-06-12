@@ -585,7 +585,7 @@ void efx_init_tx_queue_core_txq(struct efx_tx_queue *tx_queue)
 }
 
 int efx_setup_tc(struct net_device *net_dev, enum tc_setup_type type,
-		 void *type_data)
+		 void *type_data, struct netlink_ext_ack *extack)
 {
 	struct efx_nic *efx = netdev_priv(net_dev);
 	struct tc_mqprio_qopt *mqprio = type_data;

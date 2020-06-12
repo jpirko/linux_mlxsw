@@ -165,7 +165,7 @@ static int ocelot_setup_tc_block(struct ocelot_port_private *priv,
 }
 
 int ocelot_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		    void *type_data)
+		    void *type_data, struct netlink_ext_ack *extack)
 {
 	struct ocelot_port_private *priv = netdev_priv(dev);
 

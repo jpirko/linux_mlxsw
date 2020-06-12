@@ -1876,7 +1876,7 @@ static int netcp_rx_kill_vid(struct net_device *ndev, __be16 proto, u16 vid)
 }
 
 static int netcp_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			  void *type_data)
+			  void *type_data, struct netlink_ext_ack *extack)
 {
 	struct tc_mqprio_qopt *mqprio = type_data;
 	u8 num_tc;

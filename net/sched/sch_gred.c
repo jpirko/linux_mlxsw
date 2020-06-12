@@ -307,7 +307,8 @@ static void gred_reset(struct Qdisc *sch)
 	}
 }
 
-static void gred_offload(struct Qdisc *sch, enum tc_gred_command command)
+static void gred_offload(struct Qdisc *sch, enum tc_gred_command command,
+			 struct netlink_ext_ack *extack)
 {
 	struct gred_sched *table = qdisc_priv(sch);
 	struct net_device *dev = qdisc_dev(sch);
@@ -346,7 +347,7 @@ static void gred_offload(struct Qdisc *sch, enum tc_gred_command command)
 		opt.set.qstats = &sch->qstats;
 	}
 
-	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_GRED, &opt);
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_GRED, &opt, extack);
 }
 
 static int gred_offload_dump_stats(struct Qdisc *sch)
@@ -467,7 +468,7 @@ static int gred_change_table_def(struct Qdisc *sch, struct nlattr *dps,
 		}
 	}
 
-	gred_offload(sch, TC_GRED_REPLACE);
+	gred_offload(sch, TC_GRED_REPLACE, extack);
 	return 0;
 }
 
@@ -716,7 +717,7 @@ static int gred_change(struct Qdisc *sch, struct nlattr *opt,
 	sch_tree_unlock(sch);
 	kfree(prealloc);
 
-	gred_offload(sch, TC_GRED_REPLACE);
+	gred_offload(sch, TC_GRED_REPLACE, extack);
 	return 0;
 
 err_unlock_free:
@@ -906,7 +907,7 @@ static void gred_destroy(struct Qdisc *sch)
 		if (table->tab[i])
 			gred_destroy_vq(table->tab[i]);
 	}
-	gred_offload(sch, TC_GRED_DESTROY);
+	gred_offload(sch, TC_GRED_DESTROY, NULL);
 }
 
 static struct Qdisc_ops gred_qdisc_ops __read_mostly = {

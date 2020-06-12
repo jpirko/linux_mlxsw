@@ -489,7 +489,7 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev);
 /* setup_tc callback */
 int bnx2x_setup_tc(struct net_device *dev, u8 num_tc);
 int __bnx2x_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		     void *type_data);
+		     void *type_data, struct netlink_ext_ack *extack);
 
 int bnx2x_get_vf_config(struct net_device *dev, int vf,
 			struct ifla_vf_info *ivi);

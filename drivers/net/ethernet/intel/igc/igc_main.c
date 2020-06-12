@@ -4826,7 +4826,7 @@ static int igc_tsn_enable_qbv_scheduling(struct igc_adapter *adapter,
 }
 
 static int igc_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			void *type_data)
+			void *type_data, struct netlink_ext_ack *extack)
 {
 	struct igc_adapter *adapter = netdev_priv(dev);
 

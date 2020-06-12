@@ -9639,7 +9639,7 @@ static int ixgbe_setup_tc_mqprio(struct net_device *dev,
 static LIST_HEAD(ixgbe_block_cb_list);
 
 static int __ixgbe_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			    void *type_data)
+			    void *type_data, struct netlink_ext_ack *extack)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 

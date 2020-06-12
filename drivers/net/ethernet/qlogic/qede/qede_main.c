@@ -640,7 +640,7 @@ static LIST_HEAD(qede_block_cb_list);
 
 static int
 qede_setup_tc_offload(struct net_device *dev, enum tc_setup_type type,
-		      void *type_data)
+		      void *type_data, struct netlink_ext_ack *extack)
 {
 	struct qede_dev *edev = netdev_priv(dev);
 	struct tc_mqprio_qopt *mqprio;

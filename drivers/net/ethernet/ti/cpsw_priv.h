@@ -456,7 +456,7 @@ int cpsw_need_resplit(struct cpsw_common *cpsw);
 int cpsw_ndo_ioctl(struct net_device *dev, struct ifreq *req, int cmd);
 int cpsw_ndo_set_tx_maxrate(struct net_device *ndev, int queue, u32 rate);
 int cpsw_ndo_setup_tc(struct net_device *ndev, enum tc_setup_type type,
-		      void *type_data);
+		      void *type_data, struct netlink_ext_ack *extack);
 bool cpsw_shp_is_off(struct cpsw_priv *priv);
 void cpsw_cbs_resume(struct cpsw_slave *slave, struct cpsw_priv *priv);
 void cpsw_mqprio_resume(struct cpsw_slave *slave, struct cpsw_priv *priv);

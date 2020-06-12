@@ -102,7 +102,7 @@ static u32 ets_class_id(struct Qdisc *sch, const struct ets_class *cl)
 	return TC_H_MAKE(sch->handle, band + 1);
 }
 
-static void ets_offload_change(struct Qdisc *sch)
+static void ets_offload_change(struct Qdisc *sch, struct netlink_ext_ack *extack)
 {
 	struct net_device *dev = qdisc_dev(sch);
 	struct ets_sched *q = qdisc_priv(sch);
@@ -140,7 +140,7 @@ static void ets_offload_change(struct Qdisc *sch)
 		qopt.replace_params.weights[i] = weight;
 	}
 
-	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_ETS, &qopt);
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_ETS, &qopt, extack);
 }
 
 static void ets_offload_destroy(struct Qdisc *sch)
@@ -154,7 +154,7 @@ static void ets_offload_destroy(struct Qdisc *sch)
 	qopt.command = TC_ETS_DESTROY;
 	qopt.handle = sch->handle;
 	qopt.parent = sch->parent;
-	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_ETS, &qopt);
+	dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_ETS, &qopt, NULL);
 }
 
 static void ets_offload_graft(struct Qdisc *sch, struct Qdisc *new,
@@ -240,7 +240,7 @@ static int ets_class_change(struct Qdisc *sch, u32 classid, u32 parentid,
 	cl->quantum = quantum;
 	sch_tree_unlock(sch);
 
-	ets_offload_change(sch);
+	ets_offload_change(sch, extack);
 	return 0;
 }
 
@@ -677,7 +677,7 @@ static int ets_qdisc_change(struct Qdisc *sch, struct nlattr *opt,
 
 	sch_tree_unlock(sch);
 
-	ets_offload_change(sch);
+	ets_offload_change(sch, extack);
 	for (i = q->nbands; i < oldbands; i++) {
 		qdisc_put(q->classes[i].qdisc);
 		memset(&q->classes[i], 0, sizeof(q->classes[i]));

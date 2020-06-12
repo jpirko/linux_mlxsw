@@ -206,7 +206,8 @@ static int nsim_set_vf_link_state(struct net_device *dev, int vf, int state)
 static LIST_HEAD(nsim_block_cb_list);
 
 static int
-nsim_setup_tc(struct net_device *dev, enum tc_setup_type type, void *type_data)
+nsim_setup_tc(struct net_device *dev, enum tc_setup_type type, void *type_data,
+	      struct netlink_ext_ack *extack)
 {
 	struct netdevsim *ns = netdev_priv(dev);
 

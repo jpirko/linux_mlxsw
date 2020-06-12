@@ -3390,7 +3390,7 @@ static int cxgb_setup_tc_block(struct net_device *dev,
 }
 
 static int cxgb_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			 void *type_data)
+			 void *type_data, struct netlink_ext_ack *extack)
 {
 	switch (type) {
 	case TC_SETUP_QDISC_MQPRIO:

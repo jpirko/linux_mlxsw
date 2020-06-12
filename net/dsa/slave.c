@@ -1151,7 +1151,7 @@ static int dsa_slave_setup_tc_block(struct net_device *dev,
 }
 
 static int dsa_slave_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			      void *type_data)
+			      void *type_data, struct netlink_ext_ack *extack)
 {
 	struct dsa_port *dp = dsa_slave_to_port(dev);
 	struct dsa_switch *ds = dp->ds;

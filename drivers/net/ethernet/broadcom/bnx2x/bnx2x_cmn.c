@@ -4298,7 +4298,7 @@ int bnx2x_setup_tc(struct net_device *dev, u8 num_tc)
 }
 
 int __bnx2x_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		     void *type_data)
+		     void *type_data, struct netlink_ext_ack *extack)
 {
 	struct tc_mqprio_qopt *mqprio = type_data;
 

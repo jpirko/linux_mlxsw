@@ -1709,7 +1709,7 @@ static int hns3_setup_tc(struct net_device *netdev, void *type_data)
 }
 
 static int hns3_nic_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			     void *type_data)
+			     void *type_data, struct netlink_ext_ack *extack)
 {
 	if (type != TC_SETUP_QDISC_MQPRIO)
 		return -EOPNOTSUPP;

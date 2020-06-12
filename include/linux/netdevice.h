@@ -1086,7 +1086,7 @@ struct netdev_net_notifier {
  * int (*ndo_set_vf_rss_query_en)(struct net_device *dev, int vf, bool setting);
  * int (*ndo_get_vf_port)(struct net_device *dev, int vf, struct sk_buff *skb);
  * int (*ndo_setup_tc)(struct net_device *dev, enum tc_setup_type type,
- *		       void *type_data);
+ *		       void *type_data, struct netlink_ext_ack *extack);
  *	Called to setup any 'tc' scheduler, classifier or action on @dev.
  *	This is always called from the stack with the rtnl lock held and netif
  *	tx queues stopped. This allows the netdevice to perform queue
@@ -1365,7 +1365,8 @@ struct net_device_ops {
 						   int vf, bool setting);
 	int			(*ndo_setup_tc)(struct net_device *dev,
 						enum tc_setup_type type,
-						void *type_data);
+						void *type_data,
+						struct netlink_ext_ack *extack);
 #if IS_ENABLED(CONFIG_FCOE)
 	int			(*ndo_fcoe_enable)(struct net_device *dev);
 	int			(*ndo_fcoe_disable)(struct net_device *dev);

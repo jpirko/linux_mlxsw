@@ -21,7 +21,7 @@ struct mq_sched {
 	struct Qdisc		**qdiscs;
 };
 
-static int mq_offload(struct Qdisc *sch, enum tc_mq_command cmd)
+static int mq_offload(struct Qdisc *sch, enum tc_mq_command cmd, struct netlink_ext_ack *extack)
 {
 	struct net_device *dev = qdisc_dev(sch);
 	struct tc_mq_qopt_offload opt = {
@@ -32,7 +32,7 @@ static int mq_offload(struct Qdisc *sch, enum tc_mq_command cmd)
 	if (!tc_can_offload(dev) || !dev->netdev_ops->ndo_setup_tc)
 		return -EOPNOTSUPP;
 
-	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_MQ, &opt);
+	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_MQ, &opt, extack);
 }
 
 static int mq_offload_stats(struct Qdisc *sch)
@@ -55,7 +55,7 @@ static void mq_destroy(struct Qdisc *sch)
 	struct mq_sched *priv = qdisc_priv(sch);
 	unsigned int ntx;
 
-	mq_offload(sch, TC_MQ_DESTROY);
+	mq_offload(sch, TC_MQ_DESTROY, NULL);
 
 	if (!priv->qdiscs)
 		return;
@@ -99,7 +99,7 @@ static int mq_init(struct Qdisc *sch, struct nlattr *opt,
 
 	sch->flags |= TCQ_F_MQROOT;
 
-	mq_offload(sch, TC_MQ_CREATE);
+	mq_offload(sch, TC_MQ_CREATE, extack);
 	return 0;
 }
 

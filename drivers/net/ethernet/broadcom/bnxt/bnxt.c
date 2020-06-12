@@ -11067,7 +11067,7 @@ static int bnxt_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 LIST_HEAD(bnxt_block_cb_list);
 
 static int bnxt_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			 void *type_data)
+			 void *type_data, struct netlink_ext_ack *extack)
 {
 	struct bnxt *bp = netdev_priv(dev);
 

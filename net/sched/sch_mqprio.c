@@ -49,7 +49,7 @@ static void mqprio_destroy(struct Qdisc *sch)
 		case TC_MQPRIO_MODE_CHANNEL:
 			dev->netdev_ops->ndo_setup_tc(dev,
 						      TC_SETUP_QDISC_MQPRIO,
-						      &mqprio);
+						      &mqprio, NULL);
 			break;
 		default:
 			return;
@@ -266,7 +266,7 @@ static int mqprio_init(struct Qdisc *sch, struct nlattr *opt,
 		}
 		err = dev->netdev_ops->ndo_setup_tc(dev,
 						    TC_SETUP_QDISC_MQPRIO,
-						    &mqprio);
+						    &mqprio, extack);
 		if (err)
 			return err;
 

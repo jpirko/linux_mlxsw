@@ -2097,7 +2097,8 @@ static int update_xps(struct dpaa2_eth_priv *priv)
 }
 
 static int dpaa2_eth_setup_tc(struct net_device *net_dev,
-			      enum tc_setup_type type, void *type_data)
+			      enum tc_setup_type type, void *type_data,
+			      struct netlink_ext_ack *extack)
 {
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 	struct tc_mqprio_qopt *mqprio = type_data;

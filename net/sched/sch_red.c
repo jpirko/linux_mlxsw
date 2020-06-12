@@ -169,7 +169,7 @@ static void red_reset(struct Qdisc *sch)
 	red_restart(&q->vars);
 }
 
-static int red_offload(struct Qdisc *sch, bool enable)
+static int red_offload(struct Qdisc *sch, bool enable, struct netlink_ext_ack *extack)
 {
 	struct red_sched_data *q = qdisc_priv(sch);
 	struct net_device *dev = qdisc_dev(sch);
@@ -195,7 +195,7 @@ static int red_offload(struct Qdisc *sch, bool enable)
 		opt.command = TC_RED_DESTROY;
 	}
 
-	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED, &opt);
+	return dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED, &opt, extack);
 }
 
 static void red_destroy(struct Qdisc *sch)
@@ -203,7 +203,7 @@ static void red_destroy(struct Qdisc *sch)
 	struct red_sched_data *q = qdisc_priv(sch);
 
 	del_timer_sync(&q->adapt_timer);
-	red_offload(sch, false);
+	red_offload(sch, false, NULL);
 	qdisc_put(q->qdisc);
 }
 
@@ -294,7 +294,7 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt,
 
 	sch_tree_unlock(sch);
 
-	red_offload(sch, true);
+	red_offload(sch, true, extack);
 
 	if (old_child)
 		qdisc_put(old_child);
@@ -396,7 +396,7 @@ static int red_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 			},
 		};
 		dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED,
-					      &hw_stats_request);
+					      &hw_stats_request, NULL);
 	}
 	st.early = q->stats.prob_drop + q->stats.forced_drop;
 	st.pdrop = q->stats.pdrop;

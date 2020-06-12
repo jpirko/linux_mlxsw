@@ -818,7 +818,7 @@ int qdisc_offload_dump_helper(struct Qdisc *sch, enum tc_setup_type type,
 	if (!tc_can_offload(dev) || !dev->netdev_ops->ndo_setup_tc)
 		return 0;
 
-	err = dev->netdev_ops->ndo_setup_tc(dev, type, type_data);
+	err = dev->netdev_ops->ndo_setup_tc(dev, type, type_data, NULL);
 	if (err == -EOPNOTSUPP)
 		return 0;
 
@@ -840,7 +840,7 @@ void qdisc_offload_graft_helper(struct net_device *dev, struct Qdisc *sch,
 	if (!tc_can_offload(dev) || !dev->netdev_ops->ndo_setup_tc)
 		return;
 
-	err = dev->netdev_ops->ndo_setup_tc(dev, type, type_data);
+	err = dev->netdev_ops->ndo_setup_tc(dev, type, type_data, extack);
 
 	/* Don't report error if the graft is part of destroy operation. */
 	if (!err || !new || new == &noop_qdisc)

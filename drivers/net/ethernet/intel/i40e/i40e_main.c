@@ -8164,7 +8164,7 @@ static int i40e_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 static LIST_HEAD(i40e_block_cb_list);
 
 static int __i40e_setup_tc(struct net_device *netdev, enum tc_setup_type type,
-			   void *type_data)
+			   void *type_data, struct netlink_ext_ack *extack)
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 

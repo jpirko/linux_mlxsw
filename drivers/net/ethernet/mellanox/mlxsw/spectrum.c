@@ -1351,7 +1351,7 @@ static int mlxsw_sp_port_kill_vid(struct net_device *dev,
 }
 
 static int mlxsw_sp_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			     void *type_data)
+			     void *type_data, struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 

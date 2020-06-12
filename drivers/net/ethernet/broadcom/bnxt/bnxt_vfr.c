@@ -164,7 +164,7 @@ static int bnxt_vf_rep_setup_tc_block_cb(enum tc_setup_type type,
 static LIST_HEAD(bnxt_vf_block_cb_list);
 
 static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
-				void *type_data)
+				void *type_data, struct netlink_ext_ack *extack)
 {
 	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
 

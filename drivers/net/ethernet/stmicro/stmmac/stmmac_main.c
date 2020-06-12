@@ -4202,7 +4202,7 @@ static int stmmac_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 static LIST_HEAD(stmmac_block_cb_list);
 
 static int stmmac_setup_tc(struct net_device *ndev, enum tc_setup_type type,
-			   void *type_data)
+			   void *type_data, struct netlink_ext_ack *extack)
 {
 	struct stmmac_priv *priv = netdev_priv(ndev);
 

@@ -32,7 +32,7 @@ void mlx5e_rep_encap_entry_detach(struct mlx5e_priv *priv,
 				  struct mlx5e_encap_entry *e);
 
 int mlx5e_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		       void *type_data);
+		       void *type_data, struct netlink_ext_ack *extack);
 
 bool mlx5e_rep_tc_update_skb(struct mlx5_cqe64 *cqe,
 			     struct sk_buff *skb,

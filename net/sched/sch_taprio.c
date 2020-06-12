@@ -1226,7 +1226,7 @@ static int taprio_enable_offload(struct net_device *dev,
 	offload->enable = 1;
 	taprio_sched_to_offload(q, sched, mqprio, offload);
 
-	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_TAPRIO, offload);
+	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_TAPRIO, offload, extack);
 	if (err < 0) {
 		NL_SET_ERR_MSG(extack,
 			       "Device failed to setup taprio offload");
@@ -1261,7 +1261,7 @@ static int taprio_disable_offload(struct net_device *dev,
 	}
 	offload->enable = 0;
 
-	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_TAPRIO, offload);
+	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_TAPRIO, offload, extack);
 	if (err < 0) {
 		NL_SET_ERR_MSG(extack,
 			       "Device failed to disable offload");

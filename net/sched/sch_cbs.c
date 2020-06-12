@@ -247,7 +247,7 @@ static const struct nla_policy cbs_policy[TCA_CBS_MAX + 1] = {
 };
 
 static void cbs_disable_offload(struct net_device *dev,
-				struct cbs_sched_data *q)
+				struct cbs_sched_data *q, struct netlink_ext_ack *extack)
 {
 	struct tc_cbs_qopt_offload cbs = { };
 	const struct net_device_ops *ops;
@@ -266,7 +266,7 @@ static void cbs_disable_offload(struct net_device *dev,
 	cbs.queue = q->queue;
 	cbs.enable = 0;
 
-	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_CBS, &cbs);
+	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_CBS, &cbs, extack);
 	if (err < 0)
 		pr_warn("Couldn't disable CBS offload for queue %d\n",
 			cbs.queue);
@@ -293,7 +293,7 @@ static int cbs_enable_offload(struct net_device *dev, struct cbs_sched_data *q,
 	cbs.idleslope = opt->idleslope;
 	cbs.sendslope = opt->sendslope;
 
-	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_CBS, &cbs);
+	err = ops->ndo_setup_tc(dev, TC_SETUP_QDISC_CBS, &cbs, extack);
 	if (err < 0) {
 		NL_SET_ERR_MSG(extack, "Specified device failed to setup cbs hardware offload");
 		return err;
@@ -380,7 +380,7 @@ static int cbs_change(struct Qdisc *sch, struct nlattr *opt,
 
 	if (!qopt->offload) {
 		cbs_set_port_rate(dev, q);
-		cbs_disable_offload(dev, q);
+		cbs_disable_offload(dev, q, extack);
 	} else {
 		err = cbs_enable_offload(dev, q, qopt, extack);
 		if (err < 0)
@@ -439,7 +439,7 @@ static void cbs_destroy(struct Qdisc *sch)
 		return;
 
 	qdisc_watchdog_cancel(&q->watchdog);
-	cbs_disable_offload(dev, q);
+	cbs_disable_offload(dev, q, NULL);
 
 	spin_lock(&cbs_list_lock);
 	list_del(&q->cbs_list);

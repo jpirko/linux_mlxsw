@@ -2813,7 +2813,7 @@ static int igb_offload_txtime(struct igb_adapter *adapter,
 static LIST_HEAD(igb_block_cb_list);
 
 static int igb_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			void *type_data)
+			void *type_data, struct netlink_ext_ack *extack)
 {
 	struct igb_adapter *adapter = netdev_priv(dev);
 

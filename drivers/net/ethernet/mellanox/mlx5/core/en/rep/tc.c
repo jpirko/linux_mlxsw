@@ -221,7 +221,7 @@ static int mlx5e_rep_setup_ft_cb(enum tc_setup_type type, void *type_data,
 static LIST_HEAD(mlx5e_rep_block_tc_cb_list);
 static LIST_HEAD(mlx5e_rep_block_ft_cb_list);
 int mlx5e_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
-		       void *type_data)
+		       void *type_data, struct netlink_ext_ack *extack)
 {
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	struct flow_block_offload *f = type_data;

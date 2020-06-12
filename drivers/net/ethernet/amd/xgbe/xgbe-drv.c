@@ -2246,7 +2246,7 @@ static void xgbe_poll_controller(struct net_device *netdev)
 #endif /* End CONFIG_NET_POLL_CONTROLLER */
 
 static int xgbe_setup_tc(struct net_device *netdev, enum tc_setup_type type,
-			 void *type_data)
+			 void *type_data, struct netlink_ext_ack *extack)
 {
 	struct xgbe_prv_data *pdata = netdev_priv(netdev);
 	struct tc_mqprio_qopt *mqprio = type_data;

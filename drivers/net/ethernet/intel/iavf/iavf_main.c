@@ -3111,7 +3111,7 @@ static LIST_HEAD(iavf_block_cb_list);
  * Returns 0 on success
  **/
 static int iavf_setup_tc(struct net_device *netdev, enum tc_setup_type type,
-			 void *type_data)
+			 void *type_data, struct netlink_ext_ack *extack)
 {
 	struct iavf_adapter *adapter = netdev_priv(netdev);
 

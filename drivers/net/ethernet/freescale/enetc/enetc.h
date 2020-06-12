@@ -279,7 +279,7 @@ int enetc_set_features(struct net_device *ndev,
 		       netdev_features_t features);
 int enetc_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd);
 int enetc_setup_tc(struct net_device *ndev, enum tc_setup_type type,
-		   void *type_data);
+		   void *type_data, struct netlink_ext_ack *extack);
 
 /* ethtool */
 void enetc_set_ethtool_ops(struct net_device *ndev);
