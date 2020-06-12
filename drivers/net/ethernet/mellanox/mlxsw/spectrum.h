@@ -948,16 +948,16 @@ int mlxsw_sp_flower_prio_get(struct mlxsw_sp *mlxsw_sp,
 /* spectrum_qdisc.c */
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port);
 void mlxsw_sp_tc_qdisc_fini(struct mlxsw_sp_port *mlxsw_sp_port);
-int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_red_qopt_offload *p);
-int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct tc_prio_qopt_offload *p);
-int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_ets_qopt_offload *p);
-int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_tbf_qopt_offload *p);
-int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct tc_fifo_qopt_offload *p);
+int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_red_qopt_offload *p,
+			  struct netlink_ext_ack *extack);
+int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_prio_qopt_offload *p,
+			  struct netlink_ext_ack *extack);
+int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_ets_qopt_offload *p,
+			  struct netlink_ext_ack *extack);
+int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_tbf_qopt_offload *p,
+			  struct netlink_ext_ack *extack);
+int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_fifo_qopt_offload *p,
+			  struct netlink_ext_ack *extack);
 
 /* spectrum_fid.c */
 bool mlxsw_sp_fid_is_dummy(struct mlxsw_sp *mlxsw_sp, u16 fid_index);

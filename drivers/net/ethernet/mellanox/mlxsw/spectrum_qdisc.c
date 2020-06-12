@@ -30,7 +30,8 @@ struct mlxsw_sp_qdisc_ops {
 	int (*check_params)(struct mlxsw_sp_port *mlxsw_sp_port,
 			    void *params);
 	int (*replace)(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
-		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params);
+		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params,
+		       struct netlink_ext_ack *extack);
 	int (*destroy)(struct mlxsw_sp_port *mlxsw_sp_port,
 		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc);
 	int (*get_stats)(struct mlxsw_sp_port *mlxsw_sp_port,
@@ -247,16 +248,18 @@ struct mlxsw_sp_qdisc_tree_validate {
 };
 
 static int __mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-					  struct mlxsw_sp_qdisc_tree_validate validate);
+					  struct mlxsw_sp_qdisc_tree_validate validate,
+					  struct netlink_ext_ack *extack);
 
 static int mlxsw_sp_qdisc_tree_validate_children(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-						 struct mlxsw_sp_qdisc_tree_validate validate)
+						 struct mlxsw_sp_qdisc_tree_validate validate,
+						 struct netlink_ext_ack *extack)
 {
 	unsigned int i;
 	int err;
 
 	for (i = 0; i < mlxsw_sp_qdisc->num_classes; i++) {
-		err = __mlxsw_sp_qdisc_tree_validate(&mlxsw_sp_qdisc->qdiscs[i], validate);
+		err = __mlxsw_sp_qdisc_tree_validate(&mlxsw_sp_qdisc->qdiscs[i], validate, extack);
 		if (err)
 			return err;
 	}
@@ -265,7 +268,8 @@ static int mlxsw_sp_qdisc_tree_validate_children(struct mlxsw_sp_qdisc *mlxsw_sp
 }
 
 static int __mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-					  struct mlxsw_sp_qdisc_tree_validate validate)
+					  struct mlxsw_sp_qdisc_tree_validate validate,
+					  struct netlink_ext_ack *extack)
 {
 	if (!mlxsw_sp_qdisc->ops)
 		return 0;
@@ -296,20 +300,22 @@ static int __mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 		return -EINVAL;
 	}
 
-	return mlxsw_sp_qdisc_tree_validate_children(mlxsw_sp_qdisc, validate);
+	return mlxsw_sp_qdisc_tree_validate_children(mlxsw_sp_qdisc, validate, extack);
 }
 
-static int mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_port *mlxsw_sp_port)
+static int mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_port *mlxsw_sp_port,
+					struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc = &mlxsw_sp_port->qdisc->root_qdisc;
 	struct mlxsw_sp_qdisc_tree_validate validate = {};
 
-	return __mlxsw_sp_qdisc_tree_validate(mlxsw_sp_qdisc, validate);
+	return __mlxsw_sp_qdisc_tree_validate(mlxsw_sp_qdisc, validate, extack);
 }
 
 static int mlxsw_sp_qdisc_create(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-				 struct mlxsw_sp_qdisc_ops *ops, void *params)
+				 struct mlxsw_sp_qdisc_ops *ops, void *params,
+				 struct netlink_ext_ack *extack)
 {
 	unsigned int i;
 	int err;
@@ -331,11 +337,11 @@ static int mlxsw_sp_qdisc_create(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle
 	mlxsw_sp_qdisc->num_classes = ops->num_classes;
 	mlxsw_sp_qdisc->ops = ops;
 	mlxsw_sp_qdisc->handle = handle;
-	err = mlxsw_sp_qdisc_tree_validate(mlxsw_sp_port);
+	err = mlxsw_sp_qdisc_tree_validate(mlxsw_sp_port, extack);
 	if (err)
 		goto err_replace;
 
-	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params);
+	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params, extack);
 	if (err)
 		goto err_replace;
 
@@ -351,7 +357,8 @@ err_replace:
 }
 
 static int mlxsw_sp_qdisc_change(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
-				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params)
+				 struct mlxsw_sp_qdisc *mlxsw_sp_qdisc, void *params,
+				 struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc_ops *ops = mlxsw_sp_qdisc->ops;
 	int err;
@@ -360,7 +367,7 @@ static int mlxsw_sp_qdisc_change(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle
 	if (err)
 		goto unoffload;
 
-	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params);
+	err = ops->replace(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params, extack);
 	if (err)
 		goto unoffload;
 
@@ -387,7 +394,8 @@ unoffload:
 static int
 mlxsw_sp_qdisc_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		       struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-		       struct mlxsw_sp_qdisc_ops *ops, void *params)
+		       struct mlxsw_sp_qdisc_ops *ops, void *params,
+		       struct netlink_ext_ack *extack)
 {
 	if (mlxsw_sp_qdisc->ops && mlxsw_sp_qdisc->ops->type != ops->type)
 		/* In case this location contained a different qdisc of the
@@ -398,9 +406,10 @@ mlxsw_sp_qdisc_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, mlxsw_sp_qdisc);
 
 	if (!mlxsw_sp_qdisc->ops)
-		return mlxsw_sp_qdisc_create(mlxsw_sp_port, handle, mlxsw_sp_qdisc, ops, params);
+		return mlxsw_sp_qdisc_create(mlxsw_sp_port, handle, mlxsw_sp_qdisc, ops, params,
+					     extack);
 	else
-		return mlxsw_sp_qdisc_change(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params);
+		return mlxsw_sp_qdisc_change(mlxsw_sp_port, handle, mlxsw_sp_qdisc, params, extack);
 }
 
 static int
@@ -627,13 +636,14 @@ mlxsw_sp_qdisc_red_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 
 static int mlxsw_sp_qdisc_future_fifo_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 					      u32 handle, unsigned int band,
-					      struct mlxsw_sp_qdisc *child_qdisc);
+					      struct mlxsw_sp_qdisc *child_qdisc,
+					      struct netlink_ext_ack *extack);
 static void mlxsw_sp_qdisc_future_fifos_init(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle);
 
 static int
 mlxsw_sp_qdisc_red_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			   void *params)
+			   void *params, struct netlink_ext_ack *extack)
 {
 	int tclass_num = mlxsw_sp_qdisc_get_tclass_num(mlxsw_sp_port, mlxsw_sp_qdisc);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
@@ -643,7 +653,7 @@ mlxsw_sp_qdisc_red_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 	int err;
 
 	err = mlxsw_sp_qdisc_future_fifo_replace(mlxsw_sp_port, handle, 0,
-						 &mlxsw_sp_qdisc->qdiscs[0]);
+						 &mlxsw_sp_qdisc->qdiscs[0], extack);
 	if (err)
 		return err;
 	mlxsw_sp_qdisc_future_fifos_init(mlxsw_sp_port, TC_H_UNSPEC);
@@ -752,8 +762,8 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_red = {
 	.num_classes = 1,
 };
 
-int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_red_qopt_offload *p)
+int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_red_qopt_offload *p,
+			  struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
 
@@ -765,7 +775,7 @@ int mlxsw_sp_setup_tc_red(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
 					      mlxsw_sp_qdisc,
 					      &mlxsw_sp_qdisc_ops_red,
-					      &p->set);
+					      &p->set, extack);
 
 	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
@@ -891,7 +901,7 @@ mlxsw_sp_qdisc_tbf_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 static int
 mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			   void *params)
+			   void *params, struct netlink_ext_ack *extack)
 {
 	int tclass_num = mlxsw_sp_qdisc_get_tclass_num(mlxsw_sp_port, mlxsw_sp_qdisc);
 	struct tc_tbf_qopt_offload_replace_params *p = params;
@@ -900,7 +910,7 @@ mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 	int err;
 
 	err = mlxsw_sp_qdisc_future_fifo_replace(mlxsw_sp_port, handle, 0,
-						 &mlxsw_sp_qdisc->qdiscs[0]);
+						 &mlxsw_sp_qdisc->qdiscs[0], extack);
 	if (err)
 		return err;
 	mlxsw_sp_qdisc_future_fifos_init(mlxsw_sp_port, TC_H_UNSPEC);
@@ -956,8 +966,8 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_tbf = {
 	.num_classes = 1,
 };
 
-int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_tbf_qopt_offload *p)
+int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_tbf_qopt_offload *p,
+			  struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
 
@@ -969,7 +979,7 @@ int mlxsw_sp_setup_tc_tbf(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
 					      mlxsw_sp_qdisc,
 					      &mlxsw_sp_qdisc_ops_tbf,
-					      &p->replace_params);
+					      &p->replace_params, extack);
 
 	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
@@ -995,7 +1005,7 @@ mlxsw_sp_qdisc_fifo_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 static int
 mlxsw_sp_qdisc_fifo_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			    void *params)
+			    void *params, struct netlink_ext_ack *extack)
 {
 	return 0;
 }
@@ -1020,13 +1030,14 @@ static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_fifo = {
 
 static int mlxsw_sp_qdisc_future_fifo_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 					      u32 handle, unsigned int band,
-					      struct mlxsw_sp_qdisc *child_qdisc)
+					      struct mlxsw_sp_qdisc *child_qdisc,
+					      struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
 
 	if (handle == qdisc_state->future_handle && qdisc_state->future_fifos[band])
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, TC_H_UNSPEC, child_qdisc,
-					      &mlxsw_sp_qdisc_ops_fifo, NULL);
+					      &mlxsw_sp_qdisc_ops_fifo, NULL, extack);
 	return 0;
 }
 
@@ -1038,8 +1049,8 @@ static void mlxsw_sp_qdisc_future_fifos_init(struct mlxsw_sp_port *mlxsw_sp_port
 	memset(qdisc_state->future_fifos, 0, sizeof(qdisc_state->future_fifos));
 }
 
-int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct tc_fifo_qopt_offload *p)
+int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_fifo_qopt_offload *p,
+			   struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state = mlxsw_sp_port->qdisc;
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
@@ -1076,7 +1087,7 @@ int mlxsw_sp_setup_tc_fifo(struct mlxsw_sp_port *mlxsw_sp_port,
 	if (p->command == TC_FIFO_REPLACE) {
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
 					      mlxsw_sp_qdisc,
-					      &mlxsw_sp_qdisc_ops_fifo, NULL);
+					      &mlxsw_sp_qdisc_ops_fifo, NULL, extack);
 	}
 
 	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
@@ -1146,7 +1157,8 @@ __mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 			     u32 handle, unsigned int nbands,
 			     const unsigned int *quanta,
 			     const unsigned int *weights,
-			     const u8 *priomap)
+			     const u8 *priomap,
+			     struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc_ets_band *ets_band;
 	struct mlxsw_sp_qdisc *child_qdisc;
@@ -1201,7 +1213,8 @@ __mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 			child_qdisc->stats_base.backlog = backlog;
 		}
 
-		err = mlxsw_sp_qdisc_future_fifo_replace(mlxsw_sp_port, handle, band, child_qdisc);
+		err = mlxsw_sp_qdisc_future_fifo_replace(mlxsw_sp_port, handle, band, child_qdisc,
+							 extack);
 		if (err)
 			return err;
 	}
@@ -1222,13 +1235,13 @@ __mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port,
 static int
 mlxsw_sp_qdisc_prio_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			    void *params)
+			    void *params, struct netlink_ext_ack *extack)
 {
 	struct tc_prio_qopt_offload_params *p = params;
 	unsigned int zeroes[TCQ_ETS_MAX_BANDS] = {0};
 
 	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, mlxsw_sp_qdisc, handle, p->bands,
-					    zeroes, zeroes, p->priomap);
+					    zeroes, zeroes, p->priomap, extack);
 }
 
 static void
@@ -1363,12 +1376,12 @@ mlxsw_sp_qdisc_ets_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 static int
 mlxsw_sp_qdisc_ets_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
-			   void *params)
+			   void *params, struct netlink_ext_ack *extack)
 {
 	struct tc_ets_qopt_offload_replace_params *p = params;
 
 	return __mlxsw_sp_qdisc_ets_replace(mlxsw_sp_port, mlxsw_sp_qdisc, handle, p->bands,
-					    p->quanta, p->weights, p->priomap);
+					    p->quanta, p->weights, p->priomap, extack);
 }
 
 static void
@@ -1470,8 +1483,8 @@ mlxsw_sp_qdisc_prio_graft(struct mlxsw_sp_port *mlxsw_sp_port,
 					  p->band, p->child_handle);
 }
 
-int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
-			   struct tc_prio_qopt_offload *p)
+int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_prio_qopt_offload *p,
+			   struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
 
@@ -1483,7 +1496,7 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
 					      mlxsw_sp_qdisc,
 					      &mlxsw_sp_qdisc_ops_prio,
-					      &p->replace_params);
+					      &p->replace_params, extack);
 
 	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
@@ -1502,8 +1515,8 @@ int mlxsw_sp_setup_tc_prio(struct mlxsw_sp_port *mlxsw_sp_port,
 	}
 }
 
-int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
-			  struct tc_ets_qopt_offload *p)
+int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port, struct tc_ets_qopt_offload *p,
+			  struct netlink_ext_ack *extack)
 {
 	struct mlxsw_sp_qdisc *mlxsw_sp_qdisc;
 
@@ -1515,7 +1528,7 @@ int mlxsw_sp_setup_tc_ets(struct mlxsw_sp_port *mlxsw_sp_port,
 		return mlxsw_sp_qdisc_replace(mlxsw_sp_port, p->handle,
 					      mlxsw_sp_qdisc,
 					      &mlxsw_sp_qdisc_ops_ets,
-					      &p->replace_params);
+					      &p->replace_params, extack);
 
 	if (!mlxsw_sp_qdisc_compare(mlxsw_sp_qdisc, p->handle))
 		return -EOPNOTSUPP;
