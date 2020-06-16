@@ -260,6 +260,7 @@ mlxsw_sp_qdisc_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 
 struct mlxsw_sp_qdisc_tree_validate {
 	bool forbid_ets;
+	bool forbid_root_tbf;
 	bool forbid_tbf;
 	bool forbid_red;
 };
@@ -295,18 +296,26 @@ static int __mlxsw_sp_qdisc_tree_validate(struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 		if (validate.forbid_red)
 			return -EINVAL;
 		validate.forbid_red = true;
+		validate.forbid_root_tbf = true;
 		validate.forbid_ets = true;
 		break;
 	case MLXSW_SP_QDISC_TBF:
-		if (validate.forbid_tbf)
-			return -EINVAL;
-		validate.forbid_tbf = true;
-		validate.forbid_ets = true;
+		if (validate.forbid_root_tbf) {
+			if (validate.forbid_tbf)
+				return -EINVAL;
+			/* This is a TC TBF. */
+			validate.forbid_tbf = true;
+			validate.forbid_ets = true;
+		} else {
+			/* This is root TBF. */
+			validate.forbid_root_tbf = true;
+		}
 		break;
 	case MLXSW_SP_QDISC_PRIO:
 	case MLXSW_SP_QDISC_ETS:
 		if (validate.forbid_ets)
 			return -EINVAL;
+		validate.forbid_root_tbf = true;
 		validate.forbid_ets = true;
 		break;
 	default:
@@ -856,6 +865,23 @@ mlxsw_sp_setup_tc_qdisc_leaf_clean_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	mlxsw_sp_qdisc->stats_base.backlog = 0;
 }
 
+static enum mlxsw_reg_qeec_hr mlxsw_sp_qdisc_tbf_hr(struct mlxsw_sp_port *mlxsw_sp_port,
+						    struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
+{
+	if (mlxsw_sp_qdisc == &mlxsw_sp_port->qdisc->root_qdisc)
+		return MLXSW_REG_QEEC_HR_PORT;
+
+	/* Configure subgroup shaper, so that both UC and MC traffic is subject
+	 * to shaping. That is unlike RED, however UC queue lengths are going to
+	 * be different than MC ones due to different pool and quota
+	 * configurations, so the configuration is not applicable. For shaper on
+	 * the other hand, subjecting the overall stream to the configured
+	 * shaper makes sense. Also note that that is what we do for
+	 * ieee_setmaxrate().
+	 */
+	return MLXSW_REG_QEEC_HR_SUBGROUP;
+}
+
 static int
 mlxsw_sp_qdisc_tbf_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 			   struct mlxsw_sp_qdisc *mlxsw_sp_qdisc)
@@ -863,7 +889,7 @@ mlxsw_sp_qdisc_tbf_destroy(struct mlxsw_sp_port *mlxsw_sp_port,
 	int tclass_num = mlxsw_sp_qdisc_get_tclass_num(mlxsw_sp_port, mlxsw_sp_qdisc);
 
 	return mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
-					     MLXSW_REG_QEEC_HR_SUBGROUP,
+					     mlxsw_sp_qdisc_tbf_hr(mlxsw_sp_port, mlxsw_sp_qdisc),
 					     tclass_num, 0,
 					     MLXSW_REG_QEEC_MAS_DIS, 0);
 }
@@ -963,16 +989,8 @@ mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 		/* check_params above was supposed to reject this value. */
 		return -EINVAL;
 
-	/* Configure subgroup shaper, so that both UC and MC traffic is subject
-	 * to shaping. That is unlike RED, however UC queue lengths are going to
-	 * be different than MC ones due to different pool and quota
-	 * configurations, so the configuration is not applicable. For shaper on
-	 * the other hand, subjecting the overall stream to the configured
-	 * shaper makes sense. Also note that that is what we do for
-	 * ieee_setmaxrate().
-	 */
 	return mlxsw_sp_port_ets_maxrate_set(mlxsw_sp_port,
-					     MLXSW_REG_QEEC_HR_SUBGROUP,
+					     mlxsw_sp_qdisc_tbf_hr(mlxsw_sp_port, mlxsw_sp_qdisc),
 					     tclass_num, 0,
 					     rate_kbps, burst_size);
 }
