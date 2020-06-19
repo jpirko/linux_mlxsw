@@ -125,6 +125,14 @@ struct tc_fifo_qopt {
 	__u32	limit;	/* Queue length: bytes for bfifo, packets for pfifo */
 };
 
+enum {
+	TCA_FIFO_UNSPEC,
+	TCA_FIFO_LIMIT,			/* u32 */
+	__TCA_FIFO_MAX,
+};
+
+#define TCA_FIFO_MAX (__TCA_FIFO_MAX - 1)
+
 /* SKBPRIO section */
 
 /*

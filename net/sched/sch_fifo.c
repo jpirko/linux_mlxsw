@@ -16,6 +16,10 @@
 
 /* 1 band FIFO pseudo-"scheduler" */
 
+struct fifo_sched {
+	bool new_style;
+};
+
 static int bfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			 struct sk_buff **to_free)
 {
@@ -93,10 +97,40 @@ static int fifo_offload_dump(struct Qdisc *sch)
 	return qdisc_offload_dump_helper(sch, TC_SETUP_QDISC_FIFO, &qopt);
 }
 
-static int __fifo_init(struct Qdisc *sch, struct nlattr *opt,
-		       struct netlink_ext_ack *extack)
+static const struct nla_policy fifo_policy[TCA_FIFO_MAX + 1] = {
+	[TCA_FIFO_LIMIT] = { .type = NLA_U32 },
+};
+
+static int fifo_parse_attr(struct Qdisc *sch, struct nlattr *opt, u32 *plimit, struct nlattr **tb,
+			   struct netlink_ext_ack *extack)
 {
-	bool bypass;
+	struct fifo_sched *q = qdisc_priv(sch);
+	struct nlattr *nla;
+	int err;
+
+	/* Convert tc_fifo_qopt at the beginning of the payload to an NLA header. */
+	BUILD_BUG_ON(sizeof(struct tc_fifo_qopt) != nla_attr_size(0));
+	nla = nla_data(opt);
+	nla->nla_len = opt->nla_len - sizeof(struct tc_fifo_qopt);
+	nla->nla_type = opt->nla_type;
+
+	err = nla_parse_nested(tb, TCA_FIFO_MAX, nla, fifo_policy, extack);
+	if (err < 0)
+		return err;
+
+	if (!tb[TCA_FIFO_LIMIT]) {
+		NL_SET_ERR_MSG_MOD(extack, "FIFO limit is a required attribute");
+		return -EINVAL;
+	}
+
+	q->new_style = true;
+	*plimit = nla_get_u32(tb[TCA_FIFO_LIMIT]);
+	return 0;
+}
+
+static int fifo_parse_opt(struct Qdisc *sch, struct nlattr *opt, u32 *plimit, struct nlattr **tb,
+			  struct netlink_ext_ack *extack)
+{
 	bool is_bfifo = sch->ops == &bfifo_qdisc_ops;
 
 	if (opt == NULL) {
@@ -105,15 +139,28 @@ static int __fifo_init(struct Qdisc *sch, struct nlattr *opt,
 		if (is_bfifo)
 			limit *= psched_mtu(qdisc_dev(sch));
 
-		sch->limit = limit;
+		*plimit = limit;
 	} else {
 		struct tc_fifo_qopt *ctl = nla_data(opt);
 
 		if (nla_len(opt) < sizeof(*ctl))
 			return -EINVAL;
 
-		sch->limit = ctl->limit;
+		if (!tb || nla_len(opt) == sizeof(*ctl) || ctl->limit)
+			*plimit = ctl->limit;
+		else
+			return fifo_parse_attr(sch, opt, plimit, tb, extack);
 	}
+
+	return 0;
+}
+
+static int fifo_configure_limit(struct Qdisc *sch, u32 limit)
+{
+	bool bypass;
+	bool is_bfifo = sch->ops == &bfifo_qdisc_ops;
+
+	sch->limit = limit;
 
 	if (is_bfifo)
 		bypass = sch->limit >= psched_mtu(qdisc_dev(sch));
@@ -131,12 +178,15 @@ static int __fifo_init(struct Qdisc *sch, struct nlattr *opt,
 static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 		     struct netlink_ext_ack *extack)
 {
+	struct nlattr *tb[TCA_FIFO_MAX + 1] = {};
+	u32 limit;
 	int err;
 
-	err = __fifo_init(sch, opt, extack);
+	err = fifo_parse_opt(sch, opt, &limit, tb, extack);
 	if (err)
 		return err;
 
+	fifo_configure_limit(sch, limit);
 	fifo_offload_init(sch);
 	return 0;
 }
@@ -144,7 +194,15 @@ static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
 			struct netlink_ext_ack *extack)
 {
-	return __fifo_init(sch, opt, extack);
+	u32 limit;
+	int err;
+
+	err = fifo_parse_opt(sch, opt, &limit, NULL, extack);
+	if (err)
+		return err;
+
+	fifo_configure_limit(sch, limit);
+	return 0;
 }
 
 static void fifo_destroy(struct Qdisc *sch)
@@ -164,15 +222,39 @@ nla_put_failure:
 	return -1;
 }
 
+static int fifo_dump_new_style(struct Qdisc *sch, struct sk_buff *skb)
+{
+	struct tc_fifo_qopt opt = { .limit = sch->limit };
+	struct nlattr *opts = NULL;
+
+	opts = nla_nest_start_noflag(skb, TCA_OPTIONS);
+	if (opts == NULL)
+		return -ENOSPC;
+
+	if (nla_put_nohdr(skb, sizeof(opt), &opt) ||
+	    nla_put_u32(skb, TCA_FIFO_LIMIT, sch->limit))
+		goto nla_put_failure;
+
+	return nla_nest_end(skb, opts);
+
+nla_put_failure:
+	nla_nest_cancel(skb, opts);
+	return -EMSGSIZE;
+}
+
 static int fifo_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
+	struct fifo_sched *q = qdisc_priv(sch);
 	int err;
 
 	err = fifo_offload_dump(sch);
 	if (err)
 		return err;
 
-	return __fifo_dump(sch, skb);
+	if (q->new_style)
+		return fifo_dump_new_style(sch, skb);
+	else
+		return __fifo_dump(sch, skb);
 }
 
 static int fifo_hd_dump(struct Qdisc *sch, struct sk_buff *skb)
@@ -182,7 +264,7 @@ static int fifo_hd_dump(struct Qdisc *sch, struct sk_buff *skb)
 
 struct Qdisc_ops pfifo_qdisc_ops __read_mostly = {
 	.id		=	"pfifo",
-	.priv_size	=	0,
+	.priv_size	=	sizeof(struct fifo_sched),
 	.enqueue	=	pfifo_enqueue,
 	.dequeue	=	qdisc_dequeue_head,
 	.peek		=	qdisc_peek_head,
@@ -197,7 +279,7 @@ EXPORT_SYMBOL(pfifo_qdisc_ops);
 
 struct Qdisc_ops bfifo_qdisc_ops __read_mostly = {
 	.id		=	"bfifo",
-	.priv_size	=	0,
+	.priv_size	=	sizeof(struct fifo_sched),
 	.enqueue	=	bfifo_enqueue,
 	.dequeue	=	qdisc_dequeue_head,
 	.peek		=	qdisc_peek_head,
