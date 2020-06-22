@@ -210,6 +210,22 @@ static void fifo_destroy(struct Qdisc *sch)
 	fifo_offload_destroy(sch);
 }
 
+static int fifo_change(struct Qdisc *sch, struct nlattr *opt,
+		       struct netlink_ext_ack *extack)
+{
+	struct nlattr *tb[TCA_FIFO_MAX + 1] = {};
+	u32 limit;
+	int err;
+
+	err = fifo_parse_opt(sch, opt, &limit, tb, extack);
+	if (err)
+		return err;
+
+	fifo_configure_limit(sch, limit);
+	fifo_offload_init(sch);
+	return 0;
+}
+
 static int __fifo_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
 	struct tc_fifo_qopt opt = { .limit = sch->limit };
@@ -271,7 +287,7 @@ struct Qdisc_ops pfifo_qdisc_ops __read_mostly = {
 	.init		=	fifo_init,
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
-	.change		=	fifo_init,
+	.change		=	fifo_change,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };
@@ -286,7 +302,7 @@ struct Qdisc_ops bfifo_qdisc_ops __read_mostly = {
 	.init		=	fifo_init,
 	.destroy	=	fifo_destroy,
 	.reset		=	qdisc_reset_queue,
-	.change		=	fifo_init,
+	.change		=	fifo_change,
 	.dump		=	fifo_dump,
 	.owner		=	THIS_MODULE,
 };
