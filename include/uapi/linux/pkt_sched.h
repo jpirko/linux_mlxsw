@@ -128,6 +128,7 @@ struct tc_fifo_qopt {
 enum {
 	TCA_FIFO_UNSPEC,
 	TCA_FIFO_LIMIT,			/* u32 */
+	TCA_FIFO_TAIL_DROP_BLOCK,	/* u32 */
 	__TCA_FIFO_MAX,
 };
 
