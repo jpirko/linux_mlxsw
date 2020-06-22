@@ -18,7 +18,24 @@
 
 struct fifo_sched {
 	bool new_style;
+	struct tcf_qevent qe_tail_drop;
 };
+
+static DEFINE_STATIC_KEY_FALSE(fifo_qevents_used);
+
+static int fifo_tail_drop(struct sk_buff *skb, struct Qdisc *sch, struct sk_buff **to_free)
+{
+	struct fifo_sched *q = qdisc_priv(sch);
+	int ret;
+
+	if (static_branch_unlikely(&fifo_qevents_used)) {
+		skb = tcf_qevent_handle(&q->qe_tail_drop, sch, skb, to_free, &ret);
+		if (!skb)
+			return NET_XMIT_CN | ret;
+	}
+
+	return qdisc_drop(skb, sch, to_free);
+}
 
 static int bfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			 struct sk_buff **to_free)
@@ -26,7 +43,7 @@ static int bfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	if (likely(sch->qstats.backlog + qdisc_pkt_len(skb) <= sch->limit))
 		return qdisc_enqueue_tail(skb, sch);
 
-	return qdisc_drop(skb, sch, to_free);
+	return fifo_tail_drop(skb, sch, to_free);
 }
 
 static int pfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -35,7 +52,7 @@ static int pfifo_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	if (likely(sch->q.qlen < sch->limit))
 		return qdisc_enqueue_tail(skb, sch);
 
-	return qdisc_drop(skb, sch, to_free);
+	return fifo_tail_drop(skb, sch, to_free);
 }
 
 static int pfifo_tail_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -99,6 +116,7 @@ static int fifo_offload_dump(struct Qdisc *sch)
 
 static const struct nla_policy fifo_policy[TCA_FIFO_MAX + 1] = {
 	[TCA_FIFO_LIMIT] = { .type = NLA_U32 },
+	[TCA_FIFO_TAIL_DROP_BLOCK] = { .type = NLA_U32 },
 };
 
 static int fifo_parse_attr(struct Qdisc *sch, struct nlattr *opt, u32 *plimit, struct nlattr **tb,
@@ -179,6 +197,7 @@ static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 		     struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[TCA_FIFO_MAX + 1] = {};
+	struct fifo_sched *q = qdisc_priv(sch);
 	u32 limit;
 	int err;
 
@@ -188,7 +207,21 @@ static int fifo_init(struct Qdisc *sch, struct nlattr *opt,
 
 	fifo_configure_limit(sch, limit);
 	fifo_offload_init(sch);
+
+	err = tcf_qevent_init(&q->qe_tail_drop, sch,
+			      FLOW_BLOCK_BINDER_TYPE_FIFO_TAIL_DROP,
+			      tb[TCA_FIFO_TAIL_DROP_BLOCK], extack);
+	if (err)
+		goto err_tail_init;
+
+	if (q->qe_tail_drop.info.block_index)
+		static_branch_inc(&fifo_qevents_used);
+
 	return 0;
+
+err_tail_init:
+	fifo_offload_destroy(sch);
+	return err;
 }
 
 static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
@@ -207,6 +240,11 @@ static int fifo_hd_init(struct Qdisc *sch, struct nlattr *opt,
 
 static void fifo_destroy(struct Qdisc *sch)
 {
+	struct fifo_sched *q = qdisc_priv(sch);
+
+	if (q->qe_tail_drop.info.block_index)
+		static_branch_dec(&fifo_qevents_used);
+	tcf_qevent_destroy(&q->qe_tail_drop, sch);
 	fifo_offload_destroy(sch);
 }
 
@@ -214,10 +252,15 @@ static int fifo_change(struct Qdisc *sch, struct nlattr *opt,
 		       struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[TCA_FIFO_MAX + 1] = {};
+	struct fifo_sched *q = qdisc_priv(sch);
 	u32 limit;
 	int err;
 
 	err = fifo_parse_opt(sch, opt, &limit, tb, extack);
+	if (err)
+		return err;
+
+	err = tcf_qevent_validate_change(&q->qe_tail_drop, tb[TCA_FIFO_TAIL_DROP_BLOCK], extack);
 	if (err)
 		return err;
 
@@ -241,6 +284,7 @@ nla_put_failure:
 static int fifo_dump_new_style(struct Qdisc *sch, struct sk_buff *skb)
 {
 	struct tc_fifo_qopt opt = { .limit = sch->limit };
+	struct fifo_sched *q = qdisc_priv(sch);
 	struct nlattr *opts = NULL;
 
 	opts = nla_nest_start_noflag(skb, TCA_OPTIONS);
@@ -248,7 +292,8 @@ static int fifo_dump_new_style(struct Qdisc *sch, struct sk_buff *skb)
 		return -ENOSPC;
 
 	if (nla_put_nohdr(skb, sizeof(opt), &opt) ||
-	    nla_put_u32(skb, TCA_FIFO_LIMIT, sch->limit))
+	    nla_put_u32(skb, TCA_FIFO_LIMIT, sch->limit) ||
+	    tcf_qevent_dump(skb, TCA_FIFO_TAIL_DROP_BLOCK, &q->qe_tail_drop))
 		goto nla_put_failure;
 
 	return nla_nest_end(skb, opts);
