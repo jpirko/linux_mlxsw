@@ -2184,6 +2184,12 @@ int mlxsw_sp_setup_tc_block_qevent_mark(struct mlxsw_sp_port *mlxsw_sp_port,
 	return mlxsw_sp_setup_tc_block_qevent(mlxsw_sp_port, f, MLXSW_SP_SPAN_TRIGGER_ECN);
 }
 
+int mlxsw_sp_setup_tc_block_qevent_tail_drop(struct mlxsw_sp_port *mlxsw_sp_port,
+					     struct flow_block_offload *f)
+{
+	return mlxsw_sp_setup_tc_block_qevent(mlxsw_sp_port, f, MLXSW_SP_SPAN_TRIGGER_TAIL_DROP);
+}
+
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	struct mlxsw_sp_qdisc_state *qdisc_state;
