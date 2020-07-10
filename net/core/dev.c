@@ -4761,6 +4761,15 @@ out_redir:
 }
 EXPORT_SYMBOL_GPL(do_xdp_generic);
 
+struct process_queue_cb {
+	unsigned int want_egress:1;
+};
+
+static struct process_queue_cb *process_queue_cb(const struct sk_buff *skb)
+{
+	return (struct process_queue_cb *)skb->cb;
+}
+
 static int netif_rx_internal(struct sk_buff *skb)
 {
 	int ret;
@@ -4768,6 +4777,8 @@ static int netif_rx_internal(struct sk_buff *skb)
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
 	trace_netif_rx(skb);
+
+	process_queue_cb(skb)->want_egress = 0;
 
 #ifdef CONFIG_RPS
 	if (static_branch_unlikely(&rps_needed)) {
@@ -4823,6 +4834,19 @@ int netif_rx(struct sk_buff *skb)
 	return ret;
 }
 EXPORT_SYMBOL(netif_rx);
+
+int netif_tx(struct sk_buff *skb)
+{
+	unsigned int qtail;
+	int ret;
+
+	process_queue_cb(skb)->want_egress = 1;
+	ret = enqueue_to_backlog(skb, get_cpu(), &qtail);
+	put_cpu();
+
+	return ret;
+}
+EXPORT_SYMBOL(netif_tx);
 
 int netif_rx_ni(struct sk_buff *skb)
 {
@@ -6283,7 +6307,10 @@ static int process_backlog(struct napi_struct *napi, int quota)
 
 		while ((skb = __skb_dequeue(&sd->process_queue))) {
 			rcu_read_lock();
-			__netif_receive_skb(skb);
+			if (process_queue_cb(skb)->want_egress)
+				dev_queue_xmit(skb);
+			else
+				__netif_receive_skb(skb);
 			rcu_read_unlock();
 			input_queue_head_incr(sd);
 			if (++work >= quota)

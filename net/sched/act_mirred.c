@@ -297,9 +297,9 @@ static int tcf_mirred_act(struct sk_buff *skb, const struct tc_action *a,
 	}
 
 	if (!want_ingress)
-		err = dev_queue_xmit(skb2);
+		err = netif_tx(skb2);
 	else
-		err = netif_receive_skb(skb2);
+		err = netif_rx(skb2);
 
 	if (err) {
 out:
