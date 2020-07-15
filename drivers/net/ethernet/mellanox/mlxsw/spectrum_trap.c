@@ -49,6 +49,8 @@ enum {
 #define MLXSW_SP_TRAP_METADATA DEVLINK_TRAP_METADATA_TYPE_F_IN_PORT
 
 enum {
+	/* Packet was tail dropped. */
+	MLXSW_SP_MIRROR_REASON_INGRESS_SHARED_BUFFER = 8,
 	/* Packet was early dropped. */
 	MLXSW_SP_MIRROR_REASON_INGRESS_WRED = 9,
 	/* Packet was ECN marked. */
@@ -1749,6 +1751,13 @@ mlxsw_sp2_trap_group_items_arr[] = {
 
 static const struct mlxsw_sp_trap_item
 mlxsw_sp2_trap_items_arr[] = {
+	{
+		.trap = MLXSW_SP_TRAP_BUFFER_DROP(TAIL_DROP),
+		.listeners_arr = {
+			MLXSW_SP_RXL_BUFFER_DISCARD(INGRESS_SHARED_BUFFER),
+		},
+		.is_source = true,
+	},
 	{
 		.trap = MLXSW_SP_TRAP_BUFFER_DROP(EARLY_DROP),
 		.listeners_arr = {
