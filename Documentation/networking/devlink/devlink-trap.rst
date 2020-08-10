@@ -480,6 +480,10 @@ be added to the following table:
      - ``drop``
      - Traps packets that the device decided to drop in case they hit a
        blackhole nexthop
+   * - ``ecn_mark``
+     - ``drop``
+     - Traps ECN-capable packets that were marked with CE (Congestion
+       Encountered) code point by RED algorithm instead of being dropped
 
 Driver-specific Packet Traps
 ============================
