@@ -485,6 +485,10 @@ be added to the following table:
      - Traps incoming packets that the device decided to drop because
        the destination MAC is not configured in the MAC table and
        the interface is not in promiscuous mode
+   * - ``ecn_mark``
+     - ``drop``
+     - Traps ECN-capable packets that were marked with CE (Congestion
+       Encountered) code point by RED algorithm instead of being dropped
 
 Driver-specific Packet Traps
 ============================
