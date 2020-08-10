@@ -720,6 +720,7 @@ enum devlink_trap_generic_id {
 	DEVLINK_TRAP_GENERIC_ID_FLOW_ACTION_SAMPLE,
 	DEVLINK_TRAP_GENERIC_ID_FLOW_ACTION_TRAP,
 	DEVLINK_TRAP_GENERIC_ID_EARLY_DROP,
+	DEVLINK_TRAP_GENERIC_ID_ECN_MARK,
 
 	/* Add new generic trap IDs above */
 	__DEVLINK_TRAP_GENERIC_ID_MAX,
@@ -910,6 +911,8 @@ enum devlink_trap_group_generic_id {
 	"flow_action_trap"
 #define DEVLINK_TRAP_GENERIC_NAME_EARLY_DROP \
 	"early_drop"
+#define DEVLINK_TRAP_GENERIC_NAME_ECN_MARK \
+	"ecn_mark"
 
 #define DEVLINK_TRAP_GROUP_GENERIC_NAME_L2_DROPS \
 	"l2_drops"
