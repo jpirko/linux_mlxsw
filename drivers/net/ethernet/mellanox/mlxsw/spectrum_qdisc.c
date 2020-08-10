@@ -1327,6 +1327,7 @@ static int mlxsw_sp_qevent_span_configure(struct mlxsw_sp *mlxsw_sp,
 					  const struct mlxsw_sp_span_agent_parms *agent_parms,
 					  int *p_span_id)
 {
+	bool ingress = mlxsw_sp_span_trigger_is_ingress(qevent_binding->span_trigger);
 	struct mlxsw_sp_port *mlxsw_sp_port = qevent_binding->mlxsw_sp_port;
 	struct mlxsw_sp_span_trigger_parms trigger_parms = {};
 	int span_id;
@@ -1336,7 +1337,7 @@ static int mlxsw_sp_qevent_span_configure(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		return err;
 
-	err = mlxsw_sp_span_analyzed_port_get(mlxsw_sp_port, true);
+	err = mlxsw_sp_span_analyzed_port_get(mlxsw_sp_port, ingress);
 	if (err)
 		goto err_analyzed_port_get;
 
@@ -1359,7 +1360,7 @@ err_trigger_enable:
 	mlxsw_sp_span_agent_unbind(mlxsw_sp, qevent_binding->span_trigger, mlxsw_sp_port,
 				   &trigger_parms);
 err_agent_bind:
-	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, true);
+	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, ingress);
 err_analyzed_port_get:
 	mlxsw_sp_span_agent_put(mlxsw_sp, span_id);
 	return err;
@@ -1369,6 +1370,7 @@ static void mlxsw_sp_qevent_span_deconfigure(struct mlxsw_sp *mlxsw_sp,
 					     struct mlxsw_sp_qevent_binding *qevent_binding,
 					     int span_id)
 {
+	bool ingress = mlxsw_sp_span_trigger_is_ingress(qevent_binding->span_trigger);
 	struct mlxsw_sp_port *mlxsw_sp_port = qevent_binding->mlxsw_sp_port;
 	struct mlxsw_sp_span_trigger_parms trigger_parms = {
 		.span_id = span_id,
@@ -1378,7 +1380,7 @@ static void mlxsw_sp_qevent_span_deconfigure(struct mlxsw_sp *mlxsw_sp,
 				      qevent_binding->tclass_num);
 	mlxsw_sp_span_agent_unbind(mlxsw_sp, qevent_binding->span_trigger, mlxsw_sp_port,
 				   &trigger_parms);
-	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, true);
+	mlxsw_sp_span_analyzed_port_put(mlxsw_sp_port, ingress);
 	mlxsw_sp_span_agent_put(mlxsw_sp, span_id);
 }
 
@@ -1828,6 +1830,12 @@ int mlxsw_sp_setup_tc_block_qevent_early_drop(struct mlxsw_sp_port *mlxsw_sp_por
 					      struct flow_block_offload *f)
 {
 	return mlxsw_sp_setup_tc_block_qevent(mlxsw_sp_port, f, MLXSW_SP_SPAN_TRIGGER_EARLY_DROP);
+}
+
+int mlxsw_sp_setup_tc_block_qevent_mark(struct mlxsw_sp_port *mlxsw_sp_port,
+					struct flow_block_offload *f)
+{
+	return mlxsw_sp_setup_tc_block_qevent(mlxsw_sp_port, f, MLXSW_SP_SPAN_TRIGGER_ECN);
 }
 
 int mlxsw_sp_tc_qdisc_init(struct mlxsw_sp_port *mlxsw_sp_port)
