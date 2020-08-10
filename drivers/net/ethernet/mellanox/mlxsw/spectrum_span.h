@@ -49,6 +49,7 @@ struct mlxsw_sp_span_ops {
 	int (*init)(struct mlxsw_sp *mlxsw_sp);
 	int (*policer_id_base_set)(struct mlxsw_sp *mlxsw_sp,
 				   u16 policer_id_base);
+	void (*fix_momte)(struct mlxsw_sp_port *mlxsw_sp_port);
 };
 
 struct mlxsw_sp_span_entry {
