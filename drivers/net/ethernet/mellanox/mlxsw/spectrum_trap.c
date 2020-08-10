@@ -53,6 +53,8 @@ enum {
 	MLXSW_SP_MIRROR_REASON_INGRESS = 1,
 	/* Packet was early dropped. */
 	MLXSW_SP_MIRROR_REASON_INGRESS_WRED = 9,
+	/* Packet was ECN marked. */
+	MLXSW_SP_MIRROR_REASON_EGRESS_ECN = 13,
 };
 
 static int mlxsw_sp_rx_listener(struct mlxsw_sp *mlxsw_sp, struct sk_buff *skb,
@@ -1841,6 +1843,13 @@ mlxsw_sp2_trap_items_arr[] = {
 					 SP_PKT_SAMPLE,
 					 MLXSW_SP_MIRROR_REASON_INGRESS),
 		},
+	},
+	{
+		.trap = MLXSW_SP_TRAP_BUFFER_DROP(ECN_MARK),
+		.listeners_arr = {
+			MLXSW_SP_RXL_BUFFER_DISCARD(EGRESS_ECN),
+		},
+		.is_source = true,
 	},
 };
 
