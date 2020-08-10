@@ -1562,6 +1562,9 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		goto err_port_qdiscs_init;
 	}
 
+	if (mlxsw_sp->span_ops->fix_momte)
+		mlxsw_sp->span_ops->fix_momte(mlxsw_sp_port);
+
 	err = mlxsw_sp_port_vlan_set(mlxsw_sp_port, 0, VLAN_N_VID - 1, false,
 				     false);
 	if (err) {

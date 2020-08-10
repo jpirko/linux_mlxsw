@@ -1711,12 +1711,23 @@ static int mlxsw_sp2_span_policer_id_base_set(struct mlxsw_sp *mlxsw_sp,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(mogcr), mogcr_pl);
 }
 
+static void mlxsw_sp2_fix_momte(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	char momte_pl[MLXSW_REG_MOMTE_LEN];
+
+	mlxsw_reg_momte_pack(momte_pl, mlxsw_sp_port->local_port, MLXSW_REG_MOMTE_TYPE_ECN);
+	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(momte), momte_pl);
+}
+
 const struct mlxsw_sp_span_ops mlxsw_sp2_span_ops = {
 	.init = mlxsw_sp2_span_init,
 	.policer_id_base_set = mlxsw_sp2_span_policer_id_base_set,
+	.fix_momte = mlxsw_sp2_fix_momte,
 };
 
 const struct mlxsw_sp_span_ops mlxsw_sp3_span_ops = {
 	.init = mlxsw_sp2_span_init,
 	.policer_id_base_set = mlxsw_sp2_span_policer_id_base_set,
+	.fix_momte = mlxsw_sp2_fix_momte,
 };
