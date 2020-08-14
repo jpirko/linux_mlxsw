@@ -979,6 +979,8 @@ static u32 mlxsw_sp_span_buffsize_get(struct mlxsw_sp *mlxsw_sp, int mtu,
 static int
 mlxsw_sp_span_port_buffer_update(struct mlxsw_sp_port *mlxsw_sp_port, u16 mtu)
 {
+	// xxx the SBIB crap needs to be part of the new PB stuff as well, or at least
+	// the PB stuff needs to reserve some buffer space of SBIB.
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char sbib_pl[MLXSW_REG_SBIB_LEN];
 	u32 buffsize;

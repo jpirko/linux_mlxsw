@@ -90,11 +90,13 @@ static const struct mlxsw_sp_sb_pool_des mlxsw_sp2_sb_pool_dess[] = {
 
 #define MLXSW_SP_SB_ING_TC_COUNT 8
 #define MLXSW_SP_SB_EG_TC_COUNT 16
+#define MLXSW_SP_PB_UNUSED 8
 
 struct mlxsw_sp_sb_port {
 	struct mlxsw_sp_sb_cm ing_cms[MLXSW_SP_SB_ING_TC_COUNT];
 	struct mlxsw_sp_sb_cm eg_cms[MLXSW_SP_SB_EG_TC_COUNT];
 	struct mlxsw_sp_sb_pm *pms;
+	struct mlxsw_sp_pb *pb;
 };
 
 struct mlxsw_sp_sb {
@@ -291,55 +293,206 @@ static int mlxsw_sp_sb_pm_occ_query(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				     (unsigned long) pm);
 }
 
-/* 1/4 of a headroom necessary for 100Gbps port and 100m cable. */
-#define MLXSW_SP_PB_HEADROOM 25632
-#define MLXSW_SP_PB_UNUSED 8
-
-static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+struct mlxsw_sp_pb *mlxsw_sp_pbs_get(struct mlxsw_sp_port *mlxsw_sp_port)
 {
-	const u32 pbs[] = {
-		[0] = MLXSW_SP_PB_HEADROOM * mlxsw_sp_port->mapping.width,
-		[9] = MLXSW_PORT_MAX_MTU,
-	};
+	return mlxsw_sp_port->mlxsw_sp->sb->ports[mlxsw_sp_port->local_port].pb;
+}
+
+static int mlxsw_sp_pbs_configure_buffers(struct mlxsw_sp_port *mlxsw_sp_port,
+					  const struct mlxsw_sp_pb *pb, bool force)
+{
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char pbmc_pl[MLXSW_REG_PBMC_LEN];
+	u32 taken_headroom_cells = 0;
+	struct mlxsw_sp_pb *cur_pb;
+	u32 max_headroom_cells;
+	bool dirty = false;
 	int i;
+
+	cur_pb = mlxsw_sp_pbs_get(mlxsw_sp_port);
+	max_headroom_cells = mlxsw_sp_sb_max_headroom_cells(mlxsw_sp);
 
 	mlxsw_reg_pbmc_pack(pbmc_pl, mlxsw_sp_port->local_port,
 			    0xffff, 0xffff / 2);
-	for (i = 0; i < ARRAY_SIZE(pbs); i++) {
-		u16 size = mlxsw_sp_bytes_cells(mlxsw_sp, pbs[i]);
+	for (i = 0; i < MLXSW_SP_PB_COUNT; i++) {
+		const struct mlxsw_sp_pb_buffer *cur_buf_i = &cur_pb->buffer[i];
+		const struct mlxsw_sp_pb_buffer *buf_i = &pb->buffer[i];
 
 		if (i == MLXSW_SP_PB_UNUSED)
 			continue;
-		size = mlxsw_sp_port_headroom_8x_adjust(mlxsw_sp_port, size);
-		mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl, i, size);
+
+		if (buf_i->size_cells != cur_buf_i->size_cells ||
+		    buf_i->thres_cells != cur_buf_i->thres_cells ||
+		    buf_i->lossless != cur_buf_i->lossless)
+			dirty = true;
+
+		taken_headroom_cells += buf_i->size_cells;
+
+		if (pb->buffer[i].lossless)
+			mlxsw_reg_pbmc_lossless_buffer_pack(pbmc_pl, i, buf_i->size_cells,
+							    buf_i->thres_cells);
+		else
+			mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl, i, buf_i->size_cells);
 	}
-	mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl,
-					 MLXSW_REG_PBMC_PORT_SHARED_BUF_IDX, 0);
+
+	if (taken_headroom_cells > max_headroom_cells)
+		// xxx take into account SBIB
+		return -ENOBUFS;
+	if (!dirty && !force)
+		return 0;
+
+	mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl, MLXSW_REG_PBMC_PORT_SHARED_BUF_IDX, 0);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(pbmc), pbmc_pl);
 }
 
-static int mlxsw_sp_port_pb_prio_init(struct mlxsw_sp_port *mlxsw_sp_port)
+static int mlxsw_sp_pbs_configure_mapping(struct mlxsw_sp_port *mlxsw_sp_port,
+					  const struct mlxsw_sp_pb *pb, bool force)
 {
 	char pptb_pl[MLXSW_REG_PPTB_LEN];
-	int i;
+	struct mlxsw_sp_pb *cur_pb;
+	bool dirty = false;
+	int prio;
+
+	cur_pb = mlxsw_sp_pbs_get(mlxsw_sp_port);
 
 	mlxsw_reg_pptb_pack(pptb_pl, mlxsw_sp_port->local_port);
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
-		mlxsw_reg_pptb_prio_to_buff_pack(pptb_pl, i, 0);
-	return mlxsw_reg_write(mlxsw_sp_port->mlxsw_sp->core, MLXSW_REG(pptb),
-			       pptb_pl);
+	for (prio = 0; prio < IEEE_8021QAZ_MAX_TCS; prio++) {
+		if (pb->prio2buffer[prio] != cur_pb->prio2buffer[prio])
+			dirty = true;
+		mlxsw_reg_pptb_prio_to_buff_pack(pptb_pl, prio, pb->prio2buffer[prio]);
+	}
+
+	if (!dirty && !force)
+		return 0;
+
+	return mlxsw_reg_write(mlxsw_sp_port->mlxsw_sp->core, MLXSW_REG(pptb), pptb_pl);
 }
 
-static int mlxsw_sp_port_headroom_init(struct mlxsw_sp_port *mlxsw_sp_port)
+static int __mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port,
+				    const struct mlxsw_sp_pb *pb, bool force)
 {
+	struct mlxsw_sp_pb *cur_pb;
+	struct mlxsw_sp_pb tmp_pb;
 	int err;
+	int i;
 
-	err = mlxsw_sp_port_pb_init(mlxsw_sp_port);
+	/* Port buffers need to be configured in three steps. First, all buffers with
+	 * non-zero size are configured. Then, prio-to-buffer map is updated, allowing
+	 * traffic to flow to the now non-zero buffers. Finally, zero-sized buffers are
+	 * configured, because now no traffic should be directed to them anymore. This
+	 * way, in a non-congested system, no packet drops are introduced by the
+	 * reconfiguration. On the other hand, the system needs enough buffer space to
+	 * cover both buffers which in the future will be zero-sized, but are not yet, and
+	 * buffers that are configured to non-zero size now. This will not happen if the
+	 * buffers are configured automatically through PFC / ETS. Only the
+	 * dcbnl_setbuffer flow can trigger this, and in that case, user space should
+	 * manage the transition to the new configuration gradually.
+	 */
+
+	cur_pb = mlxsw_sp_pbs_get(mlxsw_sp_port);
+	tmp_pb = *cur_pb;
+	for (i = 0; i < MLXSW_SP_PB_COUNT; i++) {
+		if (pb->buffer[i].size_cells)
+			tmp_pb.buffer[i] = pb->buffer[i];
+	}
+
+	err = mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, &tmp_pb, force);
 	if (err)
 		return err;
-	return mlxsw_sp_port_pb_prio_init(mlxsw_sp_port);
+
+	err = mlxsw_sp_pbs_configure_mapping(mlxsw_sp_port, pb, force);
+	if (err)
+		goto err_set_mapping;
+
+	err = mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, pb, force);
+	if (err)
+		goto err_set_buffers;
+
+	*cur_pb = *pb;
+	return 0;
+
+err_set_buffers:
+	mlxsw_sp_pbs_configure_mapping(mlxsw_sp_port, cur_pb, true);
+err_set_mapping:
+	mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, cur_pb, true);
+	return err;
+}
+
+int mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port, const struct mlxsw_sp_pb *pb)
+{
+	return __mlxsw_sp_pbs_configure(mlxsw_sp_port, pb, false);
+}
+
+static bool mlxsw_sp_pb_is_used(struct mlxsw_sp_pb *pb, int buf)
+{
+	int prio;
+
+	for (prio = 0; prio < IEEE_8021QAZ_MAX_TCS; prio++) {
+		if (pb->prio2buffer[prio] == buf)
+			return true;
+	}
+	return false;
+}
+
+static u16 mlxsw_sp_pb_delay_get(const struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_pb *pb)
+{
+	u16 delay_cells;
+
+	delay_cells = mlxsw_sp_bytes_cells(mlxsw_sp, pb->delay_bytes);
+
+	/* In the worst case scenario the delay will be made up of packets that are all
+	 * of size CELL_SIZE + 1, which means each packet will require almost twice its
+	 * true size when buffered in the switch. We therefore multiply this value by the
+	 * "cell factor", which is close to 2.
+	 *
+	 * Another MTU is added in case the transmitting host already started
+	 * transmitting a maximum length frame when the PFC packet was received.
+	 */
+	return 2 * delay_cells + mlxsw_sp_bytes_cells(mlxsw_sp, pb->mtu);
+}
+
+void mlxsw_sp_pbs_autoresize(const struct mlxsw_sp_port *mlxsw_sp_port,
+			     struct mlxsw_sp_pb *pb)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	int i;
+
+	if (pb->manual_level < MLXSW_SP_PB_MANUAL_LEVEL_PG_SIZE)
+		return;
+
+	for (i = 0; i < DCBX_MAX_BUFFERS; i++) {
+		if (mlxsw_sp_pb_is_used(pb, i)) {
+			u16 delay_cells = mlxsw_sp_pb_delay_get(mlxsw_sp, pb);
+			u16 thres_cells = 2 * mlxsw_sp_bytes_cells(mlxsw_sp, pb->mtu);
+
+			pb->buffer[i].size_cells = thres_cells + delay_cells;
+			pb->buffer[i].thres_cells = thres_cells;
+		} else {
+			pb->buffer[i].size_cells = 0;
+			pb->buffer[i].thres_cells = 0;
+		}
+	}
+}
+
+
+/* 1/4 of a headroom necessary for 100Gbps port and 100m cable. */
+// xxx when PFC is disabled, how do we revert back to this value? It looks like we go
+// back to a different value that depends on MTU.
+#define MLXSW_SP_PB_HEADROOM 25632
+
+static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	struct mlxsw_sp_pb pb = {};
+	u32 size;
+
+	size = MLXSW_SP_PB_HEADROOM * mlxsw_sp_port->mapping.width;
+	pb.buffer[0].size_cells = mlxsw_sp_bytes_cells(mlxsw_sp, size);
+
+	size = mlxsw_sp_port_headroom_8x_adjust(mlxsw_sp_port, MLXSW_PORT_MAX_MTU);
+	pb.buffer[9].size_cells = mlxsw_sp_bytes_cells(mlxsw_sp, size);
+
+	return __mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb, true);
 }
 
 static int mlxsw_sp_sb_port_init(struct mlxsw_sp *mlxsw_sp,
@@ -995,7 +1148,7 @@ int mlxsw_sp_port_buffers_init(struct mlxsw_sp_port *mlxsw_sp_port)
 {
 	int err;
 
-	err = mlxsw_sp_port_headroom_init(mlxsw_sp_port);
+	err = mlxsw_sp_port_pb_init(mlxsw_sp_port);
 	if (err)
 		return err;
 	err = mlxsw_sp_port_sb_cms_init(mlxsw_sp_port);
