@@ -318,6 +318,7 @@ struct mlxsw_sp_port {
 	struct {
 		struct delayed_work speed_update_dw;
 	} span;
+	struct mlxsw_sp_pb *pb;
 };
 
 struct mlxsw_sp_port_type_speed_ops {
@@ -414,14 +415,13 @@ mlxsw_sp_port_vlan_find_by_vid(const struct mlxsw_sp_port *mlxsw_sp_port,
 }
 
 static inline u32
-mlxsw_sp_port_headroom_8x_adjust(const struct mlxsw_sp_port *mlxsw_sp_port,
-				 u32 size_cells)
+mlxsw_sp_port_headroom_8x_adjust(const struct mlxsw_sp_port *mlxsw_sp_port, u32 size)
 {
 	/* Ports with eight lanes use two headroom buffers between which the
 	 * configured headroom size is split. Therefore, multiply the calculated
 	 * headroom size by two.
 	 */
-	return mlxsw_sp_port->mapping.width == 8 ? 2 * size_cells : size_cells;
+	return mlxsw_sp_port->mapping.width == 8 ? 2 * size : size;
 }
 
 enum mlxsw_sp_flood_type {
@@ -438,9 +438,42 @@ int mlxsw_sp_port_admin_status_set(struct mlxsw_sp_port *mlxsw_sp_port,
 				   bool is_up);
 
 /* spectrum_buffers.c */
+
+#define MLXSW_SP_PB_COUNT 10
+
+struct mlxsw_sp_pb_buffer {
+	u32 thres_cells;
+	u32 size_cells;
+	bool lossless;
+};
+
+enum mlxsw_sp_pb_manual_level {
+	/* Project ETS configuration to prio-to-PG mapping, and take that and other
+	 * setting into account when auto-deducing port buffer sizes.
+	 */
+	MLXSW_SP_PB_MANUAL_LEVEL_NONE,
+
+	/* Prio-to-PG mapping is user-defined. That and other settings are taken into
+	 * account when auto-deducing port buffer sizes.
+	 */
+	MLXSW_SP_PB_MANUAL_LEVEL_PG,
+
+	/* Both prio-to-PG mapping and port buffer size are user-configured. */
+	MLXSW_SP_PB_MANUAL_LEVEL_PG_SIZE,
+};
+
+struct mlxsw_sp_pb {
+	struct mlxsw_sp_pb_buffer buffer[MLXSW_SP_PB_COUNT];
+	u8 prio2buffer[IEEE_8021Q_MAX_PRIORITIES];
+	int delay_bytes;
+	int mtu;
+	enum mlxsw_sp_pb_manual_level manual_level;
+};
+
 int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp);
 void mlxsw_sp_buffers_fini(struct mlxsw_sp *mlxsw_sp);
 int mlxsw_sp_port_buffers_init(struct mlxsw_sp_port *mlxsw_sp_port);
+void mlxsw_sp_port_buffers_fini(struct mlxsw_sp_port *mlxsw_sp_port);
 int mlxsw_sp_sb_pool_get(struct mlxsw_core *mlxsw_core,
 			 unsigned int sb_index, u16 pool_index,
 			 struct devlink_sb_pool_info *pool_info);
@@ -477,6 +510,9 @@ int mlxsw_sp_sb_occ_tc_port_bind_get(struct mlxsw_core_port *mlxsw_core_port,
 u32 mlxsw_sp_cells_bytes(const struct mlxsw_sp *mlxsw_sp, u32 cells);
 u32 mlxsw_sp_bytes_cells(const struct mlxsw_sp *mlxsw_sp, u32 bytes);
 u32 mlxsw_sp_sb_max_headroom_cells(const struct mlxsw_sp *mlxsw_sp);
+int mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port, const struct mlxsw_sp_pb *pb);
+void mlxsw_sp_pbs_autoresize(const struct mlxsw_sp_port *mlxsw_sp_port,
+			     struct mlxsw_sp_pb *pb);
 
 extern const struct mlxsw_sp_sb_vals mlxsw_sp1_sb_vals;
 extern const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals;

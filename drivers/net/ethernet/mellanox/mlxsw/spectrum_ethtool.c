@@ -192,11 +192,26 @@ static int mlxsw_sp_port_pause_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			       pfcc_pl);
 }
 
+static void mlxsw_sp_port_pbs_set_lossless(struct mlxsw_sp_pb *pb, bool pause_en)
+{
+	int i;
+
+	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
+		pb->buffer[i].lossless = pause_en;
+}
+
+/* Maximum delay buffer needed in case of PAUSE frames. Similar to PFC delay, but is
+ * measured in bytes. Assumes 100m cable and does not take into account MTU.
+ */
+#define MLXSW_SP_PAUSE_DELAY_BYTES 19476
+
 static int mlxsw_sp_port_set_pauseparam(struct net_device *dev,
 					struct ethtool_pauseparam *pause)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	bool pause_en = pause->tx_pause || pause->rx_pause;
+	struct mlxsw_sp_pb orig_pb;
+	struct mlxsw_sp_pb pb;
 	int err;
 
 	if (mlxsw_sp_port->dcb.pfc && mlxsw_sp_port->dcb.pfc->pfc_en) {
@@ -209,7 +224,17 @@ static int mlxsw_sp_port_set_pauseparam(struct net_device *dev,
 		return -EINVAL;
 	}
 
-	err = mlxsw_sp_port_headroom_set(mlxsw_sp_port, dev->mtu, pause_en);
+	orig_pb = *mlxsw_sp_port->pb;
+
+	pb = orig_pb;
+	mlxsw_sp_port_pbs_set_lossless(&pb, pause_en);
+	if (pause_en)
+		pb.delay_bytes = MLXSW_SP_PAUSE_DELAY_BYTES;
+	else
+		pb.delay_bytes = 0;
+	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+
+	err = mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
 	if (err) {
 		netdev_err(dev, "Failed to configure port's headroom\n");
 		return err;
@@ -227,8 +252,7 @@ static int mlxsw_sp_port_set_pauseparam(struct net_device *dev,
 	return 0;
 
 err_port_pause_configure:
-	pause_en = mlxsw_sp_port_is_pause_en(mlxsw_sp_port);
-	mlxsw_sp_port_headroom_set(mlxsw_sp_port, dev->mtu, pause_en);
+	mlxsw_sp_pbs_configure(mlxsw_sp_port, &orig_pb);
 	return err;
 }
 
