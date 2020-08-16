@@ -22,6 +22,7 @@ general.
    devlink-resource
    devlink-reload
    devlink-trap
+   devlink-metric
 
 Driver-specific documentation
 -----------------------------

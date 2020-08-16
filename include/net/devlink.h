@@ -44,6 +44,7 @@ struct devlink {
 	struct list_head trap_list;
 	struct list_head trap_group_list;
 	struct list_head trap_policer_list;
+	struct list_head metric_list;
 	const struct devlink_ops *ops;
 	struct xarray snapshot_ids;
 	struct devlink_dev_stats stats;
@@ -1161,6 +1162,16 @@ enum devlink_trap_group_generic_id {
 		.min_burst = _min_burst,				      \
 	}
 
+struct devlink_metric;
+
+/**
+ * struct devlink_metric_ops - Metric operations.
+ * @counter_get: Get the counter value. Cannot be NULL when counter.
+ */
+struct devlink_metric_ops {
+	int (*counter_get)(struct devlink_metric *metric, u64 *p_val);
+};
+
 struct devlink_ops {
 	/**
 	 * @supported_flash_update_params:
@@ -1617,6 +1628,13 @@ void
 devlink_trap_policers_unregister(struct devlink *devlink,
 				 const struct devlink_trap_policer *policers,
 				 size_t policers_count);
+
+void *devlink_metric_priv(struct devlink_metric *metric);
+struct devlink_metric *
+devlink_metric_counter_create(struct devlink *devlink, const char *name,
+			      const struct devlink_metric_ops *ops, void *priv);
+void devlink_metric_destroy(struct devlink *devlink,
+			    struct devlink_metric *metric);
 
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 

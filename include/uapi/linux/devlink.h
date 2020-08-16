@@ -126,6 +126,11 @@ enum devlink_command {
 
 	DEVLINK_CMD_HEALTH_REPORTER_TEST,
 
+	DEVLINK_CMD_METRIC_GET,		/* can dump */
+	DEVLINK_CMD_METRIC_SET,
+	DEVLINK_CMD_METRIC_NEW,
+	DEVLINK_CMD_METRIC_DEL,
+
 	/* add new commands above here */
 	__DEVLINK_CMD_MAX,
 	DEVLINK_CMD_MAX = __DEVLINK_CMD_MAX - 1
@@ -323,6 +328,14 @@ enum devlink_reload_limit {
 };
 
 #define DEVLINK_RELOAD_LIMITS_VALID_MASK (BIT(__DEVLINK_RELOAD_LIMIT_MAX) - 1)
+
+/**
+ * enum devlink_metric_type - Metric type.
+ * @DEVLINK_METRIC_TYPE_COUNTER: Counter. Monotonically increasing.
+ */
+enum devlink_metric_type {
+	DEVLINK_METRIC_TYPE_COUNTER,
+};
 
 enum devlink_attr {
 	/* don't change the order or add anything between, this is ABI! */
@@ -526,6 +539,12 @@ enum devlink_attr {
 	DEVLINK_ATTR_RELOAD_STATS_LIMIT,	/* u8 */
 	DEVLINK_ATTR_RELOAD_STATS_VALUE,	/* u32 */
 	DEVLINK_ATTR_REMOTE_RELOAD_STATS,	/* nested */
+
+	DEVLINK_ATTR_METRIC_NAME,		/* string */
+	/* enum devlink_metric_type */
+	DEVLINK_ATTR_METRIC_TYPE,		/* u8 */
+	DEVLINK_ATTR_METRIC_COUNTER_VALUE,	/* u64 */
+	DEVLINK_ATTR_METRIC_GROUP,		/* u32 */
 
 	/* add new attributes above here, update the policy in devlink.c */
 

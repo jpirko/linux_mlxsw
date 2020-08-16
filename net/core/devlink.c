@@ -7511,6 +7511,218 @@ static int devlink_nl_cmd_trap_policer_set_doit(struct sk_buff *skb,
 	return devlink_trap_policer_set(devlink, policer_item, info);
 }
 
+/**
+ * struct devlink_metric - Metric attributes.
+ * @name: Metric name.
+ * @ops: Metric operations.
+ * @list: Member of 'metric_list'
+ * @type: Metric type.
+ * @group: Group number. '0' is the default group number.
+ * @priv: Metric private information.
+ */
+struct devlink_metric {
+	const char *name;
+	const struct devlink_metric_ops *ops;
+	struct list_head list;
+	enum devlink_metric_type type;
+	u32 group;
+	void *priv;
+};
+
+static struct devlink_metric *
+devlink_metric_lookup(struct devlink *devlink, const char *name)
+{
+	struct devlink_metric *metric;
+
+	list_for_each_entry(metric, &devlink->metric_list, list) {
+		if (!strcmp(metric->name, name))
+			return metric;
+	}
+
+	return NULL;
+}
+
+static struct devlink_metric *
+devlink_metric_get_from_info(struct devlink *devlink, struct genl_info *info)
+{
+	struct nlattr *attr;
+
+	if (!info->attrs[DEVLINK_ATTR_METRIC_NAME])
+		return NULL;
+	attr = info->attrs[DEVLINK_ATTR_METRIC_NAME];
+
+	return devlink_metric_lookup(devlink, nla_data(attr));
+}
+
+static int devlink_nl_metric_counter_fill(struct sk_buff *msg,
+					  struct devlink_metric *metric)
+{
+	u64 val;
+	int err;
+
+	err = metric->ops->counter_get(metric, &val);
+	if (err)
+		return err;
+
+	if (nla_put_u64_64bit(msg, DEVLINK_ATTR_METRIC_COUNTER_VALUE, val,
+			      DEVLINK_ATTR_PAD))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int
+devlink_nl_metric_fill(struct sk_buff *msg, struct devlink *devlink,
+		       struct devlink_metric *metric, enum devlink_command cmd,
+		       u32 portid, u32 seq, int flags)
+{
+	void *hdr;
+
+	hdr = genlmsg_put(msg, portid, seq, &devlink_nl_family, flags, cmd);
+	if (!hdr)
+		return -EMSGSIZE;
+
+	if (devlink_nl_put_handle(msg, devlink))
+		goto nla_put_failure;
+
+	if (nla_put_string(msg, DEVLINK_ATTR_METRIC_NAME, metric->name))
+		goto nla_put_failure;
+
+	if (nla_put_u8(msg, DEVLINK_ATTR_METRIC_TYPE, metric->type))
+		goto nla_put_failure;
+
+	if (metric->type == DEVLINK_METRIC_TYPE_COUNTER &&
+	    devlink_nl_metric_counter_fill(msg, metric))
+		goto nla_put_failure;
+
+	if (nla_put_u32(msg, DEVLINK_ATTR_METRIC_GROUP, metric->group))
+		goto nla_put_failure;
+
+	genlmsg_end(msg, hdr);
+
+	return 0;
+
+nla_put_failure:
+	genlmsg_cancel(msg, hdr);
+	return -EMSGSIZE;
+}
+
+static int devlink_nl_cmd_metric_get_doit(struct sk_buff *skb,
+					  struct genl_info *info)
+{
+	struct netlink_ext_ack *extack = info->extack;
+	struct devlink *devlink = info->user_ptr[0];
+	struct devlink_metric *metric;
+	struct sk_buff *msg;
+	int err;
+
+	if (list_empty(&devlink->metric_list))
+		return -EOPNOTSUPP;
+
+	metric = devlink_metric_get_from_info(devlink, info);
+	if (!metric) {
+		NL_SET_ERR_MSG_MOD(extack, "Device did not register this metric");
+		return -ENOENT;
+	}
+
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	err = devlink_nl_metric_fill(msg, devlink, metric,
+				     DEVLINK_CMD_METRIC_NEW, info->snd_portid,
+				     info->snd_seq, 0);
+	if (err)
+		goto err_metric_fill;
+
+	return genlmsg_reply(msg, info);
+
+err_metric_fill:
+	nlmsg_free(msg);
+	return err;
+}
+
+static int devlink_nl_cmd_metric_get_dumpit(struct sk_buff *msg,
+					    struct netlink_callback *cb)
+{
+	const struct genl_dumpit_info *info = genl_dumpit_info(cb);
+	enum devlink_command cmd = DEVLINK_CMD_METRIC_NEW;
+	u32 portid = NETLINK_CB(cb->skb).portid;
+	struct devlink_metric *metric;
+	struct devlink *devlink;
+	int start = cb->args[0];
+	int flags = NLM_F_MULTI;
+	u32 group = 0;
+	int idx = 0;
+	int err;
+
+	if (info->attrs[DEVLINK_ATTR_METRIC_GROUP]) {
+		group = nla_get_u32(info->attrs[DEVLINK_ATTR_METRIC_GROUP]);
+		flags |= NLM_F_DUMP_FILTERED;
+	}
+
+	mutex_lock(&devlink_mutex);
+	list_for_each_entry(devlink, &devlink_list, list) {
+		if (!net_eq(devlink_net(devlink), sock_net(msg->sk)))
+			continue;
+		mutex_lock(&devlink->lock);
+		list_for_each_entry(metric, &devlink->metric_list, list) {
+			if (idx < start) {
+				idx++;
+				continue;
+			}
+			if (group && metric->group != group) {
+				idx++;
+				continue;
+			}
+			err = devlink_nl_metric_fill(msg, devlink, metric, cmd,
+						     portid, cb->nlh->nlmsg_seq,
+						     flags);
+			if (err) {
+				mutex_unlock(&devlink->lock);
+				goto out;
+			}
+			idx++;
+		}
+		mutex_unlock(&devlink->lock);
+	}
+out:
+	mutex_unlock(&devlink_mutex);
+
+	cb->args[0] = idx;
+	return msg->len;
+}
+
+static void devlink_metric_group_set(struct devlink_metric *metric,
+				     struct genl_info *info)
+{
+	if (!info->attrs[DEVLINK_ATTR_METRIC_GROUP])
+		return;
+
+	metric->group = nla_get_u32(info->attrs[DEVLINK_ATTR_METRIC_GROUP]);
+}
+
+static int devlink_nl_cmd_metric_set_doit(struct sk_buff *skb,
+					  struct genl_info *info)
+{
+	struct netlink_ext_ack *extack = info->extack;
+	struct devlink *devlink = info->user_ptr[0];
+	struct devlink_metric *metric;
+
+	if (list_empty(&devlink->metric_list))
+		return -EOPNOTSUPP;
+
+	metric = devlink_metric_get_from_info(devlink, info);
+	if (!metric) {
+		NL_SET_ERR_MSG_MOD(extack, "Device did not register this metric");
+		return -ENOENT;
+	}
+
+	devlink_metric_group_set(metric, info);
+
+	return 0;
+}
+
 static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_UNSPEC] = { .strict_start_type =
 		DEVLINK_ATTR_TRAP_POLICER_ID },
@@ -7563,6 +7775,9 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_RELOAD_ACTION] = NLA_POLICY_RANGE(NLA_U8, DEVLINK_RELOAD_ACTION_DRIVER_REINIT,
 							DEVLINK_RELOAD_ACTION_MAX),
 	[DEVLINK_ATTR_RELOAD_LIMITS] = NLA_POLICY_BITFIELD32(DEVLINK_RELOAD_LIMITS_VALID_MASK),
+	[DEVLINK_ATTR_METRIC_NAME] = { .type = NLA_NUL_STRING },
+	[DEVLINK_ATTR_METRIC_TYPE] = { .type = NLA_U8 },
+	[DEVLINK_ATTR_METRIC_GROUP] = { .type = NLA_U32 },
 };
 
 static const struct genl_small_ops devlink_nl_ops[] = {
@@ -7879,6 +8094,17 @@ static const struct genl_small_ops devlink_nl_ops[] = {
 		.doit = devlink_nl_cmd_trap_policer_set_doit,
 		.flags = GENL_ADMIN_PERM,
 	},
+	{
+		.cmd = DEVLINK_CMD_METRIC_GET,
+		.doit = devlink_nl_cmd_metric_get_doit,
+		.dumpit = devlink_nl_cmd_metric_get_dumpit,
+		/* can be retrieved by unprivileged users */
+	},
+	{
+		.cmd = DEVLINK_CMD_METRIC_SET,
+		.doit = devlink_nl_cmd_metric_set_doit,
+		.flags = GENL_ADMIN_PERM,
+	},
 };
 
 static struct genl_family devlink_nl_family __ro_after_init = {
@@ -7960,6 +8186,7 @@ struct devlink *devlink_alloc(const struct devlink_ops *ops, size_t priv_size)
 	INIT_LIST_HEAD(&devlink->trap_list);
 	INIT_LIST_HEAD(&devlink->trap_group_list);
 	INIT_LIST_HEAD(&devlink->trap_policer_list);
+	INIT_LIST_HEAD(&devlink->metric_list);
 	mutex_init(&devlink->lock);
 	mutex_init(&devlink->reporters_lock);
 	return devlink;
@@ -8044,6 +8271,7 @@ void devlink_free(struct devlink *devlink)
 {
 	mutex_destroy(&devlink->reporters_lock);
 	mutex_destroy(&devlink->lock);
+	WARN_ON(!list_empty(&devlink->metric_list));
 	WARN_ON(!list_empty(&devlink->trap_policer_list));
 	WARN_ON(!list_empty(&devlink->trap_group_list));
 	WARN_ON(!list_empty(&devlink->trap_list));
@@ -10154,6 +10382,124 @@ devlink_trap_policers_unregister(struct devlink *devlink,
 	mutex_unlock(&devlink->lock);
 }
 EXPORT_SYMBOL_GPL(devlink_trap_policers_unregister);
+
+/**
+ * devlink_metric_priv - Return metric private information.
+ * @metric: Metric.
+ *
+ * Return: Metric private information that was passed from device-driver
+ * during metric creation.
+ */
+void *devlink_metric_priv(struct devlink_metric *metric)
+{
+	return metric->priv;
+}
+EXPORT_SYMBOL_GPL(devlink_metric_priv);
+
+static void devlink_metric_notify(struct devlink *devlink,
+				  struct devlink_metric *metric,
+				  enum devlink_command cmd)
+{
+	struct sk_buff *msg;
+	int err;
+
+	WARN_ON_ONCE(cmd != DEVLINK_CMD_METRIC_NEW &&
+		     cmd != DEVLINK_CMD_METRIC_DEL);
+
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg)
+		return;
+
+	err = devlink_nl_metric_fill(msg, devlink, metric, cmd, 0, 0, 0);
+	if (err) {
+		nlmsg_free(msg);
+		return;
+	}
+
+	genlmsg_multicast_netns(&devlink_nl_family, devlink_net(devlink),
+				msg, 0, DEVLINK_MCGRP_CONFIG, GFP_KERNEL);
+}
+
+/**
+ * devlink_metric_counter_create - Create metric of counter type.
+ * @devlink: devlink.
+ * @name: Metric name.
+ * @ops: Metric operations.
+ * @priv: Metric private information.
+ *
+ * All metrics must be documented in the per-device documentation under
+ * Documentation/networking/devlink/.
+ *
+ * Return: Error pointer on failure.
+ */
+struct devlink_metric *
+devlink_metric_counter_create(struct devlink *devlink, const char *name,
+			      const struct devlink_metric_ops *ops, void *priv)
+{
+	struct devlink_metric *metric;
+	int err;
+
+	if (!ops || !ops->counter_get || !name)
+		return ERR_PTR(-EINVAL);
+
+	mutex_lock(&devlink->lock);
+
+	if (devlink_metric_lookup(devlink, name)) {
+		err = -EEXIST;
+		goto err_exists;
+	}
+
+	metric = kzalloc(sizeof(*metric), GFP_KERNEL);
+	if (!metric) {
+		err = -ENOMEM;
+		goto err_alloc_metric;
+	}
+
+	metric->name = kstrdup(name, GFP_KERNEL);
+	if (!metric->name) {
+		err = -ENOMEM;
+		goto err_alloc_metric_name;
+	}
+
+	metric->ops = ops;
+	metric->type = DEVLINK_METRIC_TYPE_COUNTER;
+	metric->group = 0;
+	metric->priv = priv;
+
+	list_add_tail(&metric->list, &devlink->metric_list);
+	devlink_metric_notify(devlink, metric, DEVLINK_CMD_METRIC_NEW);
+
+	mutex_unlock(&devlink->lock);
+
+	return metric;
+
+err_alloc_metric_name:
+	kfree(metric);
+err_alloc_metric:
+err_exists:
+	mutex_unlock(&devlink->lock);
+	return ERR_PTR(err);
+}
+EXPORT_SYMBOL_GPL(devlink_metric_counter_create);
+
+/**
+ * devlink_metric_destroy - Destroy metric.
+ * @devlink: devlink.
+ * @metric: Metric.
+ */
+void devlink_metric_destroy(struct devlink *devlink,
+			    struct devlink_metric *metric)
+{
+	mutex_lock(&devlink->lock);
+
+	devlink_metric_notify(devlink, metric, DEVLINK_CMD_METRIC_DEL);
+	list_del(&metric->list);
+	kfree(metric->name);
+	kfree(metric);
+
+	mutex_unlock(&devlink->lock);
+}
+EXPORT_SYMBOL_GPL(devlink_metric_destroy);
 
 static void __devlink_compat_running_version(struct devlink *devlink,
 					     char *buf, size_t len)
