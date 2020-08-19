@@ -968,14 +968,6 @@ static int mlxsw_sp_span_entry_put(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
-static u32 mlxsw_sp_span_buffsize_get(struct mlxsw_sp *mlxsw_sp, int mtu,
-				      u32 speed)
-{
-	u32 buffsize = mlxsw_sp->span_ops->buffsize_get(speed, mtu);
-
-	return mlxsw_sp_bytes_cells(mlxsw_sp, buffsize) + 1;
-}
-
 static int
 mlxsw_sp_span_port_buffer_update(struct mlxsw_sp_port *mlxsw_sp_port, u16 mtu)
 {
@@ -1021,48 +1013,6 @@ mlxsw_sp_span_analyzed_port_find(struct mlxsw_sp_span *span, u8 local_port,
 	}
 
 	return NULL;
-}
-
-int mlxsw_sp_span_port_mtu_update(struct mlxsw_sp_port *port, u16 mtu)
-{
-	struct mlxsw_sp *mlxsw_sp = port->mlxsw_sp;
-	int err = 0;
-
-	/* If port is egress mirrored, the shared buffer size should be
-	 * updated according to the mtu value
-	 */
-	mutex_lock(&mlxsw_sp->span->analyzed_ports_lock);
-
-	if (mlxsw_sp_span_analyzed_port_find(mlxsw_sp->span, port->local_port,
-					     false))
-		err = mlxsw_sp_span_port_buffer_update(port, mtu);
-
-	mutex_unlock(&mlxsw_sp->span->analyzed_ports_lock);
-
-	return err;
-}
-
-void mlxsw_sp_span_speed_update_work(struct work_struct *work)
-{
-	struct delayed_work *dwork = to_delayed_work(work);
-	struct mlxsw_sp_port *mlxsw_sp_port;
-	struct mlxsw_sp *mlxsw_sp;
-
-	mlxsw_sp_port = container_of(dwork, struct mlxsw_sp_port,
-				     span.speed_update_dw);
-
-	/* If port is egress mirrored, the shared buffer size should be
-	 * updated according to the speed value.
-	 */
-	mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
-	mutex_lock(&mlxsw_sp->span->analyzed_ports_lock);
-
-	if (mlxsw_sp_span_analyzed_port_find(mlxsw_sp->span,
-					     mlxsw_sp_port->local_port, false))
-		mlxsw_sp_span_port_buffer_update(mlxsw_sp_port,
-						 mlxsw_sp_port->dev->mtu);
-
-	mutex_unlock(&mlxsw_sp->span->analyzed_ports_lock);
 }
 
 static const struct mlxsw_sp_span_entry_ops *
@@ -1730,11 +1680,6 @@ static int mlxsw_sp1_span_init(struct mlxsw_sp *mlxsw_sp)
 	return 0;
 }
 
-static u32 mlxsw_sp1_span_buffsize_get(int mtu, u32 speed)
-{
-	return mtu * 5 / 2;
-}
-
 static int mlxsw_sp1_span_policer_id_base_set(struct mlxsw_sp *mlxsw_sp,
 					      u16 policer_id_base)
 {
@@ -1743,7 +1688,6 @@ static int mlxsw_sp1_span_policer_id_base_set(struct mlxsw_sp *mlxsw_sp,
 
 const struct mlxsw_sp_span_ops mlxsw_sp1_span_ops = {
 	.init = mlxsw_sp1_span_init,
-	.buffsize_get = mlxsw_sp1_span_buffsize_get,
 	.policer_id_base_set = mlxsw_sp1_span_policer_id_base_set,
 };
 
@@ -1763,21 +1707,6 @@ static int mlxsw_sp2_span_init(struct mlxsw_sp *mlxsw_sp)
 	mlxsw_sp->span->span_entry_ops_arr_size = arr_size;
 
 	return 0;
-}
-
-#define MLXSW_SP2_SPAN_EG_MIRROR_BUFFER_FACTOR 38
-#define MLXSW_SP3_SPAN_EG_MIRROR_BUFFER_FACTOR 50
-
-static u32 __mlxsw_sp_span_buffsize_get(int mtu, u32 speed, u32 buffer_factor)
-{
-	return 3 * mtu + buffer_factor * speed / 1000;
-}
-
-static u32 mlxsw_sp2_span_buffsize_get(int mtu, u32 speed)
-{
-	int factor = MLXSW_SP2_SPAN_EG_MIRROR_BUFFER_FACTOR;
-
-	return __mlxsw_sp_span_buffsize_get(mtu, speed, factor);
 }
 
 static int mlxsw_sp2_span_policer_id_base_set(struct mlxsw_sp *mlxsw_sp,
@@ -1805,17 +1734,9 @@ static void mlxsw_sp2_fix_momte(struct mlxsw_sp_port *mlxsw_sp_port)
 
 const struct mlxsw_sp_span_ops mlxsw_sp2_span_ops = {
 	.init = mlxsw_sp2_span_init,
-	.buffsize_get = mlxsw_sp2_span_buffsize_get,
 	.policer_id_base_set = mlxsw_sp2_span_policer_id_base_set,
 	.fix_momte = mlxsw_sp2_fix_momte,
 };
-
-static u32 mlxsw_sp3_span_buffsize_get(int mtu, u32 speed)
-{
-	int factor = MLXSW_SP3_SPAN_EG_MIRROR_BUFFER_FACTOR;
-
-	return __mlxsw_sp_span_buffsize_get(mtu, speed, factor);
-}
 
 const struct mlxsw_sp_span_ops mlxsw_sp3_span_ops = {
 	.init = mlxsw_sp2_span_init,

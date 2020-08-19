@@ -122,6 +122,10 @@ struct mlxsw_sp_sb_vals {
 	unsigned int cms_cpu_count;
 };
 
+struct mlxsw_sp_sb_ops {
+	u32 (*int_buf_size_get)(int mtu, u32 speed);
+};
+
 u32 mlxsw_sp_cells_bytes(const struct mlxsw_sp *mlxsw_sp, u32 cells)
 {
 	return mlxsw_sp->sb->cell_size * cells;
@@ -297,14 +301,11 @@ static int mlxsw_sp_pbs_configure_buffers(struct mlxsw_sp_port *mlxsw_sp_port,
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	char pbmc_pl[MLXSW_REG_PBMC_LEN];
-	u32 taken_headroom_cells = 0;
 	struct mlxsw_sp_pb *cur_pb;
-	u32 max_headroom_cells;
 	bool dirty = false;
 	int i;
 
 	cur_pb = mlxsw_sp_port->pb;
-	max_headroom_cells = mlxsw_sp_sb_max_headroom_cells(mlxsw_sp);
 
 	mlxsw_reg_pbmc_pack(pbmc_pl, mlxsw_sp_port->local_port,
 			    0xffff, 0xffff / 2);
@@ -320,8 +321,6 @@ static int mlxsw_sp_pbs_configure_buffers(struct mlxsw_sp_port *mlxsw_sp_port,
 		    buf_i->lossless != cur_buf_i->lossless)
 			dirty = true;
 
-		taken_headroom_cells += buf_i->size_cells;
-
 		if (pb->buffer[i].lossless)
 			mlxsw_reg_pbmc_lossless_buffer_pack(pbmc_pl, i, buf_i->size_cells,
 							    buf_i->thres_cells);
@@ -329,9 +328,6 @@ static int mlxsw_sp_pbs_configure_buffers(struct mlxsw_sp_port *mlxsw_sp_port,
 			mlxsw_reg_pbmc_lossy_buffer_pack(pbmc_pl, i, buf_i->size_cells);
 	}
 
-	if (taken_headroom_cells > max_headroom_cells)
-		// xxx take into account SBIB
-		return -ENOBUFS;
 	if (!dirty && !force)
 		return 0;
 
@@ -362,6 +358,40 @@ static int mlxsw_sp_pbs_configure_mapping(struct mlxsw_sp_port *mlxsw_sp_port,
 	return mlxsw_reg_write(mlxsw_sp_port->mlxsw_sp->core, MLXSW_REG(pptb), pptb_pl);
 }
 
+static int mlxsw_sp_pbs_configure_int_buf(struct mlxsw_sp_port *mlxsw_sp_port,
+					  const struct mlxsw_sp_pb *pb, bool force)
+{
+	char sbib_pl[MLXSW_REG_SBIB_LEN];
+	struct mlxsw_sp_pb *cur_pb;
+	bool dirty;
+
+	cur_pb = mlxsw_sp_port->pb;
+	dirty = pb->int_buf_size_cells != cur_pb->int_buf_size_cells;
+	if (!dirty && !force)
+		return 0;
+
+	mlxsw_reg_sbib_pack(sbib_pl, mlxsw_sp_port->local_port, pb->int_buf_size_cells);
+	return mlxsw_reg_write(mlxsw_sp_port->mlxsw_sp->core, MLXSW_REG(sbib), sbib_pl);
+}
+
+static bool mlxsw_sp_pbs_buffers_fit(struct mlxsw_sp *mlxsw_sp, const struct mlxsw_sp_pb *pb)
+{
+	u32 taken_headroom_cells = 0;
+	int i;
+
+	for (i = 0; i < MLXSW_SP_PB_COUNT; i++) {
+		if (i == MLXSW_SP_PB_UNUSED)
+			continue;
+		taken_headroom_cells += pb->buffer[i].size_cells;
+	}
+
+	taken_headroom_cells += pb->int_buf_size_cells;
+	printk(KERN_WARNING "taking %d / %d cells of port headroom\n",
+	       taken_headroom_cells, mlxsw_sp_sb_max_headroom_cells(mlxsw_sp));
+
+	return taken_headroom_cells <= mlxsw_sp_sb_max_headroom_cells(mlxsw_sp);
+}
+
 static int __mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port,
 				    const struct mlxsw_sp_pb *pb, bool force)
 {
@@ -390,9 +420,17 @@ static int __mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port,
 			tmp_pb.buffer[i] = pb->buffer[i];
 	}
 
-	err = mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, &tmp_pb, force);
+	if (!mlxsw_sp_pbs_buffers_fit(mlxsw_sp_port->mlxsw_sp, pb) ||
+	    !mlxsw_sp_pbs_buffers_fit(mlxsw_sp_port->mlxsw_sp, &tmp_pb))
+		return -ENOBUFS;
+
+	err = mlxsw_sp_pbs_configure_int_buf(mlxsw_sp_port, pb, force);
 	if (err)
 		return err;
+
+	err = mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, &tmp_pb, force);
+	if (err)
+		goto err_set_buffers_tmp;
 
 	err = mlxsw_sp_pbs_configure_mapping(mlxsw_sp_port, pb, force);
 	if (err)
@@ -409,6 +447,8 @@ err_set_buffers:
 	mlxsw_sp_pbs_configure_mapping(mlxsw_sp_port, cur_pb, true);
 err_set_mapping:
 	mlxsw_sp_pbs_configure_buffers(mlxsw_sp_port, cur_pb, true);
+err_set_buffers_tmp:
+	mlxsw_sp_pbs_configure_int_buf(mlxsw_sp_port, cur_pb, true);
 	return err;
 }
 
@@ -428,6 +468,43 @@ static bool mlxsw_sp_pb_is_used(struct mlxsw_sp_pb *pb, int buf)
 	return false;
 }
 
+static u32 mlxsw_sp1_pb_int_buf_size_get(int mtu, u32 speed)
+{
+	return mtu * 5 / 2;
+}
+
+static u32 __mlxsw_sp_pb_int_buf_size_get(int mtu, u32 speed, u32 buffer_factor)
+{
+	return 3 * mtu + buffer_factor * speed / 1000;
+}
+
+#define MLXSW_SP2_SPAN_EG_MIRROR_BUFFER_FACTOR 38
+
+static u32 mlxsw_sp2_pb_int_buf_size_get(int mtu, u32 speed)
+{
+	int factor = MLXSW_SP2_SPAN_EG_MIRROR_BUFFER_FACTOR;
+
+	return __mlxsw_sp_pb_int_buf_size_get(mtu, speed, factor);
+}
+
+// xxx this can be queried from a resource, and the per-chip dispatch removed
+#define MLXSW_SP3_SPAN_EG_MIRROR_BUFFER_FACTOR 50
+
+static u32 mlxsw_sp3_pb_int_buf_size_get(int mtu, u32 speed)
+{
+	int factor = MLXSW_SP3_SPAN_EG_MIRROR_BUFFER_FACTOR;
+
+	return __mlxsw_sp_pb_int_buf_size_get(mtu, speed, factor);
+}
+
+static u32 mlxsw_sp_pb_int_buf_size_get(struct mlxsw_sp *mlxsw_sp, int mtu, u32 speed)
+{
+	u32 buffsize = mlxsw_sp->sb_ops->int_buf_size_get(speed, mtu);
+
+	// xxx why +1?
+	return mlxsw_sp_bytes_cells(mlxsw_sp, buffsize) + 1;
+}
+
 static u16 mlxsw_sp_pb_delay_get(const struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_pb *pb)
 {
 	u16 delay_cells;
@@ -445,14 +522,28 @@ static u16 mlxsw_sp_pb_delay_get(const struct mlxsw_sp *mlxsw_sp, struct mlxsw_s
 	return 2 * delay_cells + mlxsw_sp_bytes_cells(mlxsw_sp, pb->mtu);
 }
 
-void mlxsw_sp_pbs_autoresize(const struct mlxsw_sp_port *mlxsw_sp_port,
-			     struct mlxsw_sp_pb *pb)
+int mlxsw_sp_pbs_autoresize(struct mlxsw_sp_port *mlxsw_sp_port, struct mlxsw_sp_pb *pb)
 {
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	u32 speed;
+	int err;
 	int i;
 
+	if (pb->int_buf) {
+		err = mlxsw_sp_port_speed_get(mlxsw_sp_port, &speed);
+		if (err)
+			return err;
+		if (speed == SPEED_UNKNOWN)
+			speed = 0;
+		pb->int_buf_size_cells = mlxsw_sp_pb_int_buf_size_get(mlxsw_sp, speed, pb->mtu);
+		pb->int_buf_size_cells = mlxsw_sp_port_headroom_8x_adjust(mlxsw_sp_port,
+									  pb->int_buf_size_cells);
+	} else {
+		pb->int_buf_size_cells = 0;
+	}
+
 	if (pb->manual_level == MLXSW_SP_PB_MANUAL_LEVEL_PG_SIZE)
-		return;
+		return 0;
 
 	for (i = 0; i < DCBX_MAX_BUFFERS; i++) {
 		if (!mlxsw_sp_pb_is_used(pb, i)) {
@@ -466,6 +557,49 @@ void mlxsw_sp_pbs_autoresize(const struct mlxsw_sp_port *mlxsw_sp_port,
 				pb->buffer[i].size_cells += mlxsw_sp_pb_delay_get(mlxsw_sp, pb);
 		}
 	}
+
+	return 0;
+}
+
+void mlxsw_sp_pb_speed_update_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	struct mlxsw_sp_pb orig_pb;
+	struct mlxsw_sp *mlxsw_sp;
+	struct mlxsw_sp_pb pb;
+	u32 speed;
+
+	mlxsw_sp_port = container_of(dwork, struct mlxsw_sp_port, speed_update_dw);
+
+	err = mlxsw_sp_port_speed_get(mlxsw_sp_port, &speed);
+	if (err)
+		return err;
+	if (speed == SPEED_UNKNOWN)
+		speed = 0;
+
+	orig_pb = *mlxsw_sp_port->pb;
+	pb = orig_pb;
+	pb.speed = speed;
+
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err)
+		return;
+	// xxx OK, we can't forbid speed change. So what do we do with the port
+	// buffer configuration?
+
+	/* If port is egress mirrored, the shared buffer size should be
+	 * updated according to the speed value.
+	 */
+	mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	mutex_lock(&mlxsw_sp->span->analyzed_ports_lock);
+
+	if (mlxsw_sp_span_analyzed_port_find(mlxsw_sp->span,
+					     mlxsw_sp_port->local_port, false))
+		mlxsw_sp_span_port_buffer_update(mlxsw_sp_port,
+						 mlxsw_sp_port->dev->mtu);
+
+	mutex_unlock(&mlxsw_sp->span->analyzed_ports_lock);
 }
 
 static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
@@ -481,7 +615,9 @@ static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 
 	pb.delay_bytes = 0;
 	pb.mtu = mlxsw_sp_port->dev->mtu;
-	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err)
+		goto err_pbs_autoresize;
 
 	size9 = mlxsw_sp_port_headroom_8x_adjust(mlxsw_sp_port, MLXSW_PORT_MAX_MTU);
 	pb.buffer[9].size_cells = mlxsw_sp_bytes_cells(mlxsw_sp, size9);
@@ -493,6 +629,7 @@ static int mlxsw_sp_port_pb_init(struct mlxsw_sp_port *mlxsw_sp_port)
 	return 0;
 
 err_pbs_configure:
+err_pbs_autoresize:
 	kfree(mlxsw_sp_port->pb);
 	return err;
 }
@@ -1069,6 +1206,18 @@ const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals = {
 	.cms_ingress_count = ARRAY_SIZE(mlxsw_sp2_sb_cms_ingress),
 	.cms_egress_count = ARRAY_SIZE(mlxsw_sp2_sb_cms_egress),
 	.cms_cpu_count = ARRAY_SIZE(mlxsw_sp_cpu_port_sb_cms),
+};
+
+const struct mlxsw_sp_sb_ops mlxsw_sp1_sb_ops = {
+	.int_buf_size_get = mlxsw_sp1_pb_int_buf_size_get,
+};
+
+const struct mlxsw_sp_sb_ops mlxsw_sp2_sb_ops = {
+	.int_buf_size_get = mlxsw_sp2_pb_int_buf_size_get,
+};
+
+const struct mlxsw_sp_sb_ops mlxsw_sp3_sb_ops = {
+	.int_buf_size_get = mlxsw_sp3_pb_int_buf_size_get,
 };
 
 int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp)

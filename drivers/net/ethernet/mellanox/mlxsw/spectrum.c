@@ -614,17 +614,17 @@ static int mlxsw_sp_port_change_mtu(struct net_device *dev, int mtu)
 
 	pb = orig_pb;
 	pb.mtu = mtu;
-	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err) {
+		netdev_err(dev, "Failed to configure port's headroom for PFC\n");
+		return err;
+	}
 
 	err = mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
 	if (err) {
 		netdev_err(dev, "Failed to configure port's headroom for PFC\n");
 		return err;
 	}
-
-	err = mlxsw_sp_span_port_mtu_update(mlxsw_sp_port, mtu);
-	if (err)
-		goto err_span_port_mtu_update;
 
 	err = mlxsw_sp_port_mtu_set(mlxsw_sp_port, mtu);
 	if (err)
@@ -633,8 +633,6 @@ static int mlxsw_sp_port_change_mtu(struct net_device *dev, int mtu)
 	return 0;
 
 err_port_mtu_set:
-	mlxsw_sp_span_port_mtu_update(mlxsw_sp_port, dev->mtu);
-err_span_port_mtu_update:
 	mlxsw_sp_pbs_configure(mlxsw_sp_port, &orig_pb);
 	return err;
 }
@@ -1567,7 +1565,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	INIT_DELAYED_WORK(&mlxsw_sp_port->ptp.shaper_dw,
 			  mlxsw_sp->ptp_ops->shaper_work);
 	INIT_DELAYED_WORK(&mlxsw_sp_port->span.speed_update_dw,
-			  mlxsw_sp_span_speed_update_work);
+			  mlxsw_sp_pb_speed_update_work);
 
 	mlxsw_sp->ports[local_port] = mlxsw_sp_port;
 	err = register_netdev(dev);
@@ -2692,6 +2690,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->mac_mask = mlxsw_sp1_mac_mask;
 	mlxsw_sp->rif_ops_arr = mlxsw_sp1_rif_ops_arr;
 	mlxsw_sp->sb_vals = &mlxsw_sp1_sb_vals;
+	mlxsw_sp->sb_ops = &mlxsw_sp1_sb_ops;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp1_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp1_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp1_span_ops;
@@ -2720,6 +2719,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->mac_mask = mlxsw_sp2_mac_mask;
 	mlxsw_sp->rif_ops_arr = mlxsw_sp2_rif_ops_arr;
 	mlxsw_sp->sb_vals = &mlxsw_sp2_sb_vals;
+	mlxsw_sp->sb_ops = &mlxsw_sp2_sb_ops;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp2_span_ops;
@@ -2746,6 +2746,7 @@ static int mlxsw_sp3_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->mac_mask = mlxsw_sp2_mac_mask;
 	mlxsw_sp->rif_ops_arr = mlxsw_sp2_rif_ops_arr;
 	mlxsw_sp->sb_vals = &mlxsw_sp2_sb_vals;
+	mlxsw_sp->sb_ops = &mlxsw_sp3_sb_ops;
 	mlxsw_sp->port_type_speed_ops = &mlxsw_sp2_port_type_speed_ops;
 	mlxsw_sp->ptp_ops = &mlxsw_sp2_ptp_ops;
 	mlxsw_sp->span_ops = &mlxsw_sp3_span_ops;

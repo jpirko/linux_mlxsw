@@ -232,7 +232,12 @@ static int mlxsw_sp_port_set_pauseparam(struct net_device *dev,
 		pb.delay_bytes = MLXSW_SP_PAUSE_DELAY_BYTES;
 	else
 		pb.delay_bytes = 0;
-	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err) {
+		netdev_err(dev, "Failed to configure port's headroom\n");
+		return err;
+	}
 
 	err = mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
 	if (err) {
@@ -1168,6 +1173,19 @@ mlxsw_sp1_from_ptys_speed_duplex(struct mlxsw_sp *mlxsw_sp, bool carrier_ok,
 		cmd->base.duplex = DUPLEX_FULL;
 }
 
+static u32 mlxsw_sp1_ptys_max_speed(struct mlxsw_sp *mlxsw_sp, u8 width)
+{
+	u32 max_speed = 0;
+	int i;
+
+	for (i = 0; i < MLXSW_SP1_PORT_LINK_MODE_LEN; i++) {
+		if (mlxsw_sp1_port_link_mode[i].speed > max_speed)
+			max_speed = mlxsw_sp1_port_link_mode[i].speed;
+	}
+
+	return max_speed;
+}
+
 static u32
 mlxsw_sp1_to_ptys_advert_link(struct mlxsw_sp *mlxsw_sp, u8 width,
 			      const struct ethtool_link_ksettings *cmd)
@@ -1217,6 +1235,7 @@ const struct mlxsw_sp_port_type_speed_ops mlxsw_sp1_port_type_speed_ops = {
 	.from_ptys_link			= mlxsw_sp1_from_ptys_link,
 	.from_ptys_speed		= mlxsw_sp1_from_ptys_speed,
 	.from_ptys_speed_duplex		= mlxsw_sp1_from_ptys_speed_duplex,
+	.ptys_max_speed			= mlxsw_sp1_ptys_max_speed,
 	.to_ptys_advert_link		= mlxsw_sp1_to_ptys_advert_link,
 	.to_ptys_speed			= mlxsw_sp1_to_ptys_speed,
 	.reg_ptys_eth_pack		= mlxsw_sp1_reg_ptys_eth_pack,
@@ -1554,6 +1573,21 @@ mlxsw_sp2_from_ptys_speed_duplex(struct mlxsw_sp *mlxsw_sp, bool carrier_ok,
 		cmd->base.duplex = DUPLEX_FULL;
 }
 
+static u32 mlxsw_sp2_ptys_max_speed(struct mlxsw_sp *mlxsw_sp, u8 width)
+{
+	u8 mask_width = mlxsw_sp_port_mask_width_get(width);
+	u32 max_speed = 0;
+	int i;
+
+	for (i = 0; i < MLXSW_SP2_PORT_LINK_MODE_LEN; i++) {
+		if ((mask_width & mlxsw_sp2_port_link_mode[i].mask_width) &&
+		    mlxsw_sp2_port_link_mode[i].speed > max_speed)
+			max_speed = mlxsw_sp2_port_link_mode[i].speed;
+	}
+
+	return max_speed;
+}
+
 static bool
 mlxsw_sp2_test_bit_ethtool(const struct mlxsw_sp2_port_link_mode *link_mode,
 			   const unsigned long *mode)
@@ -1623,6 +1657,7 @@ const struct mlxsw_sp_port_type_speed_ops mlxsw_sp2_port_type_speed_ops = {
 	.from_ptys_link			= mlxsw_sp2_from_ptys_link,
 	.from_ptys_speed		= mlxsw_sp2_from_ptys_speed,
 	.from_ptys_speed_duplex		= mlxsw_sp2_from_ptys_speed_duplex,
+	.ptys_max_speed			= mlxsw_sp2_ptys_max_speed,
 	.to_ptys_advert_link		= mlxsw_sp2_to_ptys_advert_link,
 	.to_ptys_speed			= mlxsw_sp2_to_ptys_speed,
 	.reg_ptys_eth_pack		= mlxsw_sp2_reg_ptys_eth_pack,

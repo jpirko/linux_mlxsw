@@ -125,6 +125,7 @@ struct mlxsw_sp_mr_tcam_ops;
 struct mlxsw_sp_acl_rulei_ops;
 struct mlxsw_sp_acl_tcam_ops;
 struct mlxsw_sp_nve_ops;
+struct mlxsw_sp_sb_ops;
 struct mlxsw_sp_sb_vals;
 struct mlxsw_sp_port_type_speed_ops;
 struct mlxsw_sp_ptp_state;
@@ -171,6 +172,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_nve_ops **nve_ops_arr;
 	const struct mlxsw_sp_rif_ops **rif_ops_arr;
 	const struct mlxsw_sp_sb_vals *sb_vals;
+	const struct mlxsw_sp_sb_ops *sb_ops;
 	const struct mlxsw_sp_port_type_speed_ops *port_type_speed_ops;
 	const struct mlxsw_sp_ptp_ops *ptp_ops;
 	const struct mlxsw_sp_span_ops *span_ops;
@@ -315,9 +317,7 @@ struct mlxsw_sp_port {
 		struct mlxsw_sp_ptp_port_stats stats;
 	} ptp;
 	u8 split_base_local_port;
-	struct {
-		struct delayed_work speed_update_dw;
-	} span;
+	struct delayed_work speed_update_dw;
 	struct mlxsw_sp_pb *pb;
 };
 
@@ -463,11 +463,17 @@ enum mlxsw_sp_pb_manual_level {
 };
 
 struct mlxsw_sp_pb {
+	/* Headroom configuration. */
 	struct mlxsw_sp_pb_buffer buffer[MLXSW_SP_PB_COUNT];
+	u32 int_buf_size_cells;
 	u8 prio2buffer[IEEE_8021Q_MAX_PRIORITIES];
+
+	/* Source configuration. */
+	enum mlxsw_sp_pb_manual_level manual_level;
 	int delay_bytes;
 	int mtu;
-	enum mlxsw_sp_pb_manual_level manual_level;
+	u32 speed;
+	bool int_buf;
 };
 
 int mlxsw_sp_buffers_init(struct mlxsw_sp *mlxsw_sp);
@@ -511,11 +517,14 @@ u32 mlxsw_sp_cells_bytes(const struct mlxsw_sp *mlxsw_sp, u32 cells);
 u32 mlxsw_sp_bytes_cells(const struct mlxsw_sp *mlxsw_sp, u32 bytes);
 u32 mlxsw_sp_sb_max_headroom_cells(const struct mlxsw_sp *mlxsw_sp);
 int mlxsw_sp_pbs_configure(struct mlxsw_sp_port *mlxsw_sp_port, const struct mlxsw_sp_pb *pb);
-void mlxsw_sp_pbs_autoresize(const struct mlxsw_sp_port *mlxsw_sp_port,
-			     struct mlxsw_sp_pb *pb);
+int mlxsw_sp_pbs_autoresize(struct mlxsw_sp_port *mlxsw_sp_port, struct mlxsw_sp_pb *pb);
 
 extern const struct mlxsw_sp_sb_vals mlxsw_sp1_sb_vals;
 extern const struct mlxsw_sp_sb_vals mlxsw_sp2_sb_vals;
+
+extern const struct mlxsw_sp_sb_ops mlxsw_sp1_sb_ops;
+extern const struct mlxsw_sp_sb_ops mlxsw_sp2_sb_ops;
+extern const struct mlxsw_sp_sb_ops mlxsw_sp3_sb_ops;
 
 /* spectrum_switchdev.c */
 int mlxsw_sp_switchdev_init(struct mlxsw_sp *mlxsw_sp);

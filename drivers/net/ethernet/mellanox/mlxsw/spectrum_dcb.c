@@ -113,7 +113,11 @@ static int __mlxsw_sp_dcbnl_ieee_setets(struct mlxsw_sp_port *mlxsw_sp_port,
 	/* Ingress configuration. */
 	pb = *mlxsw_sp_port->pb;
 	mlxsw_sp_port_pbs_set_mapping(mlxsw_sp_port, &pb, ets);
-	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err) {
+		netdev_err(dev, "Failed to configure port's headroom for ETS\n");
+		goto err_pbs_autoresize;
+	}
 
 	err = mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
 	if (err) {
@@ -123,6 +127,7 @@ static int __mlxsw_sp_dcbnl_ieee_setets(struct mlxsw_sp_port *mlxsw_sp_port,
 
 	return 0;
 
+err_pbs_autoresize:
 err_pbs_configure:
 	i = IEEE_8021QAZ_MAX_TCS;
 err_port_prio_tc_set:
@@ -569,11 +574,14 @@ static int mlxsw_sp_dcbnl_ieee_setpfc(struct net_device *dev,
 
 	pb = orig_pb;
 	mlxsw_sp_dcbnl_pb_set_lossless(&pb, pfc);
-	if (pfc->pfc_en) {
+	if (pfc->pfc_en)
 		pb.delay_bytes = DIV_ROUND_UP(pfc->delay, BITS_PER_BYTE);
-	} else
+	else
 		pb.delay_bytes = 0;
-	mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+
+	err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+	if (err)
+		return err;
 
 	err = mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
 	if (err) {
@@ -626,10 +634,10 @@ int mlxsw_sp_dcbnl_setbuffer(struct net_device *dev, struct dcbnl_buffer *buf)
 	struct mlxsw_sp_pb orig_pb;
 	struct mlxsw_sp_pb pb;
 	int prio;
+	int err;
 	int i;
 
 	orig_pb = *mlxsw_sp_port->pb;
-
 	pb = orig_pb;
 
 	if (pb.manual_level < MLXSW_SP_PB_MANUAL_LEVEL_PG_SIZE) {
@@ -653,7 +661,9 @@ int mlxsw_sp_dcbnl_setbuffer(struct net_device *dev, struct dcbnl_buffer *buf)
 			pb.buffer[i].size_cells = mlxsw_sp_bytes_cells(mlxsw_sp,
 								       buf->buffer_size[i]);
 	} else {
-		mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+		err = mlxsw_sp_pbs_autoresize(mlxsw_sp_port, &pb);
+		if (err)
+			return err;
 	}
 
 	return mlxsw_sp_pbs_configure(mlxsw_sp_port, &pb);
