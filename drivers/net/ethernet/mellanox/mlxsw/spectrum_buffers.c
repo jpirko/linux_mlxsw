@@ -366,6 +366,7 @@ static u32 mlxsw_sp_hdroom_int_buf_size_get(struct mlxsw_sp *mlxsw_sp, int mtu, 
 {
 	u32 buffsize = mlxsw_sp->sb_ops->int_buf_size_get(speed, mtu);
 
+	// xxx why +1?
 	return mlxsw_sp_bytes_cells(mlxsw_sp, buffsize) + 1;
 }
 
