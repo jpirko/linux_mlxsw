@@ -8321,6 +8321,94 @@ static inline void mlxsw_reg_rxltm_pack(char *payload, u8 m0_val_v4, u8 m0_val_v
 	mlxsw_reg_rxltm_m0_val_v4_set(payload, m0_val_v4);
 }
 
+/* RXLTCC - Router XLT Cache Couners Register
+ * ------------------------------------------
+ * The RXLCC exposes the XLT-LPM cache counters on the switch.
+ */
+
+#define MLXSW_REG_RXLTCC_ID 0x8052
+#define MLXSW_REG_RXLTCC_LEN 0x68
+
+MLXSW_REG_DEFINE(rxltcc, MLXSW_REG_RXLTCC_ID, MLXSW_REG_RXLTCC_LEN);
+
+/* reg_rxltcc_clear_counters
+ * Clear counters.
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, rxltcc, clear_counters, 0x00, 31, 1);
+
+/* reg_rxltcc_hit_ipv4_m
+ * Counts hit on IPv4 M lookups.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, hit_ipv4_m, 0x10, 0, 64);
+
+/* reg_rxltcc_hit_ipv4_ml
+ * Counts hit on IPv4 ML lookups.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, hit_ipv4_ml, 0x18, 0, 64);
+
+/* reg_rxltcc_miss_ipv4_m
+ * Counts misses on IPv4 M lookups.
+ * If there was an IPv4 ML lookup then this is not counted.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, miss_ipv4_m, 0x20, 0, 64);
+
+/* reg_rxltcc_miss_ipv4_ml
+ * Counts misses on IPv4 ML lookups.
+ * Note: a miss on ML is counted only if there was a hit on the M.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, miss_ipv4_ml, 0x28, 0, 64);
+
+/* reg_rxltcc_learned_ipv4
+ * Counts learned IPv4 lookups.
+ * Typically the learned is equal or smaller than the miss.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, learned_ipv4, 0x30, 0, 64);
+
+/* reg_rxltcc_hit_ipv6_m
+ * Counts hit on IPv6 M lookups.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, hit_ipv6_m, 0x40, 0, 64);
+
+/* reg_rxltcc_hit_ipv6_ml
+ * Counts hit on IPv6 ML lookups.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, hit_ipv6_ml, 0x48, 0, 64);
+
+/* reg_rxltcc_miss_ipv6_m
+ * Counts misses on IPv6 M lookups.
+ * If there was an IPv6 ML lookup then this is not counted.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, miss_ipv6_m, 0x50, 0, 64);
+
+/* reg_rxltcc_miss_ipv6_ml
+ * Counts misses on IPv6 ML lookups.
+ * Note: a miss on ML is counted only if there was a hit on the M.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, miss_ipv6_ml, 0x58, 0, 64);
+
+/* reg_rxltcc_learned_ipv6
+ * Counts learned IPv6 lookups.
+ * Typically the learned is equal or smaller than the miss.
+ * Access: RO
+ */
+MLXSW_ITEM64(reg, rxltcc, learned_ipv6, 0x60, 0, 64);
+
+static inline void mlxsw_reg_rxltcc_pack(char *payload, bool clear_counters)
+{
+	MLXSW_REG_ZERO(rxltcc, payload);
+	mlxsw_reg_rxltcc_clear_counters_set(payload, clear_counters);
+}
+
 /* RLCMLD - Router LPM Cache ML Delete Register
  * --------------------------------------------
  * The RLCMLD register is used to bulk delete the XLT-LPM cache ML entries.
@@ -11889,6 +11977,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(rmft2),
 	MLXSW_REG(rxlte),
 	MLXSW_REG(rxltm),
+	MLXSW_REG(rxltcc),
 	MLXSW_REG(rlcmld),
 	MLXSW_REG(rlpmce),
 	MLXSW_REG(xltq),
