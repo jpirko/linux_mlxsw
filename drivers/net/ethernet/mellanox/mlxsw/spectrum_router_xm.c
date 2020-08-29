@@ -4,6 +4,7 @@
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/rhashtable.h>
+#include <net/devlink.h>
 
 #include "spectrum.h"
 #include "core.h"
@@ -19,6 +20,19 @@ static const u8 mlxsw_sp_router_xm_m_val[] = {
 
 #define MLXSW_SP_ROUTER_XM_L_VAL_MAX 16
 
+struct mlxsw_sp_router_xm_cache_metrics {
+	struct devlink_metric *counter_hit_ipv4_m;
+	struct devlink_metric *counter_hit_ipv4_ml;
+	struct devlink_metric *counter_miss_ipv4_m;
+	struct devlink_metric *counter_miss_ipv4_ml;
+	struct devlink_metric *counter_learned_ipv4;
+	struct devlink_metric *counter_hit_ipv6_m;
+	struct devlink_metric *counter_hit_ipv6_ml;
+	struct devlink_metric *counter_miss_ipv6_m;
+	struct devlink_metric *counter_miss_ipv6_ml;
+	struct devlink_metric *counter_learned_ipv6;
+};
+
 struct mlxsw_sp_router_xm {
 	bool ipv4_supported;
 	bool ipv6_supported;
@@ -27,6 +41,7 @@ struct mlxsw_sp_router_xm {
 	struct rhashtable flush_ht; /* Stores items about to be flushed from cache */
 	unsigned int flush_count;
 	bool flush_all_mode;
+	struct mlxsw_sp_router_xm_cache_metrics metrics;
 };
 
 struct mlxsw_sp_router_xm_ltable_node {
@@ -727,6 +742,367 @@ const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops = {
 	.fib_entry_is_committed = mlxsw_sp_router_ll_xm_fib_entry_is_committed,
 };
 
+static int
+mlxsw_sp_router_xm_cache_common_counter_get(struct devlink_metric *metric,
+					    char *rxltcc_pl)
+{
+	struct mlxsw_sp *mlxsw_sp = devlink_metric_priv(metric);
+
+	mlxsw_reg_rxltcc_pack(rxltcc_pl, false);
+
+	return mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(rxltcc), rxltcc_pl);
+}
+
+static int
+mlxsw_sp_router_xm_cache_counter_hit_ipv4_m_get(struct devlink_metric *metric,
+						u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_hit_ipv4_m_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_hit_ipv4_m_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_hit_ipv4_m_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_hit_ipv4_ml_get(struct devlink_metric *metric,
+						 u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_hit_ipv4_ml_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_hit_ipv4_ml_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_hit_ipv4_ml_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_miss_ipv4_m_get(struct devlink_metric *metric,
+						 u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_miss_ipv4_m_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_miss_ipv4_m_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_miss_ipv4_m_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_miss_ipv4_ml_get(struct devlink_metric *metric,
+						  u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_miss_ipv4_ml_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_miss_ipv4_ml_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_miss_ipv4_ml_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_learned_ipv4_get(struct devlink_metric *metric,
+						  u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_learned_ipv4_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_learned_ipv4_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_learned_ipv4_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_hit_ipv6_m_get(struct devlink_metric *metric,
+						u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_hit_ipv6_m_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_hit_ipv6_m_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_hit_ipv6_m_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_hit_ipv6_ml_get(struct devlink_metric *metric,
+						 u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_hit_ipv6_ml_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_hit_ipv6_ml_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_hit_ipv6_ml_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_miss_ipv6_m_get(struct devlink_metric *metric,
+						 u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_miss_ipv6_m_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_miss_ipv6_m_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_miss_ipv6_m_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_miss_ipv6_ml_get(struct devlink_metric *metric,
+						  u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_miss_ipv6_ml_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_miss_ipv6_ml_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_miss_ipv6_ml_get,
+};
+
+static int
+mlxsw_sp_router_xm_cache_counter_learned_ipv6_get(struct devlink_metric *metric,
+						  u64 *p_val)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_common_counter_get(metric, rxltcc_pl);
+	if (err)
+		return err;
+
+	*p_val = mlxsw_reg_rxltcc_learned_ipv6_get(rxltcc_pl);
+
+	return 0;
+}
+
+static const struct devlink_metric_ops mlxsw_sp_router_xm_cache_counter_learned_ipv6_ops = {
+	.counter_get = mlxsw_sp_router_xm_cache_counter_learned_ipv6_get,
+};
+
+static int mlxsw_sp_router_xm_cache_counters_clear(struct mlxsw_sp *mlxsw_sp)
+{
+	char rxltcc_pl[MLXSW_REG_RXLTCC_LEN];
+
+	mlxsw_reg_rxltcc_pack(rxltcc_pl, true);
+
+	/* Clear operation is implemented on query. */
+	return mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(rxltcc), rxltcc_pl);
+}
+
+static int mlxsw_sp_router_xm_cache_metrics_init(struct mlxsw_sp *mlxsw_sp,
+						 struct mlxsw_sp_router_xm *router_xm)
+{
+	struct mlxsw_sp_router_xm_cache_metrics *metrics = &router_xm->metrics;
+	struct devlink *devlink = priv_to_devlink(mlxsw_sp->core);
+	int err;
+
+	err = mlxsw_sp_router_xm_cache_counters_clear(mlxsw_sp);
+	if (err)
+		return err;
+
+	metrics->counter_hit_ipv4_m =
+		devlink_metric_counter_create(devlink, "xm_cache_hit_ipv4_m",
+					      &mlxsw_sp_router_xm_cache_counter_hit_ipv4_m_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_hit_ipv4_m))
+		return PTR_ERR(metrics->counter_hit_ipv4_m);
+
+	metrics->counter_hit_ipv4_ml =
+		devlink_metric_counter_create(devlink, "xm_cache_hit_ipv4_ml",
+					      &mlxsw_sp_router_xm_cache_counter_hit_ipv4_ml_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_hit_ipv4_ml)) {
+		err = PTR_ERR(metrics->counter_hit_ipv4_ml);
+		goto err_counter_hit_ipv4_ml;
+	}
+
+	metrics->counter_miss_ipv4_m =
+		devlink_metric_counter_create(devlink, "xm_cache_miss_ipv4_m",
+					      &mlxsw_sp_router_xm_cache_counter_miss_ipv4_m_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_miss_ipv4_m)) {
+		err = PTR_ERR(metrics->counter_miss_ipv4_m);
+		goto err_counter_miss_ipv4_m;
+	}
+
+	metrics->counter_miss_ipv4_ml =
+		devlink_metric_counter_create(devlink, "xm_cache_miss_ipv4_ml",
+					      &mlxsw_sp_router_xm_cache_counter_miss_ipv4_ml_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_miss_ipv4_ml)) {
+		err = PTR_ERR(metrics->counter_miss_ipv4_ml);
+		goto err_counter_miss_ipv4_ml;
+	}
+
+	metrics->counter_learned_ipv4 =
+		devlink_metric_counter_create(devlink, "xm_cache_learned_ipv4",
+					      &mlxsw_sp_router_xm_cache_counter_learned_ipv4_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_learned_ipv4)) {
+		err = PTR_ERR(metrics->counter_learned_ipv4);
+		goto err_counter_learned_ipv4;
+	}
+
+	metrics->counter_hit_ipv6_m =
+		devlink_metric_counter_create(devlink, "xm_cache_hit_ipv6_m",
+					      &mlxsw_sp_router_xm_cache_counter_hit_ipv6_m_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_hit_ipv6_m)) {
+		err = PTR_ERR(metrics->counter_hit_ipv6_m);
+		goto err_counter_hit_ipv6_m;
+	}
+
+	metrics->counter_hit_ipv6_ml =
+		devlink_metric_counter_create(devlink, "xm_cache_hit_ipv6_ml",
+					      &mlxsw_sp_router_xm_cache_counter_hit_ipv6_ml_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_hit_ipv6_ml)) {
+		err = PTR_ERR(metrics->counter_hit_ipv6_ml);
+		goto err_counter_hit_ipv6_ml;
+	}
+
+	metrics->counter_miss_ipv6_m =
+		devlink_metric_counter_create(devlink, "xm_cache_miss_ipv6_m",
+					      &mlxsw_sp_router_xm_cache_counter_miss_ipv6_m_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_miss_ipv6_m)) {
+		err = PTR_ERR(metrics->counter_miss_ipv6_m);
+		goto err_counter_miss_ipv6_m;
+	}
+
+	metrics->counter_miss_ipv6_ml =
+		devlink_metric_counter_create(devlink, "xm_cache_miss_ipv6_ml",
+					      &mlxsw_sp_router_xm_cache_counter_miss_ipv6_ml_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_miss_ipv6_ml)) {
+		err = PTR_ERR(metrics->counter_miss_ipv6_ml);
+		goto err_counter_miss_ipv6_ml;
+	}
+
+	metrics->counter_learned_ipv6 =
+		devlink_metric_counter_create(devlink, "xm_cache_learned_ipv6",
+					      &mlxsw_sp_router_xm_cache_counter_learned_ipv6_ops,
+					      mlxsw_sp);
+	if (IS_ERR(metrics->counter_learned_ipv6)) {
+		err = PTR_ERR(metrics->counter_learned_ipv6);
+		goto err_counter_learned_ipv6;
+	}
+
+	return 0;
+
+err_counter_learned_ipv6:
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv6_ml);
+err_counter_miss_ipv6_ml:
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv6_m);
+err_counter_miss_ipv6_m:
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv6_ml);
+err_counter_hit_ipv6_ml:
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv6_m);
+err_counter_hit_ipv6_m:
+	devlink_metric_destroy(devlink, metrics->counter_learned_ipv4);
+err_counter_learned_ipv4:
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv4_ml);
+err_counter_miss_ipv4_ml:
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv4_m);
+err_counter_miss_ipv4_m:
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv4_ml);
+err_counter_hit_ipv4_ml:
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv4_m);
+	return err;
+}
+
+static void mlxsw_sp_router_xm_cache_metrics_fini(struct mlxsw_sp *mlxsw_sp,
+						  struct mlxsw_sp_router_xm *router_xm)
+{
+	struct mlxsw_sp_router_xm_cache_metrics *metrics = &router_xm->metrics;
+	struct devlink *devlink = priv_to_devlink(mlxsw_sp->core);
+
+	devlink_metric_destroy(devlink, metrics->counter_learned_ipv6);
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv6_ml);
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv6_m);
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv6_ml);
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv6_m);
+	devlink_metric_destroy(devlink, metrics->counter_learned_ipv4);
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv4_ml);
+	devlink_metric_destroy(devlink, metrics->counter_miss_ipv4_m);
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv4_ml);
+	devlink_metric_destroy(devlink, metrics->counter_hit_ipv4_m);
+}
+
 #define MLXSW_SP_ROUTER_XM_MINDEX_SIZE (64 * 1024)
 
 int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp)
@@ -778,9 +1154,15 @@ int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp)
 	if (err)
 		goto err_flush_ht_init;
 
+	err = mlxsw_sp_router_xm_cache_metrics_init(mlxsw_sp, router_xm);
+	if (err)
+		goto err_cache_metrics_init;
+
 	mlxsw_sp->router->xm = router_xm;
 	return 0;
 
+err_cache_metrics_init:
+	rhashtable_destroy(&router_xm->flush_ht);
 err_flush_ht_init:
 	rhashtable_destroy(&router_xm->ltable_ht);
 err_ltable_ht_init:
@@ -799,6 +1181,7 @@ void mlxsw_sp_router_xm_fini(struct mlxsw_sp *mlxsw_sp)
 	if (!mlxsw_sp->bus_info->xm_exists)
 		return;
 
+	mlxsw_sp_router_xm_cache_metrics_fini(mlxsw_sp, router_xm);
 	rhashtable_destroy(&router_xm->flush_ht);
 	rhashtable_destroy(&router_xm->ltable_ht);
 	kfree(router_xm);
