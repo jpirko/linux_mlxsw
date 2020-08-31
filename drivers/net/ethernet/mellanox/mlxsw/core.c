@@ -569,7 +569,8 @@ static void mlxsw_emad_process_string_tlv(const struct sk_buff *skb,
 }
 
 #define MLXSW_EMAD_TIMEOUT_DURING_FW_FLASH_MS	3000
-#define MLXSW_EMAD_TIMEOUT_MS			200
+//#define MLXSW_EMAD_TIMEOUT_MS			200
+#define MLXSW_EMAD_TIMEOUT_MS			1000
 
 static void mlxsw_emad_trans_timeout_schedule(struct mlxsw_reg_trans *trans)
 {
