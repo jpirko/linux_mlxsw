@@ -29,6 +29,7 @@ struct mlxsw_fw_rev;
 unsigned int mlxsw_core_max_ports(const struct mlxsw_core *mlxsw_core);
 
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core);
+const struct mlxsw_bus_info *mlxsw_core_bus_info(struct mlxsw_core *mlxsw_core);
 
 bool mlxsw_core_res_query_enabled(const struct mlxsw_core *mlxsw_core);
 
@@ -505,6 +506,7 @@ static inline void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
 enum mlxsw_devlink_param_id {
 	MLXSW_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	MLXSW_DEVLINK_PARAM_ID_ACL_REGION_REHASH_INTERVAL,
+	MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
 };
 
 struct mlxsw_skb_cb {

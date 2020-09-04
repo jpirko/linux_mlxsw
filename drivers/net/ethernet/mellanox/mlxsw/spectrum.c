@@ -3182,6 +3182,13 @@ static const struct devlink_param mlxsw_sp2_devlink_params[] = {
 			     NULL),
 };
 
+static const struct devlink_param mlxsw_sp2_router_xm_devlink_params[] = {
+	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
+			     "router_xm_ipv4_enable", DEVLINK_PARAM_TYPE_BOOL,
+			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
+			     NULL, NULL, NULL),
+};
+
 static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)
 {
 	struct devlink *devlink = priv_to_devlink(mlxsw_core);
@@ -3197,11 +3204,33 @@ static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)
 	devlink_param_driverinit_value_set(devlink,
 					   MLXSW_DEVLINK_PARAM_ID_ACL_REGION_REHASH_INTERVAL,
 					   value);
+
+	if (mlxsw_core_bus_info(mlxsw_core)->xm_exists) {
+		err = devlink_params_register(devlink, mlxsw_sp2_router_xm_devlink_params,
+					      ARRAY_SIZE(mlxsw_sp2_router_xm_devlink_params));
+		if (err)
+			goto err_router_xm_devlink_params_register;
+
+		value.vbool = true;
+		devlink_param_driverinit_value_set(devlink,
+						   MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
+						   value);
+	}
 	return 0;
+
+err_router_xm_devlink_params_register:
+	devlink_params_unregister(priv_to_devlink(mlxsw_core),
+				  mlxsw_sp2_devlink_params,
+				  ARRAY_SIZE(mlxsw_sp2_devlink_params));
+	return err;
 }
 
 static void mlxsw_sp2_params_unregister(struct mlxsw_core *mlxsw_core)
 {
+	if (mlxsw_core_bus_info(mlxsw_core)->xm_exists)
+		devlink_params_unregister(priv_to_devlink(mlxsw_core),
+					  mlxsw_sp2_router_xm_devlink_params,
+					  ARRAY_SIZE(mlxsw_sp2_router_xm_devlink_params));
 	devlink_params_unregister(priv_to_devlink(mlxsw_core),
 				  mlxsw_sp2_devlink_params,
 				  ARRAY_SIZE(mlxsw_sp2_devlink_params));

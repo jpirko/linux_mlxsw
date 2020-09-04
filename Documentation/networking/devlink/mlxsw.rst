@@ -35,6 +35,16 @@ parameters.
        ``0`` disables periodic work entirely. The first rehash will be run
        immediately after the value is set.
 
+   * - Name
+     - Type
+     - Mode
+     - Description
+   * - ``router_xm_ipv4_enable``
+     - bool
+     - driverinit
+     - Parameter is present only in case the eXtended mezzanine (XM) is present.
+       Tells the driver if it should use XM for IPv4 router.
+
 The ``mlxsw`` driver supports reloading via ``DEVLINK_CMD_RELOAD``
 
 Info versions

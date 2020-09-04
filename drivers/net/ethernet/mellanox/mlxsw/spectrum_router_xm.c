@@ -1105,6 +1105,19 @@ static void mlxsw_sp_router_xm_cache_metrics_fini(struct mlxsw_sp *mlxsw_sp,
 
 #define MLXSW_SP_ROUTER_XM_MINDEX_SIZE (64 * 1024)
 
+static bool mlxsw_sp_router_xm_ipv4_enabled(const struct mlxsw_sp *mlxsw_sp)
+{
+	union devlink_param_value value;
+	int err;
+
+	err = devlink_param_driverinit_value_get(priv_to_devlink(mlxsw_sp->core),
+						 MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
+						 &value);
+	if (WARN_ON(err))
+		return false;
+	return value.vbool;
+}
+
 int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_router_xm *router_xm;
@@ -1114,7 +1127,8 @@ int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp)
 	u16 device_id;
 	int err;
 
-	if (!mlxsw_sp->bus_info->xm_exists)
+	if (!mlxsw_sp->bus_info->xm_exists ||
+	    (!mlxsw_sp_router_xm_ipv4_enabled(mlxsw_sp)))
 		return 0;
 
 	router_xm = kzalloc(sizeof(*router_xm), GFP_KERNEL);
@@ -1178,7 +1192,7 @@ void mlxsw_sp_router_xm_fini(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_router_xm *router_xm = mlxsw_sp->router->xm;
 
-	if (!mlxsw_sp->bus_info->xm_exists)
+	if (!router_xm)
 		return;
 
 	mlxsw_sp_router_xm_cache_metrics_fini(mlxsw_sp, router_xm);
@@ -1187,9 +1201,16 @@ void mlxsw_sp_router_xm_fini(struct mlxsw_sp *mlxsw_sp)
 	kfree(router_xm);
 }
 
-bool mlxsw_sp_router_xm_ipv4_is_supported(const struct mlxsw_sp *mlxsw_sp)
+bool mlxsw_sp_router_xm_use_for_ipv4(const struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_router_xm *router_xm = mlxsw_sp->router->xm;
 
-	return router_xm && router_xm->ipv4_supported;
+	if (router_xm && mlxsw_sp_router_xm_ipv4_enabled(mlxsw_sp)) {
+		if (!router_xm->ipv4_supported) {
+			dev_err(mlxsw_sp->bus_info->dev, "Not enabling XM for ipv4 router, not supported by the HW\n");
+			return false;
+		}
+		return true;
+	}
+	return false;
 }
