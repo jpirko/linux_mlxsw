@@ -78,6 +78,15 @@ check_ethtool_lanes_support()
 	fi
 }
 
+check_devlink_metric_support()
+{
+	devlink dev help 2>&1 | grep -q metric
+	if [[ $? -ne 0 ]]; then
+		echo "SKIP: iproute2 too old; devlink is missing metric support"
+		exit 1
+	fi
+}
+
 if [[ "$(id -u)" -ne 0 ]]; then
 	echo "SKIP: need root privileges"
 	exit 0
@@ -466,30 +475,64 @@ __vrf_td_id_lookup()
 	return ${__TB_IDS[$vrf_name]}
 }
 
-vrf_create()
+__vrf_create()
 {
 	local vrf_name=$1
+	local default_routes=$2
 	local tb_id
 
 	__vrf_td_id_assign $vrf_name
 	tb_id=$?
 
 	ip link add dev $vrf_name type vrf table $tb_id
-	ip -4 route add table $tb_id unreachable default metric 4278198272
-	ip -6 route add table $tb_id unreachable default metric 4278198272
+	if [[ $default_routes == "true" ]]; then
+		ip -4 route add table $tb_id unreachable default metric 4278198272
+		ip -6 route add table $tb_id unreachable default metric 4278198272
+	fi
 }
 
-vrf_destroy()
+__vrf_destroy()
 {
 	local vrf_name=$1
+	local default_routes=$2
 	local tb_id
 
 	__vrf_td_id_lookup $vrf_name
 	tb_id=$?
 
-	ip -6 route del table $tb_id unreachable default metric 4278198272
-	ip -4 route del table $tb_id unreachable default metric 4278198272
+	if [[ $default_routes == "true" ]]; then
+		ip -6 route del table $tb_id unreachable default metric 4278198272
+		ip -4 route del table $tb_id unreachable default metric 4278198272
+	fi
 	ip link del dev $vrf_name
+}
+
+vrf_create()
+{
+	local vrf_name=$1
+
+	__vrf_create $vrf_name true
+}
+
+vrf_destroy()
+{
+	local vrf_name=$1
+
+	__vrf_destroy $vrf_name true
+}
+
+vrf_create_nodflt()
+{
+	local vrf_name=$1
+
+	__vrf_create $vrf_name false
+}
+
+vrf_destroy_nodflt()
+{
+	local vrf_name=$1
+
+	__vrf_destroy $vrf_name false
 }
 
 __addr_add_del()

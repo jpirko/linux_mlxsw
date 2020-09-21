@@ -103,6 +103,44 @@ devlink_resource_occ_get()
 	devlink_resource_get "$@" | jq '.["occ"]'
 }
 
+devlink_metric_fetch()
+{
+	devlink -j -s dev metric show | jq '.[]["'$DEVLINK_DEV'"]'
+}
+
+devlink_metric_save()
+{
+	DEVLINK_METRIC_OUTPUT=`devlink_metric_fetch`
+}
+
+devlink_metric_check()
+{
+	local metric_output=`devlink_metric_fetch`
+
+	for row in $(echo "${metric_output}" | jq -r '.[] | @base64'); do
+		_jq() {
+			echo ${row} | base64 --decode | jq -r ${1}
+		}
+		local metric=$(echo ${row} | base64 --decode | jq -r ".metric")
+		local read_value=$(echo ${row} | base64 --decode | jq -r ".value")
+		local last_value=`echo $DEVLINK_METRIC_OUTPUT | jq '.[] | select(.metric == "'$metric'") | .value'`
+		local delta=$(($read_value-$last_value))
+		local expected_delta=0
+		for item in "${@}"; do
+			local arg_metric=${item% *}
+			local arg_expected_delta=${item#* }
+			if [ "$metric" == "$arg_metric" ]; then
+				expected_delta=$arg_expected_delta
+			fi
+		done
+		if [ "$expected_delta" -ne "$delta" ]; then
+			echo $metric
+			return 1
+		fi
+	done
+	return 0
+}
+
 devlink_reload()
 {
 	local still_pending
