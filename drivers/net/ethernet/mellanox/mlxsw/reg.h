@@ -1680,6 +1680,74 @@ static inline void mlxsw_reg_svfa_pack(char *payload, u8 local_port,
 	mlxsw_reg_svfa_vid_set(payload, vid);
 }
 
+/* SPVTR - Switch Port VLAN Stacking Register
+ * ------------------------------------------
+ * The switch port VLAN Stacking configures the VLAN Mode of the port to enable
+ * VLAN Stacking.
+ */
+#define MLXSW_REG_SPVTR_ID 0x201D
+#define MLXSW_REG_SPVTR_LEN 0x10
+
+MLXSW_REG_DEFINE(spvtr, MLXSW_REG_SPVTR_ID, MLXSW_REG_SPVTR_LEN);
+
+/* reg_spvtr_local_port
+ * Local port number.
+ * Not supported from/to CPU.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, spvtr, local_port, 0x00, 16, 8);
+
+/* reg_spvtr_ipve
+ * Ingress Port VID Mode Update Enable.
+ * When set, the Ingress Port VID Mode is updated with the provided ipvid_mode
+ * field.
+ * Access: OP
+ *
+ * Note: Reserved on Get operations
+ */
+MLXSW_ITEM32(reg, spvtr, ipve, 0x04, 30, 1);
+
+/* reg_spvtr_epve
+ * Egress Port VID Mode Update Enable.
+ * When set, the Egress Port VID Mode is updated with the provided epvid_mode
+ * field.
+ * Access: OP
+ *
+ * Note: Reserved on Get operations
+ */
+MLXSW_ITEM32(reg, spvtr, epve, 0x04, 29, 1);
+
+enum mlxsw_reg_spvtr_ipvid_mode {
+	/* IEEE Compliant PVID (default). */
+	MLXSW_REG_SPVTR_IPVID_MODE_IEEE_PVID,
+	/* Push VLAN (for VLAN stacking, except prio tagged packets). */
+	MLXSW_REG_SPVTR_IPVID_MODE_PUSH_VLAN_NOPRIO,
+	/* Always push VLAN (also for prio tagged packets).
+	 * Reserved when SwitchX/-2. */
+	MLXSW_REG_SPVTR_IPVID_MODE_PUSH_VLAN_ALWAYS,
+};
+
+/* reg_spvtr_ipvid_mode
+ * Ingress Port VLAN-ID Mode.
+ * For Spectrum/-2, this affects the values of SPVM.i.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, spvtr, ipvid_mode, 0x04, 16, 4);
+
+enum mlxsw_reg_spvtr_epvid_mode {
+	/* IEEE Compliant VLAN membership. */
+	MLXSW_REG_SPVTR_EPVID_MODE_IEEE_PVID,
+	/* Pop VLAN (for VLAN stacking). */
+	MLXSW_REG_SPVTR_EPVID_MODE_POP_VLAN,
+};
+
+/* reg_spvtr_epvid_mode
+ * Egress Port VLAN-ID Mode.
+ * For Spectrum family, this affects the values of SPVM.e, u, pt.
+ * Access: RW. For Spectrum family, WO.
+ */
+MLXSW_ITEM32(reg, spvtr, epvid_mode, 0x04, 0, 4);
+
 /* SVPE - Switch Virtual-Port Enabling Register
  * --------------------------------------------
  * Enables port virtualization.
