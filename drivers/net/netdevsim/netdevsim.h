@@ -102,6 +102,11 @@ struct netdevsim {
 	} udp_ports;
 
 	struct nsim_ethtool ethtool;
+	struct dcbnl_buffer buffer;
+	struct ieee_ets ets;
+	struct ieee_maxrate maxrate;
+	struct ieee_pfc pfc;
+	u8 dcbx;
 };
 
 struct netdevsim *

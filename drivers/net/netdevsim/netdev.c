@@ -278,6 +278,372 @@ static const struct net_device_ops nsim_vf_netdev_ops = {
 	.ndo_get_devlink_port	= nsim_get_devlink_port,
 };
 
+static void nsim_dcb_dcbnl_buffer_update_total_size(struct dcbnl_buffer *buf)
+{
+	u32 total_size = 128 * 1024;
+	int i;
+
+	for (i = 0; i < DCBX_MAX_BUFFERS; i++)
+		total_size += buf->buffer_size[i];
+	buf->total_size = total_size;
+}
+
+int nsim_dcb_dcbnl_getbuffer(struct net_device *dev, struct dcbnl_buffer *buf)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_dcbnl_getbuffer\n");
+
+	nsim_dcb_dcbnl_buffer_update_total_size(&ns->buffer);
+	*buf = ns->buffer;
+	return 0;
+}
+
+int nsim_dcb_dcbnl_setbuffer(struct net_device *dev, struct dcbnl_buffer *buf)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_dcbnl_setbuffer\n");
+	ns->buffer = *buf;
+	return 0;
+}
+
+int nsim_dcb_ieee_getets(struct net_device *dev, struct ieee_ets *ets)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_ieee_getets\n");
+	*ets = ns->ets;
+	return 0;
+}
+
+int nsim_dcb_ieee_setets(struct net_device *dev, struct ieee_ets *ets)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_ieee_setets\n");
+	ns->ets = *ets;
+	return 0;
+}
+
+int nsim_dcb_ieee_getmaxrate(struct net_device *dev, struct ieee_maxrate *maxrate)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_ieee_getmaxrate\n");
+	*maxrate = ns->maxrate;
+	return 0;
+}
+
+int nsim_dcb_ieee_setmaxrate(struct net_device *dev, struct ieee_maxrate *maxrate)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_ieee_setmaxrate\n");
+	ns->maxrate = *maxrate;
+	return 0;
+}
+
+int nsim_dcb_ieee_getpfc(struct net_device *dev, struct ieee_pfc *pfc)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+	int i;
+
+	printk(KERN_WARNING "nsim_dcb_ieee_getpfc\n");
+
+	ns->pfc.requests[0] += 1;
+	for (i = 1; i < IEEE_8021QAZ_MAX_TCS; i++)
+	    ns->pfc.requests[i] += ns->pfc.requests[i - 1];
+
+	ns->pfc.indications[0] += ns->pfc.requests[IEEE_8021QAZ_MAX_TCS - 1];
+	for (i = 1; i < IEEE_8021QAZ_MAX_TCS; i++)
+	    ns->pfc.indications[i] += ns->pfc.indications[i - 1];
+
+	*pfc = ns->pfc;
+	return 0;
+}
+
+int nsim_dcb_ieee_setpfc(struct net_device *dev, struct ieee_pfc *pfc)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	printk(KERN_WARNING "nsim_dcb_ieee_setpfc\n");
+
+	memcpy(pfc->indications, ns->pfc.indications, sizeof(pfc->indications));
+	memcpy(pfc->requests, ns->pfc.requests, sizeof(pfc->requests));
+	ns->pfc = *pfc;
+
+	return 0;
+}
+
+int nsim_dcb_ieee_getqcn(struct net_device *dev, struct ieee_qcn *qcn)
+{
+	printk(KERN_WARNING "nsim_dcb_ieee_getqcn\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_ieee_setqcn(struct net_device *dev, struct ieee_qcn *qcn)
+{
+	printk(KERN_WARNING "nsim_dcb_ieee_setqcn\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_ieee_getqcnstats(struct net_device *dev, struct ieee_qcn_stats *qcn_stats)
+{
+	printk(KERN_WARNING "nsim_dcb_ieee_getqcnstats\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_ieee_peer_getets(struct net_device *dev, struct ieee_ets *ets)
+{
+	printk(KERN_WARNING "nsim_dcb_ieee_peer_getets\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_ieee_peer_getpfc(struct net_device *dev, struct ieee_pfc *pfc)
+{
+	printk(KERN_WARNING "nsim_dcb_ieee_peer_getpfc\n");
+	return -EOPNOTSUPP;
+}
+
+u8 nsim_dcb_getstate(struct net_device *dev)
+{
+	printk(KERN_WARNING "nsim_dcb_getstate\n");
+	return -EOPNOTSUPP;
+}
+
+u8 nsim_dcb_setstate(struct net_device *dev, u8 enabled)
+{
+	printk(KERN_WARNING "nsim_dcb_setstate\n");
+	return -EOPNOTSUPP;
+}
+
+void nsim_dcb_getpermhwaddr(struct net_device *dev, u8 *perm_addr)
+{
+	printk(KERN_WARNING "nsim_dcb_getpermhwaddr\n");
+}
+
+void nsim_dcb_setpgtccfgtx(struct net_device *dev, int prio, u8 prio_type,
+			   u8 pgid, u8 bw_pct, u8 up_map)
+{
+	printk(KERN_WARNING "nsim_dcb_setpgtccfgtx\n");
+}
+
+void nsim_dcb_setpgbwgcfgtx(struct net_device *dev, int pgid, u8 bw_pct)
+{
+	printk(KERN_WARNING "nsim_dcb_setpgbwgcfgtx\n");
+}
+
+void nsim_dcb_setpgtccfgrx(struct net_device *dev, int prio, u8 prio_type,
+			   u8 pgid, u8 bw_pct, u8 up_map)
+{
+	printk(KERN_WARNING "nsim_dcb_setpgtccfgrx\n");
+}
+
+void nsim_dcb_setpgbwgcfgrx(struct net_device *dev, int pgid, u8 bw_pct)
+{
+	printk(KERN_WARNING "nsim_dcb_setpgbwgcfgrx\n");
+}
+
+void nsim_dcb_getpgtccfgtx(struct net_device *dev, int tc, u8 *prio_type,
+			   u8 *pgid, u8 *bw_pct, u8 *up_map)
+{
+	printk(KERN_WARNING "nsim_dcb_getpgtccfgtx\n");
+}
+
+void nsim_dcb_getpgbwgcfgtx(struct net_device *dev, int pgid, u8 *bw_pct)
+{
+	printk(KERN_WARNING "nsim_dcb_getpgbwgcfgtx\n");
+}
+
+void nsim_dcb_getpgtccfgrx(struct net_device *dev, int tc, u8 *prio,
+			   u8 *pgid, u8 *bw_pct, u8 *up_map)
+{
+	printk(KERN_WARNING "nsim_dcb_getpgtccfgrx\n");
+}
+
+void nsim_dcb_getpgbwgcfgrx(struct net_device *dev, int pg_id, u8 *bw_pct)
+{
+	printk(KERN_WARNING "nsim_dcb_getpgbwgcfgrx\n");
+}
+
+void nsim_dcb_setpfccfg(struct net_device *dev, int prio, u8 enabled)
+{
+	printk(KERN_WARNING "nsim_dcb_setpfccfg\n");
+}
+
+void nsim_dcb_getpfccfg(struct net_device *dev, int prio, u8 *enabled)
+{
+	printk(KERN_WARNING "nsim_dcb_getpfccfg\n");
+}
+
+u8 nsim_dcb_setall(struct net_device *dev)
+{
+	printk(KERN_WARNING "nsim_dcb_setall\n");
+	return 0;
+}
+
+u8 nsim_dcb_getcap(struct net_device *dev, int capid, u8 *cap)
+{
+	printk(KERN_WARNING "nsim_dcb_getcap\n");
+	return 0;
+}
+
+int nsim_dcb_getnumtcs(struct net_device *dev, int tcs_id, u8 *num)
+{
+	printk(KERN_WARNING "nsim_dcb_getnumtcs\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_setnumtcs(struct net_device *dev, int tcs_id, u8 num)
+{
+	printk(KERN_WARNING "nsim_dcb_setnumtcs\n");
+	return -EOPNOTSUPP;
+}
+
+u8 nsim_dcb_getpfcstate(struct net_device *dev)
+{
+	printk(KERN_WARNING "nsim_dcb_getpfcstate\n");
+	return 0;
+}
+
+void nsim_dcb_setpfcstate(struct net_device *dev, u8 enabled)
+{
+	printk(KERN_WARNING "nsim_dcb_setpfcstate\n");
+}
+
+int nsim_dcb_setapp(struct net_device *dev, u8 sel, u16 pid, u8 prio)
+{
+	printk(KERN_WARNING "nsim_dcb_setapp\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_getapp(struct net_device *dev, u8 sel, u16 pid)
+{
+	printk(KERN_WARNING "nsim_dcb_getapp\n");
+	return -EOPNOTSUPP;
+}
+
+u8 nsim_dcb_getfeatcfg(struct net_device *dev, int feat_id, u8 *flags)
+{
+	printk(KERN_WARNING "nsim_dcb_getfeatcfg\n");
+	return 0;
+}
+
+u8 nsim_dcb_setfeatcfg(struct net_device *dev, int feat_id, u8 flags)
+{
+	printk(KERN_WARNING "nsim_dcb_setfeatcfg\n");
+	return 0;
+}
+
+u8 nsim_dcb_getdcbx(struct net_device *dev)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	return ns->dcbx;
+}
+
+u8 nsim_dcb_setdcbx(struct net_device *dev, u8 mode)
+{
+	struct netdevsim *ns = netdev_priv(dev);
+
+	ns->dcbx = mode;
+	return 0;
+}
+
+int nsim_dcb_peer_getappinfo(struct net_device *dev, struct dcb_peer_app_info *info, u16 *count)
+{
+	printk(KERN_WARNING "nsim_dcb_peer_getappinfo\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_peer_getapptable(struct net_device *dev, struct dcb_app *table)
+{
+	printk(KERN_WARNING "nsim_dcb_peer_getapptable\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_cee_peer_getpg(struct net_device *dev, struct cee_pg *pg)
+{
+	printk(KERN_WARNING "nsim_dcb_cee_peer_getpg\n");
+	return -EOPNOTSUPP;
+}
+
+int nsim_dcb_cee_peer_getpfc(struct net_device *dev, struct cee_pfc *pfc)
+{
+	printk(KERN_WARNING "nsim_dcb_cee_peer_getpfc\n");
+	return -EOPNOTSUPP;
+}
+
+static const struct dcbnl_rtnl_ops nsim_dcbnl_ops = {
+	.ieee_getets = nsim_dcb_ieee_getets,
+	.ieee_setets = nsim_dcb_ieee_setets,
+	.ieee_getmaxrate = nsim_dcb_ieee_getmaxrate,
+	.ieee_setmaxrate = nsim_dcb_ieee_setmaxrate,
+	.ieee_getqcn = nsim_dcb_ieee_getqcn,
+	.ieee_setqcn = nsim_dcb_ieee_setqcn,
+	.ieee_getqcnstats = nsim_dcb_ieee_getqcnstats,
+	.ieee_getpfc = nsim_dcb_ieee_getpfc,
+	.ieee_setpfc = nsim_dcb_ieee_setpfc,
+	.ieee_setapp = dcb_ieee_setapp,
+	.ieee_delapp = dcb_ieee_delapp,
+	.ieee_peer_getets = nsim_dcb_ieee_peer_getets,
+	.ieee_peer_getpfc = nsim_dcb_ieee_peer_getpfc,
+
+	.getstate = nsim_dcb_getstate,
+	.setstate = nsim_dcb_setstate,
+	.getpermhwaddr = nsim_dcb_getpermhwaddr,
+	.setpgtccfgtx = nsim_dcb_setpgtccfgtx,
+	.setpgbwgcfgtx = nsim_dcb_setpgbwgcfgtx,
+	.setpgtccfgrx = nsim_dcb_setpgtccfgrx,
+	.setpgbwgcfgrx = nsim_dcb_setpgbwgcfgrx,
+	.getpgtccfgtx = nsim_dcb_getpgtccfgtx,
+	.getpgbwgcfgtx = nsim_dcb_getpgbwgcfgtx,
+	.getpgtccfgrx = nsim_dcb_getpgtccfgrx,
+	.getpgbwgcfgrx = nsim_dcb_getpgbwgcfgrx,
+	.setpfccfg = nsim_dcb_setpfccfg,
+	.getpfccfg = nsim_dcb_getpfccfg,
+	.setall = nsim_dcb_setall,
+	.getcap = nsim_dcb_getcap,
+	.getnumtcs = nsim_dcb_getnumtcs,
+	.setnumtcs = nsim_dcb_setnumtcs,
+	.getpfcstate = nsim_dcb_getpfcstate,
+	.setpfcstate = nsim_dcb_setpfcstate,
+	.setapp = nsim_dcb_setapp,
+	.getapp = nsim_dcb_getapp,
+	.getfeatcfg = nsim_dcb_getfeatcfg,
+	.setfeatcfg = nsim_dcb_setfeatcfg,
+
+	.getdcbx = nsim_dcb_getdcbx,
+	.setdcbx = nsim_dcb_setdcbx,
+
+	.peer_getappinfo = nsim_dcb_peer_getappinfo,
+	.peer_getapptable = nsim_dcb_peer_getapptable,
+
+	.cee_peer_getpg = nsim_dcb_cee_peer_getpg,
+	.cee_peer_getpfc = nsim_dcb_cee_peer_getpfc,
+
+	.dcbnl_getbuffer = nsim_dcb_dcbnl_getbuffer,
+	.dcbnl_setbuffer = nsim_dcb_dcbnl_setbuffer,
+};
+
+static void nsim_dcb_init(struct netdevsim *ns)
+{
+	ns->ets = (struct ieee_ets){
+		.ets_cap = IEEE_8021QAZ_MAX_TCS,
+	};
+	ns->pfc = (struct ieee_pfc){
+		.pfc_cap = IEEE_8021QAZ_MAX_TCS,
+	};
+	ns->maxrate = (struct ieee_maxrate){
+		.tc_maxrate = {
+			-1ULL, -1ULL, -1ULL, -1ULL,
+			-1ULL, -1ULL, -1ULL, -1ULL,
+		},
+	};
+	ns->dcbx = DCB_CAP_DCBX_HOST | DCB_CAP_DCBX_VER_IEEE;
+}
+
 static void nsim_setup(struct net_device *dev)
 {
 	ether_setup(dev);
@@ -302,6 +668,7 @@ static int nsim_init_netdevsim(struct netdevsim *ns)
 	int err;
 
 	ns->netdev->netdev_ops = &nsim_netdev_ops;
+	ns->netdev->dcbnl_ops = &nsim_dcbnl_ops;
 
 	err = nsim_udp_tunnels_info_create(ns->nsim_dev, ns->netdev);
 	if (err)
@@ -313,6 +680,7 @@ static int nsim_init_netdevsim(struct netdevsim *ns)
 		goto err_utn_destroy;
 
 	nsim_ipsec_init(ns);
+	nsim_dcb_init(ns);
 
 	err = register_netdevice(ns->netdev);
 	if (err)
