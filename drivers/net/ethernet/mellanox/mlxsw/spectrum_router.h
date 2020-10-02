@@ -225,6 +225,10 @@ int mlxsw_sp_ipip_ecn_decap_init(struct mlxsw_sp *mlxsw_sp);
 
 extern const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops;
 
+bool mlxsw_sp_router_xm_cache_enable_get(struct mlxsw_sp *mlxsw_sp);
+int mlxsw_sp_router_xm_cache_enable_set(struct mlxsw_sp *mlxsw_sp,
+					bool cache_enabled);
+
 int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp);
 void mlxsw_sp_router_xm_fini(struct mlxsw_sp *mlxsw_sp);
 bool mlxsw_sp_router_xm_use_for_ipv4(const struct mlxsw_sp *mlxsw_sp);

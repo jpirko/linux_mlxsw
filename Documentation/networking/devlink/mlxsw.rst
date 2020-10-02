@@ -45,6 +45,16 @@ parameters.
      - Parameter is present only in case the eXtended mezzanine (XM) is present.
        Tells the driver if it should use XM for IPv4 router.
 
+   * - Name
+     - Type
+     - Mode
+     - Description
+   * - ``router_xm_cache_enable``
+     - bool
+     - runtime
+     - Parameter is present only in case the eXtended mezzanine (XM) is present.
+       Tells the driver if it should use XM cache router.
+
 The ``mlxsw`` driver supports reloading via ``DEVLINK_CMD_RELOAD``
 
 Info versions

@@ -42,6 +42,7 @@
 #include "spectrum_span.h"
 #include "spectrum_ptp.h"
 #include "spectrum_trap.h"
+#include "spectrum_router.h"
 
 #define MLXSW_SP1_FWREV_MAJOR 13
 #define MLXSW_SP1_FWREV_MINOR 2008
@@ -3182,11 +3183,38 @@ static const struct devlink_param mlxsw_sp2_devlink_params[] = {
 			     NULL),
 };
 
+static int
+mlxsw_sp_params_router_xm_cache_enable_get(struct devlink *devlink, u32 id,
+					   struct devlink_param_gset_ctx *ctx)
+{
+	struct mlxsw_core *mlxsw_core = devlink_priv(devlink);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
+
+	ctx->val.vbool = mlxsw_sp_router_xm_cache_enable_get(mlxsw_sp);
+	return 0;
+}
+
+static int
+mlxsw_sp_params_router_xm_cache_enable_set(struct devlink *devlink, u32 id,
+					   struct devlink_param_gset_ctx *ctx)
+{
+	struct mlxsw_core *mlxsw_core = devlink_priv(devlink);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
+
+	return mlxsw_sp_router_xm_cache_enable_set(mlxsw_sp, ctx->val.vbool);
+}
+
 static const struct devlink_param mlxsw_sp2_router_xm_devlink_params[] = {
 	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
 			     "router_xm_ipv4_enable", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
 			     NULL, NULL, NULL),
+	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_CACHE_ENABLE,
+			     "router_xm_cache_enable", DEVLINK_PARAM_TYPE_BOOL,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     mlxsw_sp_params_router_xm_cache_enable_get,
+			     mlxsw_sp_params_router_xm_cache_enable_set,
+			     NULL),
 };
 
 static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)

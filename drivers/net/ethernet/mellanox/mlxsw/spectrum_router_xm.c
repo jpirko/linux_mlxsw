@@ -36,6 +36,7 @@ struct mlxsw_sp_router_xm_cache_metrics {
 struct mlxsw_sp_router_xm {
 	bool ipv4_supported;
 	bool ipv6_supported;
+	bool cache_disabled;
 	unsigned int entries_size;
 	struct rhashtable ltable_ht;
 	struct rhashtable flush_ht; /* Stores items about to be flushed from cache */
@@ -409,7 +410,8 @@ static void mlxsw_sp_router_xm_cache_flush_work(struct work_struct *work)
 	if (flush_info->all) {
 		char rlpmce_pl[MLXSW_REG_RLPMCE_LEN];
 
-		mlxsw_reg_rlpmce_pack(rlpmce_pl, true, false);
+		mlxsw_reg_rlpmce_pack(rlpmce_pl, true,
+				      mlxsw_sp->router->xm->cache_disabled);
 		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rlpmce),
 				      rlpmce_pl);
 		if (err)
@@ -1116,6 +1118,27 @@ static bool mlxsw_sp_router_xm_ipv4_enabled(const struct mlxsw_sp *mlxsw_sp)
 	if (WARN_ON(err))
 		return false;
 	return value.vbool;
+}
+
+bool mlxsw_sp_router_xm_cache_enable_get(struct mlxsw_sp *mlxsw_sp)
+{
+	struct mlxsw_sp_router_xm *router_xm = mlxsw_sp->router->xm;
+
+	return !router_xm->cache_disabled;
+}
+
+int mlxsw_sp_router_xm_cache_enable_set(struct mlxsw_sp *mlxsw_sp,
+					bool cache_enabled)
+{
+	struct mlxsw_sp_router_xm *router_xm = mlxsw_sp->router->xm;
+	char rlpmce_pl[MLXSW_REG_RLPMCE_LEN];
+
+	if (!cache_enabled == router_xm->cache_disabled)
+		return 0;
+
+	router_xm->cache_disabled = !cache_enabled;
+	mlxsw_reg_rlpmce_pack(rlpmce_pl, true, router_xm->cache_disabled);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rlpmce), rlpmce_pl);
 }
 
 int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp)
