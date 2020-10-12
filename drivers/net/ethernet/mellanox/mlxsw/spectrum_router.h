@@ -232,5 +232,6 @@ int mlxsw_sp_router_xm_cache_enable_set(struct mlxsw_sp *mlxsw_sp,
 int mlxsw_sp_router_xm_init(struct mlxsw_sp *mlxsw_sp);
 void mlxsw_sp_router_xm_fini(struct mlxsw_sp *mlxsw_sp);
 bool mlxsw_sp_router_xm_use_for_ipv4(const struct mlxsw_sp *mlxsw_sp);
+bool mlxsw_sp_router_xm_use_for_ipv6(const struct mlxsw_sp *mlxsw_sp);
 
 #endif /* _MLXSW_ROUTER_H_*/

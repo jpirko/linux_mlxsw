@@ -3209,6 +3209,10 @@ static const struct devlink_param mlxsw_sp2_router_xm_devlink_params[] = {
 			     "router_xm_ipv4_enable", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
 			     NULL, NULL, NULL),
+	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV6_ENABLE,
+			     "router_xm_ipv6_enable", DEVLINK_PARAM_TYPE_BOOL,
+			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
+			     NULL, NULL, NULL),
 	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_CACHE_ENABLE,
 			     "router_xm_cache_enable", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
@@ -3242,6 +3246,10 @@ static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)
 		value.vbool = true;
 		devlink_param_driverinit_value_set(devlink,
 						   MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV4_ENABLE,
+						   value);
+		value.vbool = false;
+		devlink_param_driverinit_value_set(devlink,
+						   MLXSW_DEVLINK_PARAM_ID_ROUTER_XM_IPV6_ENABLE,
 						   value);
 	}
 	return 0;

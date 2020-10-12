@@ -49,6 +49,16 @@ parameters.
      - Type
      - Mode
      - Description
+   * - ``router_xm_ipv6_enable``
+     - bool
+     - driverinit
+     - Parameter is present only in case the eXtended mezzanine (XM) is present.
+       Tells the driver if it should use XM for IPv6 router.
+
+   * - Name
+     - Type
+     - Mode
+     - Description
    * - ``router_xm_cache_enable``
      - bool
      - runtime
