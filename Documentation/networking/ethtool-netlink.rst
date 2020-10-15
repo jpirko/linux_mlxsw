@@ -388,8 +388,8 @@ LINKMODES_GET
 =============
 
 Requests link modes (supported, advertised and peer advertised) and related
-information (autonegotiation status, link speed and duplex) as provided by
-``ETHTOOL_GLINKSETTINGS``. The request does not use any attributes.
+information (autonegotiation status, link speed, duplex and lanes) as provided
+by ``ETHTOOL_GLINKSETTINGS``. The request does not use any attributes.
 
 Request contents:
 
@@ -408,6 +408,7 @@ Kernel response contents:
   ``ETHTOOL_A_LINKMODES_DUPLEX``              u8      duplex mode
   ``ETHTOOL_A_LINKMODES_MASTER_SLAVE_CFG``    u8      Master/slave port mode
   ``ETHTOOL_A_LINKMODES_MASTER_SLAVE_STATE``  u8      Master/slave port state
+  ``ETHTOOL_A_LINKMODES_LANES``               u32     lanes
   ==========================================  ======  ==========================
 
 For ``ETHTOOL_A_LINKMODES_OURS``, value represents advertised modes and mask
