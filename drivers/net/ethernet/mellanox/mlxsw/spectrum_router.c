@@ -691,6 +691,7 @@ static void mlxsw_sp_lpm_tree_put(struct mlxsw_sp *mlxsw_sp,
 static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_prefix_usage req_prefix_usage = {{ 0 } };
+	struct mlxsw_sp_router *router = mlxsw_sp->router;
 	struct mlxsw_sp_lpm_tree *lpm_tree;
 	u64 max_trees;
 	int err, i;
@@ -699,15 +700,15 @@ static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 		return -EIO;
 
 	max_trees = MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_LPM_TREES);
-	mlxsw_sp->router->lpm.tree_count = max_trees - MLXSW_SP_LPM_TREE_MIN;
-	mlxsw_sp->router->lpm.trees = kcalloc(mlxsw_sp->router->lpm.tree_count,
-					     sizeof(struct mlxsw_sp_lpm_tree),
-					     GFP_KERNEL);
-	if (!mlxsw_sp->router->lpm.trees)
+	router->lpm.tree_count = max_trees - MLXSW_SP_LPM_TREE_MIN;
+	router->lpm.trees = kcalloc(router->lpm.tree_count,
+				    sizeof(struct mlxsw_sp_lpm_tree),
+				    GFP_KERNEL);
+	if (!router->lpm.trees)
 		return -ENOMEM;
 
-	for (i = 0; i < mlxsw_sp->router->lpm.tree_count; i++) {
-		lpm_tree = &mlxsw_sp->router->lpm.trees[i];
+	for (i = 0; i < router->lpm.tree_count; i++) {
+		lpm_tree = &router->lpm.trees[i];
 		lpm_tree->id = i + MLXSW_SP_LPM_TREE_MIN;
 	}
 
@@ -717,7 +718,7 @@ static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 		err = PTR_ERR(lpm_tree);
 		goto err_ipv4_tree_get;
 	}
-	mlxsw_sp->router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4] = lpm_tree;
+	router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4] = lpm_tree;
 
 	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage,
 					 MLXSW_SP_L3_PROTO_IPV6);
@@ -725,29 +726,30 @@ static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 		err = PTR_ERR(lpm_tree);
 		goto err_ipv6_tree_get;
 	}
-	mlxsw_sp->router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV6] = lpm_tree;
+	router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV6] = lpm_tree;
 
 	return 0;
 
 err_ipv6_tree_get:
-	lpm_tree = mlxsw_sp->router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
+	lpm_tree = router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, lpm_tree);
 err_ipv4_tree_get:
-	kfree(mlxsw_sp->router->lpm.trees);
+	kfree(router->lpm.trees);
 	return err;
 }
 
 static void mlxsw_sp_lpm_fini(struct mlxsw_sp *mlxsw_sp)
 {
+	struct mlxsw_sp_router *router = mlxsw_sp->router;
 	struct mlxsw_sp_lpm_tree *lpm_tree;
 
-	lpm_tree = mlxsw_sp->router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV6];
+	lpm_tree = router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV6];
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, lpm_tree);
 
-	lpm_tree = mlxsw_sp->router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
+	lpm_tree = router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, lpm_tree);
 
-	kfree(mlxsw_sp->router->lpm.trees);
+	kfree(router->lpm.trees);
 }
 
 static bool mlxsw_sp_vr_is_used(const struct mlxsw_sp_vr *vr)
