@@ -47,6 +47,8 @@ struct mlxsw_sp_router {
 	struct {
 		/* One tree for each protocol: IPv4 and IPv6 */
 		struct mlxsw_sp_lpm_tree *proto_trees[2];
+		/* One tree geometry for each protocol: IPv4 and IPv6 */
+		struct mlxsw_sp_lpm_tree_geo *proto_tree_geos[2];
 		struct mlxsw_sp_lpm_tree *trees;
 		unsigned int tree_count;
 	} lpm;

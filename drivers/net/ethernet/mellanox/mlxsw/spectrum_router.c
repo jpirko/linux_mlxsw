@@ -323,6 +323,13 @@ mlxsw_sp_prefix_usage_set(struct mlxsw_sp_prefix_usage *prefix_usage,
 	set_bit(prefix_len, prefix_usage->b);
 }
 
+static bool
+mlxsw_sp_prefix_usage_get(struct mlxsw_sp_prefix_usage *prefix_usage,
+			  unsigned char prefix_len)
+{
+	return test_bit(prefix_len, prefix_usage->b);
+}
+
 static void
 mlxsw_sp_prefix_usage_clear(struct mlxsw_sp_prefix_usage *prefix_usage,
 			    unsigned char prefix_len)
@@ -445,9 +452,26 @@ struct mlxsw_sp_rt6 {
 	struct fib6_info *rt;
 };
 
+struct mlxsw_sp_lpm_tree_geo_bin {
+	bool valid;
+	u8 parent_bin;
+	u8 left_child_bin;
+	u8 right_child_bin;
+};
+
+#define MLXSW_SP_LPM_TREE_BIN_INVALID 0xff
+
+struct mlxsw_sp_lpm_tree_geo {
+	u8 bin_count;
+	u8 root_bin;
+	struct mlxsw_sp_lpm_tree_geo_bin bin[];
+};
+
 struct mlxsw_sp_lpm_tree {
 	u8 id; /* tree ID */
 	unsigned int ref_count;
+	struct mlxsw_sp_lpm_tree_geo *geo;
+	struct mlxsw_sp_lpm_tree_geo *reduced_geo;
 	enum mlxsw_sp_l3proto proto;
 	unsigned long prefix_ref_count[MLXSW_SP_PREFIX_COUNT];
 	struct mlxsw_sp_prefix_usage prefix_usage;
@@ -585,27 +609,189 @@ static void mlxsw_sp_lpm_tree_free(struct mlxsw_sp *mlxsw_sp,
 	ll_ops->ralta_write(mlxsw_sp, xralta_pl);
 }
 
-static int
-mlxsw_sp_lpm_tree_left_struct_set(struct mlxsw_sp *mlxsw_sp,
-				  const struct mlxsw_sp_router_ll_ops *ll_ops,
-				  struct mlxsw_sp_prefix_usage *prefix_usage,
-				  struct mlxsw_sp_lpm_tree *lpm_tree)
+static struct mlxsw_sp_lpm_tree_geo_bin *
+mlxsw_sp_lpm_tree_geo_bin(struct mlxsw_sp_lpm_tree_geo *geo, u8 bin)
 {
+	return &geo->bin[bin];
+}
+
+static struct mlxsw_sp_lpm_tree_geo *
+mlxsw_sp_lpm_tree_geo_create(u8 addr_bit_count)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo;
+
+	geo = kzalloc(struct_size(geo, bin, addr_bit_count + 1), GFP_KERNEL);
+	if (!geo)
+		return NULL;
+	geo->bin_count = addr_bit_count + 1;
+	return geo;
+}
+
+static void mlxsw_sp_lpm_tree_geo_destroy(struct mlxsw_sp_lpm_tree_geo *geo)
+{
+	kfree(geo);
+}
+
+static void
+mlxsw_sp_lpm_tree_geo_add_bin(struct mlxsw_sp_lpm_tree_geo *geo, u8 prefix_len)
+{
+	u8 parent_bin = MLXSW_SP_LPM_TREE_BIN_INVALID;
+	struct mlxsw_sp_lpm_tree_geo_bin *bin;
+	int i;
+
+	if (!geo->root_bin) {
+		geo->root_bin = prefix_len;
+		goto set_valid;
+	}
+
+	for (i = prefix_len + 1; i < geo->bin_count; i++) {
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, i);
+		if (bin->valid) {
+			if (bin->left_child_bin == MLXSW_SP_LPM_TREE_BIN_INVALID) {
+				bin->left_child_bin = prefix_len;
+				parent_bin = i;
+				goto set_valid;
+			} else {
+				break;
+			}
+		}
+	}
+	for (i = prefix_len - 1; i >= 0; i--) {
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, i);
+		if (bin->valid) {
+			if (bin->right_child_bin == MLXSW_SP_LPM_TREE_BIN_INVALID) {
+				bin->right_child_bin = prefix_len;
+				parent_bin = i;
+				goto set_valid;
+			} else {
+				break;
+			}
+		}
+	}
+	WARN_ON_ONCE(1);
+	return;
+
+set_valid:
+	bin = mlxsw_sp_lpm_tree_geo_bin(geo, prefix_len);
+	bin->valid = true;
+	bin->parent_bin = parent_bin;
+	bin->left_child_bin = MLXSW_SP_LPM_TREE_BIN_INVALID;
+	bin->right_child_bin = MLXSW_SP_LPM_TREE_BIN_INVALID;
+}
+
+static void
+mlxsw_sp_lpm_tree_geo_add_missing_bins(struct mlxsw_sp_lpm_tree_geo *geo)
+{
+	struct mlxsw_sp_lpm_tree_geo_bin *bin;
+	int i;
+
+	for (i = geo->bin_count -1; i >= 0; i--) {
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, i);
+		if (!bin->valid)
+			mlxsw_sp_lpm_tree_geo_add_bin(geo, i);
+	}
+}
+
+static struct mlxsw_sp_lpm_tree_geo *
+mlxsw_sp_lpm_tree_geo_left_tree_create(u8 addr_bit_count)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo;
+
+	geo = mlxsw_sp_lpm_tree_geo_create(addr_bit_count);
+	if (!geo)
+		return NULL;
+	mlxsw_sp_lpm_tree_geo_add_missing_bins(geo);
+	return geo;
+}
+
+static u8
+mlxsw_sp_lpm_tree_geo_reduce_bin(u8 prefix_len,
+				 struct mlxsw_sp_lpm_tree_geo *geo,
+				 struct mlxsw_sp_prefix_usage *prefix_usage)
+{
+	struct mlxsw_sp_lpm_tree_geo_bin *bin, *child_bin;
+
+	if (prefix_len == MLXSW_SP_LPM_TREE_BIN_INVALID)
+		return MLXSW_SP_LPM_TREE_BIN_INVALID;
+
+	bin = mlxsw_sp_lpm_tree_geo_bin(geo, prefix_len);
+
+	/* Recursively walk down both ways in the binary tree, reducing the
+	 * children nodes.
+	 */
+	bin->left_child_bin = mlxsw_sp_lpm_tree_geo_reduce_bin(bin->left_child_bin,
+							       geo, prefix_usage);
+	bin->right_child_bin = mlxsw_sp_lpm_tree_geo_reduce_bin(bin->right_child_bin,
+								geo, prefix_usage);
+
+	/* Check if the tree needs to contain prefix_len. That is needed
+	 * in two cases:
+	 * 1) The current prefix_len is used by some prefix
+	 * 2) The current prefix_len node is a branch in the binary tree,
+	 *    meaning both children are valid.
+	 */
+	if (mlxsw_sp_prefix_usage_get(prefix_usage, prefix_len) ||
+	    (bin->left_child_bin != MLXSW_SP_LPM_TREE_BIN_INVALID &&
+	     bin->right_child_bin != MLXSW_SP_LPM_TREE_BIN_INVALID)) {
+		if (bin->left_child_bin != MLXSW_SP_LPM_TREE_BIN_INVALID) {
+			child_bin = mlxsw_sp_lpm_tree_geo_bin(geo, bin->left_child_bin);
+			child_bin->parent_bin = prefix_len;
+		}
+		if (bin->right_child_bin != MLXSW_SP_LPM_TREE_BIN_INVALID) {
+			child_bin = mlxsw_sp_lpm_tree_geo_bin(geo, bin->right_child_bin);
+			child_bin->parent_bin = prefix_len;
+		}
+		return prefix_len;
+	}
+
+	/* Here, it is obvious that the prefix_len can be skipped in the tree.
+	 * Replace it either by the right or the left child recursion result.
+	 * Only one is valid.
+	 */
+	bin->valid = false;
+	if (bin->left_child_bin != MLXSW_SP_LPM_TREE_BIN_INVALID)
+		return bin->left_child_bin;
+	else
+		return bin->right_child_bin;
+}
+
+static struct mlxsw_sp_lpm_tree_geo *
+mlxsw_sp_lpm_tree_geo_reduce(const struct mlxsw_sp_lpm_tree_geo *orig_geo,
+			     struct mlxsw_sp_prefix_usage *prefix_usage)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo;
+
+	geo = kmemdup(orig_geo,
+		      struct_size(orig_geo, bin, orig_geo->bin_count),
+		      GFP_KERNEL);
+	if (!geo)
+		return NULL;
+
+	geo->root_bin = mlxsw_sp_lpm_tree_geo_reduce_bin(geo->root_bin, geo,
+							 prefix_usage);
+	return geo;
+}
+
+static int
+mlxsw_sp_lpm_tree_struct_set(struct mlxsw_sp *mlxsw_sp,
+			     const struct mlxsw_sp_router_ll_ops *ll_ops,
+			     struct mlxsw_sp_lpm_tree *lpm_tree)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo = lpm_tree->reduced_geo;
+	struct mlxsw_sp_lpm_tree_geo_bin *bin;
 	char xralst_pl[MLXSW_REG_XRALST_LEN];
-	u8 root_bin = 0;
-	u8 prefix;
-	u8 last_prefix = MLXSW_REG_RALST_BIN_NO_CHILD;
+	u8 prefix_len;
 
-	mlxsw_sp_prefix_usage_for_each(prefix, prefix_usage)
-		root_bin = prefix;
-
-	mlxsw_reg_xralst_pack(xralst_pl, root_bin, lpm_tree->id);
-	mlxsw_sp_prefix_usage_for_each(prefix, prefix_usage) {
-		if (prefix == 0)
+	BUILD_BUG_ON(MLXSW_SP_LPM_TREE_BIN_INVALID !=
+		     MLXSW_REG_RALST_BIN_NO_CHILD);
+	mlxsw_reg_xralst_pack(xralst_pl, geo->root_bin, lpm_tree->id);
+	for (prefix_len = 1; prefix_len < geo->bin_count; prefix_len++) {
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, prefix_len);
+		if (!bin->valid)
 			continue;
-		mlxsw_reg_xralst_bin_pack(xralst_pl, prefix, last_prefix,
-					  MLXSW_REG_RALST_BIN_NO_CHILD);
-		last_prefix = prefix;
+		mlxsw_reg_xralst_bin_pack(xralst_pl, prefix_len,
+					  bin->left_child_bin,
+					  bin->right_child_bin);
 	}
 	return ll_ops->ralst_write(mlxsw_sp, xralst_pl);
 }
@@ -623,11 +809,17 @@ mlxsw_sp_lpm_tree_create(struct mlxsw_sp *mlxsw_sp,
 	if (!lpm_tree)
 		return ERR_PTR(-EBUSY);
 	lpm_tree->proto = proto;
+	lpm_tree->geo = mlxsw_sp->router->lpm.proto_tree_geos[proto];
 	err = mlxsw_sp_lpm_tree_alloc(mlxsw_sp, ll_ops, lpm_tree);
 	if (err)
 		return ERR_PTR(err);
 
-	err = mlxsw_sp_lpm_tree_left_struct_set(mlxsw_sp, ll_ops, prefix_usage, lpm_tree);
+	lpm_tree->reduced_geo = mlxsw_sp_lpm_tree_geo_reduce(lpm_tree->geo,
+							     prefix_usage);
+	if (!lpm_tree->reduced_geo)
+		goto err_geo_reduce;
+
+	err = mlxsw_sp_lpm_tree_struct_set(mlxsw_sp, ll_ops, lpm_tree);
 	if (err)
 		goto err_left_struct_set;
 	memcpy(&lpm_tree->prefix_usage, prefix_usage,
@@ -638,6 +830,8 @@ mlxsw_sp_lpm_tree_create(struct mlxsw_sp *mlxsw_sp,
 	return lpm_tree;
 
 err_left_struct_set:
+	mlxsw_sp_lpm_tree_geo_destroy(lpm_tree->reduced_geo);
+err_geo_reduce:
 	mlxsw_sp_lpm_tree_free(mlxsw_sp, ll_ops, lpm_tree);
 	return ERR_PTR(err);
 }
@@ -646,6 +840,7 @@ static void mlxsw_sp_lpm_tree_destroy(struct mlxsw_sp *mlxsw_sp,
 				      const struct mlxsw_sp_router_ll_ops *ll_ops,
 				      struct mlxsw_sp_lpm_tree *lpm_tree)
 {
+	mlxsw_sp_lpm_tree_geo_destroy(lpm_tree->reduced_geo);
 	mlxsw_sp_lpm_tree_free(mlxsw_sp, ll_ops, lpm_tree);
 }
 
@@ -686,6 +881,45 @@ static void mlxsw_sp_lpm_tree_put(struct mlxsw_sp *mlxsw_sp,
 		mlxsw_sp_lpm_tree_destroy(mlxsw_sp, ll_ops, lpm_tree);
 }
 
+static int
+mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo;
+	u8 addr_bit_count;
+	int err;
+
+	addr_bit_count = sizeof(u32) * BITS_PER_BYTE;
+	geo = mlxsw_sp_lpm_tree_geo_left_tree_create(addr_bit_count);
+	if (!geo)
+		return -ENOMEM;
+	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4] = geo;
+
+	addr_bit_count = sizeof(struct in6_addr) * BITS_PER_BYTE;
+	geo = mlxsw_sp_lpm_tree_geo_left_tree_create(addr_bit_count);
+	if (!geo) {
+		err = -ENOMEM;
+		goto err_ipv6_tree_geo_create;
+	}
+	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV6] = geo;
+	return 0;
+
+err_ipv6_tree_geo_create:
+	geo = router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4];
+	mlxsw_sp_lpm_tree_geo_destroy(geo);
+	return err;
+}
+
+static void
+mlxsw_sp_lpm_tree_geo_fini(struct mlxsw_sp_router *router)
+{
+	struct mlxsw_sp_lpm_tree_geo *geo;
+
+	geo = router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV6];
+	mlxsw_sp_lpm_tree_geo_destroy(geo);
+	geo = router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4];
+	mlxsw_sp_lpm_tree_geo_destroy(geo);
+}
+
 #define MLXSW_SP_LPM_TREE_MIN 1 /* tree 0 is reserved */
 
 static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
@@ -712,6 +946,10 @@ static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 		lpm_tree->id = i + MLXSW_SP_LPM_TREE_MIN;
 	}
 
+	err = mlxsw_sp_lpm_tree_geo_init(router);
+	if (err)
+		goto err_tree_geo_init;
+
 	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage,
 					 MLXSW_SP_L3_PROTO_IPV4);
 	if (IS_ERR(lpm_tree)) {
@@ -734,6 +972,8 @@ err_ipv6_tree_get:
 	lpm_tree = router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, lpm_tree);
 err_ipv4_tree_get:
+	mlxsw_sp_lpm_tree_geo_fini(router);
+err_tree_geo_init:
 	kfree(router->lpm.trees);
 	return err;
 }
@@ -748,6 +988,8 @@ static void mlxsw_sp_lpm_fini(struct mlxsw_sp *mlxsw_sp)
 
 	lpm_tree = router->lpm.proto_trees[MLXSW_SP_L3_PROTO_IPV4];
 	mlxsw_sp_lpm_tree_put(mlxsw_sp, lpm_tree);
+
+	mlxsw_sp_lpm_tree_geo_fini(router);
 
 	kfree(router->lpm.trees);
 }
