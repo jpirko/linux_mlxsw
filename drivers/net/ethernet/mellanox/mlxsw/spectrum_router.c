@@ -357,9 +357,18 @@ enum mlxsw_sp_fib_entry_type {
 struct mlxsw_sp_nexthop_group_info;
 struct mlxsw_sp_nexthop_group;
 struct mlxsw_sp_fib_entry;
+struct mlxsw_sp_fib_trie_node;
+
+struct mlxsw_sp_fib_marker {
+	struct mlxsw_sp_fib_node *fib_node;
+	struct mlxsw_sp_fib_trie_node *trie_node;
+	refcount_t refcnt;
+	u8 bmp;
+};
 
 struct mlxsw_sp_fib_node {
 	struct mlxsw_sp_fib_entry *fib_entry;
+	struct mlxsw_sp_fib_marker *fib_marker;
 	struct list_head list;
 	struct rhash_head ht_node;
 	struct mlxsw_sp_fib *fib;
@@ -477,6 +486,14 @@ struct mlxsw_sp_lpm_tree {
 	struct mlxsw_sp_prefix_usage prefix_usage;
 };
 
+struct mlxsw_sp_fib_trie {
+	struct mlxsw_sp_fib_trie_node *root;
+};
+
+struct mlxsw_sp_fib_bin {
+	struct mlxsw_sp_fib_trie marker_trie;
+};
+
 struct mlxsw_sp_fib {
 	struct rhashtable ht;
 	struct list_head node_list;
@@ -484,6 +501,7 @@ struct mlxsw_sp_fib {
 	struct mlxsw_sp_lpm_tree *lpm_tree;
 	enum mlxsw_sp_l3proto proto;
 	const struct mlxsw_sp_router_ll_ops *ll_ops;
+	struct mlxsw_sp_fib_bin bin[];
 };
 
 struct mlxsw_sp_vr {
@@ -530,6 +548,7 @@ static struct mlxsw_sp_fib *mlxsw_sp_fib_create(struct mlxsw_sp *mlxsw_sp,
 	const struct mlxsw_sp_router_ll_ops *ll_ops = mlxsw_sp->router->proto_ll_ops[proto];
 	struct mlxsw_sp_lpm_tree *lpm_tree;
 	struct mlxsw_sp_fib *fib;
+	unsigned char bin_count;
 	int err;
 
 	err = ll_ops->init(mlxsw_sp, vr->id, proto);
@@ -537,7 +556,8 @@ static struct mlxsw_sp_fib *mlxsw_sp_fib_create(struct mlxsw_sp *mlxsw_sp,
 		return ERR_PTR(err);
 
 	lpm_tree = mlxsw_sp->router->lpm.proto_trees[proto];
-	fib = kzalloc(sizeof(*fib), GFP_KERNEL);
+	bin_count = lpm_tree->reduced_geo->bin_count;
+	fib = kzalloc(struct_size(fib, bin, bin_count), GFP_KERNEL);
 	if (!fib)
 		return ERR_PTR(-ENOMEM);
 	err = rhashtable_init(&fib->ht, &mlxsw_sp_fib_ht_params);
@@ -5405,13 +5425,23 @@ static void mlxsw_sp_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 				   struct mlxsw_sp_fib_node *fib_node,
 				   enum mlxsw_sp_fib_node_op op)
 {
+	enum mlxsw_reg_ralue_entry_type entry_type;
 	struct mlxsw_sp_fib *fib = fib_node->fib;
+
+	if (fib_node->fib_entry && fib_node->fib_marker)
+		entry_type = MLXSW_REG_RALUE_ENTRY_TYPE_MARKER_AND_ROUTE_ENTRY;
+	else if (fib_node->fib_entry)
+		entry_type = MLXSW_REG_RALUE_ENTRY_TYPE_ROUTE_ENTRY;
+	else if (fib_node->fib_marker)
+		entry_type = MLXSW_REG_RALUE_ENTRY_TYPE_MARKER_ENTRY;
+	else
+		return;
 
 	mlxsw_sp_fib_node_op_ctx_priv_hold(op_ctx, fib_node->priv);
 	fib->ll_ops->fib_node_pack(op_ctx, fib->proto, op, fib->vr->id,
-				   MLXSW_REG_RALUE_ENTRY_TYPE_ROUTE_ENTRY,
-				   fib_node->prefix_len, fib_node->prefix_len,
-				   &fib_node->addr, fib_node->priv);
+				   entry_type, fib_node->prefix_len,
+				   fib_node->prefix_len, &fib_node->addr,
+				   fib_node->priv);
 }
 
 static int mlxsw_sp_fib_node_commit(struct mlxsw_sp *mlxsw_sp,
@@ -5680,6 +5710,14 @@ static int mlxsw_sp_fib_node_del(struct mlxsw_sp *mlxsw_sp,
 
 	if (!ll_ops->fib_node_is_committed(fib_node->priv))
 		return 0;
+
+	/* In case there is either entry or marker still there, the update
+	 * is needed instead of delete.
+	 */
+	if (fib_node->fib_entry || fib_node->fib_marker)
+		return __mlxsw_sp_fib_node_update(mlxsw_sp, op_ctx,
+						  fib_node, false);
+
 	return mlxsw_sp_fib_node_op(mlxsw_sp, op_ctx, fib_node,
 				     MLXSW_SP_FIB_NODE_OP_DELETE);
 }
@@ -6126,11 +6164,643 @@ static void mlxsw_sp_fib_node_put(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_vr *vr = fib_node->fib->vr;
 
-	if (fib_node->fib_entry)
+	if (fib_node->fib_entry || fib_node->fib_marker)
 		return;
 	mlxsw_sp_fib_node_fini(mlxsw_sp, fib_node);
 	mlxsw_sp_fib_node_destroy(fib_node);
 	mlxsw_sp_vr_put(mlxsw_sp, vr);
+}
+
+/* Per-prefix FIB trie is implemented as a binary search trie. It holds all
+ * markers that belong to the prefix(/bin). During the lookup, the next bit
+ * is being looked at and according to that the lookup continues either
+ * to child[0] or child[1] subtree.
+ *
+ * Note that there may be nodes that are not related to any existing
+ * marker, in case branch is needed. These are created on demand
+ * by mlxsw_sp_fib_trie_node_link().
+ *
+ * After a node destruction, it is possible that parent node is not related
+ * to a marker and it links to only one child. That parent node is "useless"
+ * and it is destructed during mlxsw_sp_fib_trie_node_unlink() call.
+ */
+
+struct mlxsw_sp_fib_trie_node {
+	struct mlxsw_sp_fib_trie_node *child[2];
+	struct mlxsw_sp_fib_trie_node *parent;
+	unsigned int subtree_child_count;
+	union mlxsw_sp_l3addr addr;
+	unsigned char prefix_len;
+	struct mlxsw_sp_fib_marker *marker;
+};
+
+static struct mlxsw_sp_fib_trie_node *
+mlxsw_sp_fib_trie_lookup_link(struct mlxsw_sp_fib_trie *trie,
+			      const union mlxsw_sp_l3addr *addr,
+			      unsigned char prefix_len, bool *is_parent)
+{
+	struct mlxsw_sp_fib_trie_node *trie_node = trie->root;
+	struct mlxsw_sp_fib_trie_node *last_trie_node = NULL;
+	int child_index;
+
+next_node:
+	if (!trie_node)
+		return NULL;
+	if (!mlxsw_sp_l3addr_equal(&trie_node->addr, addr,
+				   trie_node->prefix_len))
+		return NULL;
+	if (trie_node->prefix_len == prefix_len) {
+		*is_parent = false;
+		return trie_node;
+	} else if (trie_node->prefix_len > prefix_len) {
+		*is_parent = true;
+		return last_trie_node;
+	}
+
+	last_trie_node = trie_node;
+	child_index = mlxsw_sp_l3addr_bit_test(&trie_node->addr,
+					       trie_node->prefix_len + 1);
+	trie_node = trie_node->child[child_index];
+	goto next_node;
+}
+
+static unsigned char
+mlxsw_sp_fib_trie_new_parent_prefix_len(struct mlxsw_sp_fib_trie_node *trie_node1,
+					struct mlxsw_sp_fib_trie_node *trie_node2,
+					unsigned char prefix_len)
+{
+	while (mlxsw_sp_l3addr_bit_test(&trie_node1->addr, prefix_len) !=
+	       mlxsw_sp_l3addr_bit_test(&trie_node2->addr, prefix_len))
+		prefix_len++;
+	return prefix_len - 1;
+}
+
+static struct mlxsw_sp_fib_trie_node *
+mlxsw_sp_fib_trie_node_create(struct mlxsw_sp_fib_trie *trie,
+			      const union mlxsw_sp_l3addr *addr,
+			      unsigned char prefix_len,
+			      struct mlxsw_sp_fib_trie_node *parent);
+
+static void mlxsw_sp_fib_trie_node_destroy(struct mlxsw_sp_fib_trie *trie,
+					   struct mlxsw_sp_fib_trie_node *trie_node);
+
+static bool
+mlxsw_sp_fib_trie_node_is_useless(struct mlxsw_sp_fib_trie_node *trie_node)
+{
+	return !trie_node->marker &&
+		(!trie_node->child[0] || !trie_node->child[1]);
+}
+
+static int mlxsw_sp_fib_trie_node_link(struct mlxsw_sp_fib_trie *trie,
+				       struct mlxsw_sp_fib_trie_node *trie_node,
+				       struct mlxsw_sp_fib_trie_node *parent)
+{
+	struct mlxsw_sp_fib_trie_node *child;
+	unsigned char prefix_len;
+	int child_index;
+
+	if (!parent) {
+		/* No parent means the trie is empty. Just set the root. */
+		trie->root = trie_node;
+		return 0;
+	}
+
+	prefix_len = parent->prefix_len + 1;
+	child_index = mlxsw_sp_l3addr_bit_test(&trie_node->addr, prefix_len);
+	child = parent->child[child_index];
+	if (child) {
+		/* The child on this branch already exists. Since
+		 * the duplicates cannot happen, this must be child
+		 * with different prefix comparing to the one being inserted.
+		 * Therefore, find a prefix len on which the child and the
+		 * one being inserted differ and insert a new parent there
+		 * to make a branching possible.
+		 */
+		prefix_len = mlxsw_sp_fib_trie_new_parent_prefix_len(trie_node,
+								     child,
+								     prefix_len + 1);
+		parent = mlxsw_sp_fib_trie_node_create(trie, &trie_node->addr,
+						       prefix_len, parent);
+		if (IS_ERR(parent))
+			return PTR_ERR(parent);
+		prefix_len = parent->prefix_len + 1;
+		child_index = mlxsw_sp_l3addr_bit_test(&trie_node->addr, prefix_len);
+	}
+	parent->child[child_index] = trie_node;
+	trie_node->parent = parent;
+	return 0;
+}
+
+static void mlxsw_sp_fib_trie_node_unlink(struct mlxsw_sp_fib_trie *trie,
+					  struct mlxsw_sp_fib_trie_node *trie_node)
+
+{
+	struct mlxsw_sp_fib_trie_node *parent = trie_node->parent;
+	struct mlxsw_sp_fib_trie_node *child = NULL;
+
+	/* At this point, none or one child is present. */
+	if (trie_node->child[0])
+		child = trie_node->child[0];
+	else if (trie_node->child[1])
+		child = trie_node->child[1];
+
+	if (!parent)
+		trie->root = child;
+	else if (parent->child[0] == trie_node)
+		parent->child[0] = child;
+	else if (parent->child[1] == trie_node)
+		parent->child[1] = child;
+
+	if (child)
+		child->parent = parent;
+
+	if (mlxsw_sp_fib_trie_node_is_useless(parent))
+		mlxsw_sp_fib_trie_node_destroy(trie, parent);
+}
+
+static struct mlxsw_sp_fib_trie_node *
+mlxsw_sp_fib_trie_node_create(struct mlxsw_sp_fib_trie *trie,
+			      const union mlxsw_sp_l3addr *addr,
+			      unsigned char prefix_len,
+			      struct mlxsw_sp_fib_trie_node *parent)
+{
+	struct mlxsw_sp_fib_trie_node *trie_node;
+	int err;
+
+	trie_node = kzalloc(sizeof(*trie_node), GFP_KERNEL);
+	if (!trie_node)
+		return ERR_PTR(-ENOMEM);
+	err = mlxsw_sp_fib_trie_node_link(trie, trie_node, parent);
+	if (err)
+		goto err_trie_node_link;
+	return trie_node;
+
+err_trie_node_link:
+	kfree(trie_node);
+	return ERR_PTR(err);
+}
+
+static void mlxsw_sp_fib_trie_node_destroy(struct mlxsw_sp_fib_trie *trie,
+					   struct mlxsw_sp_fib_trie_node *trie_node)
+{
+	mlxsw_sp_fib_trie_node_unlink(trie, trie_node);
+	kfree(trie_node);
+}
+
+static void
+mlxsw_sp_fib_trie_subtree_child_count_inc(struct mlxsw_sp_fib_trie_node *parent)
+{
+	while (parent) {
+		parent->subtree_child_count++;
+		parent = parent->parent;
+	}
+}
+
+static void
+mlxsw_sp_fib_trie_subtree_child_count_dec(struct mlxsw_sp_fib_trie_node *parent)
+{
+	while (parent) {
+		parent->subtree_child_count--;
+		parent = parent->parent;
+	}
+}
+
+static struct mlxsw_sp_fib_trie_node *
+mlxsw_sp_fib_trie_node_get(struct mlxsw_sp_fib_trie *trie,
+			   const union mlxsw_sp_l3addr *addr,
+			   unsigned char prefix_len,
+			   struct mlxsw_sp_fib_marker *fib_marker)
+{
+	struct mlxsw_sp_fib_trie_node *trie_node;
+	bool is_parent;
+
+	trie_node = mlxsw_sp_fib_trie_lookup_link(trie, addr,
+						  prefix_len, &is_parent);
+	if (trie_node && !is_parent)
+		return trie_node;
+
+	trie_node = mlxsw_sp_fib_trie_node_create(trie, addr, prefix_len, trie_node);
+	if (IS_ERR(trie_node))
+		return trie_node;
+
+	trie_node->marker = fib_marker;
+	mlxsw_sp_fib_trie_subtree_child_count_inc(trie_node->parent);
+	return trie_node;
+}
+
+static void mlxsw_sp_fib_trie_node_put(struct mlxsw_sp_fib_trie *trie,
+				       struct mlxsw_sp_fib_trie_node *trie_node)
+{
+	mlxsw_sp_fib_trie_subtree_child_count_dec(trie_node->parent);
+	trie_node->marker = NULL;
+	if (mlxsw_sp_fib_trie_node_is_useless(trie_node))
+		mlxsw_sp_fib_trie_node_destroy(trie, trie_node);
+}
+
+static struct mlxsw_sp_fib_trie_node *
+mlxsw_sp_fib_trie_lookup(struct mlxsw_sp_fib_trie *trie,
+			 const union mlxsw_sp_l3addr *addr,
+			 unsigned char prefix_len)
+{
+	struct mlxsw_sp_fib_trie_node *trie_node = trie->root;
+	int child_index;
+
+next_node:
+	if (!trie_node)
+		return NULL;
+	if (!mlxsw_sp_l3addr_equal(&trie_node->addr, addr,
+				   trie_node->prefix_len))
+		return NULL;
+	if (trie_node->prefix_len >= prefix_len)
+		return trie_node;
+
+	child_index = mlxsw_sp_l3addr_bit_test(&trie_node->addr,
+					       trie_node->prefix_len + 1);
+	trie_node = trie_node->child[child_index];
+	goto next_node;
+}
+
+struct mlxsw_sp_fib_trie_walk_info {
+	struct mlxsw_sp *mlxsw_sp;
+	struct list_head *bulk_list;
+	struct mlxsw_sp_fib_node_op_ctx *op_ctx;
+	u8 old_bmp;
+	u8 new_bmp;
+	bool hw_update;
+};
+
+static int
+mlxsw_sp_fib_trie_subtree_walk(struct mlxsw_sp_fib_trie_node *trie_node,
+			       struct mlxsw_sp_fib_trie_walk_info *walk_info,
+			       int (*cb)(struct mlxsw_sp_fib_trie_walk_info *walk_info,
+					 struct mlxsw_sp_fib_marker *fib_marker))
+{
+	int err;
+	int i;
+
+	if (trie_node->marker) {
+		err = cb(walk_info, trie_node->marker);
+		if (err)
+			return err;
+	}
+	for (i = 0; i < 2; i++) {
+		struct mlxsw_sp_fib_trie_node *child = trie_node->child[i];
+
+		if (child) {
+			err = mlxsw_sp_fib_trie_subtree_walk(child,
+							     walk_info, cb);
+			if (err)
+				return err;
+		}
+	}
+	return 0;
+}
+
+static u8 mlxsw_sp_fib_bmp_get(struct mlxsw_sp_fib *fib,
+			       const union mlxsw_sp_l3addr *addr,
+			       unsigned char prefix_len)
+{
+	struct mlxsw_sp_fib_node *fib_node;
+	u8 current_prefix_len;
+
+	for (current_prefix_len = prefix_len - 1; current_prefix_len > 0;
+	     current_prefix_len--) {
+		fib_node = mlxsw_sp_fib_node_lookup(fib, addr,
+						    current_prefix_len);
+		if (fib_node && fib_node->fib_entry)
+			/* In case there is a route found,
+			 * this prefix is new BMP.
+			 */
+			return current_prefix_len;
+	}
+	return 0;
+}
+
+static struct mlxsw_sp_fib_marker *
+mlxsw_sp_fib_marker_create(struct mlxsw_sp *mlxsw_sp,
+			   struct mlxsw_sp_fib *fib,
+			   const union mlxsw_sp_l3addr *addr,
+			   unsigned char prefix_len)
+{
+	u8 bmp = mlxsw_sp_fib_bmp_get(fib, addr, prefix_len);
+	struct mlxsw_sp_fib_trie_node *trie_node;
+	struct mlxsw_sp_fib_marker *fib_marker;
+	int err;
+
+	fib_marker = kzalloc(sizeof(*fib_marker), GFP_KERNEL);
+	if (!fib_marker)
+		return ERR_PTR(-ENOMEM);
+
+	refcount_set(&fib_marker->refcnt, 1);
+
+	trie_node = mlxsw_sp_fib_trie_node_get(&fib->bin[prefix_len].marker_trie,
+					       addr, prefix_len, fib_marker);
+	if (IS_ERR(trie_node)) {
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to insert entry to trie\n");
+		err = PTR_ERR(trie_node);
+		goto err_fib_trie_node_get;
+	}
+	fib_marker->bmp = bmp;
+	fib_marker->trie_node = trie_node;
+
+	return fib_marker;
+
+err_fib_trie_node_get:
+	kfree(fib_marker);
+	return ERR_PTR(err);
+}
+
+static void mlxsw_sp_fib_marker_destroy(struct mlxsw_sp_fib *fib,
+					struct mlxsw_sp_fib_marker *fib_marker)
+{
+	unsigned char prefix_len = fib_marker->fib_node->prefix_len;
+
+	mlxsw_sp_fib_trie_node_put(&fib->bin[prefix_len].marker_trie,
+				   fib_marker->trie_node);
+	kfree(fib_marker);
+}
+
+static int mlxsw_sp_fib_node_marker_link(struct mlxsw_sp *mlxsw_sp,
+					 struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+					 struct mlxsw_sp_fib_node *fib_node,
+					 struct mlxsw_sp_fib_marker *fib_marker,
+					 bool is_new)
+{
+	int err;
+
+	fib_node->fib_marker = fib_marker;
+	err = __mlxsw_sp_fib_node_update(mlxsw_sp, op_ctx, fib_node, is_new);
+	if (err)
+		goto err_fib_node_update;
+	return 0;
+
+err_fib_node_update:
+	fib_node->fib_marker = NULL;
+	return err;
+}
+
+static int __mlxsw_sp_fib_node_marker_unlink(struct mlxsw_sp *mlxsw_sp,
+					     struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+					     struct mlxsw_sp_fib_node *fib_node)
+{
+	fib_node->fib_marker = NULL;
+	return mlxsw_sp_fib_node_del(mlxsw_sp, op_ctx, fib_node);
+}
+
+static int mlxsw_sp_fib_marker_set(struct mlxsw_sp *mlxsw_sp,
+				   struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+				   struct mlxsw_sp_fib *fib,
+				   const union mlxsw_sp_l3addr *addr,
+				   unsigned char prefix_len)
+{
+	struct mlxsw_sp_fib_marker *fib_marker;
+	struct mlxsw_sp_fib_node *fib_node;
+	bool is_new;
+	int err;
+
+	fib_node = __mlxsw_sp_fib_node_get(mlxsw_sp, fib, addr,
+					   prefix_len, &is_new);
+	if (IS_ERR(fib_node)) {
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to get FIB node\n");
+		return PTR_ERR(fib_node);
+	}
+
+	fib_marker = fib_node->fib_marker;
+	if (fib_marker) {
+		refcount_inc(&fib_marker->refcnt);
+		return 0;
+	}
+
+	fib_marker = mlxsw_sp_fib_marker_create(mlxsw_sp, fib,
+						addr, prefix_len);
+	if (IS_ERR(fib_marker)) {
+		err = PTR_ERR(fib_marker);
+		goto err_fib_marker_create;
+	}
+
+	fib_marker->fib_node = fib_node;
+	err = mlxsw_sp_fib_node_marker_link(mlxsw_sp, op_ctx, fib_node,
+					    fib_marker, is_new);
+	if (err)
+		goto err_fib_node_marker_link;
+
+	return 0;
+
+err_fib_node_marker_link:
+	mlxsw_sp_fib_marker_destroy(fib, fib_marker);
+err_fib_marker_create:
+	mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
+	return err;
+}
+
+static int mlxsw_sp_fib_marker_clear(struct mlxsw_sp *mlxsw_sp,
+				     struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+				     struct mlxsw_sp_fib *fib,
+				     const union mlxsw_sp_l3addr *addr,
+				     unsigned char prefix_len)
+{
+	struct mlxsw_sp_fib_marker *fib_marker;
+	struct mlxsw_sp_fib_node *fib_node;
+	int err;
+
+	fib_node = mlxsw_sp_fib_node_lookup(fib, addr, prefix_len);
+	if (!fib_node)
+		return -ENOENT;
+
+	fib_marker = fib_node->fib_marker;
+	if (WARN_ON(!fib_marker))
+		return -EINVAL;
+
+	if (!refcount_dec_and_test(&fib_marker->refcnt))
+		return 0;
+
+	fib_node->fib_marker = NULL;
+	err = __mlxsw_sp_fib_node_marker_unlink(mlxsw_sp, op_ctx, fib_node);
+
+	mlxsw_sp_fib_marker_destroy(fib, fib_marker);
+	mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
+
+	return err;
+}
+
+static void
+mlxsw_sp_fib_node_marker_unlink(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_fib_marker *fib_marker)
+{
+	struct mlxsw_sp_fib_node_op_ctx *op_ctx = mlxsw_sp->router->ll_op_ctx;
+	struct mlxsw_sp_fib_node *fib_node = fib_marker->fib_node;
+
+	mlxsw_sp_fib_node_op_ctx_clear(op_ctx);
+	__mlxsw_sp_fib_node_marker_unlink(mlxsw_sp, op_ctx, fib_node);
+}
+
+static void
+__mlxsw_sp_fib_markers_clear(struct mlxsw_sp *mlxsw_sp,
+			     struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+			     struct mlxsw_sp_fib *fib,
+			     const union mlxsw_sp_l3addr *addr,
+			     unsigned char prefix_len,
+			     unsigned char end_prefix_len)
+{
+	struct mlxsw_sp_lpm_tree_geo_bin *bin;
+	struct mlxsw_sp_lpm_tree_geo *geo;
+	unsigned char parent_prefix_len;
+	int err;
+
+	geo = fib->lpm_tree->reduced_geo;
+	bin = mlxsw_sp_lpm_tree_geo_bin(geo, prefix_len);
+	while (bin->parent_bin != end_prefix_len) {
+		parent_prefix_len = bin->parent_bin;
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, parent_prefix_len);
+		if (parent_prefix_len > prefix_len)
+			continue;
+		err = mlxsw_sp_fib_marker_clear(mlxsw_sp, op_ctx, fib, addr,
+						parent_prefix_len);
+		if (err)
+			dev_err(mlxsw_sp->bus_info->dev, "Failed to clear FIB marker\n");
+		/* LPM tree may change in marker_clear(), get the geo again. */
+		geo = fib->lpm_tree->reduced_geo;
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, parent_prefix_len);
+	}
+	return;
+}
+
+static int mlxsw_sp_fib_markers_set(struct mlxsw_sp *mlxsw_sp,
+				    struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+				    struct mlxsw_sp_fib *fib,
+				    const union mlxsw_sp_l3addr *addr,
+				    unsigned char prefix_len)
+{
+	struct mlxsw_sp_lpm_tree_geo_bin *bin;
+	struct mlxsw_sp_lpm_tree_geo *geo;
+	unsigned char parent_prefix_len;
+	int err;
+
+	geo = fib->lpm_tree->reduced_geo;
+	bin = mlxsw_sp_lpm_tree_geo_bin(geo, prefix_len);
+	while (bin->parent_bin != MLXSW_SP_LPM_TREE_BIN_INVALID) {
+		parent_prefix_len = bin->parent_bin;
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, parent_prefix_len);
+		if (parent_prefix_len > prefix_len)
+			continue;
+		err = mlxsw_sp_fib_marker_set(mlxsw_sp, op_ctx, fib, addr,
+					      parent_prefix_len);
+		if (err)
+			goto rollback;
+		/* LPM tree may change in marker_set(), get the geo again. */
+		geo = fib->lpm_tree->reduced_geo;
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, parent_prefix_len);
+	}
+	return 0;
+
+rollback:
+	__mlxsw_sp_fib_markers_clear(mlxsw_sp, op_ctx, fib, addr, prefix_len,
+				     parent_prefix_len);
+	return err;
+}
+
+static void mlxsw_sp_fib_markers_clear(struct mlxsw_sp *mlxsw_sp,
+				       struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+				       struct mlxsw_sp_fib *fib,
+				       const union mlxsw_sp_l3addr *addr,
+				       unsigned char prefix_len)
+{
+	__mlxsw_sp_fib_markers_clear(mlxsw_sp, op_ctx, fib, addr, prefix_len,
+				     MLXSW_SP_LPM_TREE_BIN_INVALID);
+}
+
+static int
+mlxsw_sp_fib_markers_bmp_replace_cb(struct mlxsw_sp_fib_trie_walk_info *walk_info,
+				    struct mlxsw_sp_fib_marker *fib_marker)
+{
+	struct mlxsw_sp *mlxsw_sp = walk_info->mlxsw_sp;
+	int err;
+
+	if (walk_info->old_bmp != fib_marker->bmp)
+		return 0;
+
+	fib_marker->bmp = walk_info->new_bmp;
+	if (!walk_info->hw_update)
+		return 0;
+
+	err = __mlxsw_sp_fib_node_update(mlxsw_sp, walk_info->op_ctx,
+					 fib_marker->fib_node, false);
+	if (err)
+		dev_err(mlxsw_sp->bus_info->dev, "Failed to update marker bmp\n");
+	return err;
+}
+
+static int
+mlxsw_sp_fib_markers_bmp_replace_bin(struct mlxsw_sp *mlxsw_sp,
+				     struct list_head *bulk_list,
+				     struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+				     struct mlxsw_sp_fib *fib,
+				     const union mlxsw_sp_l3addr *addr,
+				     unsigned char prefix_len,
+				     u8 old_bmp, u8 new_bmp, u8 bin)
+{
+	struct mlxsw_sp_fib_trie_walk_info walk_info;
+	const struct mlxsw_sp_router_ll_ops *ll_ops;
+	struct mlxsw_sp_fib_trie_node *trie_node;
+	int err;
+
+	ll_ops = mlxsw_sp->router->proto_ll_ops[fib->proto];
+
+	trie_node = mlxsw_sp_fib_trie_lookup(&fib->bin[bin].marker_trie,
+					     addr, prefix_len);
+	if (!trie_node)
+		return 0; /* Nothing to do */
+	if (trie_node->subtree_child_count >
+	    ll_ops->markers_bmp_update_threshold) {
+		err = ll_ops->markers_bmp_update(mlxsw_sp, bulk_list,
+						 fib->proto, fib->vr->id,
+						 old_bmp, bin, new_bmp,
+						 prefix_len, addr);
+		if (err) {
+			dev_err(mlxsw_sp->bus_info->dev, "Failed to bulk-update markers bmp\n");
+			return err;
+		}
+		walk_info.hw_update = false;
+	} else {
+		walk_info.hw_update = true;
+	}
+
+	walk_info.mlxsw_sp = mlxsw_sp;
+	walk_info.bulk_list = bulk_list;
+	walk_info.op_ctx = op_ctx;
+	walk_info.old_bmp = new_bmp;
+	walk_info.old_bmp = new_bmp;
+	return mlxsw_sp_fib_trie_subtree_walk(trie_node, &walk_info,
+					      &mlxsw_sp_fib_markers_bmp_replace_cb);
+}
+
+static int mlxsw_sp_fib_markers_bmp_replace(struct mlxsw_sp *mlxsw_sp,
+					    struct mlxsw_sp_fib *fib,
+					    const union mlxsw_sp_l3addr *addr,
+					    unsigned char prefix_len,
+					    u8 old_bmp, u8 new_bmp)
+{
+	struct mlxsw_sp_fib_node_op_ctx *op_ctx = mlxsw_sp->router->ll_op_ctx;
+	struct mlxsw_sp_lpm_tree_geo *geo = fib->lpm_tree->reduced_geo;
+	LIST_HEAD(bulk_list);
+	int err = 0;
+	int err2;
+	int i;
+
+	for (i = prefix_len + 1; i < geo->bin_count; i++) {
+		err = mlxsw_sp_fib_markers_bmp_replace_bin(mlxsw_sp, &bulk_list,
+							   op_ctx, fib, addr,
+							   prefix_len, old_bmp,
+							   new_bmp, i);
+		if (err)
+			goto out;
+	}
+
+out:
+	err2 = mlxsw_reg_trans_bulk_wait(&bulk_list);
+	if (!err)
+		err = err2;
+	return err;
 }
 
 static int mlxsw_sp_fib_node_entry_link(struct mlxsw_sp *mlxsw_sp,
@@ -6139,7 +6809,14 @@ static int mlxsw_sp_fib_node_entry_link(struct mlxsw_sp *mlxsw_sp,
 					bool is_new)
 {
 	struct mlxsw_sp_fib_node *fib_node = fib_entry->fib_node;
+	struct mlxsw_sp_fib *fib = fib_node->fib;
+	const union mlxsw_sp_l3addr *addr;
+	unsigned char prefix_len;
+	u8 old_bmp;
 	int err;
+
+	addr = &fib_node->addr;
+	prefix_len = fib_node->prefix_len;
 
 	fib_node->fib_entry = fib_entry;
 
@@ -6147,8 +6824,24 @@ static int mlxsw_sp_fib_node_entry_link(struct mlxsw_sp *mlxsw_sp,
 	if (err)
 		goto err_fib_node_update;
 
+	if (!prefix_len)
+		return 0;
+
+	old_bmp = mlxsw_sp_fib_bmp_get(fib, addr, prefix_len);
+	err = mlxsw_sp_fib_markers_set(mlxsw_sp, op_ctx, fib, addr, prefix_len);
+	if (err)
+		goto err_markers_set;
+	err = mlxsw_sp_fib_markers_bmp_replace(mlxsw_sp, fib, addr,
+					       prefix_len, old_bmp, prefix_len);
+	if (err)
+		goto err_markers_bmp_replace;
+
 	return 0;
 
+err_markers_bmp_replace:
+	mlxsw_sp_fib_markers_clear(mlxsw_sp, op_ctx, fib, addr, prefix_len);
+err_markers_set:
+	mlxsw_sp_fib_node_del(mlxsw_sp, op_ctx, fib_node);
 err_fib_node_update:
 	fib_node->fib_entry = NULL;
 	return err;
@@ -6159,10 +6852,33 @@ static int __mlxsw_sp_fib_node_entry_unlink(struct mlxsw_sp *mlxsw_sp,
 					    struct mlxsw_sp_fib_entry *fib_entry)
 {
 	struct mlxsw_sp_fib_node *fib_node = fib_entry->fib_node;
+	struct mlxsw_sp_fib *fib = fib_node->fib;
+	bool saved_bulk_ok = op_ctx->bulk_ok;
+	const union mlxsw_sp_l3addr *addr;
+	unsigned char prefix_len;
+	u8 new_bmp;
 	int err;
 
-	err = mlxsw_sp_fib_node_del(mlxsw_sp, op_ctx, fib_node);
+	addr = &fib_node->addr;
+	prefix_len = fib_node->prefix_len;
+
+	if (!prefix_len)
+		goto entry_del;
+
+	new_bmp = mlxsw_sp_fib_bmp_get(fib, addr, prefix_len);
+	mlxsw_sp_fib_markers_clear(mlxsw_sp, op_ctx, fib, addr, prefix_len);
+	mlxsw_sp_fib_markers_bmp_replace(mlxsw_sp, fib, addr, prefix_len,
+					 prefix_len, new_bmp);
+
+entry_del:
+	op_ctx->bulk_ok = saved_bulk_ok;
 	fib_node->fib_entry = NULL;
+	err = mlxsw_sp_fib_node_del(mlxsw_sp, op_ctx, fib_node);
+
+	/* Update leftover marker BMP if there is one left. */
+	if (fib_node->fib_marker)
+		fib_node->fib_marker->bmp = new_bmp;
+
 	return err;
 }
 
@@ -7156,7 +7872,13 @@ static void mlxsw_sp_fib6_node_flush(struct mlxsw_sp *mlxsw_sp,
 static void mlxsw_sp_fib_node_flush(struct mlxsw_sp *mlxsw_sp,
 				    struct mlxsw_sp_fib_node *fib_node)
 {
-	mlxsw_sp_fib_node_entry_unlink(mlxsw_sp, fib_node->fib_entry);
+	if (fib_node->fib_entry)
+		mlxsw_sp_fib_node_entry_unlink(mlxsw_sp, fib_node->fib_entry);
+	if (fib_node->fib_marker) {
+		mlxsw_sp_fib_node_marker_unlink(mlxsw_sp, fib_node->fib_marker);
+		mlxsw_sp_fib_marker_destroy(fib_node->fib,
+					    fib_node->fib_marker);
+	}
 	switch (fib_node->fib->proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
 		mlxsw_sp_fib4_node_flush(mlxsw_sp, fib_node);

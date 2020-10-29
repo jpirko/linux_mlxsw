@@ -626,6 +626,16 @@ union mlxsw_sp_l3addr {
 	struct in6_addr addr6;
 };
 
+static inline bool mlxsw_sp_l3addr_bit_test(const union mlxsw_sp_l3addr *addr,
+					    unsigned char bit)
+{
+	const unsigned char *arr = (const unsigned char *) addr;
+
+	if (WARN_ON(bit > sizeof(union mlxsw_sp_l3addr) * BITS_PER_BYTE))
+		return false;
+	return 1UL & (arr[bit / BITS_PER_BYTE] >> (bit & (BITS_PER_BYTE - 1)));
+}
+
 static inline bool mlxsw_sp_l3addr_equal(const union mlxsw_sp_l3addr *addr1,
 					 const union mlxsw_sp_l3addr *addr2,
 					 unsigned char prefix_len)
