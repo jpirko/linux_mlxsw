@@ -7557,6 +7557,96 @@ static inline void mlxsw_reg_raleu_pack(char *payload,
 	mlxsw_reg_raleu_new_ecmp_size_set(payload, new_ecmp_size);
 }
 
+/* RALBU - Router Algorithmic LPM BMP Update Register
+ * --------------------------------------------------
+ * The register enables updating of the bmp_len of multiple markers
+ * in a certain LPM bin, for markers which are not route.
+ */
+#define MLXSW_REG_RALBU_ID 0x8016
+#define MLXSW_REG_RALBU_LEN 0x20
+
+MLXSW_REG_DEFINE(ralbu, MLXSW_REG_RALBU_ID, MLXSW_REG_RALBU_LEN);
+
+/* reg_ralbu_protocol
+ * Protocol.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, protocol, 0x00, 24, 4);
+
+/* reg_ralbu_virtual_router
+ * Virtual Router ID
+ * Range is 0..cap_max_virtual_routers-1
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, virtual_router, 0x00, 0, 16);
+
+/* reg_ralbu_old_bmp_len
+ * The value of the bmp_len field in the rules assigned to bin that
+ * would be replaced by new_bmp_len.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, old_bmp_len, 0x04, 16, 8);
+
+/* reg_ralbu_bin
+ * The LPM entries assigned to this bin may be updated.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, bin, 0x04, 0, 8);
+
+/* reg_ralbu_new_bmp_len
+ * The value of the bmp_len that would be written instead of the old_bmp_len.
+ * Access: WO
+ */
+MLXSW_ITEM32(reg, ralbu, new_bmp_len, 0x08, 16, 8);
+
+/* reg_ralbu_prefix_len
+ * The prefix length of the LPM route that was added/removed.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, prefix_len, 0x08, 0, 8);
+
+/* reg_ralbu_ip*
+ * This field is the prefix of the LPM route that was added/removed.
+ * The field must be padded with zeros after the first prefix_len bits.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, ralbu, ip4, 0x1C, 0, 32);
+MLXSW_ITEM_BUF(reg, ralbu, ip6, 0x10, 16);
+
+static inline void mlxsw_reg_ralbu_pack(char *payload,
+					enum mlxsw_reg_ralxx_protocol protocol,
+					u16 virtual_router, u8 old_bmp_len,
+					u8 bin, u8 new_bmp_len, u8 prefix_len)
+{
+	MLXSW_REG_ZERO(ralbu, payload);
+	mlxsw_reg_ralbu_protocol_set(payload, protocol);
+	mlxsw_reg_ralbu_virtual_router_set(payload, virtual_router);
+	mlxsw_reg_ralbu_old_bmp_len_set(payload, old_bmp_len);
+	mlxsw_reg_ralbu_bin_set(payload, bin);
+	mlxsw_reg_ralbu_new_bmp_len_set(payload, new_bmp_len);
+	mlxsw_reg_ralbu_prefix_len_set(payload, prefix_len);
+}
+
+static inline void mlxsw_reg_ralbu_pack4(char *payload, u16 virtual_router,
+					 u8 old_bmp_len, u8 bin, u8 new_bmp_len,
+					 u8 prefix_len, u32 ip)
+{
+	mlxsw_reg_ralbu_pack(payload, MLXSW_REG_RALXX_PROTOCOL_IPV4,
+			     virtual_router, old_bmp_len, bin, new_bmp_len,
+			     prefix_len);
+	mlxsw_reg_ralbu_ip4_set(payload, ip);
+}
+
+static inline void mlxsw_reg_ralbu_pack6(char *payload, u16 virtual_router,
+					 u8 old_bmp_len, u8 bin, u8 new_bmp_len,
+					 u8 prefix_len, const void *ip)
+{
+	mlxsw_reg_ralbu_pack(payload, MLXSW_REG_RALXX_PROTOCOL_IPV6,
+			     virtual_router, old_bmp_len, bin, new_bmp_len,
+			     prefix_len);
+	mlxsw_reg_ralbu_ip6_memcpy_to(payload, ip);
+}
+
 /* RAUHTD - Router Algorithmic LPM Unicast Host Table Dump Register
  * ----------------------------------------------------------------
  * The RAUHTD register allows dumping entries from the Router Unicast Host
@@ -11977,6 +12067,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(ralue),
 	MLXSW_REG(rauht),
 	MLXSW_REG(raleu),
+	MLXSW_REG(ralbu),
 	MLXSW_REG(rauhtd),
 	MLXSW_REG(rigr2),
 	MLXSW_REG(recr2),
