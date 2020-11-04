@@ -98,7 +98,8 @@ static int mlxsw_m_get_module_info(struct net_device *netdev,
 	struct mlxsw_m_port *mlxsw_m_port = netdev_priv(netdev);
 	struct mlxsw_core *core = mlxsw_m_port->mlxsw_m->core;
 
-	return mlxsw_env_get_module_info(core, mlxsw_m_port->module, modinfo);
+	return mlxsw_env_get_module_info(core, 0, mlxsw_m_port->module,
+					 modinfo);
 }
 
 static int
@@ -108,8 +109,8 @@ mlxsw_m_get_module_eeprom(struct net_device *netdev, struct ethtool_eeprom *ee,
 	struct mlxsw_m_port *mlxsw_m_port = netdev_priv(netdev);
 	struct mlxsw_core *core = mlxsw_m_port->mlxsw_m->core;
 
-	return mlxsw_env_get_module_eeprom(netdev, core, mlxsw_m_port->module,
-					   ee, data);
+	return mlxsw_env_get_module_eeprom(netdev, core, 0,
+					   mlxsw_m_port->module, ee, data);
 }
 
 static const struct ethtool_ops mlxsw_m_port_ethtool_ops = {
