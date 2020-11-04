@@ -99,6 +99,15 @@ struct mlxsw_thermal_module {
 	struct thermal_zone_device *tzdev;
 	struct mlxsw_thermal_trip trips[MLXSW_THERMAL_NUM_TRIPS];
 	int module; /* Module or gearbox number */
+	u8 slot_index;
+};
+
+struct mlxsw_thermal_area {
+	struct mlxsw_thermal_module *tz_module_arr;
+	u8 tz_module_num;
+	struct mlxsw_thermal_module *tz_gearbox_arr;
+	u8 tz_gearbox_num;
+	u8 slot_index;
 };
 
 struct mlxsw_thermal {
@@ -109,10 +118,7 @@ struct mlxsw_thermal {
 	struct thermal_cooling_device *cdevs[MLXSW_MFCR_PWMS_MAX];
 	u8 cooling_levels[MLXSW_THERMAL_MAX_STATE + 1];
 	struct mlxsw_thermal_trip trips[MLXSW_THERMAL_NUM_TRIPS];
-	struct mlxsw_thermal_module *tz_module_arr;
-	u8 tz_module_num;
-	struct mlxsw_thermal_module *tz_gearbox_arr;
-	u8 tz_gearbox_num;
+	struct mlxsw_thermal_area *main;
 	unsigned int tz_highest_score;
 	struct thermal_zone_device *tz_highest_dev;
 };
@@ -449,8 +455,9 @@ static int mlxsw_thermal_module_temp_get(struct thermal_zone_device *tzdev,
 	int err;
 
 	/* Read module temperature. */
-	mlxsw_reg_mtmp_pack(mtmp_pl, 0, MLXSW_REG_MTMP_MODULE_INDEX_MIN +
-			    tz->module, false, false);
+	mlxsw_reg_mtmp_pack(mtmp_pl, tz->slot_index,
+			    MLXSW_REG_MTMP_MODULE_INDEX_MIN + tz->module,
+			    false, false);
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
 		/* Do not return error - in case of broken module's sensor
@@ -573,7 +580,7 @@ static int mlxsw_thermal_gearbox_temp_get(struct thermal_zone_device *tzdev,
 	int err;
 
 	index = MLXSW_REG_MTMP_GBOX_INDEX_MIN + tz->module;
-	mlxsw_reg_mtmp_pack(mtmp_pl, 0, index, false, false);
+	mlxsw_reg_mtmp_pack(mtmp_pl, tz->slot_index, index, false, false);
 
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err)
@@ -733,15 +740,17 @@ static void mlxsw_thermal_module_tz_fini(struct thermal_zone_device *tzdev)
 
 static int
 mlxsw_thermal_module_init(struct device *dev, struct mlxsw_core *core,
-			  struct mlxsw_thermal *thermal, u8 module)
+			  struct mlxsw_thermal *thermal,
+			  struct mlxsw_thermal_area *area, u8 module)
 {
 	struct mlxsw_thermal_module *module_tz;
 
-	module_tz = &thermal->tz_module_arr[module];
+	module_tz = &area->tz_module_arr[module];
 	/* Skip if parent is already set (case of port split). */
 	if (module_tz->parent)
 		return 0;
 	module_tz->module = module;
+	module_tz->slot_index = area->slot_index;
 	module_tz->parent = thermal;
 	memcpy(module_tz->trips, default_thermal_trips,
 	       sizeof(thermal->trips));
@@ -762,7 +771,8 @@ static void mlxsw_thermal_module_fini(struct mlxsw_thermal_module *module_tz)
 
 static int
 mlxsw_thermal_modules_init(struct device *dev, struct mlxsw_core *core,
-			   struct mlxsw_thermal *thermal)
+			   struct mlxsw_thermal *thermal,
+			   struct mlxsw_thermal_area *area)
 {
 	struct mlxsw_thermal_module *module_tz;
 	char mgpir_pl[MLXSW_REG_MGPIR_LEN];
@@ -777,22 +787,22 @@ mlxsw_thermal_modules_init(struct device *dev, struct mlxsw_core *core,
 		return err;
 
 	mlxsw_reg_mgpir_unpack(mgpir_pl, NULL, NULL, NULL,
-			       &thermal->tz_module_num, NULL);
+			       &area->tz_module_num, NULL);
 
-	thermal->tz_module_arr = kcalloc(thermal->tz_module_num,
-					 sizeof(*thermal->tz_module_arr),
-					 GFP_KERNEL);
-	if (!thermal->tz_module_arr)
+	area->tz_module_arr = kcalloc(area->tz_module_num,
+				      sizeof(*area->tz_module_arr),
+				      GFP_KERNEL);
+	if (!area->tz_module_arr)
 		return -ENOMEM;
 
-	for (i = 0; i < thermal->tz_module_num; i++) {
-		err = mlxsw_thermal_module_init(dev, core, thermal, i);
+	for (i = 0; i < area->tz_module_num; i++) {
+		err = mlxsw_thermal_module_init(dev, core, thermal, area, i);
 		if (err)
 			goto err_unreg_tz_module_arr;
 	}
 
-	for (i = 0; i < thermal->tz_module_num; i++) {
-		module_tz = &thermal->tz_module_arr[i];
+	for (i = 0; i < area->tz_module_num; i++) {
+		module_tz = &area->tz_module_arr[i];
 		if (!module_tz->parent)
 			continue;
 		err = mlxsw_thermal_module_tz_init(module_tz);
@@ -803,23 +813,24 @@ mlxsw_thermal_modules_init(struct device *dev, struct mlxsw_core *core,
 	return 0;
 
 err_unreg_tz_module_arr:
-	for (i = thermal->tz_module_num - 1; i >= 0; i--)
-		mlxsw_thermal_module_fini(&thermal->tz_module_arr[i]);
-	kfree(thermal->tz_module_arr);
+	for (i = area->tz_module_num - 1; i >= 0; i--)
+		mlxsw_thermal_module_fini(&area->tz_module_arr[i]);
+	kfree(area->tz_module_arr);
 	return err;
 }
 
 static void
-mlxsw_thermal_modules_fini(struct mlxsw_thermal *thermal)
+mlxsw_thermal_modules_fini(struct mlxsw_thermal *thermal,
+			   struct mlxsw_thermal_area *area)
 {
 	int i;
 
 	if (!mlxsw_core_res_query_enabled(thermal->core))
 		return;
 
-	for (i = thermal->tz_module_num - 1; i >= 0; i--)
-		mlxsw_thermal_module_fini(&thermal->tz_module_arr[i]);
-	kfree(thermal->tz_module_arr);
+	for (i = area->tz_module_num - 1; i >= 0; i--)
+		mlxsw_thermal_module_fini(&area->tz_module_arr[i]);
+	kfree(area->tz_module_arr);
 }
 
 static int
@@ -854,7 +865,8 @@ mlxsw_thermal_gearbox_tz_fini(struct mlxsw_thermal_module *gearbox_tz)
 
 static int
 mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
-			     struct mlxsw_thermal *thermal)
+			     struct mlxsw_thermal *thermal,
+			     struct mlxsw_thermal_area *area)
 {
 	enum mlxsw_reg_mgpir_device_type device_type;
 	struct mlxsw_thermal_module *gearbox_tz;
@@ -877,19 +889,20 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 	    !gbox_num)
 		return 0;
 
-	thermal->tz_gearbox_num = gbox_num;
-	thermal->tz_gearbox_arr = kcalloc(thermal->tz_gearbox_num,
-					  sizeof(*thermal->tz_gearbox_arr),
-					  GFP_KERNEL);
-	if (!thermal->tz_gearbox_arr)
+	area->tz_gearbox_num = gbox_num;
+	area->tz_gearbox_arr = kcalloc(area->tz_gearbox_num,
+				       sizeof(*area->tz_gearbox_arr),
+				       GFP_KERNEL);
+	if (!area->tz_gearbox_arr)
 		return -ENOMEM;
 
-	for (i = 0; i < thermal->tz_gearbox_num; i++) {
-		gearbox_tz = &thermal->tz_gearbox_arr[i];
+	for (i = 0; i < area->tz_gearbox_num; i++) {
+		gearbox_tz = &area->tz_gearbox_arr[i];
 		memcpy(gearbox_tz->trips, default_thermal_trips,
 		       sizeof(thermal->trips));
 		gearbox_tz->module = i;
 		gearbox_tz->parent = thermal;
+		gearbox_tz->slot_index = area->slot_index;
 		err = mlxsw_thermal_gearbox_tz_init(gearbox_tz);
 		if (err)
 			goto err_unreg_tz_gearbox;
@@ -899,22 +912,23 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 
 err_unreg_tz_gearbox:
 	for (i--; i >= 0; i--)
-		mlxsw_thermal_gearbox_tz_fini(&thermal->tz_gearbox_arr[i]);
-	kfree(thermal->tz_gearbox_arr);
+		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
+	kfree(area->tz_gearbox_arr);
 	return err;
 }
 
 static void
-mlxsw_thermal_gearboxes_fini(struct mlxsw_thermal *thermal)
+mlxsw_thermal_gearboxes_fini(struct mlxsw_thermal *thermal,
+			     struct mlxsw_thermal_area *area)
 {
 	int i;
 
 	if (!mlxsw_core_res_query_enabled(thermal->core))
 		return;
 
-	for (i = thermal->tz_gearbox_num - 1; i >= 0; i--)
-		mlxsw_thermal_gearbox_tz_fini(&thermal->tz_gearbox_arr[i]);
-	kfree(thermal->tz_gearbox_arr);
+	for (i = area->tz_gearbox_num - 1; i >= 0; i--)
+		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
+	kfree(area->tz_gearbox_arr);
 }
 
 int mlxsw_thermal_init(struct mlxsw_core *core,
@@ -933,6 +947,12 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 			       GFP_KERNEL);
 	if (!thermal)
 		return -ENOMEM;
+
+	thermal->main = devm_kzalloc(dev, sizeof(*thermal->main), GFP_KERNEL);
+	if (!thermal->main) {
+		err = -ENOMEM;
+		goto err_thermal_main;
+	}
 
 	thermal->core = core;
 	thermal->bus_info = bus_info;
@@ -1003,11 +1023,11 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 		goto err_unreg_cdevs;
 	}
 
-	err = mlxsw_thermal_modules_init(dev, core, thermal);
+	err = mlxsw_thermal_modules_init(dev, core, thermal, thermal->main);
 	if (err)
 		goto err_unreg_tzdev;
 
-	err = mlxsw_thermal_gearboxes_init(dev, core, thermal);
+	err = mlxsw_thermal_gearboxes_init(dev, core, thermal, thermal->main);
 	if (err)
 		goto err_unreg_modules_tzdev;
 
@@ -1019,9 +1039,9 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 	return 0;
 
 err_unreg_gearboxes:
-	mlxsw_thermal_gearboxes_fini(thermal);
+	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
 err_unreg_modules_tzdev:
-	mlxsw_thermal_modules_fini(thermal);
+	mlxsw_thermal_modules_fini(thermal, thermal->main);
 err_unreg_tzdev:
 	if (thermal->tzdev) {
 		thermal_zone_device_unregister(thermal->tzdev);
@@ -1032,6 +1052,8 @@ err_unreg_cdevs:
 		if (thermal->cdevs[i])
 			thermal_cooling_device_unregister(thermal->cdevs[i]);
 err_free_thermal:
+	devm_kfree(dev, thermal->main);
+err_thermal_main:
 	devm_kfree(dev, thermal);
 	return err;
 }
@@ -1040,8 +1062,8 @@ void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
 {
 	int i;
 
-	mlxsw_thermal_gearboxes_fini(thermal);
-	mlxsw_thermal_modules_fini(thermal);
+	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
+	mlxsw_thermal_modules_fini(thermal, thermal->main);
 	if (thermal->tzdev) {
 		thermal_zone_device_unregister(thermal->tzdev);
 		thermal->tzdev = NULL;
@@ -1054,5 +1076,6 @@ void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
 		}
 	}
 
+	devm_kfree(thermal->bus_info->dev, thermal->main);
 	devm_kfree(thermal->bus_info->dev, thermal);
 }
