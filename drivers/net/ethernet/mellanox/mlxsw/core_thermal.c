@@ -287,7 +287,7 @@ static int mlxsw_thermal_get_temp(struct thermal_zone_device *tzdev,
 	int temp;
 	int err;
 
-	mlxsw_reg_mtmp_pack(mtmp_pl, 0, false, false);
+	mlxsw_reg_mtmp_pack(mtmp_pl, 0, 0, false, false);
 
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
@@ -449,7 +449,7 @@ static int mlxsw_thermal_module_temp_get(struct thermal_zone_device *tzdev,
 	int err;
 
 	/* Read module temperature. */
-	mlxsw_reg_mtmp_pack(mtmp_pl, MLXSW_REG_MTMP_MODULE_INDEX_MIN +
+	mlxsw_reg_mtmp_pack(mtmp_pl, 0, MLXSW_REG_MTMP_MODULE_INDEX_MIN +
 			    tz->module, false, false);
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err) {
@@ -573,7 +573,7 @@ static int mlxsw_thermal_gearbox_temp_get(struct thermal_zone_device *tzdev,
 	int err;
 
 	index = MLXSW_REG_MTMP_GBOX_INDEX_MIN + tz->module;
-	mlxsw_reg_mtmp_pack(mtmp_pl, index, false, false);
+	mlxsw_reg_mtmp_pack(mtmp_pl, 0, index, false, false);
 
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
 	if (err)
