@@ -170,13 +170,15 @@ mlxsw_thermal_module_trips_update(struct device *dev, struct mlxsw_core *core,
 	int crit_temp, emerg_temp;
 	int err;
 
-	err = mlxsw_env_module_temp_thresholds_get(core, tz->module,
+	err = mlxsw_env_module_temp_thresholds_get(core, tz->slot_index,
+						   tz->module,
 						   SFP_TEMP_HIGH_WARN,
 						   &crit_temp);
 	if (err)
 		return err;
 
-	err = mlxsw_env_module_temp_thresholds_get(core, tz->module,
+	err = mlxsw_env_module_temp_thresholds_get(core, tz->slot_index,
+						   tz->module,
 						   SFP_TEMP_HIGH_ALARM,
 						   &emerg_temp);
 	if (err)
