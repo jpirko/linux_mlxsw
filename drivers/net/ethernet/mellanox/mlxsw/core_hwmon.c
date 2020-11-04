@@ -700,13 +700,11 @@ static int mlxsw_hwmon_module_init(struct mlxsw_hwmon *mlxsw_hwmon)
 	return 0;
 }
 
-static int mlxsw_hwmon_gearbox_init(struct mlxsw_hwmon *mlxsw_hwmon)
+static int
+mlxsw_hwmon_gearbox_main_init(struct mlxsw_hwmon *mlxsw_hwmon, u8 *gbox_num)
 {
 	enum mlxsw_reg_mgpir_device_type device_type;
-	int index, max_index, sensor_index;
 	char mgpir_pl[MLXSW_REG_MGPIR_LEN];
-	char mtmp_pl[MLXSW_REG_MTMP_LEN];
-	u8 gbox_num;
 	int err;
 
 	mlxsw_reg_mgpir_pack(mgpir_pl, 0);
@@ -714,10 +712,27 @@ static int mlxsw_hwmon_gearbox_init(struct mlxsw_hwmon *mlxsw_hwmon)
 	if (err)
 		return err;
 
-	mlxsw_reg_mgpir_unpack(mgpir_pl, &gbox_num, &device_type, NULL, NULL,
+	mlxsw_reg_mgpir_unpack(mgpir_pl, gbox_num, &device_type, NULL, NULL,
 			       NULL);
-	if (device_type != MLXSW_REG_MGPIR_DEVICE_TYPE_GEARBOX_DIE ||
-	    !gbox_num)
+	if (device_type != MLXSW_REG_MGPIR_DEVICE_TYPE_GEARBOX_DIE)
+		*gbox_num = 0;
+
+	return 0;
+}
+
+static void
+mlxsw_hwmon_gearbox_main_fini(struct mlxsw_hwmon *mlxsw_hwmon)
+{
+}
+
+static int
+mlxsw_hwmon_gearbox_init(struct mlxsw_hwmon *mlxsw_hwmon, u8 gbox_num)
+{
+	int index, max_index, sensor_index;
+	char mtmp_pl[MLXSW_REG_MTMP_LEN];
+	int err;
+
+	if (!gbox_num)
 		return 0;
 
 	index = mlxsw_hwmon->module_sensor_max;
@@ -756,6 +771,7 @@ int mlxsw_hwmon_init(struct mlxsw_core *mlxsw_core,
 {
 	struct mlxsw_hwmon *mlxsw_hwmon;
 	struct device *hwmon_dev;
+	u8 gbox_num;
 	int err;
 
 	mlxsw_hwmon = kzalloc(sizeof(*mlxsw_hwmon), GFP_KERNEL);
@@ -776,9 +792,13 @@ int mlxsw_hwmon_init(struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_temp_module_init;
 
-	err = mlxsw_hwmon_gearbox_init(mlxsw_hwmon);
+	err = mlxsw_hwmon_gearbox_main_init(mlxsw_hwmon, &gbox_num);
 	if (err)
-		goto err_temp_gearbox_init;
+		goto err_gearbox_main_init;
+
+	err = mlxsw_hwmon_gearbox_init(mlxsw_hwmon, gbox_num);
+	if (err)
+		goto err_gearbox_init;
 
 	mlxsw_hwmon->groups[0] = &mlxsw_hwmon->group;
 	mlxsw_hwmon->group.attrs = mlxsw_hwmon->attrs;
@@ -796,7 +816,9 @@ int mlxsw_hwmon_init(struct mlxsw_core *mlxsw_core,
 	return 0;
 
 err_hwmon_register:
-err_temp_gearbox_init:
+err_gearbox_init:
+	mlxsw_hwmon_gearbox_main_fini(mlxsw_hwmon);
+err_gearbox_main_init:
 err_temp_module_init:
 err_fans_init:
 err_temp_init:
@@ -807,5 +829,6 @@ err_temp_init:
 void mlxsw_hwmon_fini(struct mlxsw_hwmon *mlxsw_hwmon)
 {
 	hwmon_device_unregister(mlxsw_hwmon->hwmon_dev);
+	mlxsw_hwmon_gearbox_main_fini(mlxsw_hwmon);
 	kfree(mlxsw_hwmon);
 }
