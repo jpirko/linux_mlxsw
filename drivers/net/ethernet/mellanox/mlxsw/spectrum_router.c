@@ -5040,11 +5040,8 @@ mlxsw_sp_router_ll_basic_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx
 					struct mlxsw_sp_fib_entry_priv *priv)
 {
 	struct mlxsw_sp_fib_entry_op_ctx_basic *op_ctx_basic = (void *) op_ctx->ll_priv;
-	enum mlxsw_reg_ralxx_protocol ralxx_proto;
 	char *ralue_pl = op_ctx_basic->ralue_pl;
 	enum mlxsw_reg_ralue_op ralue_op;
-
-	ralxx_proto = (enum mlxsw_reg_ralxx_protocol) proto;
 
 	switch (op) {
 	case MLXSW_SP_FIB_ENTRY_OP_WRITE:
@@ -5061,13 +5058,12 @@ mlxsw_sp_router_ll_basic_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx
 
 	switch (proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
-		mlxsw_reg_ralue_pack4(ralue_pl, ralxx_proto, ralue_op,
-				      virtual_router, prefix_len,
-				      be32_to_cpu(addr->addr4));
+		mlxsw_reg_ralue_pack4(ralue_pl, ralue_op, virtual_router,
+				      prefix_len, be32_to_cpu(addr->addr4));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
-		mlxsw_reg_ralue_pack6(ralue_pl, ralxx_proto, ralue_op,
-				      virtual_router, prefix_len, &addr->addr6);
+		mlxsw_reg_ralue_pack6(ralue_pl, ralue_op, virtual_router,
+				      prefix_len, &addr->addr6);
 		break;
 	}
 }
