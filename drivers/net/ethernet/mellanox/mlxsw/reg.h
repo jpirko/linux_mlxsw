@@ -8645,9 +8645,9 @@ static inline void mlxsw_reg_rlpmce_pack(char *payload, bool flush,
 	mlxsw_reg_rlpmce_disable_set(payload, disable);
 }
 
-/* Note that XLTQ, XMDR, XRMT and XRALXX register positions violate the rule
- * of ordering register definitions by the ID. However, XRALXX pack helpers are
- * using RALXX pack helpers, RALXX registers have higher IDs.
+/* Note that XLTQ, XMDR, XLKBU, XRMT and XRALXX register positions violate
+ * the rule of ordering register definitions by the ID. However, XRALXX pack
+ * helpers are using RALXX pack helpers, RALXX registers have higher IDs.
  * Also XMDR is using RALUE enums. XLRQ and XRMT are just put alongside with the
  * related registers.
  */
@@ -8978,6 +8978,179 @@ static inline void mlxsw_reg_xmdr_c_ltr_act_ip2me_tun_pack(char *xmdr_payload,
 
 	mlxsw_reg_xmdr_c_ltr_action_type_set(payload, MLXSW_REG_XMDR_C_LTR_ACTION_TYPE_IP2ME);
 	mlxsw_reg_xmdr_c_ltr_pointer_to_tunnel_set(payload, pointer_to_tunnel);
+}
+
+/* XLKBU - XM Lookup table KVH Bulk Update Register
+ * -------------------------------------------------
+ * The XLKBU is a generic XLT KVH update register for bulk updates.
+ */
+#define MLXSW_REG_XLKBU_ID 0x7804
+#define MLXSW_REG_XLKBU_LEN 0x140
+
+MLXSW_REG_DEFINE(xlkbu, MLXSW_REG_XLKBU_ID, MLXSW_REG_XLKBU_LEN);
+
+#define MLXSW_REG_XLKBU_OFFSET_VALUE 0x40
+#define MLXSW_REG_XLKBU_OFFSET_MASK 0x80
+#define MLXSW_REG_XLKBU_OFFSET_NEW_VALUE 0xC0
+#define MLXSW_REG_XLKBU_OFFSET_NEW_MASK 0x100
+#define MLXSW_REG_XLKBU_OFFSET_0 0x38
+#define MLXSW_REG_XLKBU_OFFSET_1 0x30
+#define MLXSW_REG_XLKBU_OFFSET_2 0x2C
+
+#define MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_0_MASK 0x3
+#define MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_1_SHIFT 2
+
+/* reg_xlkbu_value_ht_key_ipv4_masked_addr_0 - 2 LSB
+ * reg_xlkbu_value_ht_key_ipv4_masked_addr_1 - the rest
+ * Seek for entry that matches value where mask bits are '1'.
+ * The prefix of the route or of the marker that the object of the LPM
+ * is compared with. The most significant bits of the dip are the prefix.
+ * The least significant bits must be '0' if the ht_key_prefix is smaller.
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, xlkbu, value_ht_key_ipv4_masked_addr_0,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_1,
+	     30, 2);
+MLXSW_ITEM32(reg, xlkbu, value_ht_key_ipv4_masked_addr_1,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_2,
+	     0, 30);
+
+/* reg_xlkbu_mask_ht_key_ipv4_masked_addr_0 - 2 LSB
+ * reg_xlkbu_mask_ht_key_ipv4_masked_addr_1 - the rest
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, xlkbu, mask_ht_key_ipv4_masked_addr_0,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_1,
+	     30, 2);
+MLXSW_ITEM32(reg, xlkbu, mask_ht_key_ipv4_masked_addr_1,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_2,
+	     0, 30);
+
+/* reg_xlkbu_value_s_ht_marker_vld
+ * Seek for entry that matches value where mask bits are '1'.
+ * Entry is marker
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, value_s_ht_marker_vld,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_0,
+	     61, 1);
+
+/* reg_xlkbu_mask_s_ht_marker_vld
+ * Entry is marker
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, mask_s_ht_marker_vld,
+	     MLXSW_REG_XLKBU_OFFSET_MASK + MLXSW_REG_XLKBU_OFFSET_0,
+	     61, 1);
+
+/* reg_xlkbu_value_s_ht_lpm_bmp
+ * Seek for entry that matches value where mask bits are '1'.
+ * bmp length
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, value_s_ht_lpm_bmp,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_0,
+	     53, 8);
+
+/* reg_xlkbu_mask_s_ht_lpm_bmp
+ * bmp length
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, mask_s_ht_lpm_bmp,
+	     MLXSW_REG_XLKBU_OFFSET_MASK + MLXSW_REG_XLKBU_OFFSET_0,
+	     53, 8);
+
+/* reg_xlkbu_new_value_s_ht_lpm_bmp
+ * For matched entries, update entry to new_value where new_value_mask
+ * bits are '1'.
+ * bmp length
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, new_value_s_ht_lpm_bmp,
+	     MLXSW_REG_XLKBU_OFFSET_NEW_VALUE + MLXSW_REG_XLKBU_OFFSET_0,
+	     53, 8);
+
+/* reg_xlkbu_new_mask_s_ht_lpm_bmp
+ * bmp length
+ * Access: OP
+ */
+MLXSW_ITEM32(reg, xlkbu, new_mask_s_ht_lpm_bmp,
+	     MLXSW_REG_XLKBU_OFFSET_NEW_MASK + MLXSW_REG_XLKBU_OFFSET_0,
+	     53, 8);
+
+/* reg_xlkbu_value_s_ht_key_vr
+ * Seek for entry that matches value where mask bits are '1'.
+ * virtual router
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, value_s_ht_key_vr,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_0,
+	     23, 11);
+
+/* reg_xlkbu_mask_s_ht_key_vr
+ * virtual router
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, mask_s_ht_key_vr,
+	     MLXSW_REG_XLKBU_OFFSET_MASK + MLXSW_REG_XLKBU_OFFSET_0,
+	     23, 11);
+
+/* reg_xlkbu_value_s_ht_key_prefix
+ * Seek for entry that matches value where mask bits are '1'.
+ * prefix length
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, value_s_ht_key_prefix,
+	     MLXSW_REG_XLKBU_OFFSET_VALUE + MLXSW_REG_XLKBU_OFFSET_0,
+	     15, 8);
+
+/* reg_xlkbu_mask_s_ht_key_prefix
+ * prefix length
+ * Access: OP
+ */
+MLXSW_ITEM64(reg, xlkbu, mask_s_ht_key_prefix,
+	     MLXSW_REG_XLKBU_OFFSET_MASK + MLXSW_REG_XLKBU_OFFSET_0,
+	     15, 8);
+
+static inline void mlxsw_reg_xlkbu_bmp_pack_single(char *payload,
+						   u16 virtual_router,
+						   u8 old_bmp_len,
+						   u8 bin, u8 new_bmp_len)
+{
+	MLXSW_REG_ZERO(xlkbu, payload);
+	mlxsw_reg_xlkbu_value_s_ht_key_vr_set(payload, virtual_router);
+	mlxsw_reg_xlkbu_mask_s_ht_key_vr_set(payload, 0xFFFF);
+	mlxsw_reg_xlkbu_value_s_ht_lpm_bmp_set(payload, old_bmp_len);
+	mlxsw_reg_xlkbu_mask_s_ht_lpm_bmp_set(payload, 0xFF);
+	mlxsw_reg_xlkbu_value_s_ht_key_prefix_set(payload, bin);
+	mlxsw_reg_xlkbu_mask_s_ht_key_prefix_set(payload, 0xFF);
+	mlxsw_reg_xlkbu_new_value_s_ht_lpm_bmp_set(payload, new_bmp_len);
+	mlxsw_reg_xlkbu_new_mask_s_ht_lpm_bmp_set(payload, 0xFF);
+	mlxsw_reg_xlkbu_value_s_ht_marker_vld_set(payload, 1);
+	mlxsw_reg_xlkbu_mask_s_ht_marker_vld_set(payload, 1);
+}
+
+static inline void mlxsw_reg_xlkbu_bmp_pack4(char *payload,
+					     u16 virtual_router, u8 old_bmp_len,
+					     u8 bin, u8 new_bmp_len,
+					     u8 prefix_len, u32 ip)
+{
+	u32 mask = GENMASK(32, 32 - prefix_len);
+	u32 val;
+
+	mlxsw_reg_xlkbu_bmp_pack_single(payload, virtual_router, old_bmp_len,
+					bin, new_bmp_len);
+
+	ip &= mask;
+	val = ip & MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_0_MASK;
+	mlxsw_reg_xlkbu_value_ht_key_ipv4_masked_addr_0_set(payload, val);
+	val = ip >> MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_1_SHIFT;
+	mlxsw_reg_xlkbu_value_ht_key_ipv4_masked_addr_0_set(payload, val);
+
+	val = mask & MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_0_MASK;
+	mlxsw_reg_xlkbu_mask_ht_key_ipv4_masked_addr_0_set(payload, val);
+	val = mask >> MLXSW_REG_XLKBU_HT_KEY_IPV4_MASKED_ADDR_1_SHIFT;
+	mlxsw_reg_xlkbu_mask_ht_key_ipv4_masked_addr_0_set(payload, val);
 }
 
 /* XRMT - XM Router M Table Register
@@ -12079,6 +12252,7 @@ static const struct mlxsw_reg_info *mlxsw_reg_infos[] = {
 	MLXSW_REG(rlpmce),
 	MLXSW_REG(xltq),
 	MLXSW_REG(xmdr),
+	MLXSW_REG(xlkbu),
 	MLXSW_REG(xrmt),
 	MLXSW_REG(xralta),
 	MLXSW_REG(xralst),
