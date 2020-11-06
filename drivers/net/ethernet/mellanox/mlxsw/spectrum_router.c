@@ -5371,6 +5371,36 @@ mlxsw_sp_router_ll_basic_fib_node_is_committed(struct mlxsw_sp_fib_node_priv *pr
 	return true;
 }
 
+static int
+mlxsw_sp_router_ll_basic_markers_bmp_update(struct mlxsw_sp *mlxsw_sp,
+					    struct list_head *bulk_list,
+					    enum mlxsw_sp_l3proto proto,
+					    u16 virtual_router, u8 old_bmp_len,
+					    u8 bin, u8 new_bmp_len,
+					    u8 prefix_len,
+					    const union mlxsw_sp_l3addr *addr)
+{
+	char ralbu_pl[MLXSW_REG_RALBU_LEN];
+
+	switch (proto) {
+	case MLXSW_SP_L3_PROTO_IPV4:
+		mlxsw_reg_ralbu_pack4(ralbu_pl, virtual_router,
+				      old_bmp_len, bin, new_bmp_len,
+				      prefix_len, be32_to_cpu(addr->addr4));
+		break;
+	case MLXSW_SP_L3_PROTO_IPV6:
+		mlxsw_reg_ralbu_pack6(ralbu_pl, virtual_router,
+				      old_bmp_len, bin, new_bmp_len,
+				      prefix_len, &addr->addr6);
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		return -EOPNOTSUPP;
+	}
+	return mlxsw_reg_trans_write(mlxsw_sp->core, MLXSW_REG(ralbu), ralbu_pl,
+				     bulk_list, NULL, 0);
+}
+
 static void mlxsw_sp_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 				   struct mlxsw_sp_fib_node *fib_node,
 				   enum mlxsw_sp_fib_node_op op)
@@ -9419,6 +9449,8 @@ static const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_basic_ops = {
 	.fib_entry_act_ip2me_tun_pack = mlxsw_sp_router_ll_basic_fib_entry_act_ip2me_tun_pack,
 	.fib_node_commit = mlxsw_sp_router_ll_basic_fib_node_commit,
 	.fib_node_is_committed = mlxsw_sp_router_ll_basic_fib_node_is_committed,
+	.markers_bmp_update = mlxsw_sp_router_ll_basic_markers_bmp_update,
+	.markers_bmp_update_threshold = 20,
 };
 
 static int mlxsw_sp_router_ll_op_ctx_init(struct mlxsw_sp_router *router)

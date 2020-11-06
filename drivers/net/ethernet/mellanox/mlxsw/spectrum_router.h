@@ -124,6 +124,13 @@ struct mlxsw_sp_router_ll_ops {
 			       struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 			       bool *postponed_for_bulk);
 	bool (*fib_node_is_committed)(struct mlxsw_sp_fib_node_priv *priv);
+	int (*markers_bmp_update)(struct mlxsw_sp *mlxsw_sp,
+				  struct list_head *bulk_list,
+				  enum mlxsw_sp_l3proto proto,
+				  u16 virtual_router, u8 old_bmp_len,
+				  u8 bin, u8 new_bmp_len, u8 prefix_len,
+				  const union mlxsw_sp_l3addr *addr);
+	unsigned int markers_bmp_update_threshold;
 };
 
 struct mlxsw_sp_rif_ipip_lb;

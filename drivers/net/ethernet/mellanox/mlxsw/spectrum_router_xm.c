@@ -735,6 +735,33 @@ static bool mlxsw_sp_router_ll_xm_fib_node_is_committed(struct mlxsw_sp_fib_node
 	return fib_node->committed;
 }
 
+static int
+mlxsw_sp_router_ll_xm_markers_bmp_update(struct mlxsw_sp *mlxsw_sp,
+					 struct list_head *bulk_list,
+					 enum mlxsw_sp_l3proto proto,
+					 u16 virtual_router, u8 old_bmp_len,
+					 u8 bin, u8 new_bmp_len, u8 prefix_len,
+					 const union mlxsw_sp_l3addr *addr)
+{
+	char xlkbu_pl[MLXSW_REG_XLKBU_LEN];
+
+	switch (proto) {
+	case MLXSW_SP_L3_PROTO_IPV4:
+		mlxsw_reg_xlkbu_bmp_pack4(xlkbu_pl, virtual_router,
+					  old_bmp_len, bin, new_bmp_len,
+					  prefix_len, be32_to_cpu(addr->addr4));
+		return mlxsw_reg_trans_write(mlxsw_sp->core,
+					     MLXSW_REG(xlkbu), xlkbu_pl,
+					     bulk_list, NULL, 0);
+	case MLXSW_SP_L3_PROTO_IPV6:
+		/* XLKBU pack helper for IPv6 is not implemented yet. */
+		return -EOPNOTSUPP;
+	default:
+		WARN_ON_ONCE(1);
+		return -EOPNOTSUPP;
+	}
+}
+
 const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops = {
 	.init = mlxsw_sp_router_ll_xm_init,
 	.ralta_write = mlxsw_sp_router_ll_xm_ralta_write,
@@ -749,6 +776,8 @@ const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops = {
 	.fib_entry_act_ip2me_tun_pack = mlxsw_sp_router_ll_xm_fib_entry_act_ip2me_tun_pack,
 	.fib_node_commit = mlxsw_sp_router_ll_xm_fib_node_commit,
 	.fib_node_is_committed = mlxsw_sp_router_ll_xm_fib_node_is_committed,
+	.markers_bmp_update = mlxsw_sp_router_ll_xm_markers_bmp_update,
+	.markers_bmp_update_threshold = 40,
 };
 
 static int
