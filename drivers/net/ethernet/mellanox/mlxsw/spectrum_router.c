@@ -331,7 +331,7 @@ mlxsw_sp_prefix_usage_clear(struct mlxsw_sp_prefix_usage *prefix_usage,
 }
 
 struct mlxsw_sp_fib_key {
-	unsigned char addr[sizeof(struct in6_addr)];
+	union mlxsw_sp_l3addr addr;
 	unsigned char prefix_len;
 };
 
@@ -1243,7 +1243,6 @@ mlxsw_sp_router_ip2me_fib_entry_find(struct mlxsw_sp *mlxsw_sp, u32 tb_id,
 	struct mlxsw_sp_vr *vr;
 	const void *addrp;
 	size_t addr_len;
-	u32 addr4;
 
 	vr = mlxsw_sp_vr_find(mlxsw_sp, tb_id);
 	if (!vr)
@@ -1252,8 +1251,7 @@ mlxsw_sp_router_ip2me_fib_entry_find(struct mlxsw_sp *mlxsw_sp, u32 tb_id,
 
 	switch (proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
-		addr4 = be32_to_cpu(addr->addr4);
-		addrp = &addr4;
+		addrp = &addr->addr4;
 		addr_len = 4;
 		addr_prefix_len = 32;
 		break;
@@ -1285,7 +1283,6 @@ mlxsw_sp_ipip_entry_find_decap(struct mlxsw_sp *mlxsw_sp,
 	const void *saddrp;
 	size_t saddr_len;
 	u32 ul_tb_id;
-	u32 saddr4;
 
 	ipip_ops = mlxsw_sp->router->ipip_ops_arr[ipip_entry->ipipt];
 
@@ -1300,8 +1297,7 @@ mlxsw_sp_ipip_entry_find_decap(struct mlxsw_sp *mlxsw_sp,
 
 	switch (ipip_ops->ul_proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
-		saddr4 = be32_to_cpu(saddr.addr4);
-		saddrp = &saddr4;
+		saddrp = &saddr.addr4;
 		saddr_len = 4;
 		saddr_prefix_len = 32;
 		break;
@@ -4920,8 +4916,8 @@ static void
 mlxsw_sp_fib4_entry_hw_flags_set(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_fib_entry *fib_entry)
 {
-	u32 *p_dst = (u32 *) fib_entry->fib_node->key.addr;
 	int dst_len = fib_entry->fib_node->key.prefix_len;
+	__be32 dst = fib_entry->fib_node->key.addr.addr4;
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct fib_rt_info fri;
 	bool should_offload;
@@ -4931,7 +4927,7 @@ mlxsw_sp_fib4_entry_hw_flags_set(struct mlxsw_sp *mlxsw_sp,
 				  common);
 	fri.fi = fib4_entry->fi;
 	fri.tb_id = fib4_entry->tb_id;
-	fri.dst = cpu_to_be32(*p_dst);
+	fri.dst = dst;
 	fri.dst_len = dst_len;
 	fri.tos = fib4_entry->tos;
 	fri.type = fib4_entry->type;
@@ -4944,8 +4940,8 @@ static void
 mlxsw_sp_fib4_entry_hw_flags_clear(struct mlxsw_sp *mlxsw_sp,
 				   struct mlxsw_sp_fib_entry *fib_entry)
 {
-	u32 *p_dst = (u32 *) fib_entry->fib_node->key.addr;
 	int dst_len = fib_entry->fib_node->key.prefix_len;
+	__be32 dst = fib_entry->fib_node->key.addr.addr4;
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct fib_rt_info fri;
 
@@ -4953,7 +4949,7 @@ mlxsw_sp_fib4_entry_hw_flags_clear(struct mlxsw_sp *mlxsw_sp,
 				  common);
 	fri.fi = fib4_entry->fi;
 	fri.tb_id = fib4_entry->tb_id;
-	fri.dst = cpu_to_be32(*p_dst);
+	fri.dst = dst;
 	fri.dst_len = dst_len;
 	fri.tos = fib4_entry->tos;
 	fri.type = fib4_entry->type;
@@ -5050,7 +5046,7 @@ mlxsw_sp_router_ll_basic_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx
 					enum mlxsw_sp_l3proto proto,
 					enum mlxsw_sp_fib_entry_op op,
 					u16 virtual_router, u8 prefix_len,
-					unsigned char *addr,
+					const union mlxsw_sp_l3addr *addr,
 					struct mlxsw_sp_fib_entry_priv *priv)
 {
 	struct mlxsw_sp_fib_entry_op_ctx_basic *op_ctx_basic = (void *) op_ctx->ll_priv;
@@ -5077,11 +5073,11 @@ mlxsw_sp_router_ll_basic_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx
 	case MLXSW_SP_L3_PROTO_IPV4:
 		mlxsw_reg_ralue_pack4(ralue_pl, ralxx_proto, ralue_op,
 				      virtual_router, prefix_len,
-				      *((u32 *) addr));
+				      be32_to_cpu(addr->addr4));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
 		mlxsw_reg_ralue_pack6(ralue_pl, ralxx_proto, ralue_op,
-				      virtual_router, prefix_len, addr);
+				      virtual_router, prefix_len, &addr->addr6);
 		break;
 	}
 }
@@ -5151,7 +5147,7 @@ static void mlxsw_sp_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 	mlxsw_sp_fib_entry_op_ctx_priv_hold(op_ctx, fib_entry->priv);
 	fib->ll_ops->fib_entry_pack(op_ctx, fib->proto, op, fib->vr->id,
 				    fib_entry->fib_node->key.prefix_len,
-				    fib_entry->fib_node->key.addr,
+				    &fib_entry->fib_node->key.addr,
 				    fib_entry->priv);
 }
 
@@ -5563,6 +5559,7 @@ static struct mlxsw_sp_fib4_entry *
 mlxsw_sp_fib4_entry_lookup(struct mlxsw_sp *mlxsw_sp,
 			   const struct fib_entry_notifier_info *fen_info)
 {
+	__be32 addr4 = cpu_to_be32(fen_info->dst);
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct mlxsw_sp_fib_node *fib_node;
 	struct mlxsw_sp_fib *fib;
@@ -5573,8 +5570,7 @@ mlxsw_sp_fib4_entry_lookup(struct mlxsw_sp *mlxsw_sp,
 		return NULL;
 	fib = mlxsw_sp_vr_fib(vr, MLXSW_SP_L3_PROTO_IPV4);
 
-	fib_node = mlxsw_sp_fib_node_lookup(fib, &fen_info->dst,
-					    sizeof(fen_info->dst),
+	fib_node = mlxsw_sp_fib_node_lookup(fib, &addr4, sizeof(addr4),
 					    fen_info->dst_len);
 	if (!fib_node)
 		return NULL;
@@ -5618,7 +5614,7 @@ mlxsw_sp_fib_node_lookup(struct mlxsw_sp_fib *fib, const void *addr,
 	struct mlxsw_sp_fib_key key;
 
 	memset(&key, 0, sizeof(key));
-	memcpy(key.addr, addr, addr_len);
+	memcpy(&key.addr, addr, addr_len);
 	key.prefix_len = prefix_len;
 	return rhashtable_lookup_fast(&fib->ht, &key, mlxsw_sp_fib_ht_params);
 }
@@ -5634,7 +5630,7 @@ mlxsw_sp_fib_node_create(struct mlxsw_sp_fib *fib, const void *addr,
 		return NULL;
 
 	list_add(&fib_node->list, &fib->node_list);
-	memcpy(fib_node->key.addr, addr, addr_len);
+	memcpy(&fib_node->key.addr, addr, addr_len);
 	fib_node->key.prefix_len = prefix_len;
 
 	return fib_node;
@@ -5857,6 +5853,7 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 			     const struct fib_entry_notifier_info *fen_info)
 {
 	struct mlxsw_sp_fib4_entry *fib4_entry, *fib4_replaced;
+	__be32 addr4 = cpu_to_be32(fen_info->dst);
 	struct mlxsw_sp_fib_entry *replaced;
 	struct mlxsw_sp_fib_node *fib_node;
 	int err;
@@ -5865,7 +5862,7 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 		return 0;
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, fen_info->tb_id,
-					 &fen_info->dst, sizeof(fen_info->dst),
+					 &addr4, sizeof(addr4),
 					 fen_info->dst_len,
 					 MLXSW_SP_L3_PROTO_IPV4);
 	if (IS_ERR(fib_node)) {
@@ -6684,8 +6681,7 @@ static int __mlxsw_sp_router_set_abort_trap(struct mlxsw_sp *mlxsw_sp,
 			return PTR_ERR(priv);
 
 		ll_ops->fib_entry_pack(op_ctx, proto, MLXSW_SP_FIB_ENTRY_OP_WRITE,
-				       vr->id, 0, (unsigned char *) &null_addr,
-				       priv);
+				       vr->id, 0, &null_addr, priv);
 		ll_ops->fib_entry_act_ip2me_pack(op_ctx);
 		err = ll_ops->fib_entry_commit(mlxsw_sp, op_ctx, NULL);
 		mlxsw_sp_fib_entry_priv_put(priv);

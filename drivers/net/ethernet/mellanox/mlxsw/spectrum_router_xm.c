@@ -65,7 +65,7 @@ struct mlxsw_sp_router_xm_flush_info {
 	enum mlxsw_sp_l3proto proto;
 	u16 virtual_router;
 	u8 prefix_len;
-	unsigned char addr[sizeof(struct in6_addr)];
+	union mlxsw_sp_l3addr addr;
 };
 
 struct mlxsw_sp_router_xm_fib_entry {
@@ -118,15 +118,15 @@ static int mlxsw_sp_router_ll_xm_raltb_write(struct mlxsw_sp *mlxsw_sp, char *xr
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(xraltb), xraltb_pl);
 }
 
-static u16 mlxsw_sp_router_ll_xm_mindex_get4(const u32 addr)
+static u16 mlxsw_sp_router_ll_xm_mindex_get4(__be32 addr)
 {
 	/* Currently the M-index is set to linear mode. That means it is defined
 	 * as 16 MSB of IP address.
 	 */
-	return addr >> MLXSW_SP_ROUTER_XM_L_VAL_MAX;
+	return be32_to_cpu(addr) >> MLXSW_SP_ROUTER_XM_L_VAL_MAX;
 }
 
-static u16 mlxsw_sp_router_ll_xm_mindex_get6(const unsigned char *addr)
+static u16 mlxsw_sp_router_ll_xm_mindex_get6(const struct in6_addr *addr)
 {
 	WARN_ON_ONCE(1);
 	return 0; /* currently unused */
@@ -148,7 +148,7 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 						 enum mlxsw_sp_l3proto proto,
 						 enum mlxsw_sp_fib_entry_op op,
 						 u16 virtual_router, u8 prefix_len,
-						 unsigned char *addr,
+						 const union mlxsw_sp_l3addr *addr,
 						 struct mlxsw_sp_fib_entry_priv *priv)
 {
 	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
@@ -179,14 +179,15 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 		len = mlxsw_reg_xmdr_c_ltr_pack4(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						 op_ctx_xm->entries_count, xmdr_c_ltr_op,
 						 virtual_router, prefix_len,
-						 *((u32 *) addr));
-		fib_entry->mindex = mlxsw_sp_router_ll_xm_mindex_get4(*((u32 *) addr));
+						 be32_to_cpu(addr->addr4));
+		fib_entry->mindex = mlxsw_sp_router_ll_xm_mindex_get4(addr->addr4);
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
 		len = mlxsw_reg_xmdr_c_ltr_pack6(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						 op_ctx_xm->entries_count, xmdr_c_ltr_op,
-						 virtual_router, prefix_len, addr);
-		fib_entry->mindex = mlxsw_sp_router_ll_xm_mindex_get6(addr);
+						 virtual_router, prefix_len,
+						 &addr->addr6);
+		fib_entry->mindex = mlxsw_sp_router_ll_xm_mindex_get6(&addr->addr6);
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -207,9 +208,9 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 	flush_info->virtual_router = virtual_router;
 	flush_info->prefix_len = prefix_len;
 	if (addr)
-		memcpy(flush_info->addr, addr, sizeof(flush_info->addr));
+		memcpy(&flush_info->addr, addr, sizeof(flush_info->addr));
 	else
-		memset(flush_info->addr, 0, sizeof(flush_info->addr));
+		memset(&flush_info->addr, 0, sizeof(flush_info->addr));
 }
 
 static void
@@ -373,9 +374,9 @@ mlxsw_sp_router_xm_cache_flush_node_destroy(struct mlxsw_sp *mlxsw_sp,
 	mlxsw_sp_router_xm_cache_flush_node_put(flush_node);
 }
 
-static u32 mlxsw_sp_router_xm_flush_mask4(u8 prefix_len)
+static __be32 mlxsw_sp_router_xm_flush_mask4(u8 prefix_len)
 {
-	return GENMASK(32, 32 - prefix_len);
+	return cpu_to_be32(GENMASK(32, 32 - prefix_len));
 }
 
 static unsigned char *mlxsw_sp_router_xm_flush_mask6(u8 prefix_len)
@@ -400,7 +401,7 @@ static void mlxsw_sp_router_xm_cache_flush_work(struct work_struct *work)
 	char rlcmld_pl[MLXSW_REG_RLCMLD_LEN];
 	enum mlxsw_reg_rlcmld_select select;
 	struct mlxsw_sp *mlxsw_sp;
-	u32 addr4;
+	__be32 addr4;
 	int err;
 
 	flush_node = container_of(work, struct mlxsw_sp_router_xm_flush_node,
@@ -429,7 +430,7 @@ static void mlxsw_sp_router_xm_cache_flush_work(struct work_struct *work)
 
 	switch (flush_info->proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
-		addr4 = *((u32 *) flush_info->addr);
+		addr4 = flush_info->addr.addr4;
 		addr4 &= mlxsw_sp_router_xm_flush_mask4(flush_info->prefix_len);
 
 		/* In case the flush prefix length is bigger than M-value,
@@ -440,12 +441,14 @@ static void mlxsw_sp_router_xm_cache_flush_work(struct work_struct *work)
 			select = MLXSW_REG_RLCMLD_SELECT_ML_ENTRIES;
 
 		mlxsw_reg_rlcmld_pack4(rlcmld_pl, select,
-				       flush_info->virtual_router, addr4,
+				       flush_info->virtual_router,
+				       be32_to_cpu(addr4),
 				       mlxsw_sp_router_xm_flush_mask4(flush_info->prefix_len));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
 		mlxsw_reg_rlcmld_pack6(rlcmld_pl, select,
-				       flush_info->virtual_router, flush_info->addr,
+				       flush_info->virtual_router,
+				       &flush_info->addr.addr6,
 				       mlxsw_sp_router_xm_flush_mask6(flush_info->prefix_len));
 		break;
 	default:

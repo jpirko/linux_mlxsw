@@ -105,7 +105,8 @@ struct mlxsw_sp_router_ll_ops {
 	size_t fib_entry_priv_size;
 	void (*fib_entry_pack)(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 			       enum mlxsw_sp_l3proto proto, enum mlxsw_sp_fib_entry_op op,
-			       u16 virtual_router, u8 prefix_len, unsigned char *addr,
+			       u16 virtual_router, u8 prefix_len,
+			       const union mlxsw_sp_l3addr *addr,
 			       struct mlxsw_sp_fib_entry_priv *priv);
 	void (*fib_entry_act_remote_pack)(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 					  enum mlxsw_reg_ralue_trap_action trap_action,
