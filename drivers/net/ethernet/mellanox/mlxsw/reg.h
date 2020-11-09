@@ -7279,11 +7279,10 @@ static inline void mlxsw_reg_ralue_pack4(char *payload,
 					 enum mlxsw_reg_ralxx_protocol protocol,
 					 enum mlxsw_reg_ralue_op op,
 					 u16 virtual_router, u8 prefix_len,
-					 u32 *dip)
+					 u32 dip)
 {
 	mlxsw_reg_ralue_pack(payload, protocol, op, virtual_router, prefix_len);
-	if (dip)
-		mlxsw_reg_ralue_dip4_set(payload, *dip);
+	mlxsw_reg_ralue_dip4_set(payload, dip);
 }
 
 static inline void mlxsw_reg_ralue_pack6(char *payload,
@@ -7293,8 +7292,7 @@ static inline void mlxsw_reg_ralue_pack6(char *payload,
 					 const void *dip)
 {
 	mlxsw_reg_ralue_pack(payload, protocol, op, virtual_router, prefix_len);
-	if (dip)
-		mlxsw_reg_ralue_dip6_memcpy_to(payload, dip);
+	mlxsw_reg_ralue_dip6_memcpy_to(payload, dip);
 }
 
 static inline void
@@ -8809,15 +8807,14 @@ mlxsw_reg_xmdr_c_ltr_pack(char *xmdr_payload, unsigned int trans_offset,
 static inline unsigned int
 mlxsw_reg_xmdr_c_ltr_pack4(char *xmdr_payload, unsigned int trans_offset,
 			   u16 seq_number, enum mlxsw_reg_xmdr_c_ltr_op op,
-			   u16 virtual_router, u8 prefix_len, u32 *dip)
+			   u16 virtual_router, u8 prefix_len, u32 dip)
 {
 	char *payload = xmdr_payload + MLXSW_REG_XMDR_BASE_LEN + trans_offset;
 
 	mlxsw_reg_xmdr_c_ltr_pack(xmdr_payload, trans_offset,
 				  MLXSW_REG_XMDR_C_CMD_ID_LT_ROUTE_V4,
 				  seq_number, op, virtual_router, prefix_len);
-	if (dip)
-		mlxsw_reg_xmdr_c_ltr_dip4_set(payload, *dip);
+	mlxsw_reg_xmdr_c_ltr_dip4_set(payload, dip);
 	return MLXSW_REG_XMDR_C_LT_ROUTE_V4_LEN;
 }
 
@@ -8831,8 +8828,7 @@ mlxsw_reg_xmdr_c_ltr_pack6(char *xmdr_payload, unsigned int trans_offset,
 	mlxsw_reg_xmdr_c_ltr_pack(xmdr_payload, trans_offset,
 				  MLXSW_REG_XMDR_C_CMD_ID_LT_ROUTE_V6,
 				  seq_number, op, virtual_router, prefix_len);
-	if (dip)
-		mlxsw_reg_xmdr_c_ltr_dip6_memcpy_to(payload, dip);
+	mlxsw_reg_xmdr_c_ltr_dip6_memcpy_to(payload, dip);
 	return MLXSW_REG_XMDR_C_LT_ROUTE_V6_LEN;
 }
 

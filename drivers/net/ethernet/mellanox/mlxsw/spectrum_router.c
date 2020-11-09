@@ -5076,7 +5076,8 @@ mlxsw_sp_router_ll_basic_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx
 	switch (proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
 		mlxsw_reg_ralue_pack4(ralue_pl, ralxx_proto, ralue_op,
-				      virtual_router, prefix_len, (u32 *) addr);
+				      virtual_router, prefix_len,
+				      *((u32 *) addr));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
 		mlxsw_reg_ralue_pack6(ralue_pl, ralxx_proto, ralue_op,
@@ -6652,6 +6653,7 @@ static int __mlxsw_sp_router_set_abort_trap(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_fib_entry_priv *priv;
 	char xralta_pl[MLXSW_REG_XRALTA_LEN];
 	char xralst_pl[MLXSW_REG_XRALST_LEN];
+	union mlxsw_sp_l3addr null_addr;
 	int i, err;
 
 	mlxsw_reg_xralta_pack(xralta_pl, true, ralxx_proto, tree_id);
@@ -6663,6 +6665,8 @@ static int __mlxsw_sp_router_set_abort_trap(struct mlxsw_sp *mlxsw_sp,
 	err = ll_ops->ralst_write(mlxsw_sp, xralst_pl);
 	if (err)
 		return err;
+
+	memset(&null_addr, 0, sizeof(null_addr));
 
 	for (i = 0; i < MLXSW_CORE_RES_GET(mlxsw_sp->core, MAX_VRS); i++) {
 		struct mlxsw_sp_fib_entry_op_ctx *op_ctx = mlxsw_sp->router->ll_op_ctx;
@@ -6680,7 +6684,8 @@ static int __mlxsw_sp_router_set_abort_trap(struct mlxsw_sp *mlxsw_sp,
 			return PTR_ERR(priv);
 
 		ll_ops->fib_entry_pack(op_ctx, proto, MLXSW_SP_FIB_ENTRY_OP_WRITE,
-				       vr->id, 0, NULL, priv);
+				       vr->id, 0, (unsigned char *) &null_addr,
+				       priv);
 		ll_ops->fib_entry_act_ip2me_pack(op_ctx);
 		err = ll_ops->fib_entry_commit(mlxsw_sp, op_ctx, NULL);
 		mlxsw_sp_fib_entry_priv_put(priv);

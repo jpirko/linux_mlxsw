@@ -178,7 +178,8 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 	case MLXSW_SP_L3_PROTO_IPV4:
 		len = mlxsw_reg_xmdr_c_ltr_pack4(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						 op_ctx_xm->entries_count, xmdr_c_ltr_op,
-						 virtual_router, prefix_len, (u32 *) addr);
+						 virtual_router, prefix_len,
+						 *((u32 *) addr));
 		fib_entry->mindex = mlxsw_sp_router_ll_xm_mindex_get4(*((u32 *) addr));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
