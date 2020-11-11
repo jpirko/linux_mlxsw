@@ -5586,10 +5586,57 @@ mlxsw_sp_fib4_entry_lookup(struct mlxsw_sp *mlxsw_sp,
 	return NULL;
 }
 
+struct mlxsw_sp_fib_cmp_arg {
+	const union mlxsw_sp_l3addr *addr;
+	unsigned char prefix_len;
+};
+
+static u32 mlxsw_sp_fib_addr_hash(const union mlxsw_sp_l3addr *addr,
+				  unsigned char prefix_len, u32 seed)
+{
+	unsigned char byte;
+	u32 hash;
+
+	hash = jhash(addr, prefix_len / BITS_PER_BYTE, seed);
+	if (!(prefix_len % BITS_PER_BYTE))
+		return hash;
+	byte = ((const unsigned char *) addr)[prefix_len / BITS_PER_BYTE];
+	byte >>= BITS_PER_BYTE - prefix_len % BITS_PER_BYTE;
+	hash ^= jhash(&byte, sizeof(unsigned char), seed);
+	return hash;
+}
+
+static u32 mlxsw_sp_fib_hash(const void *data, u32 len, u32 seed)
+{
+	const struct mlxsw_sp_fib_cmp_arg *cmp_arg = data;
+
+	return mlxsw_sp_fib_addr_hash(cmp_arg->addr, cmp_arg->prefix_len, seed);
+}
+
+static u32 mlxsw_sp_fib_obj_hash(const void *data, u32 len, u32 seed)
+{
+	const struct mlxsw_sp_fib_node *fib_node = data;
+
+	return mlxsw_sp_fib_addr_hash(&fib_node->key.addr,
+				      fib_node->key.prefix_len, seed);
+}
+
+static int mlxsw_sp_fib_cmp(struct rhashtable_compare_arg *arg, const void *obj)
+{
+	const struct mlxsw_sp_fib_cmp_arg *cmp_arg = arg->key;
+	const struct mlxsw_sp_fib_node *fib_node = obj;
+
+	if (cmp_arg->prefix_len != fib_node->key.prefix_len)
+		return 1;
+	return !mlxsw_sp_l3addr_equal(cmp_arg->addr, &fib_node->key.addr,
+				      cmp_arg->prefix_len);
+}
+
 static const struct rhashtable_params mlxsw_sp_fib_ht_params = {
-	.key_offset = offsetof(struct mlxsw_sp_fib_node, key),
 	.head_offset = offsetof(struct mlxsw_sp_fib_node, ht_node),
-	.key_len = sizeof(struct mlxsw_sp_fib_key),
+	.hashfn	     = mlxsw_sp_fib_hash,
+	.obj_hashfn  = mlxsw_sp_fib_obj_hash,
+	.obj_cmpfn   = mlxsw_sp_fib_cmp,
 	.automatic_shrinking = true,
 };
 
@@ -5611,12 +5658,12 @@ static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_lookup(struct mlxsw_sp_fib *fib, const void *addr,
 			 size_t addr_len, unsigned char prefix_len)
 {
-	struct mlxsw_sp_fib_key key;
+	struct mlxsw_sp_fib_cmp_arg cmp_arg;
 
-	memset(&key, 0, sizeof(key));
-	memcpy(&key.addr, addr, addr_len);
-	key.prefix_len = prefix_len;
-	return rhashtable_lookup_fast(&fib->ht, &key, mlxsw_sp_fib_ht_params);
+	cmp_arg.addr = addr;
+	cmp_arg.prefix_len = prefix_len;
+	return rhashtable_lookup_fast(&fib->ht, &cmp_arg,
+				      mlxsw_sp_fib_ht_params);
 }
 
 static struct mlxsw_sp_fib_node *

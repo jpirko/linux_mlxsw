@@ -626,6 +626,27 @@ union mlxsw_sp_l3addr {
 	struct in6_addr addr6;
 };
 
+static inline bool mlxsw_sp_l3addr_equal(const union mlxsw_sp_l3addr *addr1,
+					 const union mlxsw_sp_l3addr *addr2,
+					 unsigned char prefix_len)
+{
+	const unsigned char *arr1 = (const unsigned char *) addr1;
+	const unsigned char *arr2 = (const unsigned char *) addr2;
+	unsigned char byte1, byte2;
+
+	if (WARN_ON(prefix_len > sizeof(union mlxsw_sp_l3addr) * BITS_PER_BYTE))
+		return false;
+	if (memcmp(arr1, arr2, prefix_len / BITS_PER_BYTE))
+		return false;
+	if (!(prefix_len % BITS_PER_BYTE))
+		return true;
+	byte1 = arr1[prefix_len / BITS_PER_BYTE];
+	byte1 >>= BITS_PER_BYTE - prefix_len % BITS_PER_BYTE;
+	byte2 = arr2[prefix_len / BITS_PER_BYTE];
+	byte2 >>= BITS_PER_BYTE - prefix_len % BITS_PER_BYTE;
+	return byte1 == byte2;
+}
+
 int mlxsw_sp_router_init(struct mlxsw_sp *mlxsw_sp,
 			 struct netlink_ext_ack *extack);
 void mlxsw_sp_router_fini(struct mlxsw_sp *mlxsw_sp);
