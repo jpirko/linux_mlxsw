@@ -1197,7 +1197,7 @@ static void mlxsw_sp_fib_entry_decap_fini(struct mlxsw_sp *mlxsw_sp,
 
 static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_lookup(struct mlxsw_sp_fib *fib, const void *addr,
-			 size_t addr_len, unsigned char prefix_len);
+			 unsigned char prefix_len);
 static int mlxsw_sp_fib_entry_update(struct mlxsw_sp *mlxsw_sp,
 				     struct mlxsw_sp_fib_entry *fib_entry);
 
@@ -1238,7 +1238,6 @@ mlxsw_sp_router_ip2me_fib_entry_find(struct mlxsw_sp *mlxsw_sp, u32 tb_id,
 	struct mlxsw_sp_fib *fib;
 	struct mlxsw_sp_vr *vr;
 	const void *addrp;
-	size_t addr_len;
 
 	vr = mlxsw_sp_vr_find(mlxsw_sp, tb_id);
 	if (!vr)
@@ -1248,7 +1247,6 @@ mlxsw_sp_router_ip2me_fib_entry_find(struct mlxsw_sp *mlxsw_sp, u32 tb_id,
 	switch (proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
 		addrp = &addr->addr4;
-		addr_len = 4;
 		addr_prefix_len = 32;
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
@@ -1257,8 +1255,7 @@ mlxsw_sp_router_ip2me_fib_entry_find(struct mlxsw_sp *mlxsw_sp, u32 tb_id,
 		return NULL;
 	}
 
-	fib_node = mlxsw_sp_fib_node_lookup(fib, addrp, addr_len,
-					    addr_prefix_len);
+	fib_node = mlxsw_sp_fib_node_lookup(fib, addrp, addr_prefix_len);
 	if (!fib_node || fib_node->fib_entry->type != type)
 		return NULL;
 
@@ -1277,7 +1274,6 @@ mlxsw_sp_ipip_entry_find_decap(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_fib *ul_fib;
 	struct mlxsw_sp_vr *ul_vr;
 	const void *saddrp;
-	size_t saddr_len;
 	u32 ul_tb_id;
 
 	ipip_ops = mlxsw_sp->router->ipip_ops_arr[ipip_entry->ipipt];
@@ -1294,7 +1290,6 @@ mlxsw_sp_ipip_entry_find_decap(struct mlxsw_sp *mlxsw_sp,
 	switch (ipip_ops->ul_proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
 		saddrp = &saddr.addr4;
-		saddr_len = 4;
 		saddr_prefix_len = 32;
 		break;
 	default:
@@ -1302,8 +1297,7 @@ mlxsw_sp_ipip_entry_find_decap(struct mlxsw_sp *mlxsw_sp,
 		return NULL;
 	}
 
-	fib_node = mlxsw_sp_fib_node_lookup(ul_fib, saddrp, saddr_len,
-					    saddr_prefix_len);
+	fib_node = mlxsw_sp_fib_node_lookup(ul_fib, saddrp, saddr_prefix_len);
 	if (!fib_node ||
 	    fib_node->fib_entry->type != MLXSW_SP_FIB_ENTRY_TYPE_TRAP)
 		return NULL;
@@ -5566,8 +5560,7 @@ mlxsw_sp_fib4_entry_lookup(struct mlxsw_sp *mlxsw_sp,
 		return NULL;
 	fib = mlxsw_sp_vr_fib(vr, MLXSW_SP_L3_PROTO_IPV4);
 
-	fib_node = mlxsw_sp_fib_node_lookup(fib, &addr4, sizeof(addr4),
-					    fen_info->dst_len);
+	fib_node = mlxsw_sp_fib_node_lookup(fib, &addr4, fen_info->dst_len);
 	if (!fib_node)
 		return NULL;
 
@@ -5652,7 +5645,7 @@ static void mlxsw_sp_fib_node_remove(struct mlxsw_sp_fib *fib,
 
 static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_lookup(struct mlxsw_sp_fib *fib, const void *addr,
-			 size_t addr_len, unsigned char prefix_len)
+			 unsigned char prefix_len)
 {
 	struct mlxsw_sp_fib_cmp_arg cmp_arg;
 
@@ -5664,16 +5657,18 @@ mlxsw_sp_fib_node_lookup(struct mlxsw_sp_fib *fib, const void *addr,
 
 static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_create(struct mlxsw_sp_fib *fib, const void *addr,
-			 size_t addr_len, unsigned char prefix_len)
+			 unsigned char prefix_len)
 {
 	struct mlxsw_sp_fib_node *fib_node;
+	size_t copy_size;
 
 	fib_node = kzalloc(sizeof(*fib_node), GFP_KERNEL);
 	if (!fib_node)
 		return NULL;
 
 	list_add(&fib_node->list, &fib->node_list);
-	memcpy(&fib_node->addr, addr, addr_len);
+	copy_size = prefix_len / BITS_PER_BYTE + !!(prefix_len % BITS_PER_BYTE);
+	memcpy(&fib_node->addr, addr, copy_size);
 	fib_node->prefix_len = prefix_len;
 
 	return fib_node;
@@ -5782,8 +5777,7 @@ static void mlxsw_sp_fib_node_fini(struct mlxsw_sp *mlxsw_sp,
 
 static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
-		      size_t addr_len, unsigned char prefix_len,
-		      enum mlxsw_sp_l3proto proto)
+		      unsigned char prefix_len, enum mlxsw_sp_l3proto proto)
 {
 	struct mlxsw_sp_fib_node *fib_node;
 	struct mlxsw_sp_fib *fib;
@@ -5795,11 +5789,11 @@ mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
 		return ERR_CAST(vr);
 	fib = mlxsw_sp_vr_fib(vr, proto);
 
-	fib_node = mlxsw_sp_fib_node_lookup(fib, addr, addr_len, prefix_len);
+	fib_node = mlxsw_sp_fib_node_lookup(fib, addr, prefix_len);
 	if (fib_node)
 		return fib_node;
 
-	fib_node = mlxsw_sp_fib_node_create(fib, addr, addr_len, prefix_len);
+	fib_node = mlxsw_sp_fib_node_create(fib, addr, prefix_len);
 	if (!fib_node) {
 		err = -ENOMEM;
 		goto err_fib_node_create;
@@ -5904,8 +5898,7 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 		return 0;
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, fen_info->tb_id,
-					 &addr4, sizeof(addr4),
-					 fen_info->dst_len,
+					 &addr4, fen_info->dst_len,
 					 MLXSW_SP_L3_PROTO_IPV4);
 	if (IS_ERR(fib_node)) {
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to get FIB node\n");
@@ -6497,7 +6490,6 @@ mlxsw_sp_fib6_entry_lookup(struct mlxsw_sp *mlxsw_sp,
 	fib = mlxsw_sp_vr_fib(vr, MLXSW_SP_L3_PROTO_IPV6);
 
 	fib_node = mlxsw_sp_fib_node_lookup(fib, &rt->fib6_dst.addr,
-					    sizeof(rt->fib6_dst.addr),
 					    rt->fib6_dst.plen);
 	if (!fib_node)
 		return NULL;
@@ -6554,9 +6546,7 @@ static int mlxsw_sp_router_fib6_replace(struct mlxsw_sp *mlxsw_sp,
 		return 0;
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, rt->fib6_table->tb6_id,
-					 &rt->fib6_dst.addr,
-					 sizeof(rt->fib6_dst.addr),
-					 rt->fib6_dst.plen,
+					 &rt->fib6_dst.addr, rt->fib6_dst.plen,
 					 MLXSW_SP_L3_PROTO_IPV6);
 	if (IS_ERR(fib_node))
 		return PTR_ERR(fib_node);
@@ -6617,9 +6607,7 @@ static int mlxsw_sp_router_fib6_append(struct mlxsw_sp *mlxsw_sp,
 		return 0;
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, rt->fib6_table->tb6_id,
-					 &rt->fib6_dst.addr,
-					 sizeof(rt->fib6_dst.addr),
-					 rt->fib6_dst.plen,
+					 &rt->fib6_dst.addr, rt->fib6_dst.plen,
 					 MLXSW_SP_L3_PROTO_IPV6);
 	if (IS_ERR(fib_node))
 		return PTR_ERR(fib_node);
