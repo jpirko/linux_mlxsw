@@ -330,11 +330,6 @@ mlxsw_sp_prefix_usage_clear(struct mlxsw_sp_prefix_usage *prefix_usage,
 	clear_bit(prefix_len, prefix_usage->b);
 }
 
-struct mlxsw_sp_fib_key {
-	union mlxsw_sp_l3addr addr;
-	unsigned char prefix_len;
-};
-
 enum mlxsw_sp_fib_entry_type {
 	MLXSW_SP_FIB_ENTRY_TYPE_REMOTE,
 	MLXSW_SP_FIB_ENTRY_TYPE_LOCAL,
@@ -361,7 +356,8 @@ struct mlxsw_sp_fib_node {
 	struct list_head list;
 	struct rhash_head ht_node;
 	struct mlxsw_sp_fib *fib;
-	struct mlxsw_sp_fib_key key;
+	union mlxsw_sp_l3addr addr;
+	unsigned char prefix_len;
 };
 
 struct mlxsw_sp_fib_entry_decap {
@@ -4916,8 +4912,8 @@ static void
 mlxsw_sp_fib4_entry_hw_flags_set(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_fib_entry *fib_entry)
 {
-	int dst_len = fib_entry->fib_node->key.prefix_len;
-	__be32 dst = fib_entry->fib_node->key.addr.addr4;
+	int dst_len = fib_entry->fib_node->prefix_len;
+	__be32 dst = fib_entry->fib_node->addr.addr4;
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct fib_rt_info fri;
 	bool should_offload;
@@ -4940,8 +4936,8 @@ static void
 mlxsw_sp_fib4_entry_hw_flags_clear(struct mlxsw_sp *mlxsw_sp,
 				   struct mlxsw_sp_fib_entry *fib_entry)
 {
-	int dst_len = fib_entry->fib_node->key.prefix_len;
-	__be32 dst = fib_entry->fib_node->key.addr.addr4;
+	int dst_len = fib_entry->fib_node->prefix_len;
+	__be32 dst = fib_entry->fib_node->addr.addr4;
 	struct mlxsw_sp_fib4_entry *fib4_entry;
 	struct fib_rt_info fri;
 
@@ -5146,8 +5142,8 @@ static void mlxsw_sp_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 
 	mlxsw_sp_fib_entry_op_ctx_priv_hold(op_ctx, fib_entry->priv);
 	fib->ll_ops->fib_entry_pack(op_ctx, fib->proto, op, fib->vr->id,
-				    fib_entry->fib_node->key.prefix_len,
-				    &fib_entry->fib_node->key.addr,
+				    fib_entry->fib_node->prefix_len,
+				    &fib_entry->fib_node->addr,
 				    fib_entry->priv);
 }
 
@@ -5617,8 +5613,8 @@ static u32 mlxsw_sp_fib_obj_hash(const void *data, u32 len, u32 seed)
 {
 	const struct mlxsw_sp_fib_node *fib_node = data;
 
-	return mlxsw_sp_fib_addr_hash(&fib_node->key.addr,
-				      fib_node->key.prefix_len, seed);
+	return mlxsw_sp_fib_addr_hash(&fib_node->addr,
+				      fib_node->prefix_len, seed);
 }
 
 static int mlxsw_sp_fib_cmp(struct rhashtable_compare_arg *arg, const void *obj)
@@ -5626,9 +5622,9 @@ static int mlxsw_sp_fib_cmp(struct rhashtable_compare_arg *arg, const void *obj)
 	const struct mlxsw_sp_fib_cmp_arg *cmp_arg = arg->key;
 	const struct mlxsw_sp_fib_node *fib_node = obj;
 
-	if (cmp_arg->prefix_len != fib_node->key.prefix_len)
+	if (cmp_arg->prefix_len != fib_node->prefix_len)
 		return 1;
-	return !mlxsw_sp_l3addr_equal(cmp_arg->addr, &fib_node->key.addr,
+	return !mlxsw_sp_l3addr_equal(cmp_arg->addr, &fib_node->addr,
 				      cmp_arg->prefix_len);
 }
 
@@ -5677,8 +5673,8 @@ mlxsw_sp_fib_node_create(struct mlxsw_sp_fib *fib, const void *addr,
 		return NULL;
 
 	list_add(&fib_node->list, &fib->node_list);
-	memcpy(&fib_node->key.addr, addr, addr_len);
-	fib_node->key.prefix_len = prefix_len;
+	memcpy(&fib_node->addr, addr, addr_len);
+	fib_node->prefix_len = prefix_len;
 
 	return fib_node;
 }
@@ -5698,11 +5694,11 @@ static int mlxsw_sp_fib_lpm_tree_link(struct mlxsw_sp *mlxsw_sp,
 	int err;
 
 	lpm_tree = mlxsw_sp->router->lpm.proto_trees[fib->proto];
-	if (lpm_tree->prefix_ref_count[fib_node->key.prefix_len] != 0)
+	if (lpm_tree->prefix_ref_count[fib_node->prefix_len] != 0)
 		goto out;
 
 	mlxsw_sp_prefix_usage_cpy(&req_prefix_usage, &lpm_tree->prefix_usage);
-	mlxsw_sp_prefix_usage_set(&req_prefix_usage, fib_node->key.prefix_len);
+	mlxsw_sp_prefix_usage_set(&req_prefix_usage, fib_node->prefix_len);
 	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage,
 					 fib->proto);
 	if (IS_ERR(lpm_tree))
@@ -5713,7 +5709,7 @@ static int mlxsw_sp_fib_lpm_tree_link(struct mlxsw_sp *mlxsw_sp,
 		goto err_lpm_tree_replace;
 
 out:
-	lpm_tree->prefix_ref_count[fib_node->key.prefix_len]++;
+	lpm_tree->prefix_ref_count[fib_node->prefix_len]++;
 	return 0;
 
 err_lpm_tree_replace:
@@ -5729,14 +5725,13 @@ static void mlxsw_sp_fib_lpm_tree_unlink(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_fib *fib = fib_node->fib;
 	int err;
 
-	if (--lpm_tree->prefix_ref_count[fib_node->key.prefix_len] != 0)
+	if (--lpm_tree->prefix_ref_count[fib_node->prefix_len] != 0)
 		return;
 	/* Try to construct a new LPM tree from the current prefix usage
 	 * minus the unused one. If we fail, continue using the old one.
 	 */
 	mlxsw_sp_prefix_usage_cpy(&req_prefix_usage, &lpm_tree->prefix_usage);
-	mlxsw_sp_prefix_usage_clear(&req_prefix_usage,
-				    fib_node->key.prefix_len);
+	mlxsw_sp_prefix_usage_clear(&req_prefix_usage, fib_node->prefix_len);
 	lpm_tree = mlxsw_sp_lpm_tree_get(mlxsw_sp, &req_prefix_usage,
 					 fib->proto);
 	if (IS_ERR(lpm_tree))
