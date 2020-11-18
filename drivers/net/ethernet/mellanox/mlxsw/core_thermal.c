@@ -93,9 +93,11 @@ static const struct mlxsw_thermal_trip default_thermal_trips[] = {
 #define MLXSW_THERMAL_TRIP_MASK	(BIT(MLXSW_THERMAL_NUM_TRIPS) - 1)
 
 struct mlxsw_thermal;
+struct mlxsw_thermal_area;
 
 struct mlxsw_thermal_module {
 	struct mlxsw_thermal *parent;
+	struct mlxsw_thermal_area *area;
 	struct thermal_zone_device *tzdev;
 	struct mlxsw_thermal_trip trips[MLXSW_THERMAL_NUM_TRIPS];
 	int module; /* Module or gearbox number */
@@ -108,6 +110,7 @@ struct mlxsw_thermal_area {
 	struct mlxsw_thermal_module *tz_gearbox_arr;
 	u8 tz_gearbox_num;
 	u8 slot_index;
+	u16 *gearbox_sensor_map;
 };
 
 struct mlxsw_thermal {
@@ -581,7 +584,7 @@ static int mlxsw_thermal_gearbox_temp_get(struct thermal_zone_device *tzdev,
 	int temp;
 	int err;
 
-	index = MLXSW_REG_MTMP_GBOX_INDEX_MIN + tz->module;
+	index = tz->area->gearbox_sensor_map[tz->module];
 	mlxsw_reg_mtmp_pack(mtmp_pl, tz->slot_index, index, false, false);
 
 	err = mlxsw_reg_query(thermal->core, MLXSW_REG(mtmp), mtmp_pl);
@@ -752,6 +755,7 @@ mlxsw_thermal_module_init(struct device *dev, struct mlxsw_core *core,
 	if (module_tz->parent)
 		return 0;
 	module_tz->module = module;
+	module_tz->area = area;
 	module_tz->slot_index = area->slot_index;
 	module_tz->parent = thermal;
 	memcpy(module_tz->trips, default_thermal_trips,
@@ -872,8 +876,7 @@ mlxsw_thermal_gearboxes_main_init(struct device *dev, struct mlxsw_core *core,
 {
 	enum mlxsw_reg_mgpir_device_type device_type;
 	char mgpir_pl[MLXSW_REG_MGPIR_LEN];
-	u8 gbox_num;
-	int err;
+	int i = 0, err;
 
 	if (!mlxsw_core_res_query_enabled(core))
 		return 0;
@@ -883,28 +886,41 @@ mlxsw_thermal_gearboxes_main_init(struct device *dev, struct mlxsw_core *core,
 	if (err)
 		return err;
 
-	mlxsw_reg_mgpir_unpack(mgpir_pl, &gbox_num, &device_type, NULL,
-			       NULL, NULL);
+	mlxsw_reg_mgpir_unpack(mgpir_pl, &area->tz_gearbox_num, &device_type,
+			       NULL, NULL, NULL);
 	if (device_type != MLXSW_REG_MGPIR_DEVICE_TYPE_GEARBOX_DIE)
-		gbox_num = 0;
+		area->tz_gearbox_num = 0;
 
 	/* Skip gearbox sensor array allocation, if no gearboxes are available. */
-	if (!gbox_num)
+	if (!area->tz_gearbox_num)
 		return 0;
 
-	area->tz_gearbox_num = gbox_num;
 	area->tz_gearbox_arr = kcalloc(area->tz_gearbox_num,
 				       sizeof(*area->tz_gearbox_arr),
 				       GFP_KERNEL);
 	if (!area->tz_gearbox_arr)
 		return -ENOMEM;
 
+	area->gearbox_sensor_map = kmalloc_array(area->tz_gearbox_num,
+						 sizeof(u16), GFP_KERNEL);
+	if (!area->gearbox_sensor_map)
+		goto mlxsw_thermal_gearbox_sensor_map;
+
+	/* Fill out gearbox sensor mapping array. */
+	for (i = 0; i < area->tz_gearbox_num; i++)
+		area->gearbox_sensor_map[i] = MLXSW_REG_MTMP_GBOX_INDEX_MIN + i;
+
 	return 0;
+
+mlxsw_thermal_gearbox_sensor_map:
+	kfree(area->tz_gearbox_arr);
+	return err;
 }
 
 static void
 mlxsw_thermal_gearboxes_main_fini(struct mlxsw_thermal_area *area)
 {
+	kfree(area->gearbox_sensor_map);
 	kfree(area->tz_gearbox_arr);
 }
 
@@ -925,6 +941,7 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 		       sizeof(thermal->trips));
 		gearbox_tz->module = i;
 		gearbox_tz->parent = thermal;
+		gearbox_tz->area = area;
 		gearbox_tz->slot_index = area->slot_index;
 		err = mlxsw_thermal_gearbox_tz_init(gearbox_tz);
 		if (err)
