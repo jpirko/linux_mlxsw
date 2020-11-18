@@ -19,6 +19,7 @@
 #define MLXSW_HWMON_ATTR_PER_SENSOR 3
 #define MLXSW_HWMON_ATTR_PER_MODULE 7
 #define MLXSW_HWMON_ATTR_PER_GEARBOX 4
+#define MLXSW_HWMON_DEV_NAME_LEN_MAX 16
 
 #define MLXSW_HWMON_ATTR_COUNT (MLXSW_HWMON_SENSORS_MAX_COUNT * MLXSW_HWMON_ATTR_PER_SENSOR + \
 				MLXSW_HWMON_MODULES_MAX_COUNT * MLXSW_HWMON_ATTR_PER_MODULE + \
@@ -42,6 +43,7 @@ mlxsw_hwmon_get_attr_index(int index, int count, u16 *gearbox_sensor_map)
 }
 
 struct mlxsw_hwmon_dev {
+	char name[MLXSW_HWMON_DEV_NAME_LEN_MAX];
 	struct mlxsw_hwmon *hwmon;
 	struct device *hwmon_dev;
 	struct attribute_group group;
@@ -404,9 +406,15 @@ mlxsw_hwmon_module_temp_label_show(struct device *dev,
 {
 	struct mlxsw_hwmon_attr *mlxsw_hwmon_attr =
 			container_of(attr, struct mlxsw_hwmon_attr, dev_attr);
+	struct mlxsw_hwmon_dev *mlxsw_hwmon_dev;
 
-	return sprintf(buf, "front panel %03u\n",
-		       mlxsw_hwmon_attr->type_index);
+	mlxsw_hwmon_dev = mlxsw_hwmon_attr->mlxsw_hwmon_dev;
+	if (strlen(mlxsw_hwmon_dev->name))
+		return sprintf(buf, "%s front panel %03u\n", mlxsw_hwmon_dev->name,
+			       mlxsw_hwmon_attr->type_index);
+	else
+		return sprintf(buf, "front panel %03u\n",
+			       mlxsw_hwmon_attr->type_index);
 }
 
 static ssize_t
@@ -420,7 +428,10 @@ mlxsw_hwmon_gbox_temp_label_show(struct device *dev,
 	int index = mlxsw_hwmon_attr->type_index -
 		    mlxsw_hwmon_dev->module_sensor_max + 1;
 
-	return sprintf(buf, "gearbox %03u\n", index);
+	if (strlen(mlxsw_hwmon_dev->name))
+		return sprintf(buf, "%s gearbox %03u\n", mlxsw_hwmon_dev->name, index);
+	else
+		return sprintf(buf, "gearbox %03u\n", index);
 }
 
 static ssize_t mlxsw_hwmon_temp_critical_alarm_show(struct device *dev,
