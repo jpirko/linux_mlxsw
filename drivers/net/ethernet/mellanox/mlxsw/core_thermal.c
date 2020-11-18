@@ -867,15 +867,12 @@ mlxsw_thermal_gearbox_tz_fini(struct mlxsw_thermal_module *gearbox_tz)
 }
 
 static int
-mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
-			     struct mlxsw_thermal *thermal,
-			     struct mlxsw_thermal_area *area)
+mlxsw_thermal_gearboxes_main_init(struct device *dev, struct mlxsw_core *core,
+				  struct mlxsw_thermal_area *area)
 {
 	enum mlxsw_reg_mgpir_device_type device_type;
-	struct mlxsw_thermal_module *gearbox_tz;
 	char mgpir_pl[MLXSW_REG_MGPIR_LEN];
 	u8 gbox_num;
-	int i;
 	int err;
 
 	if (!mlxsw_core_res_query_enabled(core))
@@ -888,8 +885,11 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 
 	mlxsw_reg_mgpir_unpack(mgpir_pl, &gbox_num, &device_type, NULL,
 			       NULL, NULL);
-	if (device_type != MLXSW_REG_MGPIR_DEVICE_TYPE_GEARBOX_DIE ||
-	    !gbox_num)
+	if (device_type != MLXSW_REG_MGPIR_DEVICE_TYPE_GEARBOX_DIE)
+		gbox_num = 0;
+
+	/* Skip gearbox sensor array allocation, if no gearboxes are available. */
+	if (!gbox_num)
 		return 0;
 
 	area->tz_gearbox_num = gbox_num;
@@ -898,6 +898,26 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 				       GFP_KERNEL);
 	if (!area->tz_gearbox_arr)
 		return -ENOMEM;
+
+	return 0;
+}
+
+static void
+mlxsw_thermal_gearboxes_main_fini(struct mlxsw_thermal_area *area)
+{
+	kfree(area->tz_gearbox_arr);
+}
+
+static int
+mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
+			     struct mlxsw_thermal *thermal,
+			     struct mlxsw_thermal_area *area)
+{
+	struct mlxsw_thermal_module *gearbox_tz;
+	int i, err;
+
+	if (!area->tz_gearbox_num)
+		return 0;
 
 	for (i = 0; i < area->tz_gearbox_num; i++) {
 		gearbox_tz = &area->tz_gearbox_arr[i];
@@ -916,7 +936,6 @@ mlxsw_thermal_gearboxes_init(struct device *dev, struct mlxsw_core *core,
 err_thermal_gearbox_tz_init:
 	for (i--; i >= 0; i--)
 		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
-	kfree(area->tz_gearbox_arr);
 	return err;
 }
 
@@ -931,7 +950,6 @@ mlxsw_thermal_gearboxes_fini(struct mlxsw_thermal *thermal,
 
 	for (i = area->tz_gearbox_num - 1; i >= 0; i--)
 		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
-	kfree(area->tz_gearbox_arr);
 }
 
 int mlxsw_thermal_init(struct mlxsw_core *core,
@@ -1030,6 +1048,10 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 	if (err)
 		goto err_thermal_modules_init;
 
+	err = mlxsw_thermal_gearboxes_main_init(dev, core, thermal->main);
+	if (err)
+		goto err_thermal_gearboxes_main_init;
+
 	err = mlxsw_thermal_gearboxes_init(dev, core, thermal, thermal->main);
 	if (err)
 		goto err_thermal_gearboxes_init;
@@ -1044,6 +1066,8 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 err_thermal_zone_device_enable:
 	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
 err_thermal_gearboxes_init:
+	mlxsw_thermal_gearboxes_main_fini(thermal->main);
+err_thermal_gearboxes_main_init:
 	mlxsw_thermal_modules_fini(thermal, thermal->main);
 err_thermal_modules_init:
 	if (thermal->tzdev) {
@@ -1068,6 +1092,7 @@ void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
 	int i;
 
 	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
+	mlxsw_thermal_gearboxes_main_fini(thermal->main);
 	mlxsw_thermal_modules_fini(thermal, thermal->main);
 	if (thermal->tzdev) {
 		thermal_zone_device_unregister(thermal->tzdev);
