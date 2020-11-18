@@ -962,9 +962,6 @@ mlxsw_thermal_gearboxes_fini(struct mlxsw_thermal *thermal,
 {
 	int i;
 
-	if (!mlxsw_core_res_query_enabled(thermal->core))
-		return;
-
 	for (i = area->tz_gearbox_num - 1; i >= 0; i--)
 		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
 }
