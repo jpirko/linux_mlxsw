@@ -38,6 +38,7 @@ struct mlxsw_m {
 struct mlxsw_m_port {
 	struct net_device *dev;
 	struct mlxsw_m *mlxsw_m;
+	u8 slot_index;
 	u8 local_port;
 	u8 module;
 };
@@ -98,8 +99,8 @@ static int mlxsw_m_get_module_info(struct net_device *netdev,
 	struct mlxsw_m_port *mlxsw_m_port = netdev_priv(netdev);
 	struct mlxsw_core *core = mlxsw_m_port->mlxsw_m->core;
 
-	return mlxsw_env_get_module_info(core, 0, mlxsw_m_port->module,
-					 modinfo);
+	return mlxsw_env_get_module_info(core, mlxsw_m_port->slot_index,
+					 mlxsw_m_port->module, modinfo);
 }
 
 static int
@@ -109,7 +110,7 @@ mlxsw_m_get_module_eeprom(struct net_device *netdev, struct ethtool_eeprom *ee,
 	struct mlxsw_m_port *mlxsw_m_port = netdev_priv(netdev);
 	struct mlxsw_core *core = mlxsw_m_port->mlxsw_m->core;
 
-	return mlxsw_env_get_module_eeprom(netdev, core, 0,
+	return mlxsw_env_get_module_eeprom(netdev, core, mlxsw_m_port->slot_index,
 					   mlxsw_m_port->module, ee, data);
 }
 
