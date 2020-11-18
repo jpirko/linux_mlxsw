@@ -1029,7 +1029,8 @@ static int mlxsw_sp_get_module_info(struct net_device *netdev,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	int err;
 
-	err = mlxsw_env_get_module_info(mlxsw_sp->core, 0,
+	err = mlxsw_env_get_module_info(mlxsw_sp->core,
+					mlxsw_sp_port->slot_index,
 					mlxsw_sp_port->mapping.module,
 					modinfo);
 
@@ -1043,7 +1044,8 @@ static int mlxsw_sp_get_module_eeprom(struct net_device *netdev,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	int err;
 
-	err = mlxsw_env_get_module_eeprom(netdev, mlxsw_sp->core, 0,
+	err = mlxsw_env_get_module_eeprom(netdev, mlxsw_sp->core,
+					  mlxsw_sp_port->slot_index,
 					  mlxsw_sp_port->mapping.module, ee,
 					  data);
 

@@ -277,6 +277,7 @@ struct mlxsw_sp_port {
 	struct net_device *dev;
 	struct mlxsw_sp_port_pcpu_stats __percpu *pcpu_stats;
 	struct mlxsw_sp *mlxsw_sp;
+	u8 slot_index;
 	u8 local_port;
 	u8 lagged:1,
 	   split:1;
