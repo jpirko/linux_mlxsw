@@ -149,7 +149,7 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 						 enum mlxsw_sp_fib_entry_op op,
 						 u16 virtual_router, u8 prefix_len,
 						 const union mlxsw_sp_l3addr *addr,
-						 struct mlxsw_sp_fib_entry_priv *priv)
+						 struct mlxsw_sp_fib_node_priv *priv)
 {
 	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry = (void *) priv->priv;
@@ -725,7 +725,7 @@ out:
 	return err;
 }
 
-static bool mlxsw_sp_router_ll_xm_fib_entry_is_committed(struct mlxsw_sp_fib_entry_priv *priv)
+static bool mlxsw_sp_router_ll_xm_fib_entry_is_committed(struct mlxsw_sp_fib_node_priv *priv)
 {
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry = (void *) priv->priv;
 
@@ -738,7 +738,7 @@ const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops = {
 	.ralst_write = mlxsw_sp_router_ll_xm_ralst_write,
 	.raltb_write = mlxsw_sp_router_ll_xm_raltb_write,
 	.fib_entry_op_ctx_size = sizeof(struct mlxsw_sp_fib_entry_op_ctx_xm),
-	.fib_entry_priv_size = sizeof(struct mlxsw_sp_router_xm_fib_entry),
+	.fib_node_priv_size = sizeof(struct mlxsw_sp_router_xm_fib_entry),
 	.fib_entry_pack = mlxsw_sp_router_ll_xm_fib_entry_pack,
 	.fib_entry_act_remote_pack = mlxsw_sp_router_ll_xm_fib_entry_act_remote_pack,
 	.fib_entry_act_local_pack = mlxsw_sp_router_ll_xm_fib_entry_act_local_pack,

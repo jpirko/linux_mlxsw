@@ -23,7 +23,7 @@ struct mlxsw_sp_fib_entry_op_ctx {
 	   initialized:1; /* Bit that the low-level op sets in case
 			   * the context priv is initialized.
 			   */
-	struct list_head fib_entry_priv_list;
+	struct list_head fib_node_priv_list;
 	unsigned long event;
 	unsigned long ll_priv[];
 };
@@ -31,9 +31,9 @@ struct mlxsw_sp_fib_entry_op_ctx {
 static inline void
 mlxsw_sp_fib_entry_op_ctx_clear(struct mlxsw_sp_fib_entry_op_ctx *op_ctx)
 {
-	WARN_ON_ONCE(!list_empty(&op_ctx->fib_entry_priv_list));
+	WARN_ON_ONCE(!list_empty(&op_ctx->fib_node_priv_list));
 	memset(op_ctx, 0, sizeof(*op_ctx));
-	INIT_LIST_HEAD(&op_ctx->fib_entry_priv_list);
+	INIT_LIST_HEAD(&op_ctx->fib_node_priv_list);
 }
 
 struct mlxsw_sp_router {
@@ -80,9 +80,9 @@ struct mlxsw_sp_router {
 	struct mlxsw_sp_router_xm *xm;
 };
 
-struct mlxsw_sp_fib_entry_priv {
+struct mlxsw_sp_fib_node_priv {
 	refcount_t refcnt;
-	struct list_head list; /* Member in op_ctx->fib_entry_priv_list */
+	struct list_head list; /* Member in op_ctx->fib_node_priv_list */
 	unsigned long priv[];
 };
 
@@ -102,12 +102,12 @@ struct mlxsw_sp_router_ll_ops {
 	int (*ralst_write)(struct mlxsw_sp *mlxsw_sp, char *xralst_pl);
 	int (*raltb_write)(struct mlxsw_sp *mlxsw_sp, char *xraltb_pl);
 	size_t fib_entry_op_ctx_size;
-	size_t fib_entry_priv_size;
+	size_t fib_node_priv_size;
 	void (*fib_entry_pack)(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 			       enum mlxsw_sp_l3proto proto, enum mlxsw_sp_fib_entry_op op,
 			       u16 virtual_router, u8 prefix_len,
 			       const union mlxsw_sp_l3addr *addr,
-			       struct mlxsw_sp_fib_entry_priv *priv);
+			       struct mlxsw_sp_fib_node_priv *priv);
 	void (*fib_entry_act_remote_pack)(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 					  enum mlxsw_reg_ralue_trap_action trap_action,
 					  u16 trap_id, u32 adjacency_index, u16 ecmp_size);
@@ -120,7 +120,7 @@ struct mlxsw_sp_router_ll_ops {
 	int (*fib_entry_commit)(struct mlxsw_sp *mlxsw_sp,
 				struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
 				bool *postponed_for_bulk);
-	bool (*fib_entry_is_committed)(struct mlxsw_sp_fib_entry_priv *priv);
+	bool (*fib_entry_is_committed)(struct mlxsw_sp_fib_node_priv *priv);
 };
 
 struct mlxsw_sp_rif_ipip_lb;
