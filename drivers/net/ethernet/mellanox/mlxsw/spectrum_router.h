@@ -86,10 +86,10 @@ struct mlxsw_sp_fib_node_priv {
 	unsigned long priv[];
 };
 
-enum mlxsw_sp_fib_entry_op {
-	MLXSW_SP_FIB_ENTRY_OP_WRITE,
-	MLXSW_SP_FIB_ENTRY_OP_UPDATE,
-	MLXSW_SP_FIB_ENTRY_OP_DELETE,
+enum mlxsw_sp_fib_node_op {
+	MLXSW_SP_FIB_NODE_OP_WRITE,
+	MLXSW_SP_FIB_NODE_OP_UPDATE,
+	MLXSW_SP_FIB_NODE_OP_DELETE,
 };
 
 /* Low-level router ops. Basically this is to handle the different
@@ -101,13 +101,13 @@ struct mlxsw_sp_router_ll_ops {
 	int (*ralta_write)(struct mlxsw_sp *mlxsw_sp, char *xralta_pl);
 	int (*ralst_write)(struct mlxsw_sp *mlxsw_sp, char *xralst_pl);
 	int (*raltb_write)(struct mlxsw_sp *mlxsw_sp, char *xraltb_pl);
-	size_t fib_entry_op_ctx_size;
+	size_t fib_node_op_ctx_size;
 	size_t fib_node_priv_size;
-	void (*fib_entry_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
-			       enum mlxsw_sp_l3proto proto, enum mlxsw_sp_fib_entry_op op,
-			       u16 virtual_router, u8 prefix_len,
-			       const union mlxsw_sp_l3addr *addr,
-			       struct mlxsw_sp_fib_node_priv *priv);
+	void (*fib_node_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+			      enum mlxsw_sp_l3proto proto, enum mlxsw_sp_fib_node_op op,
+			      u16 virtual_router, u8 prefix_len,
+			      const union mlxsw_sp_l3addr *addr,
+			      struct mlxsw_sp_fib_node_priv *priv);
 	void (*fib_entry_act_remote_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 					  enum mlxsw_reg_ralue_trap_action trap_action,
 					  u16 trap_id, u32 adjacency_index, u16 ecmp_size);
@@ -117,10 +117,10 @@ struct mlxsw_sp_router_ll_ops {
 	void (*fib_entry_act_ip2me_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx);
 	void (*fib_entry_act_ip2me_tun_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 					     u32 tunnel_ptr);
-	int (*fib_entry_commit)(struct mlxsw_sp *mlxsw_sp,
-				struct mlxsw_sp_fib_node_op_ctx *op_ctx,
-				bool *postponed_for_bulk);
-	bool (*fib_entry_is_committed)(struct mlxsw_sp_fib_node_priv *priv);
+	int (*fib_node_commit)(struct mlxsw_sp *mlxsw_sp,
+			       struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+			       bool *postponed_for_bulk);
+	bool (*fib_node_is_committed)(struct mlxsw_sp_fib_node_priv *priv);
 };
 
 struct mlxsw_sp_rif_ipip_lb;
