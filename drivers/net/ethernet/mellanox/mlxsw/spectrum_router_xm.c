@@ -79,7 +79,7 @@ struct mlxsw_sp_router_xm_fib_entry {
 #define MLXSW_SP_ROUTE_LL_XM_ENTRIES_MAX \
 	(MLXSW_REG_XMDR_TRANS_LEN / MLXSW_REG_XMDR_C_LT_ROUTE_V4_LEN)
 
-struct mlxsw_sp_fib_entry_op_ctx_xm {
+struct mlxsw_sp_fib_node_op_ctx_xm {
 	bool initialized;
 	char xmdr_pl[MLXSW_REG_XMDR_LEN];
 	unsigned int trans_offset; /* Offset of the current command within one
@@ -132,8 +132,8 @@ static u16 mlxsw_sp_router_ll_xm_mindex_get6(const struct in6_addr *addr)
 	return 0; /* currently unused */
 }
 
-static void mlxsw_sp_router_ll_xm_op_ctx_check_init(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
-						    struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm)
+static void mlxsw_sp_router_ll_xm_op_ctx_check_init(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
+						    struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm)
 {
 	if (op_ctx->initialized)
 		return;
@@ -144,14 +144,14 @@ static void mlxsw_sp_router_ll_xm_op_ctx_check_init(struct mlxsw_sp_fib_entry_op
 	op_ctx_xm->entries_count = 0;
 }
 
-static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
+static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 						 enum mlxsw_sp_l3proto proto,
 						 enum mlxsw_sp_fib_entry_op op,
 						 u16 virtual_router, u8 prefix_len,
 						 const union mlxsw_sp_l3addr *addr,
 						 struct mlxsw_sp_fib_node_priv *priv)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry = (void *) priv->priv;
 	struct mlxsw_sp_router_xm_flush_info *flush_info;
 	enum mlxsw_reg_xmdr_c_ltr_op xmdr_c_ltr_op;
@@ -214,40 +214,40 @@ static void mlxsw_sp_router_ll_xm_fib_entry_pack(struct mlxsw_sp_fib_entry_op_ct
 }
 
 static void
-mlxsw_sp_router_ll_xm_fib_entry_act_remote_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
+mlxsw_sp_router_ll_xm_fib_entry_act_remote_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 						enum mlxsw_reg_ralue_trap_action trap_action,
 						u16 trap_id, u32 adjacency_index, u16 ecmp_size)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 
 	mlxsw_reg_xmdr_c_ltr_act_remote_pack(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 					     trap_action, trap_id, adjacency_index, ecmp_size);
 }
 
 static void
-mlxsw_sp_router_ll_xm_fib_entry_act_local_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
+mlxsw_sp_router_ll_xm_fib_entry_act_local_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 					      enum mlxsw_reg_ralue_trap_action trap_action,
 					       u16 trap_id, u16 local_erif)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 
 	mlxsw_reg_xmdr_c_ltr_act_local_pack(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 					    trap_action, trap_id, local_erif);
 }
 
 static void
-mlxsw_sp_router_ll_xm_fib_entry_act_ip2me_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx)
+mlxsw_sp_router_ll_xm_fib_entry_act_ip2me_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 
 	mlxsw_reg_xmdr_c_ltr_act_ip2me_pack(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset);
 }
 
 static void
-mlxsw_sp_router_ll_xm_fib_entry_act_ip2me_tun_pack(struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
+mlxsw_sp_router_ll_xm_fib_entry_act_ip2me_tun_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 						   u32 tunnel_ptr)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 
 	mlxsw_reg_xmdr_c_ltr_act_ip2me_tun_pack(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						tunnel_ptr);
@@ -602,7 +602,7 @@ mlxsw_sp_router_xm_ml_entry_del(struct mlxsw_sp *mlxsw_sp,
 
 static int
 mlxsw_sp_router_xm_ml_entries_add(struct mlxsw_sp *mlxsw_sp,
-				  struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm)
+				  struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm)
 {
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry;
 	int err;
@@ -626,7 +626,7 @@ rollback:
 
 static void
 mlxsw_sp_router_xm_ml_entries_del(struct mlxsw_sp *mlxsw_sp,
-				  struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm)
+				  struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm)
 {
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry;
 	int i;
@@ -639,7 +639,7 @@ mlxsw_sp_router_xm_ml_entries_del(struct mlxsw_sp *mlxsw_sp,
 
 static void
 mlxsw_sp_router_xm_ml_entries_cache_flush(struct mlxsw_sp *mlxsw_sp,
-					  struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm)
+					  struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm)
 {
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry;
 	int err;
@@ -655,10 +655,10 @@ mlxsw_sp_router_xm_ml_entries_cache_flush(struct mlxsw_sp *mlxsw_sp,
 }
 
 static int mlxsw_sp_router_ll_xm_fib_entry_commit(struct mlxsw_sp *mlxsw_sp,
-						  struct mlxsw_sp_fib_entry_op_ctx *op_ctx,
+						  struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 						  bool *postponed_for_bulk)
 {
-	struct mlxsw_sp_fib_entry_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
+	struct mlxsw_sp_fib_node_op_ctx_xm *op_ctx_xm = (void *) op_ctx->ll_priv;
 	struct mlxsw_sp_router_xm_fib_entry *fib_entry;
 	u8 num_rec;
 	int err;
@@ -737,7 +737,7 @@ const struct mlxsw_sp_router_ll_ops mlxsw_sp_router_ll_xm_ops = {
 	.ralta_write = mlxsw_sp_router_ll_xm_ralta_write,
 	.ralst_write = mlxsw_sp_router_ll_xm_ralst_write,
 	.raltb_write = mlxsw_sp_router_ll_xm_raltb_write,
-	.fib_entry_op_ctx_size = sizeof(struct mlxsw_sp_fib_entry_op_ctx_xm),
+	.fib_entry_op_ctx_size = sizeof(struct mlxsw_sp_fib_node_op_ctx_xm),
 	.fib_node_priv_size = sizeof(struct mlxsw_sp_router_xm_fib_entry),
 	.fib_entry_pack = mlxsw_sp_router_ll_xm_fib_entry_pack,
 	.fib_entry_act_remote_pack = mlxsw_sp_router_ll_xm_fib_entry_act_remote_pack,
