@@ -401,7 +401,7 @@ static void mlxsw_sp_fib_node_priv_put(struct mlxsw_sp_fib_node_priv *priv)
 }
 
 static void mlxsw_sp_fib_node_op_ctx_priv_hold(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
-						struct mlxsw_sp_fib_node_priv *priv)
+					       struct mlxsw_sp_fib_node_priv *priv)
 {
 	if (!priv)
 		return;
