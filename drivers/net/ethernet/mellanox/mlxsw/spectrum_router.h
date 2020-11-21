@@ -106,7 +106,7 @@ struct mlxsw_sp_router_ll_ops {
 	void (*fib_node_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 			      enum mlxsw_sp_l3proto proto, enum mlxsw_sp_fib_node_op op,
 			      u16 virtual_router,
-			      enum mlxsw_reg_ralue_entry_type type,
+			      enum mlxsw_reg_ralue_entry_type type, u8 bmp_len,
 			      u8 prefix_len, const union mlxsw_sp_l3addr *addr,
 			      struct mlxsw_sp_fib_node_priv *priv);
 	void (*fib_entry_act_remote_pack)(struct mlxsw_sp_fib_node_op_ctx *op_ctx,

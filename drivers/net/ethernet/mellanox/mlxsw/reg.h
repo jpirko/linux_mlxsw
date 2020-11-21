@@ -7265,7 +7265,7 @@ static inline void mlxsw_reg_ralue_pack(char *payload,
 					enum mlxsw_reg_ralue_op op,
 					u16 virtual_router,
 					enum mlxsw_reg_ralue_entry_type type,
-					u8 prefix_len)
+					u8 bmp_len, u8 prefix_len)
 {
 	MLXSW_REG_ZERO(ralue, payload);
 	mlxsw_reg_ralue_protocol_set(payload, protocol);
@@ -7273,17 +7273,17 @@ static inline void mlxsw_reg_ralue_pack(char *payload,
 	mlxsw_reg_ralue_virtual_router_set(payload, virtual_router);
 	mlxsw_reg_ralue_prefix_len_set(payload, prefix_len);
 	mlxsw_reg_ralue_entry_type_set(payload, type);
-	mlxsw_reg_ralue_bmp_len_set(payload, prefix_len);
+	mlxsw_reg_ralue_bmp_len_set(payload, bmp_len);
 }
 
 static inline void mlxsw_reg_ralue_pack4(char *payload,
 					 enum mlxsw_reg_ralue_op op,
 					 u16 virtual_router,
 					 enum mlxsw_reg_ralue_entry_type type,
-					 u8 prefix_len, u32 dip)
+					 u8 bmp_len, u8 prefix_len, u32 dip)
 {
 	mlxsw_reg_ralue_pack(payload, MLXSW_REG_RALXX_PROTOCOL_IPV4, op,
-			     virtual_router, type, prefix_len);
+			     virtual_router, type, bmp_len, prefix_len);
 	mlxsw_reg_ralue_dip4_set(payload, dip);
 }
 
@@ -7291,10 +7291,11 @@ static inline void mlxsw_reg_ralue_pack6(char *payload,
 					 enum mlxsw_reg_ralue_op op,
 					 u16 virtual_router,
 					 enum mlxsw_reg_ralue_entry_type type,
-					 u8 prefix_len, const void *dip)
+					 u8 bmp_len, u8 prefix_len,
+					 const void *dip)
 {
 	mlxsw_reg_ralue_pack(payload, MLXSW_REG_RALXX_PROTOCOL_IPV6, op,
-			     virtual_router, type, prefix_len);
+			     virtual_router, type, bmp_len, prefix_len);
 	mlxsw_reg_ralue_dip6_memcpy_to(payload, dip);
 }
 
@@ -8790,7 +8791,8 @@ static inline void
 mlxsw_reg_xmdr_c_ltr_pack(char *xmdr_payload, unsigned int trans_offset,
 			  enum mlxsw_reg_xmdr_c_cmd_id cmd_id, u16 seq_number,
 			  enum mlxsw_reg_xmdr_c_ltr_op op, u16 virtual_router,
-			  enum mlxsw_reg_ralue_entry_type type, u8 prefix_len)
+			  enum mlxsw_reg_ralue_entry_type type, u8 bmp_len,
+			  u8 prefix_len)
 {
 	char *payload = xmdr_payload + MLXSW_REG_XMDR_BASE_LEN + trans_offset;
 	u8 num_rec = mlxsw_reg_xmdr_num_rec_get(xmdr_payload);
@@ -8803,7 +8805,7 @@ mlxsw_reg_xmdr_c_ltr_pack(char *xmdr_payload, unsigned int trans_offset,
 	mlxsw_reg_xmdr_c_ltr_virtual_router_set(payload, virtual_router);
 	mlxsw_reg_xmdr_c_ltr_prefix_len_set(payload, prefix_len);
 	mlxsw_reg_xmdr_c_ltr_entry_type_set(payload, type);
-	mlxsw_reg_xmdr_c_ltr_bmp_len_set(payload, prefix_len);
+	mlxsw_reg_xmdr_c_ltr_bmp_len_set(payload, bmp_len);
 }
 
 static inline unsigned int
@@ -8811,14 +8813,14 @@ mlxsw_reg_xmdr_c_ltr_pack4(char *xmdr_payload, unsigned int trans_offset,
 			   u16 seq_number, enum mlxsw_reg_xmdr_c_ltr_op op,
 			   u16 virtual_router,
 			   enum mlxsw_reg_ralue_entry_type type,
-			   u8 prefix_len, u32 dip)
+			   u8 bmp_len, u8 prefix_len, u32 dip)
 {
 	char *payload = xmdr_payload + MLXSW_REG_XMDR_BASE_LEN + trans_offset;
 
 	mlxsw_reg_xmdr_c_ltr_pack(xmdr_payload, trans_offset,
 				  MLXSW_REG_XMDR_C_CMD_ID_LT_ROUTE_V4,
 				  seq_number, op, virtual_router,
-				  type, prefix_len);
+				  type, bmp_len, prefix_len);
 	mlxsw_reg_xmdr_c_ltr_dip4_set(payload, dip);
 	return MLXSW_REG_XMDR_C_LT_ROUTE_V4_LEN;
 }
@@ -8828,14 +8830,14 @@ mlxsw_reg_xmdr_c_ltr_pack6(char *xmdr_payload, unsigned int trans_offset,
 			   u16 seq_number, enum mlxsw_reg_xmdr_c_ltr_op op,
 			   u16 virtual_router,
 			   enum mlxsw_reg_ralue_entry_type type,
-			   u8 prefix_len, const void *dip)
+			   u8 bmp_len, u8 prefix_len, const void *dip)
 {
 	char *payload = xmdr_payload + MLXSW_REG_XMDR_BASE_LEN + trans_offset;
 
 	mlxsw_reg_xmdr_c_ltr_pack(xmdr_payload, trans_offset,
 				  MLXSW_REG_XMDR_C_CMD_ID_LT_ROUTE_V6,
 				  seq_number, op, virtual_router,
-				  type, prefix_len);
+				  type, bmp_len, prefix_len);
 	mlxsw_reg_xmdr_c_ltr_dip6_memcpy_to(payload, dip);
 	return MLXSW_REG_XMDR_C_LT_ROUTE_V6_LEN;
 }
