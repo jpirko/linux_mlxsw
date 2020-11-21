@@ -147,7 +147,9 @@ static void mlxsw_sp_router_ll_xm_op_ctx_check_init(struct mlxsw_sp_fib_node_op_
 static void mlxsw_sp_router_ll_xm_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 						enum mlxsw_sp_l3proto proto,
 						enum mlxsw_sp_fib_node_op op,
-						u16 virtual_router, u8 prefix_len,
+						u16 virtual_router,
+						enum mlxsw_reg_ralue_entry_type type,
+						u8 prefix_len,
 						const union mlxsw_sp_l3addr *addr,
 						struct mlxsw_sp_fib_node_priv *priv)
 {
@@ -178,14 +180,14 @@ static void mlxsw_sp_router_ll_xm_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx 
 	case MLXSW_SP_L3_PROTO_IPV4:
 		len = mlxsw_reg_xmdr_c_ltr_pack4(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						 op_ctx_xm->entries_count, xmdr_c_ltr_op,
-						 virtual_router, prefix_len,
+						 virtual_router, type, prefix_len,
 						 be32_to_cpu(addr->addr4));
 		fib_node->mindex = mlxsw_sp_router_ll_xm_mindex_get4(addr->addr4);
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
 		len = mlxsw_reg_xmdr_c_ltr_pack6(op_ctx_xm->xmdr_pl, op_ctx_xm->trans_offset,
 						 op_ctx_xm->entries_count, xmdr_c_ltr_op,
-						 virtual_router, prefix_len,
+						 virtual_router, type, prefix_len,
 						 &addr->addr6);
 		fib_node->mindex = mlxsw_sp_router_ll_xm_mindex_get6(&addr->addr6);
 		break;

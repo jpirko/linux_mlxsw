@@ -5035,7 +5035,9 @@ static void
 mlxsw_sp_router_ll_basic_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 				       enum mlxsw_sp_l3proto proto,
 				       enum mlxsw_sp_fib_node_op op,
-				       u16 virtual_router, u8 prefix_len,
+				       u16 virtual_router,
+				       enum mlxsw_reg_ralue_entry_type type,
+				       u8 prefix_len,
 				       const union mlxsw_sp_l3addr *addr,
 				       struct mlxsw_sp_fib_node_priv *priv)
 {
@@ -5058,11 +5060,11 @@ mlxsw_sp_router_ll_basic_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 
 	switch (proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
-		mlxsw_reg_ralue_pack4(ralue_pl, ralue_op, virtual_router,
+		mlxsw_reg_ralue_pack4(ralue_pl, ralue_op, virtual_router, type,
 				      prefix_len, be32_to_cpu(addr->addr4));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
-		mlxsw_reg_ralue_pack6(ralue_pl, ralue_op, virtual_router,
+		mlxsw_reg_ralue_pack6(ralue_pl, ralue_op, virtual_router, type,
 				      prefix_len, &addr->addr6);
 		break;
 	}
@@ -5132,8 +5134,9 @@ static void mlxsw_sp_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx *op_ctx,
 
 	mlxsw_sp_fib_node_op_ctx_priv_hold(op_ctx, fib_node->priv);
 	fib->ll_ops->fib_node_pack(op_ctx, fib->proto, op, fib->vr->id,
-				   fib_node->prefix_len,
-				   &fib_node->addr, fib_node->priv);
+				   MLXSW_REG_RALUE_ENTRY_TYPE_ROUTE_ENTRY,
+				   fib_node->prefix_len, &fib_node->addr,
+				   fib_node->priv);
 }
 
 static int mlxsw_sp_fib_node_commit(struct mlxsw_sp *mlxsw_sp,
@@ -6711,7 +6714,9 @@ static int __mlxsw_sp_router_set_abort_trap(struct mlxsw_sp *mlxsw_sp,
 			return PTR_ERR(priv);
 
 		ll_ops->fib_node_pack(op_ctx, proto, MLXSW_SP_FIB_NODE_OP_WRITE,
-				      vr->id, 0, &null_addr, priv);
+				      vr->id,
+				      MLXSW_REG_RALUE_ENTRY_TYPE_ROUTE_ENTRY,
+				      0, &null_addr, priv);
 		ll_ops->fib_entry_act_ip2me_pack(op_ctx);
 		err = ll_ops->fib_node_commit(mlxsw_sp, op_ctx, NULL);
 		mlxsw_sp_fib_node_priv_put(priv);
