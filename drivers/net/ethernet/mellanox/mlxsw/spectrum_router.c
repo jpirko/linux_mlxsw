@@ -6063,29 +6063,20 @@ static void mlxsw_sp_fib_node_fini(struct mlxsw_sp *mlxsw_sp,
 }
 
 static struct mlxsw_sp_fib_node *
-mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
-		      unsigned char prefix_len, enum mlxsw_sp_l3proto proto,
-		      bool *was_created)
+__mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, struct mlxsw_sp_fib *fib,
+			const void *addr, unsigned char prefix_len,
+			bool *was_created)
 {
 	struct mlxsw_sp_fib_node *fib_node;
-	struct mlxsw_sp_fib *fib;
-	struct mlxsw_sp_vr *vr;
 	int err;
-
-	vr = mlxsw_sp_vr_get(mlxsw_sp, tb_id, NULL);
-	if (IS_ERR(vr))
-		return ERR_CAST(vr);
-	fib = mlxsw_sp_vr_fib(vr, proto);
 
 	fib_node = mlxsw_sp_fib_node_lookup(fib, addr, prefix_len);
 	if (fib_node)
 		return fib_node;
 
 	fib_node = mlxsw_sp_fib_node_create(fib, addr, prefix_len);
-	if (IS_ERR(fib_node)) {
-		err = PTR_ERR(fib_node);
-		goto err_fib_node_create;
-	}
+	if (IS_ERR(fib_node))
+		return fib_node;
 
 	if (was_created)
 		*was_created = true;
@@ -6098,7 +6089,34 @@ mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
 
 err_fib_node_init:
 	mlxsw_sp_fib_node_destroy(fib_node);
-err_fib_node_create:
+	return ERR_PTR(err);
+}
+
+static struct mlxsw_sp_fib_node *
+mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
+		      unsigned char prefix_len, enum mlxsw_sp_l3proto proto,
+		      bool *created)
+{
+	struct mlxsw_sp_fib_node *fib_node;
+	struct mlxsw_sp_fib *fib;
+	struct mlxsw_sp_vr *vr;
+	int err;
+
+	vr = mlxsw_sp_vr_get(mlxsw_sp, tb_id, NULL);
+	if (IS_ERR(vr))
+		return ERR_CAST(vr);
+	fib = mlxsw_sp_vr_fib(vr, proto);
+
+	fib_node = __mlxsw_sp_fib_node_get(mlxsw_sp, fib, addr,
+					   prefix_len, created);
+	if (IS_ERR(fib_node)) {
+		err = -ENOMEM;
+		goto err_fib_node_get;
+	}
+
+	return fib_node;
+
+err_fib_node_get:
 	mlxsw_sp_vr_put(mlxsw_sp, vr);
 	return ERR_PTR(err);
 }
