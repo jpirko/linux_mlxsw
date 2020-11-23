@@ -6064,7 +6064,8 @@ static void mlxsw_sp_fib_node_fini(struct mlxsw_sp *mlxsw_sp,
 
 static struct mlxsw_sp_fib_node *
 mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
-		      unsigned char prefix_len, enum mlxsw_sp_l3proto proto)
+		      unsigned char prefix_len, enum mlxsw_sp_l3proto proto,
+		      bool *was_created)
 {
 	struct mlxsw_sp_fib_node *fib_node;
 	struct mlxsw_sp_fib *fib;
@@ -6085,6 +6086,9 @@ mlxsw_sp_fib_node_get(struct mlxsw_sp *mlxsw_sp, u32 tb_id, const void *addr,
 		err = PTR_ERR(fib_node);
 		goto err_fib_node_create;
 	}
+
+	if (was_created)
+		*was_created = true;
 
 	err = mlxsw_sp_fib_node_init(mlxsw_sp, fib_node, fib);
 	if (err)
@@ -6113,10 +6117,10 @@ static void mlxsw_sp_fib_node_put(struct mlxsw_sp *mlxsw_sp,
 
 static int mlxsw_sp_fib_node_entry_link(struct mlxsw_sp *mlxsw_sp,
 					struct mlxsw_sp_fib_node_op_ctx *op_ctx,
-					struct mlxsw_sp_fib_entry *fib_entry)
+					struct mlxsw_sp_fib_entry *fib_entry,
+					bool is_new)
 {
 	struct mlxsw_sp_fib_node *fib_node = fib_entry->fib_node;
-	bool is_new = !fib_node->fib_entry;
 	int err;
 
 	fib_node->fib_entry = fib_entry;
@@ -6179,6 +6183,7 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 	__be32 addr4 = cpu_to_be32(fen_info->dst);
 	struct mlxsw_sp_fib_entry *replaced;
 	struct mlxsw_sp_fib_node *fib_node;
+	bool is_new;
 	int err;
 
 	if (mlxsw_sp->router->aborted)
@@ -6186,7 +6191,7 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, fen_info->tb_id,
 					 &addr4, fen_info->dst_len,
-					 MLXSW_SP_L3_PROTO_IPV4);
+					 MLXSW_SP_L3_PROTO_IPV4, &is_new);
 	if (IS_ERR(fib_node)) {
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to get FIB node\n");
 		return PTR_ERR(fib_node);
@@ -6206,7 +6211,8 @@ mlxsw_sp_router_fib4_replace(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	replaced = fib_node->fib_entry;
-	err = mlxsw_sp_fib_node_entry_link(mlxsw_sp, op_ctx, &fib4_entry->common);
+	err = mlxsw_sp_fib_node_entry_link(mlxsw_sp, op_ctx,
+					   &fib4_entry->common, is_new);
 	if (err) {
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to link FIB entry to node\n");
 		goto err_fib_node_entry_link;
@@ -6812,6 +6818,7 @@ static int mlxsw_sp_router_fib6_replace(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_fib_entry *replaced;
 	struct mlxsw_sp_fib_node *fib_node;
 	struct fib6_info *rt = rt_arr[0];
+	bool is_new;
 	int err;
 
 	if (mlxsw_sp->router->aborted)
@@ -6825,7 +6832,7 @@ static int mlxsw_sp_router_fib6_replace(struct mlxsw_sp *mlxsw_sp,
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, rt->fib6_table->tb6_id,
 					 &rt->fib6_dst.addr, rt->fib6_dst.plen,
-					 MLXSW_SP_L3_PROTO_IPV6);
+					 MLXSW_SP_L3_PROTO_IPV6, &is_new);
 	if (IS_ERR(fib_node))
 		return PTR_ERR(fib_node);
 
@@ -6843,7 +6850,8 @@ static int mlxsw_sp_router_fib6_replace(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	replaced = fib_node->fib_entry;
-	err = mlxsw_sp_fib_node_entry_link(mlxsw_sp, op_ctx, &fib6_entry->common);
+	err = mlxsw_sp_fib_node_entry_link(mlxsw_sp, op_ctx,
+					   &fib6_entry->common, is_new);
 	if (err)
 		goto err_fib_node_entry_link;
 
@@ -6886,7 +6894,7 @@ static int mlxsw_sp_router_fib6_append(struct mlxsw_sp *mlxsw_sp,
 
 	fib_node = mlxsw_sp_fib_node_get(mlxsw_sp, rt->fib6_table->tb6_id,
 					 &rt->fib6_dst.addr, rt->fib6_dst.plen,
-					 MLXSW_SP_L3_PROTO_IPV6);
+					 MLXSW_SP_L3_PROTO_IPV6, NULL);
 	if (IS_ERR(fib_node))
 		return PTR_ERR(fib_node);
 
