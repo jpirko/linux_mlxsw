@@ -1161,6 +1161,13 @@ err_num_decrease:
 
 }
 
+static void nsim_nexthop_hw_flags_set(struct net *net,
+				      const struct nsim_nexthop *nexthop,
+				      bool trap)
+{
+	nexthop_set_hw_flags(net, nexthop->id, false, trap);
+}
+
 static int nsim_nexthop_add(struct nsim_fib_data *data,
 			    struct nsim_nexthop *nexthop,
 			    struct netlink_ext_ack *extack)
@@ -1179,7 +1186,7 @@ static int nsim_nexthop_add(struct nsim_fib_data *data,
 		goto err_nexthop_dismiss;
 	}
 
-	nexthop_set_hw_flags(net, nexthop->id, false, true);
+	nsim_nexthop_hw_flags_set(net, nexthop, true);
 
 	return 0;
 
@@ -1208,7 +1215,7 @@ static int nsim_nexthop_replace(struct nsim_fib_data *data,
 		goto err_nexthop_dismiss;
 	}
 
-	nexthop_set_hw_flags(net, nexthop->id, false, true);
+	nsim_nexthop_hw_flags_set(net, nexthop, true);
 	nsim_nexthop_account(data, nexthop_old->occ, false, extack);
 	nsim_nexthop_destroy(nexthop_old);
 
@@ -1290,7 +1297,7 @@ static void nsim_nexthop_free(void *ptr, void *arg)
 	struct net *net;
 
 	net = devlink_net(data->devlink);
-	nexthop_set_hw_flags(net, nexthop->id, false, false);
+	nsim_nexthop_hw_flags_set(net, nexthop, false);
 	nsim_nexthop_account(data, nexthop->occ, false, NULL);
 	nsim_nexthop_destroy(nexthop);
 }
