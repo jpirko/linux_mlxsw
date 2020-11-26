@@ -629,6 +629,34 @@ static void mlxsw_sp_lpm_tree_free(struct mlxsw_sp *mlxsw_sp,
 	ll_ops->ralta_write(mlxsw_sp, xralta_pl);
 }
 
+static const u8 mlxsw_sp_lpm_tree_left_bin_order[] = {};
+
+static int mlxsw_sp_lpm_tree_ipv4_bin_order(const char *lpm_tree_name,
+					    const u8 **bin_order,
+					    int *bin_order_count)
+{
+	if (!strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
+		*bin_order = mlxsw_sp_lpm_tree_left_bin_order;
+		*bin_order_count = ARRAY_SIZE(mlxsw_sp_lpm_tree_left_bin_order);
+		return 0;
+	} else {
+		return -EINVAL;
+	}
+}
+
+static int mlxsw_sp_lpm_tree_ipv6_bin_order(const char *lpm_tree_name,
+					    const u8 **bin_order,
+					    int *bin_order_count)
+{
+	if (!strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
+		*bin_order = mlxsw_sp_lpm_tree_left_bin_order;
+		*bin_order_count = ARRAY_SIZE(mlxsw_sp_lpm_tree_left_bin_order);
+		return 0;
+	} else {
+		return -EINVAL;
+	}
+}
+
 static struct mlxsw_sp_lpm_tree_geo_bin *
 mlxsw_sp_lpm_tree_geo_bin(struct mlxsw_sp_lpm_tree_geo *geo, u8 bin)
 {
@@ -713,13 +741,20 @@ mlxsw_sp_lpm_tree_geo_add_missing_bins(struct mlxsw_sp_lpm_tree_geo *geo)
 }
 
 static struct mlxsw_sp_lpm_tree_geo *
-mlxsw_sp_lpm_tree_geo_left_tree_create(u8 addr_bit_count)
+mlxsw_sp_lpm_tree_geo_tree_create(u8 addr_bit_count,
+				  const u8 *bin_order,
+				  int bin_order_count)
 {
 	struct mlxsw_sp_lpm_tree_geo *geo;
+	int i;
 
 	geo = mlxsw_sp_lpm_tree_geo_create(addr_bit_count);
 	if (!geo)
 		return NULL;
+
+	for (i = 0; i < bin_order_count; i++)
+		mlxsw_sp_lpm_tree_geo_add_bin(geo, bin_order[i]);
+
 	mlxsw_sp_lpm_tree_geo_add_missing_bins(geo);
 	return geo;
 }
@@ -901,21 +936,32 @@ static void mlxsw_sp_lpm_tree_put(struct mlxsw_sp *mlxsw_sp,
 		mlxsw_sp_lpm_tree_destroy(mlxsw_sp, ll_ops, lpm_tree);
 }
 
-static int
-mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
+static int mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
 {
 	struct mlxsw_sp_lpm_tree_geo *geo;
+	const u8 *bin_order;
+	int bin_order_count;
 	u8 addr_bit_count;
 	int err;
 
+	err = mlxsw_sp_lpm_tree_ipv4_bin_order(MLXSW_SP_LPM_TREE_LEFT,
+					       &bin_order, &bin_order_count);
+	if (WARN_ON(err))
+		return err;
 	addr_bit_count = sizeof(u32) * BITS_PER_BYTE;
-	geo = mlxsw_sp_lpm_tree_geo_left_tree_create(addr_bit_count);
+	geo = mlxsw_sp_lpm_tree_geo_tree_create(addr_bit_count, bin_order,
+						bin_order_count);
 	if (!geo)
 		return -ENOMEM;
 	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4] = geo;
 
+	err = mlxsw_sp_lpm_tree_ipv6_bin_order(MLXSW_SP_LPM_TREE_LEFT,
+					       &bin_order, &bin_order_count);
+	if (WARN_ON(err))
+		goto err_ipv6_bin_order_get;
 	addr_bit_count = sizeof(struct in6_addr) * BITS_PER_BYTE;
-	geo = mlxsw_sp_lpm_tree_geo_left_tree_create(addr_bit_count);
+	geo = mlxsw_sp_lpm_tree_geo_tree_create(addr_bit_count, bin_order,
+						bin_order_count);
 	if (!geo) {
 		err = -ENOMEM;
 		goto err_ipv6_tree_geo_create;
@@ -923,6 +969,7 @@ mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
 	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV6] = geo;
 	return 0;
 
+err_ipv6_bin_order_get:
 err_ipv6_tree_geo_create:
 	geo = router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4];
 	mlxsw_sp_lpm_tree_geo_destroy(geo);

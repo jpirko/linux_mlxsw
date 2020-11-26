@@ -36,6 +36,8 @@ mlxsw_sp_fib_node_op_ctx_clear(struct mlxsw_sp_fib_node_op_ctx *op_ctx)
 	INIT_LIST_HEAD(&op_ctx->fib_node_priv_list);
 }
 
+#define MLXSW_SP_LPM_TREE_LEFT "left"
+
 struct mlxsw_sp_router {
 	struct mlxsw_sp *mlxsw_sp;
 	struct mlxsw_sp_rif **rifs;
