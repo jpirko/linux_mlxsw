@@ -3160,7 +3160,8 @@ mlxsw_sp_params_router_lpm_tree_ipv4_validate(struct devlink *devlink,
 {
 	const char *lpm_tree_name = val.vstr;
 
-	if (strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
+	if (strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT) &&
+	    strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_INET1)) {
 		NL_SET_ERR_MSG_MOD(extack, "Unsupported LPM tree");
 		return -EOPNOTSUPP;
 	}

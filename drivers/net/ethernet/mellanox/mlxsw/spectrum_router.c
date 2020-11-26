@@ -630,6 +630,7 @@ static void mlxsw_sp_lpm_tree_free(struct mlxsw_sp *mlxsw_sp,
 }
 
 static const u8 mlxsw_sp_lpm_tree_left_bin_order[] = {};
+static const u8 mlxsw_sp_lpm_tree_inet1_bin_order[] = { 16, 12, 24, 9, 15, 32, 11 };
 
 static int mlxsw_sp_lpm_tree_ipv4_bin_order(const char *lpm_tree_name,
 					    const u8 **bin_order,
@@ -638,6 +639,10 @@ static int mlxsw_sp_lpm_tree_ipv4_bin_order(const char *lpm_tree_name,
 	if (!strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
 		*bin_order = mlxsw_sp_lpm_tree_left_bin_order;
 		*bin_order_count = ARRAY_SIZE(mlxsw_sp_lpm_tree_left_bin_order);
+		return 0;
+	} else if (!strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_INET1)) {
+		*bin_order = mlxsw_sp_lpm_tree_inet1_bin_order;
+		*bin_order_count = ARRAY_SIZE(mlxsw_sp_lpm_tree_inet1_bin_order);
 		return 0;
 	} else {
 		return -EINVAL;
