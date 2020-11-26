@@ -936,15 +936,22 @@ static void mlxsw_sp_lpm_tree_put(struct mlxsw_sp *mlxsw_sp,
 		mlxsw_sp_lpm_tree_destroy(mlxsw_sp, ll_ops, lpm_tree);
 }
 
-static int mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
+static int mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp *mlxsw_sp,
+				      struct mlxsw_sp_router *router)
 {
 	struct mlxsw_sp_lpm_tree_geo *geo;
+	union devlink_param_value value;
 	const u8 *bin_order;
 	int bin_order_count;
 	u8 addr_bit_count;
 	int err;
 
-	err = mlxsw_sp_lpm_tree_ipv4_bin_order(MLXSW_SP_LPM_TREE_LEFT,
+	err = devlink_param_driverinit_value_get(priv_to_devlink(mlxsw_sp->core),
+						 MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV4,
+						 &value);
+	if (WARN_ON(err))
+		return err;
+	err = mlxsw_sp_lpm_tree_ipv4_bin_order(value.vstr,
 					       &bin_order, &bin_order_count);
 	if (WARN_ON(err))
 		return err;
@@ -955,7 +962,12 @@ static int mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
 		return -ENOMEM;
 	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4] = geo;
 
-	err = mlxsw_sp_lpm_tree_ipv6_bin_order(MLXSW_SP_LPM_TREE_LEFT,
+	err = devlink_param_driverinit_value_get(priv_to_devlink(mlxsw_sp->core),
+						 MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV6,
+						 &value);
+	if (WARN_ON(err))
+		goto err_ipv6_param_value_get;
+	err = mlxsw_sp_lpm_tree_ipv6_bin_order(value.vstr,
 					       &bin_order, &bin_order_count);
 	if (WARN_ON(err))
 		goto err_ipv6_bin_order_get;
@@ -969,6 +981,7 @@ static int mlxsw_sp_lpm_tree_geo_init(struct mlxsw_sp_router *router)
 	router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV6] = geo;
 	return 0;
 
+err_ipv6_param_value_get:
 err_ipv6_bin_order_get:
 err_ipv6_tree_geo_create:
 	geo = router->lpm.proto_tree_geos[MLXSW_SP_L3_PROTO_IPV4];
@@ -1013,7 +1026,7 @@ static int mlxsw_sp_lpm_init(struct mlxsw_sp *mlxsw_sp)
 		lpm_tree->id = i + MLXSW_SP_LPM_TREE_MIN;
 	}
 
-	err = mlxsw_sp_lpm_tree_geo_init(router);
+	err = mlxsw_sp_lpm_tree_geo_init(mlxsw_sp, router);
 	if (err)
 		goto err_tree_geo_init;
 

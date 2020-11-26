@@ -3153,6 +3153,87 @@ static int mlxsw_sp_kvd_sizes_get(struct mlxsw_core *mlxsw_core,
 }
 
 static int
+mlxsw_sp_params_router_lpm_tree_ipv4_validate(struct devlink *devlink,
+					      u32 id,
+					      union devlink_param_value val,
+					      struct netlink_ext_ack *extack)
+{
+	const char *lpm_tree_name = val.vstr;
+
+	if (strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
+		NL_SET_ERR_MSG_MOD(extack, "Unsupported LPM tree");
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static int
+mlxsw_sp_params_router_lpm_tree_ipv6_validate(struct devlink *devlink,
+					      u32 id,
+					      union devlink_param_value val,
+					      struct netlink_ext_ack *extack)
+{
+	const char *lpm_tree_name = val.vstr;
+
+	if (strcmp(lpm_tree_name, MLXSW_SP_LPM_TREE_LEFT)) {
+		NL_SET_ERR_MSG_MOD(extack, "Unsupported LPM tree");
+		return -EOPNOTSUPP;
+	}
+	return 0;
+}
+
+static const struct devlink_param mlxsw_sp_router_lpm_devlink_params[] = {
+	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV4,
+			     "router_lpm_tree_ipv4", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
+			     NULL, NULL,
+			     mlxsw_sp_params_router_lpm_tree_ipv4_validate),
+	DEVLINK_PARAM_DRIVER(MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV6,
+			     "router_lpm_tree_ipv6", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_DRIVERINIT),
+			     NULL, NULL,
+			     mlxsw_sp_params_router_lpm_tree_ipv6_validate),
+};
+
+static int mlxsw_sp_router_lpm_params_register(struct mlxsw_core *mlxsw_core)
+{
+	struct devlink *devlink = priv_to_devlink(mlxsw_core);
+	union devlink_param_value value;
+	int err;
+
+	err = devlink_params_register(devlink, mlxsw_sp_router_lpm_devlink_params,
+				      ARRAY_SIZE(mlxsw_sp_router_lpm_devlink_params));
+	if (err)
+		return err;
+
+	strcpy(value.vstr, MLXSW_SP_LPM_TREE_LEFT);
+	devlink_param_driverinit_value_set(devlink,
+					   MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV4,
+					   value);
+	devlink_param_driverinit_value_set(devlink,
+					   MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV6,
+					   value);
+	return 0;
+}
+
+static void mlxsw_sp_router_lpm_params_unregister(struct mlxsw_core *mlxsw_core)
+{
+	devlink_params_unregister(priv_to_devlink(mlxsw_core),
+				  mlxsw_sp_router_lpm_devlink_params,
+				  ARRAY_SIZE(mlxsw_sp_router_lpm_devlink_params));
+}
+
+static int mlxsw_sp_params_register(struct mlxsw_core *mlxsw_core)
+{
+	return mlxsw_sp_router_lpm_params_register(mlxsw_core);
+}
+
+static void mlxsw_sp_params_unregister(struct mlxsw_core *mlxsw_core)
+{
+	mlxsw_sp_router_lpm_params_unregister(mlxsw_core);
+}
+
+static int
 mlxsw_sp_params_acl_region_rehash_intrvl_get(struct devlink *devlink, u32 id,
 					     struct devlink_param_gset_ctx *ctx)
 {
@@ -3236,6 +3317,17 @@ static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)
 	devlink_param_driverinit_value_set(devlink,
 					   MLXSW_DEVLINK_PARAM_ID_ACL_REGION_REHASH_INTERVAL,
 					   value);
+	strcpy(value.vstr, MLXSW_SP_LPM_TREE_LEFT);
+	devlink_param_driverinit_value_set(devlink,
+					   MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV4,
+					   value);
+	devlink_param_driverinit_value_set(devlink,
+					   MLXSW_DEVLINK_PARAM_ID_ROUTER_LPM_TREE_IPV6,
+					   value);
+
+	err = mlxsw_sp_router_lpm_params_register(mlxsw_core);
+	if (err)
+		goto err_router_lpm_params_register;
 
 	if (mlxsw_core_bus_info(mlxsw_core)->xm_exists) {
 		err = devlink_params_register(devlink, mlxsw_sp2_router_xm_devlink_params,
@@ -3255,6 +3347,8 @@ static int mlxsw_sp2_params_register(struct mlxsw_core *mlxsw_core)
 	return 0;
 
 err_router_xm_devlink_params_register:
+	mlxsw_sp_router_lpm_params_unregister(mlxsw_core);
+err_router_lpm_params_register:
 	devlink_params_unregister(priv_to_devlink(mlxsw_core),
 				  mlxsw_sp2_devlink_params,
 				  ARRAY_SIZE(mlxsw_sp2_devlink_params));
@@ -3267,6 +3361,7 @@ static void mlxsw_sp2_params_unregister(struct mlxsw_core *mlxsw_core)
 		devlink_params_unregister(priv_to_devlink(mlxsw_core),
 					  mlxsw_sp2_router_xm_devlink_params,
 					  ARRAY_SIZE(mlxsw_sp2_router_xm_devlink_params));
+	mlxsw_sp_router_lpm_params_unregister(mlxsw_core);
 	devlink_params_unregister(priv_to_devlink(mlxsw_core),
 				  mlxsw_sp2_devlink_params,
 				  ARRAY_SIZE(mlxsw_sp2_devlink_params));
@@ -3313,6 +3408,8 @@ static struct mlxsw_driver mlxsw_sp1_driver = {
 	.txhdr_construct		= mlxsw_sp_txhdr_construct,
 	.resources_register		= mlxsw_sp1_resources_register,
 	.kvd_sizes_get			= mlxsw_sp_kvd_sizes_get,
+	.params_register		= mlxsw_sp_params_register,
+	.params_unregister		= mlxsw_sp_params_unregister,
 	.ptp_transmitted		= mlxsw_sp_ptp_transmitted,
 	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp1_config_profile,
