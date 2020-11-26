@@ -761,6 +761,13 @@ mlxsw_sp_lpm_tree_geo_tree_create(u8 addr_bit_count,
 		mlxsw_sp_lpm_tree_geo_add_bin(geo, bin_order[i]);
 
 	mlxsw_sp_lpm_tree_geo_add_missing_bins(geo);
+
+	for (i = 0; i <= addr_bit_count; i++) {
+		struct mlxsw_sp_lpm_tree_geo_bin *bin;
+		bin = mlxsw_sp_lpm_tree_geo_bin(geo, i);
+		printk("%02u l %02u r %02u   p %02u\n", i, bin->left_child_bin, bin->right_child_bin, bin->parent_bin);
+	}
+
 	return geo;
 }
 
