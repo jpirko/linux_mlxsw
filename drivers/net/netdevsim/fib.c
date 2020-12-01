@@ -1018,13 +1018,13 @@ static int nsim_nexthop_event_nb(struct notifier_block *nb, unsigned long event,
 	struct nh_notifier_info *info = ptr;
 	int err = 0;
 
-	ASSERT_RTNL();
-
 	switch (event) {
 	case NEXTHOP_EVENT_REPLACE:
+		ASSERT_RTNL();
 		err = nsim_nexthop_insert(data, info);
 		break;
 	case NEXTHOP_EVENT_DEL:
+		ASSERT_RTNL();
 		nsim_nexthop_remove(data, info);
 		break;
 	default:
