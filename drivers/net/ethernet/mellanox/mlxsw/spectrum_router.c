@@ -3414,10 +3414,10 @@ err_mass_update_vr:
 }
 
 static int __mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
-				     struct mlxsw_sp_nexthop *nh, bool force)
+				     struct mlxsw_sp_nexthop *nh, bool force,
+				     char *ratr_pl)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry = nh->neigh_entry;
-	char ratr_pl[MLXSW_REG_RATR_LEN];
 	enum mlxsw_reg_ratr_op op;
 	u16 rif_index;
 
@@ -3458,10 +3458,11 @@ int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 	int i;
 
 	for (i = 0; i < nh->num_adj_entries; i++) {
+		char ratr_pl[MLXSW_REG_RATR_LEN];
 		int err;
 
 		err = __mlxsw_sp_nexthop_update(mlxsw_sp, adj_index + i, nh,
-						true);
+						true, ratr_pl);
 		if (err)
 			return err;
 	}
