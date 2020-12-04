@@ -77,10 +77,9 @@ static void nh_notifier_single_info_fini(struct nh_notifier_info *info)
 	kfree(info->nh);
 }
 
-static int nh_notifier_grp_info_init(struct nh_notifier_info *info,
-				     const struct nexthop *nh)
+static int nh_notifier_mp_info_init(struct nh_notifier_info *info,
+				    struct nh_group *nhg)
 {
-	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
 	u16 num_nh = nhg->num_nh;
 	int i;
 
@@ -105,6 +104,16 @@ static int nh_notifier_grp_info_init(struct nh_notifier_info *info,
 	}
 
 	return 0;
+}
+
+static int nh_notifier_grp_info_init(struct nh_notifier_info *info,
+				     const struct nexthop *nh)
+{
+	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+
+	if (nhg->mpath)
+		return nh_notifier_mp_info_init(info, nhg);
+	return -EINVAL;
 }
 
 static void nh_notifier_grp_info_fini(struct nh_notifier_info *info,
