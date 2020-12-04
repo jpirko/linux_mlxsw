@@ -3415,16 +3415,19 @@ err_mass_update_vr:
 
 static int __mlxsw_sp_nexthop_eth_update(struct mlxsw_sp *mlxsw_sp,
 					 u32 adj_index,
-					 struct mlxsw_sp_nexthop *nh)
+					 struct mlxsw_sp_nexthop *nh,
+					 bool force)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry = nh->neigh_entry;
 	char ratr_pl[MLXSW_REG_RATR_LEN];
+	enum mlxsw_reg_ratr_op op;
 	u16 rif_index;
 
 	rif_index = nh->rif ? nh->rif->rif_index :
 			      mlxsw_sp->router->lb_rif_index;
-	mlxsw_reg_ratr_pack(ratr_pl, MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY,
-			    true, MLXSW_REG_RATR_TYPE_ETHERNET,
+	op = force ? MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY :
+		     MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY_ON_ACTIVITY;
+	mlxsw_reg_ratr_pack(ratr_pl, op, true, MLXSW_REG_RATR_TYPE_ETHERNET,
 			    adj_index, rif_index);
 	switch (nh->action) {
 	case MLXSW_SP_NEXTHOP_ACTION_FORWARD:
@@ -3452,7 +3455,7 @@ static int __mlxsw_sp_nexthop_eth_update(struct mlxsw_sp *mlxsw_sp,
 }
 
 int mlxsw_sp_nexthop_eth_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
-				struct mlxsw_sp_nexthop *nh)
+				struct mlxsw_sp_nexthop *nh, bool force)
 {
 	int i;
 
@@ -3460,7 +3463,7 @@ int mlxsw_sp_nexthop_eth_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 		int err;
 
 		err = __mlxsw_sp_nexthop_eth_update(mlxsw_sp, adj_index + i,
-						    nh);
+						    nh, force);
 		if (err)
 			return err;
 	}
@@ -3470,17 +3473,19 @@ int mlxsw_sp_nexthop_eth_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 
 static int __mlxsw_sp_nexthop_ipip_update(struct mlxsw_sp *mlxsw_sp,
 					  u32 adj_index,
-					  struct mlxsw_sp_nexthop *nh)
+					  struct mlxsw_sp_nexthop *nh,
+					  bool force)
 {
 	const struct mlxsw_sp_ipip_ops *ipip_ops;
 
 	ipip_ops = mlxsw_sp->router->ipip_ops_arr[nh->ipip_entry->ipipt];
-	return ipip_ops->nexthop_update(mlxsw_sp, adj_index, nh->ipip_entry);
+	return ipip_ops->nexthop_update(mlxsw_sp, adj_index, nh->ipip_entry,
+					force);
 }
 
 static int mlxsw_sp_nexthop_ipip_update(struct mlxsw_sp *mlxsw_sp,
 					u32 adj_index,
-					struct mlxsw_sp_nexthop *nh)
+					struct mlxsw_sp_nexthop *nh, bool force)
 {
 	int i;
 
@@ -3488,7 +3493,7 @@ static int mlxsw_sp_nexthop_ipip_update(struct mlxsw_sp *mlxsw_sp,
 		int err;
 
 		err = __mlxsw_sp_nexthop_ipip_update(mlxsw_sp, adj_index + i,
-						     nh);
+						     nh, force);
 		if (err)
 			return err;
 	}
@@ -3497,7 +3502,7 @@ static int mlxsw_sp_nexthop_ipip_update(struct mlxsw_sp *mlxsw_sp,
 }
 
 static int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
-				   struct mlxsw_sp_nexthop *nh)
+				   struct mlxsw_sp_nexthop *nh, bool force)
 {
 	/* When action is discard or trap, the nexthop must be
 	 * programmed as an Ethernet nexthop.
@@ -3505,9 +3510,11 @@ static int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 	if (nh->type == MLXSW_SP_NEXTHOP_TYPE_ETH ||
 	    nh->action == MLXSW_SP_NEXTHOP_ACTION_DISCARD ||
 	    nh->action == MLXSW_SP_NEXTHOP_ACTION_TRAP)
-		return mlxsw_sp_nexthop_eth_update(mlxsw_sp, adj_index, nh);
+		return mlxsw_sp_nexthop_eth_update(mlxsw_sp, adj_index, nh,
+						   force);
 	else
-		return mlxsw_sp_nexthop_ipip_update(mlxsw_sp, adj_index, nh);
+		return mlxsw_sp_nexthop_ipip_update(mlxsw_sp, adj_index, nh,
+						    force);
 }
 
 static int
@@ -3530,7 +3537,8 @@ mlxsw_sp_nexthop_group_update(struct mlxsw_sp *mlxsw_sp,
 		if (nh->update || reallocate) {
 			int err = 0;
 
-			err = mlxsw_sp_nexthop_update(mlxsw_sp, adj_index, nh);
+			err = mlxsw_sp_nexthop_update(mlxsw_sp, adj_index, nh,
+						      true);
 			if (err)
 				return err;
 			nh->update = 0;
