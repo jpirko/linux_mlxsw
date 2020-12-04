@@ -119,7 +119,10 @@ static int nh_notifier_grp_info_init(struct nh_notifier_info *info,
 static void nh_notifier_grp_info_fini(struct nh_notifier_info *info,
 				      const struct nexthop *nh)
 {
-	kfree(info->nh_grp);
+	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+
+	if (nhg->mpath)
+		kfree(info->nh_grp);
 }
 
 static int nh_notifier_info_init(struct nh_notifier_info *info,
