@@ -3414,16 +3414,18 @@ err_mass_update_vr:
 }
 
 static int __mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
-				     struct mlxsw_sp_nexthop *nh)
+				     struct mlxsw_sp_nexthop *nh, bool force)
 {
 	struct mlxsw_sp_neigh_entry *neigh_entry = nh->neigh_entry;
 	char ratr_pl[MLXSW_REG_RATR_LEN];
+	enum mlxsw_reg_ratr_op op;
 	u16 rif_index;
 
 	rif_index = nh->rif ? nh->rif->rif_index :
 			      mlxsw_sp->router->lb_rif_index;
-	mlxsw_reg_ratr_pack(ratr_pl, MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY,
-			    true, MLXSW_REG_RATR_TYPE_ETHERNET,
+	op = force ? MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY :
+		     MLXSW_REG_RATR_OP_WRITE_WRITE_ENTRY_ON_ACTIVITY;
+	mlxsw_reg_ratr_pack(ratr_pl, op, true, MLXSW_REG_RATR_TYPE_ETHERNET,
 			    adj_index, rif_index);
 	switch (nh->action) {
 	case MLXSW_SP_NEXTHOP_ACTION_FORWARD:
@@ -3458,7 +3460,8 @@ int mlxsw_sp_nexthop_update(struct mlxsw_sp *mlxsw_sp, u32 adj_index,
 	for (i = 0; i < nh->num_adj_entries; i++) {
 		int err;
 
-		err = __mlxsw_sp_nexthop_update(mlxsw_sp, adj_index + i, nh);
+		err = __mlxsw_sp_nexthop_update(mlxsw_sp, adj_index + i, nh,
+						true);
 		if (err)
 			return err;
 	}
