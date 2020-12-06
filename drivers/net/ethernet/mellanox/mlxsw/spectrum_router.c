@@ -7140,9 +7140,7 @@ static void mlxsw_sp_fib4_node_flush(struct mlxsw_sp *mlxsw_sp,
 
 	fib4_entry = container_of(fib_node->fib_entry,
 				  struct mlxsw_sp_fib4_entry, common);
-	mlxsw_sp_fib_node_entry_unlink(mlxsw_sp, fib_node->fib_entry);
 	mlxsw_sp_fib4_entry_destroy(mlxsw_sp, fib4_entry);
-	mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
 }
 
 static void mlxsw_sp_fib6_node_flush(struct mlxsw_sp *mlxsw_sp,
@@ -7152,14 +7150,13 @@ static void mlxsw_sp_fib6_node_flush(struct mlxsw_sp *mlxsw_sp,
 
 	fib6_entry = container_of(fib_node->fib_entry,
 				  struct mlxsw_sp_fib6_entry, common);
-	mlxsw_sp_fib_node_entry_unlink(mlxsw_sp, fib_node->fib_entry);
 	mlxsw_sp_fib6_entry_destroy(mlxsw_sp, fib6_entry);
-	mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
 }
 
 static void mlxsw_sp_fib_node_flush(struct mlxsw_sp *mlxsw_sp,
 				    struct mlxsw_sp_fib_node *fib_node)
 {
+	mlxsw_sp_fib_node_entry_unlink(mlxsw_sp, fib_node->fib_entry);
 	switch (fib_node->fib->proto) {
 	case MLXSW_SP_L3_PROTO_IPV4:
 		mlxsw_sp_fib4_node_flush(mlxsw_sp, fib_node);
@@ -7168,6 +7165,7 @@ static void mlxsw_sp_fib_node_flush(struct mlxsw_sp *mlxsw_sp,
 		mlxsw_sp_fib6_node_flush(mlxsw_sp, fib_node);
 		break;
 	}
+	mlxsw_sp_fib_node_put(mlxsw_sp, fib_node);
 }
 
 static void mlxsw_sp_vr_fib_flush(struct mlxsw_sp *mlxsw_sp,
