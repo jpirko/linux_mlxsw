@@ -22,7 +22,7 @@ static void remove_nexthop(struct net *net, struct nexthop *nh,
 #define NH_DEV_HASHBITS  8
 #define NH_DEV_HASHSIZE (1U << NH_DEV_HASHBITS)
 
-static const struct nla_policy rtm_nh_policy[NHA_MAX + 1] = {
+static const struct nla_policy rtm_nh_policy_new[NHA_MAX + 1] = {
 	[NHA_ID]		= { .type = NLA_U32 },
 	[NHA_GROUP]		= { .type = NLA_BINARY },
 	[NHA_GROUP_TYPE]	= { .type = NLA_U16 },
@@ -31,8 +31,6 @@ static const struct nla_policy rtm_nh_policy[NHA_MAX + 1] = {
 	[NHA_GATEWAY]		= { .type = NLA_BINARY },
 	[NHA_ENCAP_TYPE]	= { .type = NLA_U16 },
 	[NHA_ENCAP]		= { .type = NLA_NESTED },
-	[NHA_GROUPS]		= { .type = NLA_FLAG },
-	[NHA_MASTER]		= { .type = NLA_U32 },
 	[NHA_FDB]		= { .type = NLA_FLAG },
 };
 
@@ -1686,7 +1684,7 @@ static int rtm_to_nh_config(struct net *net, struct sk_buff *skb,
 	struct nlattr *tb[NHA_MAX + 1];
 	int err;
 
-	err = nlmsg_parse(nlh, sizeof(*nhm), tb, NHA_MAX, rtm_nh_policy,
+	err = nlmsg_parse(nlh, sizeof(*nhm), tb, NHA_MAX, rtm_nh_policy_new,
 			  extack);
 	if (err < 0)
 		return err;
@@ -1711,11 +1709,6 @@ static int rtm_to_nh_config(struct net *net, struct sk_buff *skb,
 		fallthrough;
 	default:
 		NL_SET_ERR_MSG(extack, "Invalid address family");
-		goto out;
-	}
-
-	if (tb[NHA_GROUPS] || tb[NHA_MASTER]) {
-		NL_SET_ERR_MSG(extack, "Invalid attributes in request");
 		goto out;
 	}
 
