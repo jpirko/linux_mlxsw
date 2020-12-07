@@ -159,6 +159,7 @@ static void mlxsw_sp_router_ll_xm_fib_node_pack(struct mlxsw_sp_fib_node_op_ctx 
 	enum mlxsw_reg_xmdr_c_ltr_op xmdr_c_ltr_op;
 	unsigned int len;
 
+	printk("xm_fib_node %p\n", fib_node);
 	mlxsw_sp_router_ll_xm_op_ctx_check_init(op_ctx, op_ctx_xm);
 
 	switch (op) {
@@ -669,6 +670,7 @@ static int mlxsw_sp_router_ll_xm_fib_node_commit(struct mlxsw_sp *mlxsw_sp,
 
 	op_ctx_xm->trans_offset += op_ctx_xm->trans_item_len;
 	op_ctx_xm->entries_count++;
+	printk("entries_count %d\n", op_ctx_xm->entries_count);
 
 	/* Check if bulking is possible and there is still room for another
 	 * FIB entry record. The size of 'trans_item_len' is either size of IPv4

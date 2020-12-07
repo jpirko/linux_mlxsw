@@ -5745,6 +5745,7 @@ static int mlxsw_sp_fib_node_op(struct mlxsw_sp *mlxsw_sp,
 	const struct mlxsw_sp_router_ll_ops *ll_ops = fib_node->fib->ll_ops;
 	int err;
 
+	printk("mlxsw_sp_fib_node_op pred pack\n");
 	mlxsw_sp_fib_node_pack(op_ctx, fib_node, op);
 	if (fib_node->fib_entry) {
 		err = mlxsw_sp_fib_entry_op(mlxsw_sp, op_ctx,
@@ -5752,6 +5753,7 @@ static int mlxsw_sp_fib_node_op(struct mlxsw_sp *mlxsw_sp,
 		if (err)
 			return err;
 	}
+	printk("mlxsw_sp_fib_node_op pred commit\n");
 	return mlxsw_sp_fib_node_commit(mlxsw_sp, op_ctx, ll_ops);
 }
 
