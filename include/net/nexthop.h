@@ -40,6 +40,12 @@ struct nh_config {
 
 	struct nlattr	*nh_grp;
 	u16		nh_grp_type;
+	u32		nh_grp_res_num_buckets;
+	unsigned long	nh_grp_res_idle_timer;
+	unsigned long	nh_grp_res_unbalanced_timer;
+	bool		nh_grp_res_has_num_buckets;
+	bool		nh_grp_res_has_idle_timer;
+	bool		nh_grp_res_has_unbalanced_timer;
 
 	struct nlattr	*nh_encap;
 	u16		nh_encap_type;
@@ -63,6 +69,30 @@ struct nh_info {
 	};
 };
 
+struct nh_res_bucket {
+	struct nh_grp_entry __rcu *nh_entry;
+	atomic_long_t		used_time;
+	bool			occupied;
+	u8			nh_flags;
+};
+
+struct nh_res_table {
+	struct net		*net;
+	u32			nhg_id;
+	struct delayed_work 	upkeep_dw;
+
+	/* List of NHGEs that have too few buckets. Reclaimed buckets will
+	 * be given to entries in this list.
+	 */
+	struct list_head	uw_nh_entries;
+
+	u32			idle_timer;
+	u32			unbalanced_timer;
+
+	u16			num_nh_buckets;
+	struct nh_res_bucket	nh_buckets[];
+};
+
 struct nh_grp_entry {
 	struct nexthop	*nh;
 	u8		weight;
@@ -71,6 +101,15 @@ struct nh_grp_entry {
 		struct {
 			atomic_t	upper_bound;
 		} mpath;
+		struct {
+			/* Member on uw_nh_entries. */
+			struct list_head	uw_nh_entry;
+
+			bool			in_reserve;
+			unsigned long		reserve_time;
+			u16			count_buckets;
+			u16			wants_buckets;
+		} res;
 	};
 
 	struct list_head nh_list;
@@ -81,8 +120,11 @@ struct nh_group {
 	struct nh_group		*spare; /* spare group for removals */
 	u16			num_nh;
 	bool			mpath;
+	bool			resilient;
 	bool			fdb_nh;
 	bool			has_v4;
+
+	struct nh_res_table __rcu *res_table;
 	struct nh_grp_entry	nh_entries[];
 };
 
@@ -234,7 +276,7 @@ static inline bool nexthop_is_multipath(const struct nexthop *nh)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		return nh_grp->mpath;
+		return nh_grp->mpath || nh_grp->resilient;
 	}
 	return false;
 }
@@ -249,7 +291,7 @@ static inline unsigned int nexthop_num_path(const struct nexthop *nh)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		if (nh_grp->mpath)
+		if (nh_grp->mpath || nh_grp->resilient)
 			rc = nh_grp->num_nh;
 	}
 
@@ -330,7 +372,7 @@ struct fib_nh_common *nexthop_fib_nhc(struct nexthop *nh, int nhsel)
 		struct nh_group *nh_grp;
 
 		nh_grp = rcu_dereference_rtnl(nh->nh_grp);
-		if (nh_grp->mpath) {
+		if (nh_grp->mpath || nh_grp->resilient) {
 			nh = nexthop_mpath_select(nh_grp, nhsel);
 			if (!nh)
 				return NULL;
