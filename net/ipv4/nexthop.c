@@ -16,6 +16,9 @@
 #include <net/route.h>
 #include <net/sock.h>
 
+#define NH_RES_DEFAULT_IDLE_TIMER	(120 * HZ)
+#define NH_RES_DEFAULT_UNBALANCED_TIMER	0	/* No force rebalancing. */
+
 static void remove_nexthop(struct net *net, struct nexthop *nh,
 			   struct nl_info *nlinfo);
 
@@ -32,6 +35,7 @@ static const struct nla_policy rtm_nh_policy_new[NHA_MAX + 1] = {
 	[NHA_ENCAP_TYPE]	= { .type = NLA_U16 },
 	[NHA_ENCAP]		= { .type = NLA_NESTED },
 	[NHA_FDB]		= { .type = NLA_FLAG },
+	[NHA_RES_GROUP]		= { .type = NLA_NESTED },
 };
 
 static const struct nla_policy rtm_nh_policy_get[NHA_MAX + 1] = {
@@ -43,6 +47,12 @@ static const struct nla_policy rtm_nh_policy_dump[NHA_MAX + 1] = {
 	[NHA_GROUPS]		= { .type = NLA_FLAG },
 	[NHA_MASTER]		= { .type = NLA_U32 },
 	[NHA_FDB]		= { .type = NLA_FLAG },
+};
+
+static const struct nla_policy rtm_nh_res_policy_new[NHA_RES_GROUP_MAX + 1] = {
+	[NHA_RES_GROUP_BUCKETS]		= { .type = NLA_U32 },
+	[NHA_RES_GROUP_IDLE_TIMER]	= { .type = NLA_U32 },
+	[NHA_RES_GROUP_UNBALANCED_TIMER]= { .type = NLA_U32 },
 };
 
 static bool nexthop_notifiers_is_empty(struct net *net)
@@ -537,6 +547,50 @@ static void nh_res_time_set_deadline(unsigned long next_time,
 		*deadline = next_time;
 }
 
+static clock_t nh_res_group_unbalanced_time(const struct nh_group *nhg)
+{
+	unsigned long now = jiffies;
+	unsigned long time = now;
+	int i;
+
+	for (i = 0; i < nhg->num_nh; i++) {
+		const struct nh_grp_entry *nhge = &nhg->nh_entries[i];
+
+		if (nhge->res.in_reserve)
+			nh_res_time_set_deadline(nhge->res.reserve_time, &time);
+	}
+
+	return jiffies_delta_to_clock_t(now - time);
+}
+
+static int nla_put_nh_group_res(struct sk_buff *skb, struct nh_group *nhg)
+{
+	struct nh_res_table *res_table = rtnl_dereference(nhg->res_table);
+	struct nlattr *nest;
+
+	nest = nla_nest_start(skb, NHA_RES_GROUP);
+	if (!nest)
+		return -EMSGSIZE;
+
+	if (nla_put_u32(skb, NHA_RES_GROUP_BUCKETS,
+			res_table->num_nh_buckets) ||
+	    nla_put_u32(skb, NHA_RES_GROUP_IDLE_TIMER,
+			jiffies_to_clock_t(res_table->idle_timer)) ||
+	    nla_put_u32(skb, NHA_RES_GROUP_UNBALANCED_TIMER,
+			jiffies_to_clock_t(res_table->unbalanced_timer)) ||
+	    nla_put_u64_64bit(skb, NHA_RES_GROUP_UNBALANCED_TIME,
+			      nh_res_group_unbalanced_time(nhg),
+			      NHA_RES_GROUP_PAD))
+		goto nla_put_failure;
+
+	nla_nest_end(skb, nest);
+	return 0;
+
+nla_put_failure:
+	nla_nest_cancel(skb, nest);
+	return -EMSGSIZE;
+}
+
 static int nla_put_nh_group(struct sk_buff *skb, struct nh_group *nhg)
 {
 	struct nexthop_grp *p;
@@ -563,6 +617,9 @@ static int nla_put_nh_group(struct sk_buff *skb, struct nh_group *nhg)
 		p->weight = nhg->nh_entries[i].weight - 1;
 		p += 1;
 	}
+
+	if (nhg->resilient && nla_put_nh_group_res(skb, nhg))
+		goto nla_put_failure;
 
 	return 0;
 
@@ -651,13 +708,26 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
+static size_t nh_nlmsg_size_grp_res(struct nh_group *nhg)
+{
+	return nla_total_size(0) +	/* NHA_RES_GROUP */
+		nla_total_size(4) +	/* NHA_RES_GROUP_BUCKETS */
+		nla_total_size(4) +	/* NHA_RES_GROUP_IDLE_TIMER */
+		nla_total_size(4);	/* NHA_RES_GROUP_UNBALANCED_TIMER */
+	// xxx unbalanced_time?
+}
+
 static size_t nh_nlmsg_size_grp(struct nexthop *nh)
 {
 	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
 	size_t sz = sizeof(struct nexthop_grp) * nhg->num_nh;
+	size_t tot = nla_total_size(sz) +
+		nla_total_size(2); /* NHA_GROUP_TYPE */
 
-	return nla_total_size(sz) +
-	       nla_total_size(2);  /* NHA_GROUP_TYPE */
+	if (nhg->resilient)
+		tot += nh_nlmsg_size_grp_res(nhg);
+
+	return tot;
 }
 
 static size_t nh_nlmsg_size_single(struct nexthop *nh)
@@ -787,6 +857,7 @@ static int nh_check_attr_fdb_group(struct nexthop *nh, u8 *nh_family,
 }
 
 static int nh_check_attr_group(struct net *net, struct nlattr *tb[],
+			       u16 nh_grp_type,
 			       struct netlink_ext_ack *extack)
 {
 	unsigned int len = nla_len(tb[NHA_GROUP]);
@@ -848,8 +919,14 @@ static int nh_check_attr_group(struct net *net, struct nlattr *tb[],
 	for (i = NHA_GROUP_TYPE + 1; i < __NHA_MAX; ++i) {
 		if (!tb[i])
 			continue;
-		if (i == NHA_FDB)
+		switch (i) {
+		case NHA_FDB:
 			continue;
+		case NHA_RES_GROUP:
+			if (nh_grp_type == NEXTHOP_GRP_TYPE_RES)
+				continue;
+			break;
+		}
 		NL_SET_ERR_MSG(extack,
 			       "No other attributes can be set in nexthop groups");
 		return -EINVAL;
@@ -2366,6 +2443,69 @@ static struct nexthop *nexthop_add(struct net *net, struct nh_config *cfg,
 	return nh;
 }
 
+static int rtm_nh_get_timer(struct nlattr *attr, unsigned long fallback,
+			    unsigned long *timer_p, bool *has_p,
+			    struct netlink_ext_ack *extack)
+{
+	unsigned long timer;
+	u32 value;
+
+	if (!attr) {
+		*timer_p = fallback;
+		*has_p = false;
+		return 0;
+	}
+
+	value = nla_get_u32(attr);
+	timer = clock_t_to_jiffies(value);
+	if (timer == ~0UL) {
+		NL_SET_ERR_MSG(extack, "Timer value too large");
+		return -EINVAL;
+	}
+
+	*timer_p = timer;
+	*has_p = true;
+	return 0;
+}
+
+static int rtm_to_nh_config_grp_res(struct nlattr *res, struct nh_config *cfg,
+				    struct netlink_ext_ack *extack)
+{
+	struct nlattr *tb[NHA_RES_GROUP_MAX + 1] = {};
+	int err;
+
+	if (res) {
+		err = nla_parse_nested(tb, NHA_RES_GROUP_MAX, res,
+				       rtm_nh_res_policy_new, extack);
+		if (err < 0)
+			return err;
+	}
+
+	if (tb[NHA_RES_GROUP_BUCKETS]) {
+		cfg->nh_grp_res_num_buckets =
+			nla_get_u32(tb[NHA_RES_GROUP_BUCKETS]);
+		cfg->nh_grp_res_has_num_buckets = true;
+		if (!cfg->nh_grp_res_num_buckets) {
+			NL_SET_ERR_MSG(extack, "Number of buckets needs to be non-0");
+			return -EINVAL;
+		}
+	}
+
+	err = rtm_nh_get_timer(tb[NHA_RES_GROUP_IDLE_TIMER],
+			       NH_RES_DEFAULT_IDLE_TIMER,
+			       &cfg->nh_grp_res_idle_timer,
+			       &cfg->nh_grp_res_has_idle_timer,
+			       extack);
+	if (err)
+		return err;
+
+	return rtm_nh_get_timer(tb[NHA_RES_GROUP_UNBALANCED_TIMER],
+				NH_RES_DEFAULT_UNBALANCED_TIMER,
+				&cfg->nh_grp_res_unbalanced_timer,
+				&cfg->nh_grp_res_has_unbalanced_timer,
+				extack);
+}
+
 static int rtm_to_nh_config(struct net *net, struct sk_buff *skb,
 			    struct nlmsghdr *nlh, struct nh_config *cfg,
 			    struct netlink_ext_ack *extack)
@@ -2447,6 +2587,9 @@ static int rtm_to_nh_config(struct net *net, struct sk_buff *skb,
 		if (err)
 			goto out;
 
+		if (cfg->nh_grp_type == NEXTHOP_GRP_TYPE_RES)
+			err = rtm_to_nh_config_grp_res(tb[NHA_RES_GROUP],
+						       cfg, extack);
 
 		/* no other attributes should be set */
 		goto out;
