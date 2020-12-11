@@ -2726,36 +2726,43 @@ static int rtm_new_nexthop(struct sk_buff *skb, struct nlmsghdr *nlh,
 	return err;
 }
 
-static int nh_valid_get_del_req(const struct nlmsghdr *nlh, u32 *id,
-				struct netlink_ext_ack *extack)
+static int __nh_valid_get_del_req(const struct nlmsghdr *nlh,
+				  struct nlattr **tb, u32 *id,
+				  struct netlink_ext_ack *extack)
 {
 	struct nhmsg *nhm = nlmsg_data(nlh);
-	struct nlattr *tb[NHA_MAX + 1];
-	int err;
 
-	err = nlmsg_parse(nlh, sizeof(*nhm), tb, NHA_MAX, rtm_nh_policy_get,
-			  extack);
-	if (err < 0)
-		return err;
-
-	err = -EINVAL;
 	if (nhm->nh_protocol || nhm->resvd || nhm->nh_scope || nhm->nh_flags) {
 		NL_SET_ERR_MSG(extack, "Invalid values in header");
-		goto out;
+		return -EINVAL;
 	}
 
 	if (!tb[NHA_ID]) {
 		NL_SET_ERR_MSG(extack, "Nexthop id is missing");
-		goto out;
+		return -EINVAL;
 	}
 
 	*id = nla_get_u32(tb[NHA_ID]);
-	if (!(*id))
+	if (!(*id)) {
 		NL_SET_ERR_MSG(extack, "Invalid nexthop id");
-	else
-		err = 0;
-out:
-	return err;
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int nh_valid_get_del_req(const struct nlmsghdr *nlh, u32 *id,
+				struct netlink_ext_ack *extack)
+{
+	struct nlattr *tb[NHA_MAX + 1];
+	int err;
+
+	err = nlmsg_parse(nlh, sizeof(struct nhmsg), tb, NHA_MAX,
+			  rtm_nh_policy_get, extack);
+	if (err < 0)
+		return err;
+
+	return __nh_valid_get_del_req(nlh, tb, id, extack);
 }
 
 /* rtnl */
