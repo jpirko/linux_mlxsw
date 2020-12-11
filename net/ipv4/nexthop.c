@@ -55,6 +55,19 @@ static const struct nla_policy rtm_nh_res_policy_new[NHA_RES_GROUP_MAX + 1] = {
 	[NHA_RES_GROUP_UNBALANCED_TIMER]= { .type = NLA_U32 },
 };
 
+static const struct nla_policy rtm_nh_policy_dump_bucket[NHA_MAX + 1] = {
+	[NHA_ID]		= { .type = NLA_U32 },
+	[NHA_OIF]		= { .type = NLA_U32 },
+	[NHA_MASTER]		= { .type = NLA_U32 },
+	[NHA_FDB]		= { .type = NLA_FLAG },
+	[NHA_RES_BUCKET]	= { .type = NLA_NESTED },
+};
+
+static const struct nla_policy
+rtm_nh_res_bucket_policy_dump[NHA_RES_BUCKET_MAX + 1] = {
+	[NHA_RES_BUCKET_NH_ID]	= { .type = NLA_U32 },
+};
+
 static bool nexthop_notifiers_is_empty(struct net *net)
 {
 	return !net->nexthop.notifier_chain.head;
@@ -1041,6 +1054,12 @@ static void nh_res_nhge_set_reserve(struct nh_grp_entry *nhge)
 {
 	nhge->res.reserve_time = jiffies;
 	nhge->res.in_reserve = true;
+}
+
+static clock_t nh_res_bucket_idle_time(const struct nh_res_bucket *bucket)
+{
+	return jiffies_delta_to_clock_t(jiffies -
+					nh_res_bucket_used_time(bucket));
 }
 
 static struct nexthop *nexthop_select_path_res(struct nh_group *nhg, int hash)
@@ -2806,10 +2825,12 @@ errout_free:
 }
 
 struct nh_dump_filter {
+	u32 nh_id;
 	int dev_idx;
 	int master_idx;
 	bool group_filter;
 	bool fdb_filter;
+	u32 res_bucket_nh_id;
 };
 
 static bool nh_dump_filtered(struct nexthop *nh,
@@ -2976,6 +2997,263 @@ static int rtm_dump_nexthop(struct sk_buff *skb, struct netlink_callback *cb)
 
 	err = rtm_dump_walk_nexthops(skb, cb, root, ctx,
 				     &rtm_dump_nexthop_cb, &filter);
+	if (err < 0) {
+		if (likely(skb->len))
+			goto out;
+		goto out_err;
+	}
+
+out:
+	err = skb->len;
+out_err:
+	cb->seq = net->nexthop.seq;
+	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
+	return err;
+}
+
+static int nh_fill_res_bucket(struct sk_buff *skb, struct nexthop *nh,
+			      struct nh_res_bucket *bucket, u32 bucket_idx,
+			      int event, u32 portid, u32 seq,
+			      unsigned int nlflags,
+			      struct netlink_ext_ack *extack)
+{
+	struct nh_grp_entry *nhge = rtnl_dereference(bucket->nh_entry);
+	struct nlmsghdr *nlh;
+	struct nlattr *nest;
+	struct nhmsg *nhm;
+
+	nlh = nlmsg_put(skb, portid, seq, event, sizeof(*nhm), nlflags);
+	if (!nlh)
+		return -EMSGSIZE;
+
+	nhm = nlmsg_data(nlh);
+	nhm->nh_family = AF_UNSPEC;
+	nhm->nh_flags = bucket->nh_flags;
+	nhm->nh_protocol = nh->protocol;
+	nhm->nh_scope = 0;
+	nhm->resvd = 0;
+
+	if (nla_put_u32(skb, NHA_ID, nh->id))
+		goto nla_put_failure;
+
+	nest = nla_nest_start(skb, NHA_RES_BUCKET);
+	if (!nest)
+		goto nla_put_failure;
+
+	if (nla_put_u32(skb, NHA_RES_BUCKET_INDEX, bucket_idx) ||
+	    nla_put_u32(skb, NHA_RES_BUCKET_NH_ID, nhge->nh->id) ||
+	    nla_put_u64_64bit(skb, NHA_RES_BUCKET_IDLE_TIME,
+			      nh_res_bucket_idle_time(bucket),
+			      NHA_RES_BUCKET_PAD))
+		goto nla_put_failure_nest;
+
+	nla_nest_end(skb, nest);
+	nlmsg_end(skb, nlh);
+	return 0;
+
+nla_put_failure_nest:
+	nla_nest_cancel(skb, nest);
+nla_put_failure:
+	nlmsg_cancel(skb, nlh);
+	return -EMSGSIZE;
+}
+
+static struct nexthop *
+nexthop_find_group_resilient(struct net *net, u32 id,
+			     struct netlink_ext_ack *extack)
+{
+	struct nh_group *nhg;
+	struct nexthop *nh;
+
+	nh = nexthop_find_by_id(net, id);
+	if (!nh)
+		return ERR_PTR(-ENOENT);
+
+	if (!nh->is_group) {
+		NL_SET_ERR_MSG(extack, "Not a group nexthop");
+		return ERR_PTR(-EINVAL);
+	}
+
+	nhg = rtnl_dereference(nh->nh_grp);
+	if (!nhg->resilient) {
+		NL_SET_ERR_MSG(extack, "Nexthop group not of type resilient");
+		return ERR_PTR(-EINVAL);
+	}
+
+	return nh;
+}
+
+static int nh_valid_dump_nhid(struct nlattr *attr, u32 *nh_id_p,
+			      struct netlink_ext_ack *extack)
+{
+	u32 idx;
+
+	if (attr) {
+		idx = nla_get_u32(attr);
+		if (!idx) {
+			NL_SET_ERR_MSG(extack, "Invalid nexthop id");
+			return -EINVAL;
+		}
+		*nh_id_p = idx;
+	} else {
+		*nh_id_p = 0;
+	}
+
+	return 0;
+}
+
+static int nh_valid_dump_bucket_req(const struct nlmsghdr *nlh,
+				    struct nh_dump_filter *filter,
+				    struct netlink_callback *cb)
+{
+	struct nlattr *res_tb[NHA_RES_BUCKET_MAX + 1];
+	struct nlattr *tb[NHA_MAX + 1];
+	int err;
+
+	err = nlmsg_parse(nlh, sizeof(struct nhmsg), tb, NHA_MAX,
+			  rtm_nh_policy_dump_bucket, NULL);
+	if (err < 0)
+		return err;
+
+	err = nh_valid_dump_nhid(tb[NHA_ID], &filter->nh_id, cb->extack);
+	if (err)
+		return err;
+
+	if (tb[NHA_RES_BUCKET]) {
+		err = nla_parse_nested(res_tb, NHA_RES_BUCKET_MAX,
+				       tb[NHA_RES_BUCKET],
+				       rtm_nh_res_bucket_policy_dump,
+				       cb->extack);
+		if (err < 0)
+			return err;
+
+		err = nh_valid_dump_nhid(res_tb[NHA_RES_BUCKET_NH_ID],
+					 &filter->res_bucket_nh_id,
+					 cb->extack);
+		if (err)
+			return err;
+	}
+
+	return __nh_valid_dump_req(nlh, tb, filter, cb->extack);
+}
+
+struct rtm_dump_res_bucket_ctx {
+	struct rtm_dump_nh_ctx nh;
+	u32 bucket_idx;
+	u32 done_nh_idx; /* 1 + the index of the last fully processed NH. */
+};
+
+static struct rtm_dump_res_bucket_ctx *
+rtm_dump_res_bucket_ctx(struct netlink_callback *cb)
+{
+	struct rtm_dump_res_bucket_ctx *ctx = (void *) cb->ctx;
+
+	BUILD_BUG_ON(sizeof(*ctx) > sizeof(cb->ctx));
+	return ctx;
+}
+
+struct rtm_dump_nexthop_bucket_data {
+	struct rtm_dump_res_bucket_ctx *ctx;
+	struct nh_dump_filter filter;
+};
+
+static int rtm_dump_nexthop_bucket_nh(struct sk_buff *skb,
+				      struct netlink_callback *cb,
+				      struct nexthop *nh,
+				      struct rtm_dump_nexthop_bucket_data *dd)
+{
+	u32 portid = NETLINK_CB(cb->skb).portid;
+	struct nhmsg *nhm = nlmsg_data(cb->nlh);
+	struct nh_res_table *res_table;
+	struct nh_group *nhg;
+	u32 bucket_idx;
+	int err;
+
+	if (dd->ctx->nh.idx < dd->ctx->done_nh_idx)
+		return 0;
+
+	nhg = rtnl_dereference(nh->nh_grp);
+	res_table = rtnl_dereference(nhg->res_table);
+	for (bucket_idx = dd->ctx->bucket_idx;
+	     bucket_idx < res_table->num_nh_buckets;
+	     bucket_idx++) {
+		struct nh_res_bucket *bucket;
+		struct nh_grp_entry *nhge;
+
+		bucket = &res_table->nh_buckets[bucket_idx];
+		nhge = rtnl_dereference(bucket->nh_entry);
+		if (nh_dump_filtered(nhge->nh, &dd->filter, nhm->nh_family))
+			continue;
+
+		if (dd->filter.res_bucket_nh_id &&
+		    dd->filter.res_bucket_nh_id != nhge->nh->id)
+			continue;
+
+		err = nh_fill_res_bucket(skb, nh, bucket, bucket_idx,
+					 RTM_NEWNEXTHOPBUCKET, portid,
+					 cb->nlh->nlmsg_seq, NLM_F_MULTI,
+					 cb->extack);
+		if (err < 0) {
+			if (likely(skb->len))
+				goto out;
+			goto out_err;
+		}
+	}
+
+	dd->ctx->done_nh_idx = dd->ctx->nh.idx + 1;
+	bucket_idx = 0;
+
+out:
+	err = skb->len;
+out_err:
+	dd->ctx->bucket_idx = bucket_idx;
+	return err;
+}
+
+static int rtm_dump_nexthop_bucket_cb(struct sk_buff *skb,
+				      struct netlink_callback *cb,
+				      struct nexthop *nh, void *data)
+{
+	struct rtm_dump_nexthop_bucket_data *dd = data;
+	struct nh_group *nhg;
+
+	if (!nh->is_group)
+		return 0;
+
+	nhg = rtnl_dereference(nh->nh_grp);
+	if (!nhg->resilient)
+		return 0;
+
+	return rtm_dump_nexthop_bucket_nh(skb, cb, nh, dd);
+}
+
+/* rtnl */
+static int rtm_dump_nexthop_bucket(struct sk_buff *skb,
+				   struct netlink_callback *cb)
+{
+	struct rtm_dump_res_bucket_ctx *ctx = rtm_dump_res_bucket_ctx(cb);
+	struct rtm_dump_nexthop_bucket_data dd = { .ctx = ctx };
+	struct net *net = sock_net(skb->sk);
+	struct nexthop *nh;
+	int err;
+
+	err = nh_valid_dump_bucket_req(cb->nlh, &dd.filter, cb);
+	if (err)
+		return err;
+
+	if (dd.filter.nh_id) {
+		nh = nexthop_find_group_resilient(net, dd.filter.nh_id,
+						  cb->extack);
+		if (IS_ERR(nh))
+			return PTR_ERR(nh);
+		err = rtm_dump_nexthop_bucket_nh(skb, cb, nh, &dd);
+	} else {
+		struct rb_root *root = &net->nexthop.rb_root;
+
+		err = rtm_dump_walk_nexthops(skb, cb, root, &ctx->nh,
+					     &rtm_dump_nexthop_bucket_cb, &dd);
+	}
+
 	if (err < 0) {
 		if (likely(skb->len))
 			goto out;
@@ -3210,6 +3488,9 @@ static int __init nexthop_init(void)
 
 	rtnl_register(PF_INET6, RTM_NEWNEXTHOP, rtm_new_nexthop, NULL, 0);
 	rtnl_register(PF_INET6, RTM_GETNEXTHOP, NULL, rtm_dump_nexthop, 0);
+
+	rtnl_register(PF_UNSPEC, RTM_GETNEXTHOPBUCKET, NULL,
+		      rtm_dump_nexthop_bucket, 0);
 
 	return 0;
 }
