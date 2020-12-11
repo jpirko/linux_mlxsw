@@ -2707,7 +2707,7 @@ static int rtm_new_nexthop(struct sk_buff *skb, struct nlmsghdr *nlh,
 	return err;
 }
 
-static int nh_valid_get_del_req(struct nlmsghdr *nlh, u32 *id,
+static int nh_valid_get_del_req(const struct nlmsghdr *nlh, u32 *id,
 				struct netlink_ext_ack *extack)
 {
 	struct nhmsg *nhm = nlmsg_data(nlh);
