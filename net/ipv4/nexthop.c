@@ -1468,8 +1468,12 @@ static struct nexthop *nexthop_create_group(struct net *net,
 
 	if (cfg->nh_grp_type == NEXTHOP_GRP_TYPE_MPATH) {
 		nhg->mpath = 1;
-		nh_group_rebalance(nhg);
 	}
+
+	WARN_ON_ONCE(nhg->mpath != 1);
+
+	if (nhg->mpath)
+		nh_group_rebalance(nhg);
 
 	if (cfg->nh_fdb)
 		nhg->fdb_nh = 1;
