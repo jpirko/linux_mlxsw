@@ -311,6 +311,10 @@ static int nsim_dev_debugfs_init(struct nsim_dev *nsim_dev)
 	nsim_dev->ports_ddir = debugfs_create_dir("ports", nsim_dev->ddir);
 	if (IS_ERR(nsim_dev->ports_ddir))
 		return PTR_ERR(nsim_dev->ports_ddir);
+	nsim_dev->linecards_ddir = debugfs_create_dir("linecards",
+						      nsim_dev->ddir);
+	if (IS_ERR(nsim_dev->linecards_ddir))
+		return PTR_ERR(nsim_dev->linecards_ddir);
 	debugfs_create_bool("fw_update_status", 0600, nsim_dev->ddir,
 			    &nsim_dev->fw_update_status);
 	debugfs_create_u32("fw_update_overwrite_mask", 0600, nsim_dev->ddir,
@@ -363,6 +367,7 @@ err_out:
 static void nsim_dev_debugfs_exit(struct nsim_dev *nsim_dev)
 {
 	debugfs_remove_recursive(nsim_dev->nodes_ddir);
+	debugfs_remove_recursive(nsim_dev->linecards_ddir);
 	debugfs_remove_recursive(nsim_dev->ports_ddir);
 	debugfs_remove_recursive(nsim_dev->ddir);
 }
@@ -424,6 +429,32 @@ static int nsim_dev_port_debugfs_init(struct nsim_dev *nsim_dev,
 static void nsim_dev_port_debugfs_exit(struct nsim_dev_port *nsim_dev_port)
 {
 	debugfs_remove_recursive(nsim_dev_port->ddir);
+}
+
+static int
+nsim_dev_linecard_debugfs_init(struct nsim_dev *nsim_dev,
+			       struct nsim_dev_linecard *nsim_dev_linecard)
+{
+	char linecard_ddir_name[16];
+	char dev_link_name[32];
+
+	sprintf(linecard_ddir_name, "%u", nsim_dev_linecard->linecard_index);
+	nsim_dev_linecard->ddir = debugfs_create_dir(linecard_ddir_name,
+						     nsim_dev->linecards_ddir);
+	if (IS_ERR(nsim_dev_linecard->ddir))
+		return PTR_ERR(nsim_dev_linecard->ddir);
+
+	sprintf(dev_link_name, "../../../" DRV_NAME "%u",
+		nsim_dev->nsim_bus_dev->dev.id);
+	debugfs_create_symlink("dev", nsim_dev_linecard->ddir, dev_link_name);
+
+	return 0;
+}
+
+static void
+nsim_dev_linecard_debugfs_exit(struct nsim_dev_linecard *nsim_dev_linecard)
+{
+	debugfs_remove_recursive(nsim_dev_linecard->ddir);
 }
 
 static int nsim_dev_resources_register(struct devlink *devlink)
@@ -1460,6 +1491,64 @@ err_port_del_all:
 	return err;
 }
 
+static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
+				   unsigned int linecard_index)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard;
+	int err;
+
+	nsim_dev_linecard = kzalloc(sizeof(*nsim_dev_linecard), GFP_KERNEL);
+	if (!nsim_dev_linecard)
+		return -ENOMEM;
+	nsim_dev_linecard->nsim_dev = nsim_dev;
+	nsim_dev_linecard->linecard_index = linecard_index;
+
+	err = nsim_dev_linecard_debugfs_init(nsim_dev, nsim_dev_linecard);
+	if (err)
+		goto err_linecard_free;
+
+	list_add(&nsim_dev_linecard->list, &nsim_dev->linecard_list);
+
+	return 0;
+
+err_linecard_free:
+	kfree(nsim_dev_linecard);
+	return err;
+}
+
+static void __nsim_dev_linecard_del(struct nsim_dev_linecard *nsim_dev_linecard)
+{
+	list_del(&nsim_dev_linecard->list);
+	nsim_dev_linecard_debugfs_exit(nsim_dev_linecard);
+	kfree(nsim_dev_linecard);
+}
+
+static void nsim_dev_linecard_del_all(struct nsim_dev *nsim_dev)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard, *tmp;
+
+	list_for_each_entry_safe(nsim_dev_linecard, tmp,
+				 &nsim_dev->linecard_list, list)
+		__nsim_dev_linecard_del(nsim_dev_linecard);
+}
+
+static int nsim_dev_linecard_add_all(struct nsim_dev *nsim_dev,
+				     unsigned int linecard_count)
+{
+	int i, err;
+
+	for (i = 0; i < linecard_count; i++) {
+		err = __nsim_dev_linecard_add(nsim_dev, i);
+		if (err)
+			goto err_linecard_del_all;
+	}
+	return 0;
+
+err_linecard_del_all:
+	nsim_dev_linecard_del_all(nsim_dev);
+	return err;
+}
+
 static int nsim_dev_reload_create(struct nsim_dev *nsim_dev,
 				  struct netlink_ext_ack *extack)
 {
@@ -1470,6 +1559,7 @@ static int nsim_dev_reload_create(struct nsim_dev *nsim_dev,
 	devlink = priv_to_devlink(nsim_dev);
 	nsim_dev = devlink_priv(devlink);
 	INIT_LIST_HEAD(&nsim_dev->port_list);
+	INIT_LIST_HEAD(&nsim_dev->linecard_list);
 	nsim_dev->fw_update_status = true;
 	nsim_dev->fw_update_overwrite_mask = 0;
 
@@ -1501,9 +1591,13 @@ static int nsim_dev_reload_create(struct nsim_dev *nsim_dev,
 	if (err)
 		goto err_psample_exit;
 
-	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
+	err = nsim_dev_linecard_add_all(nsim_dev, nsim_bus_dev->linecard_count);
 	if (err)
 		goto err_hwstats_exit;
+
+	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
+	if (err)
+		goto err_linecard_del_all;
 
 	nsim_dev->take_snapshot = debugfs_create_file("take_snapshot",
 						      0200,
@@ -1512,6 +1606,8 @@ static int nsim_dev_reload_create(struct nsim_dev *nsim_dev,
 						&nsim_dev_take_snapshot_fops);
 	return 0;
 
+err_linecard_del_all:
+	nsim_dev_linecard_del_all(nsim_dev);
 err_hwstats_exit:
 	nsim_dev_hwstats_exit(nsim_dev);
 err_psample_exit:
@@ -1542,6 +1638,7 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev)
 	nsim_dev->switch_id.id_len = sizeof(nsim_dev->switch_id.id);
 	get_random_bytes(nsim_dev->switch_id.id, nsim_dev->switch_id.id_len);
 	INIT_LIST_HEAD(&nsim_dev->port_list);
+	INIT_LIST_HEAD(&nsim_dev->linecard_list);
 	nsim_dev->fw_update_status = true;
 	nsim_dev->fw_update_overwrite_mask = 0;
 	nsim_dev->max_macs = NSIM_DEV_MAX_MACS_DEFAULT;
@@ -1602,15 +1699,21 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev)
 	if (err)
 		goto err_psample_exit;
 
-	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
+	err = nsim_dev_linecard_add_all(nsim_dev, nsim_bus_dev->linecard_count);
 	if (err)
 		goto err_hwstats_exit;
+
+	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
+	if (err)
+		goto err_linecard_del_all;
 
 	nsim_dev->esw_mode = DEVLINK_ESWITCH_MODE_LEGACY;
 	devlink_set_features(devlink, DEVLINK_F_RELOAD);
 	devlink_register(devlink);
 	return 0;
 
+err_linecard_del_all:
+	nsim_dev_linecard_del_all(nsim_dev);
 err_hwstats_exit:
 	nsim_dev_hwstats_exit(nsim_dev);
 err_psample_exit:
@@ -1657,6 +1760,7 @@ static void nsim_dev_reload_destroy(struct nsim_dev *nsim_dev)
 	devl_unlock(devlink);
 
 	nsim_dev_port_del_all(nsim_dev);
+	nsim_dev_linecard_del_all(nsim_dev);
 	nsim_dev_hwstats_exit(nsim_dev);
 	nsim_dev_psample_exit(nsim_dev);
 	nsim_dev_health_exit(nsim_dev);
