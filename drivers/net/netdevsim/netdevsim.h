@@ -206,9 +206,12 @@ enum nsim_dev_port_type {
 #define NSIM_DEV_VF_PORT_INDEX_BASE 128
 #define NSIM_DEV_VF_PORT_INDEX_MAX UINT_MAX
 
+struct nsim_dev_linecard;
+
 struct nsim_dev_port {
 	struct list_head list;
 	struct devlink_port devlink_port;
+	struct nsim_dev_linecard *linecard;
 	unsigned int port_index;
 	enum nsim_dev_port_type port_type;
 	struct dentry *ddir;
@@ -236,6 +239,7 @@ struct nsim_dev {
 	struct nsim_trap_data *trap_data;
 	struct dentry *ddir;
 	struct dentry *ports_ddir;
+	struct dentry *linecards_ddir;
 	struct dentry *take_snapshot;
 	struct dentry *nodes_ddir;
 
@@ -253,6 +257,7 @@ struct nsim_dev {
 	struct netdev_phys_item_id switch_id;
 	struct list_head port_list;
 	struct mutex port_list_lock; /* protects port list */
+	struct list_head linecard_list;
 	bool fw_update_status;
 	u32 fw_update_overwrite_mask;
 	u32 max_macs;
@@ -279,6 +284,13 @@ struct nsim_dev {
 	} udp_ports;
 	struct nsim_dev_psample *psample;
 	u16 esw_mode;
+};
+
+struct nsim_dev_linecard {
+	struct list_head list;
+	struct nsim_dev *nsim_dev;
+	unsigned int linecard_index;
+	struct dentry *ddir;
 };
 
 static inline bool nsim_esw_mode_is_legacy(struct nsim_dev *nsim_dev)
@@ -350,6 +362,7 @@ struct nsim_bus_dev {
 	struct list_head list;
 	unsigned int port_count;
 	unsigned int num_queues; /* Number of queues for each port on this bus */
+	unsigned int linecard_count;
 	struct net *initial_net; /* Purpose of this is to carry net pointer
 				  * during the probe time only.
 				  */
