@@ -551,6 +551,7 @@ u8 nsim_dcb_setdcbx(struct net_device *dev, u8 mode)
 	return 0;
 }
 
+/*
 int nsim_dcb_peer_getappinfo(struct net_device *dev, struct dcb_peer_app_info *info, u16 *count)
 {
 	printk(KERN_WARNING "nsim_dcb_peer_getappinfo\n");
@@ -562,6 +563,7 @@ int nsim_dcb_peer_getapptable(struct net_device *dev, struct dcb_app *table)
 	printk(KERN_WARNING "nsim_dcb_peer_getapptable\n");
 	return -EOPNOTSUPP;
 }
+*/
 
 int nsim_dcb_cee_peer_getpg(struct net_device *dev, struct cee_pg *pg)
 {
@@ -617,8 +619,8 @@ static const struct dcbnl_rtnl_ops nsim_dcbnl_ops = {
 	.getdcbx = nsim_dcb_getdcbx,
 	.setdcbx = nsim_dcb_setdcbx,
 
-	.peer_getappinfo = nsim_dcb_peer_getappinfo,
-	.peer_getapptable = nsim_dcb_peer_getapptable,
+	//.peer_getappinfo = nsim_dcb_peer_getappinfo,
+	//.peer_getapptable = nsim_dcb_peer_getapptable,
 
 	.cee_peer_getpg = nsim_dcb_cee_peer_getpg,
 	.cee_peer_getpfc = nsim_dcb_cee_peer_getpfc,
