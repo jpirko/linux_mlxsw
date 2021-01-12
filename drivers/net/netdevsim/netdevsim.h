@@ -297,6 +297,8 @@ struct nsim_dev_linecard {
 	bool provisioned;
 	const char *type;
 	unsigned int port_count;
+	bool inserted;
+	const char *inserted_type;
 	struct work_struct provision_work;
 	struct work_struct unprovision_work;
 };
