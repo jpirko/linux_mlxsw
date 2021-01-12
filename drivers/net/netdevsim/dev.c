@@ -35,14 +35,23 @@
 
 #include "netdevsim.h"
 
+#define NSIM_DEV_LINECARD_PORT_INDEX_BASE 1024
+#define NSIM_DEV_LINECARD_PORT_INDEX_STEP 256
+
 static unsigned int
-nsim_dev_port_index(enum nsim_dev_port_type type, unsigned int port_index)
+nsim_dev_port_index(enum nsim_dev_port_type type,
+		    struct nsim_dev_linecard *nsim_dev_linecard,
+		    unsigned int port_index)
 {
 	switch (type) {
 	case NSIM_DEV_PORT_TYPE_VF:
 		port_index = NSIM_DEV_VF_PORT_INDEX_BASE + port_index;
 		break;
 	case NSIM_DEV_PORT_TYPE_PF:
+		if (nsim_dev_linecard)
+			port_index += NSIM_DEV_LINECARD_PORT_INDEX_BASE +
+				      nsim_dev_linecard->linecard_index *
+				      NSIM_DEV_LINECARD_PORT_INDEX_STEP;
 		break;
 	}
 
@@ -622,8 +631,9 @@ static int nsim_esw_switchdev_enable(struct nsim_dev *nsim_dev,
 	struct nsim_bus_dev *nsim_bus_dev = nsim_dev->nsim_bus_dev;
 	int i, err;
 
-	for (i = 0; i < nsim_dev_get_vfs(nsim_dev); i++) {
-		err = nsim_drv_port_add(nsim_bus_dev, NSIM_DEV_PORT_TYPE_VF, i);
+	for (i = 0; i < nsim_bus_dev->num_vfs; i++) {
+		err = nsim_drv_port_add(nsim_bus_dev, NSIM_DEV_PORT_TYPE_VF,
+					NULL, i);
 		if (err) {
 			NL_SET_ERR_MSG_MOD(extack, "Failed to initialize VFs' netdevsim ports");
 			pr_err("Failed to initialize VF id=%d. %d.\n", i, err);
@@ -635,7 +645,7 @@ static int nsim_esw_switchdev_enable(struct nsim_dev *nsim_dev,
 
 err_port_add_vfs:
 	for (i--; i >= 0; i--)
-		nsim_drv_port_del(nsim_bus_dev, NSIM_DEV_PORT_TYPE_VF, i);
+		nsim_drv_port_del(nsim_bus_dev, NSIM_DEV_PORT_TYPE_VF, NULL, i);
 	return err;
 }
 
@@ -1383,6 +1393,7 @@ static const struct devlink_ops nsim_dev_devlink_ops = {
 #define NSIM_DEV_TEST1_DEFAULT true
 
 static int __nsim_dev_port_add(struct nsim_dev *nsim_dev, enum nsim_dev_port_type type,
+			       struct nsim_dev_linecard *nsim_dev_linecard,
 			       unsigned int port_index)
 {
 	struct devlink_port_attrs attrs = {};
@@ -1396,8 +1407,10 @@ static int __nsim_dev_port_add(struct nsim_dev *nsim_dev, enum nsim_dev_port_typ
 	nsim_dev_port = kzalloc(sizeof(*nsim_dev_port), GFP_KERNEL);
 	if (!nsim_dev_port)
 		return -ENOMEM;
-	nsim_dev_port->port_index = nsim_dev_port_index(type, port_index);
+	nsim_dev_port->port_index = nsim_dev_port_index(type, nsim_dev_linecard,
+							port_index);
 	nsim_dev_port->port_type = type;
+	nsim_dev_port->linecard = nsim_dev_linecard;
 
 	devlink_port = &nsim_dev_port->devlink_port;
 	if (nsim_dev_port_is_pf(nsim_dev_port)) {
@@ -1433,6 +1446,11 @@ static int __nsim_dev_port_add(struct nsim_dev *nsim_dev, enum nsim_dev_port_typ
 			goto err_nsim_destroy;
 	}
 
+	if (nsim_dev_linecard)
+		list_add(&nsim_dev_port->list_lc, &nsim_dev_linecard->port_list);
+	else
+		netif_carrier_on(nsim_dev_port->ns->netdev);
+
 	devlink_port_type_eth_set(devlink_port, nsim_dev_port->ns->netdev);
 	list_add(&nsim_dev_port->list, &nsim_dev->port_list);
 
@@ -1456,6 +1474,8 @@ static void __nsim_dev_port_del(struct nsim_dev_port *nsim_dev_port)
 	list_del(&nsim_dev_port->list);
 	if (nsim_dev_port_is_vf(nsim_dev_port))
 		devlink_rate_leaf_destroy(&nsim_dev_port->devlink_port);
+	if (nsim_dev_port->linecard)
+		list_del(&nsim_dev_port->list_lc);
 	devlink_port_type_clear(devlink_port);
 	nsim_destroy(nsim_dev_port->ns);
 	nsim_dev_port_debugfs_exit(nsim_dev_port);
@@ -1480,7 +1500,8 @@ static int nsim_dev_port_add_all(struct nsim_dev *nsim_dev,
 	int i, err;
 
 	for (i = 0; i < port_count; i++) {
-		err = __nsim_dev_port_add(nsim_dev, NSIM_DEV_PORT_TYPE_PF, i);
+		err = __nsim_dev_port_add(nsim_dev, NSIM_DEV_PORT_TYPE_PF,
+					  NULL, i);
 		if (err)
 			goto err_port_del_all;
 	}
@@ -1502,6 +1523,7 @@ static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
 		return -ENOMEM;
 	nsim_dev_linecard->nsim_dev = nsim_dev;
 	nsim_dev_linecard->linecard_index = linecard_index;
+	INIT_LIST_HEAD(&nsim_dev_linecard->port_list);
 
 	err = nsim_dev_linecard_debugfs_init(nsim_dev, nsim_dev_linecard);
 	if (err)
@@ -1780,11 +1802,12 @@ void nsim_drv_remove(struct nsim_bus_dev *nsim_bus_dev)
 
 static struct nsim_dev_port *
 __nsim_dev_port_lookup(struct nsim_dev *nsim_dev, enum nsim_dev_port_type type,
+		       struct nsim_dev_linecard *nsim_dev_linecard,
 		       unsigned int port_index)
 {
 	struct nsim_dev_port *nsim_dev_port;
 
-	port_index = nsim_dev_port_index(type, port_index);
+	port_index = nsim_dev_port_index(type, nsim_dev_linecard, port_index);
 	list_for_each_entry(nsim_dev_port, &nsim_dev->port_list, list)
 		if (nsim_dev_port->port_index == port_index)
 			return nsim_dev_port;
@@ -1792,21 +1815,25 @@ __nsim_dev_port_lookup(struct nsim_dev *nsim_dev, enum nsim_dev_port_type type,
 }
 
 int nsim_drv_port_add(struct nsim_bus_dev *nsim_bus_dev, enum nsim_dev_port_type type,
+		      struct nsim_dev_linecard *nsim_dev_linecard,
 		      unsigned int port_index)
 {
 	struct nsim_dev *nsim_dev = dev_get_drvdata(&nsim_bus_dev->dev);
 	int err;
 
 	mutex_lock(&nsim_dev->port_list_lock);
-	if (__nsim_dev_port_lookup(nsim_dev, type, port_index))
+	if (__nsim_dev_port_lookup(nsim_dev, type,
+				   nsim_dev_linecard, port_index))
 		err = -EEXIST;
 	else
-		err = __nsim_dev_port_add(nsim_dev, type, port_index);
+		err = __nsim_dev_port_add(nsim_dev, type,
+					  nsim_dev_linecard, port_index);
 	mutex_unlock(&nsim_dev->port_list_lock);
 	return err;
 }
 
 int nsim_drv_port_del(struct nsim_bus_dev *nsim_bus_dev, enum nsim_dev_port_type type,
+		      struct nsim_dev_linecard *nsim_dev_linecard,
 		      unsigned int port_index)
 {
 	struct nsim_dev *nsim_dev = dev_get_drvdata(&nsim_bus_dev->dev);
@@ -1814,7 +1841,8 @@ int nsim_drv_port_del(struct nsim_bus_dev *nsim_bus_dev, enum nsim_dev_port_type
 	int err = 0;
 
 	mutex_lock(&nsim_dev->port_list_lock);
-	nsim_dev_port = __nsim_dev_port_lookup(nsim_dev, type, port_index);
+	nsim_dev_port = __nsim_dev_port_lookup(nsim_dev, type,
+					       nsim_dev_linecard, port_index);
 	if (!nsim_dev_port)
 		err = -ENOENT;
 	else
