@@ -314,6 +314,8 @@ static int nsim_init_netdevsim(struct netdevsim *ns)
 
 	nsim_ipsec_init(ns);
 
+	netif_carrier_off(ns->netdev);
+
 	err = register_netdevice(ns->netdev);
 	if (err)
 		goto err_ipsec_teardown;

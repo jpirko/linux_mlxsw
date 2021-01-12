@@ -232,6 +232,7 @@ struct nsim_dev_linecard;
 
 struct nsim_dev_port {
 	struct list_head list;
+	struct list_head list_lc; /* node in linecard list */
 	struct devlink_port devlink_port;
 	struct nsim_dev_linecard *linecard;
 	unsigned int port_index;
@@ -310,6 +311,7 @@ struct nsim_dev {
 struct nsim_dev_linecard {
 	struct list_head list;
 	struct nsim_dev *nsim_dev;
+	struct list_head port_list;
 	unsigned int linecard_index;
 	struct dentry *ddir;
 };
@@ -335,9 +337,11 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev);
 void nsim_drv_remove(struct nsim_bus_dev *nsim_bus_dev);
 int nsim_drv_port_add(struct nsim_bus_dev *nsim_bus_dev,
 		      enum nsim_dev_port_type type,
+		      struct nsim_dev_linecard *nsim_dev_linecard,
 		      unsigned int port_index);
 int nsim_drv_port_del(struct nsim_bus_dev *nsim_bus_dev,
 		      enum nsim_dev_port_type type,
+		      struct nsim_dev_linecard *nsim_dev_linecard,
 		      unsigned int port_index);
 int nsim_drv_configure_vfs(struct nsim_bus_dev *nsim_bus_dev,
 			   unsigned int num_vfs);
