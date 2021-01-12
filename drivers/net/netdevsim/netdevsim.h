@@ -289,10 +289,16 @@ struct nsim_dev {
 
 struct nsim_dev_linecard {
 	struct list_head list;
+	struct devlink_linecard *devlink_linecard;
 	struct nsim_dev *nsim_dev;
 	struct list_head port_list;
 	unsigned int linecard_index;
 	struct dentry *ddir;
+	bool provisioned;
+	const char *type;
+	unsigned int port_count;
+	struct work_struct provision_work;
+	struct work_struct unprovision_work;
 };
 
 static inline bool nsim_esw_mode_is_legacy(struct nsim_dev *nsim_dev)

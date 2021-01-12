@@ -35,6 +35,14 @@
 
 #include "netdevsim.h"
 
+static const char * const nsim_dev_linecard_supported_types[] = {
+	"card1port", "card2ports", "card4ports",
+};
+
+static const unsigned int nsim_dev_linecard_port_counts[] = {
+	1, 2, 4,
+};
+
 #define NSIM_DEV_LINECARD_PORT_INDEX_BASE 1024
 #define NSIM_DEV_LINECARD_PORT_INDEX_STEP 256
 
@@ -439,6 +447,25 @@ static void nsim_dev_port_debugfs_exit(struct nsim_dev_port *nsim_dev_port)
 	debugfs_remove_recursive(nsim_dev_port->ddir);
 }
 
+static ssize_t nsim_dev_linecard_type_read(struct file *file, char __user *data,
+					   size_t count, loff_t *ppos)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard = file->private_data;
+
+	if (!nsim_dev_linecard->provisioned)
+		return -EOPNOTSUPP;
+
+	return simple_read_from_buffer(data, count, ppos,
+				       nsim_dev_linecard->type,
+				       strlen(nsim_dev_linecard->type));
+}
+
+static const struct file_operations nsim_dev_linecard_type_fops = {
+	.open = simple_open,
+	.read = nsim_dev_linecard_type_read,
+	.owner = THIS_MODULE,
+};
+
 static int
 nsim_dev_linecard_debugfs_init(struct nsim_dev *nsim_dev,
 			       struct nsim_dev_linecard *nsim_dev_linecard)
@@ -455,6 +482,8 @@ nsim_dev_linecard_debugfs_init(struct nsim_dev *nsim_dev,
 	sprintf(dev_link_name, "../../../" DRV_NAME "%u",
 		nsim_dev->nsim_bus_dev->dev.id);
 	debugfs_create_symlink("dev", nsim_dev_linecard->ddir, dev_link_name);
+	debugfs_create_file("type", 0400, nsim_dev_linecard->ddir,
+			    nsim_dev_linecard, &nsim_dev_linecard_type_fops);
 
 	return 0;
 }
@@ -1424,6 +1453,9 @@ static int __nsim_dev_port_add(struct nsim_dev *nsim_dev, enum nsim_dev_port_typ
 	memcpy(attrs.switch_id.id, nsim_dev->switch_id.id, nsim_dev->switch_id.id_len);
 	attrs.switch_id.id_len = nsim_dev->switch_id.id_len;
 	devlink_port_attrs_set(devlink_port, &attrs);
+	if (nsim_dev_linecard)
+		devlink_port_linecard_set(devlink_port,
+					  nsim_dev_linecard->devlink_linecard);
 	err = devlink_port_register(priv_to_devlink(nsim_dev), devlink_port,
 				    nsim_dev_port->port_index);
 	if (err)
@@ -1512,10 +1544,104 @@ err_port_del_all:
 	return err;
 }
 
+static void nsim_dev_linecard_provision_work(struct work_struct *work)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard;
+	struct nsim_bus_dev *nsim_bus_dev;
+	int err;
+	int i;
+
+	nsim_dev_linecard = container_of(work, struct nsim_dev_linecard,
+					 provision_work);
+
+	nsim_bus_dev = nsim_dev_linecard->nsim_dev->nsim_bus_dev;
+	for (i = 0; i < nsim_dev_linecard->port_count; i++) {
+		err = nsim_drv_port_add(nsim_bus_dev, NSIM_DEV_PORT_TYPE_PF,
+					nsim_dev_linecard, i);
+		if (err)
+			goto err_port_del_all;
+	}
+	nsim_dev_linecard->provisioned = true;
+	devlink_linecard_provision_set(nsim_dev_linecard->devlink_linecard,
+				       nsim_dev_linecard->type);
+	return;
+
+err_port_del_all:
+	for (i--; i >= 0; i--)
+		nsim_drv_port_del(nsim_bus_dev, NSIM_DEV_PORT_TYPE_PF,
+				  nsim_dev_linecard, i);
+	devlink_linecard_provision_fail(nsim_dev_linecard->devlink_linecard);
+}
+
+static int nsim_dev_linecard_provision(struct devlink_linecard *linecard,
+				       void *priv, const char *type,
+				       const void *type_priv,
+				       struct netlink_ext_ack *extack)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard = priv;
+	const unsigned int *port_count = type_priv;
+
+	nsim_dev_linecard->type = type;
+	nsim_dev_linecard->port_count = *port_count;
+	schedule_work(&nsim_dev_linecard->provision_work);
+	return 0;
+}
+
+static void nsim_dev_linecard_unprovision_work(struct work_struct *work)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard;
+	struct nsim_bus_dev *nsim_bus_dev;
+	int i;
+
+	nsim_dev_linecard = container_of(work, struct nsim_dev_linecard,
+					 unprovision_work);
+
+	nsim_bus_dev = nsim_dev_linecard->nsim_dev->nsim_bus_dev;
+	nsim_dev_linecard->provisioned = false;
+	devlink_linecard_provision_clear(nsim_dev_linecard->devlink_linecard);
+	for (i = 0; i < nsim_dev_linecard->port_count; i++)
+		nsim_drv_port_del(nsim_bus_dev, NSIM_DEV_PORT_TYPE_PF,
+				  nsim_dev_linecard, i);
+}
+
+static int nsim_dev_linecard_unprovision(struct devlink_linecard *linecard,
+					 void *priv,
+					 struct netlink_ext_ack *extack)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard = priv;
+
+	schedule_work(&nsim_dev_linecard->unprovision_work);
+	return 0;
+}
+
+static unsigned int
+nsim_dev_linecard_types_count(struct devlink_linecard *linecard,
+			      void *priv)
+{
+	return ARRAY_SIZE(nsim_dev_linecard_supported_types);
+}
+
+static void nsim_dev_linecard_types_get(struct devlink_linecard *linecard,
+					void *priv, unsigned int index,
+					const char **type,
+					const void **type_priv)
+{
+	*type = nsim_dev_linecard_supported_types[index];
+	*type_priv = &nsim_dev_linecard_port_counts[index];
+}
+
+static const struct devlink_linecard_ops nsim_dev_linecard_ops = {
+	.provision = nsim_dev_linecard_provision,
+	.unprovision = nsim_dev_linecard_unprovision,
+	.types_count = nsim_dev_linecard_types_count,
+	.types_get = nsim_dev_linecard_types_get,
+};
+
 static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
 				   unsigned int linecard_index)
 {
 	struct nsim_dev_linecard *nsim_dev_linecard;
+	struct devlink_linecard *devlink_linecard;
 	int err;
 
 	nsim_dev_linecard = kzalloc(sizeof(*nsim_dev_linecard), GFP_KERNEL);
@@ -1524,15 +1650,32 @@ static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
 	nsim_dev_linecard->nsim_dev = nsim_dev;
 	nsim_dev_linecard->linecard_index = linecard_index;
 	INIT_LIST_HEAD(&nsim_dev_linecard->port_list);
+	INIT_WORK(&nsim_dev_linecard->provision_work,
+		  nsim_dev_linecard_provision_work);
+	INIT_WORK(&nsim_dev_linecard->unprovision_work,
+		  nsim_dev_linecard_unprovision_work);
+
+	devlink_linecard = devlink_linecard_create(priv_to_devlink(nsim_dev),
+						   linecard_index,
+						   &nsim_dev_linecard_ops,
+						   nsim_dev_linecard);
+	if (IS_ERR(devlink_linecard)) {
+		err = PTR_ERR(devlink_linecard);
+		goto err_linecard_free;
+	}
+
+	nsim_dev_linecard->devlink_linecard = devlink_linecard;
 
 	err = nsim_dev_linecard_debugfs_init(nsim_dev, nsim_dev_linecard);
 	if (err)
-		goto err_linecard_free;
+		goto err_dl_linecard_destroy;
 
 	list_add(&nsim_dev_linecard->list, &nsim_dev->linecard_list);
 
 	return 0;
 
+err_dl_linecard_destroy:
+	devlink_linecard_destroy(devlink_linecard);
 err_linecard_free:
 	kfree(nsim_dev_linecard);
 	return err;
@@ -1540,8 +1683,14 @@ err_linecard_free:
 
 static void __nsim_dev_linecard_del(struct nsim_dev_linecard *nsim_dev_linecard)
 {
+	struct devlink_linecard *devlink_linecard =
+					nsim_dev_linecard->devlink_linecard;
+
+	cancel_work_sync(&nsim_dev_linecard->provision_work);
+	cancel_work_sync(&nsim_dev_linecard->unprovision_work);
 	list_del(&nsim_dev_linecard->list);
 	nsim_dev_linecard_debugfs_exit(nsim_dev_linecard);
+	devlink_linecard_destroy(devlink_linecard);
 	kfree(nsim_dev_linecard);
 }
 
