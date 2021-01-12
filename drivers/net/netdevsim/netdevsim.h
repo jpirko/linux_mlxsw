@@ -317,6 +317,9 @@ struct nsim_dev_linecard {
 	struct dentry *ddir;
 	bool provisioned;
 	const char *type;
+	unsigned int port_count;
+	bool inserted;
+	const char *inserted_type;
 };
 
 static inline bool nsim_esw_mode_is_legacy(struct nsim_dev *nsim_dev)
