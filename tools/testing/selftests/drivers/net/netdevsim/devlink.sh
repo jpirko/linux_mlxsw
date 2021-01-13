@@ -5,13 +5,14 @@ lib_dir=$(dirname $0)/../../../net/forwarding
 
 ALL_TESTS="fw_flash_test params_test regions_test reload_test \
 	   netns_reload_test resource_test dev_info_test \
-	   empty_reporter_test dummy_reporter_test rate_test"
+	   empty_reporter_test dummy_reporter_test rate_test linecard_test"
 NUM_NETIFS=0
 source $lib_dir/lib.sh
 
 BUS_ADDR=10
 PORT_COUNT=4
 VF_COUNT=4
+LINECARD_COUNT=2
 DEV_NAME=netdevsim$BUS_ADDR
 SYSFS_NET_DIR=/sys/bus/netdevsim/devices/$DEV_NAME/net/
 DEBUGFS_DIR=/sys/kernel/debug/netdevsim/$DEV_NAME/
@@ -672,10 +673,67 @@ rate_test()
 	log_test "rate test"
 }
 
+check_linecards_state()
+{
+	local expected_state_0=$1
+	local expected_state_1=$2
+
+	local state=$(devlink lc show $DL_HANDLE lc 0 -j | jq -e -r ".[][][].state")
+	check_err $? "Failed to get linecard 0 state"
+
+	[ "$state" == "$expected_state_0" ]
+	check_err $? "Unexpected linecard 0 state (got $state, expected $expected_state_0)"
+
+	local state=$(devlink lc show $DL_HANDLE lc 1 -j | jq -e -r ".[][][].state")
+	check_err $? "Failed to get linecard 1 state"
+
+	[ "$state" == "$expected_state_1" ]
+	check_err $? "Unexpected linecard 1 state (got $state, expected $expected_state_1)"
+}
+
+linecard_test()
+{
+	RET=0
+
+	check_linecards_state "unprovisioned" "unprovisioned"
+
+	devlink lc set $DL_HANDLE lc 0 type card2ports
+	check_err $? "Failed to provision linecard 0 with card2ports"
+
+	check_linecards_state "provisioned" "unprovisioned"
+
+	devlink lc set $DL_HANDLE lc 1 type card4ports
+	check_err $? "Failed to provision linecard 0 with card4ports"
+
+	check_linecards_state "provisioned" "provisioned"
+
+	echo "card2ports"> $DEBUGFS_DIR/linecards/0/inserted_type
+	check_err $? "Failed to insert linecard 0"
+
+	check_linecards_state "active" "provisioned"
+
+	echo "card4ports"> $DEBUGFS_DIR/linecards/1/inserted_type
+	check_err $? "Failed to insert linecard 1"
+
+	check_linecards_state "active" "active"
+
+	devlink lc set $DL_HANDLE lc 0 notype
+	check_err $? "Failed to unprovision linecard 0"
+
+	check_linecards_state "unprovisioned" "active"
+
+	devlink lc set $DL_HANDLE lc 1 notype
+	check_err $? "Failed to unprovision linecard 1"
+
+	check_linecards_state "unprovisioned" "unprovisioned"
+
+	log_test "linecard test"
+}
+
 setup_prepare()
 {
 	modprobe netdevsim
-	echo "$BUS_ADDR $PORT_COUNT" > /sys/bus/netdevsim/new_device
+	echo "$BUS_ADDR $PORT_COUNT 1 $LINECARD_COUNT" > /sys/bus/netdevsim/new_device
 	while [ ! -d $SYSFS_NET_DIR ] ; do :; done
 }
 
