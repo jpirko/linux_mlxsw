@@ -28,6 +28,7 @@ ALL_TESTS="
 	nexthop_res_group_increase_unbalanced_timer_test
 	nexthop_res_group_decrease_unbalanced_timer_test
 	nexthop_res_group_force_migrate_busy_test
+	nexthop_res_group_unbalanced_timer_per_nexthop_test
 	nexthop_single_replace_test
 	nexthop_single_replace_err_test
 	nexthop_single_in_group_replace_test
@@ -714,6 +715,69 @@ nexthop_res_group_force_migrate_busy_test()
 	check_err $? "All buckets expected to have migrated"
 
 	log_test "Busy buckets force-migrated when NH removed"
+
+	$IP nexthop flush &> /dev/null
+}
+
+nexthop_res_group_unbalanced_timer_per_nexthop_test()
+{
+	$IP nexthop add id 1 via 192.0.2.2 dev dummy1
+	$IP nexthop add id 2 via 192.0.2.3 dev dummy1
+	$IP nexthop add id 3 via 192.0.2.3 dev dummy1
+
+	RET=0
+
+	$IP nexthop add id 10 group 1,2/2,3/3,3 type resilient \
+	    buckets 8 idle_timer 8 unbalanced_timer 12
+	nexthop_bucket_nhid_count_check 10  1 2  2 3  3 3
+	check_err $? "Inconsistent initial state"
+
+	# Make 1 underweight and 3 overweight.
+	nexthop_res_mark_buckets_busy 10 2
+	nexthop_res_mark_buckets_busy 10 3
+	$IP nexthop replace id 10 group 1,3/2,3/3,2 type resilient
+	nexthop_bucket_nhid_count_check 10  1 2  2 3  3 3
+	check_err $? "Ckpt 1: Group expected to be unbalanced"
+
+	sleep 6
+
+	# Make 1 more underweight and 2 overweight.
+	$IP nexthop replace id 10 group 1,4/2,2/3,2 type resilient
+	nexthop_bucket_nhid_count_check 10  1 2  2 3  3 3
+	check_err $? "Ckpt 2: Group expected to be unbalanced"
+
+	# Now remark activity in buckets that have NHs 2 and 3, but leave
+	# the last of the 3's unmarked.
+	nexthop_res_mark_buckets_busy 10 2
+	nexthop_res_mark_buckets_busy 10 3 -1
+
+	sleep 4
+
+	# Idle timer on the last 3's bucket got to idle point 2 seconds
+	# ago, so it was assigned to NH 1, and NH 3 becomes balanced. The
+	# table as such is still unbalanced, because NH 1 is still 1 bucket
+	# underweight, and NH 2 overweight.
+	nexthop_bucket_nhid_count_check 10  1 3  2 3  3 2
+	check_err $? "Ckpt 3: Group expected to be unbalanced"
+
+	# Remark NH 2's buckets' activity.
+	nexthop_res_mark_buckets_busy 10 2
+	sleep 6
+
+	# At this point, NH 2's buckets are not idle yet, so NH 2 is still
+	# overweight and NH 1 still underweight. It has now been 16
+	# seconds that the table has not reached balance. If the unbalanced
+	# timer were per-table, it would have triggered by now.
+	nexthop_bucket_nhid_count_check 10  1 3  2 3  3 2
+	check_err $? "Ckpt 4: Group expected to be unbalanced"
+
+	sleep 4
+
+	# NH 2 became idle 2 seconds ago, the table should be balanced.
+	nexthop_bucket_nhid_count_check 10  1 4  2 2  3 2
+	check_err $? "Group expected to be balanced"
+
+	log_test "Unbalanced timer kept per nexthop"
 
 	$IP nexthop flush &> /dev/null
 }
