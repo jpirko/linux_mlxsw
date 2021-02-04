@@ -1387,6 +1387,7 @@ static int mlxsw_sp_qevent_mirror_configure(struct mlxsw_sp *mlxsw_sp,
 {
 	struct mlxsw_sp_span_agent_parms agent_parms = {
 		.to_dev = mall_entry->mirror.to_dev,
+		.session_id = MLXSW_SP_SPAN_SESSION_ID_BUFFER,
 	};
 
 	return mlxsw_sp_qevent_span_configure(mlxsw_sp, mall_entry, qevent_binding,
