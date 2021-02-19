@@ -123,9 +123,12 @@ static int mlxsw_linecard_ready_clear(struct mlxsw_core *mlxsw_core,
 	return 0;
 }
 
-static void mlxsw_linecard_active_set(struct mlxsw_linecard *linecard)
+static void mlxsw_linecard_active_set(struct mlxsw_linecard *linecard,
+				      u16 hw_revision, u16 ini_version)
 {
 	linecard->active = true;
+	linecard->hw_revision = hw_revision;
+	linecard->ini_version = ini_version;
 	devlink_linecard_activate(linecard->devlink_linecard);
 }
 
@@ -179,7 +182,7 @@ static int mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
 
 	if (!process_provision_only && !linecard->unprovision_done && active &&
 	    linecard->active != active && linecard->ready)
-		mlxsw_linecard_active_set(linecard);
+		mlxsw_linecard_active_set(linecard, hw_revision, ini_version);
 
 	if (!process_provision_only && !linecard->unprovision_done && !active &&
 	    linecard->active != active)
@@ -622,11 +625,33 @@ static void mlxsw_linecard_types_get(struct devlink_linecard *devlink_linecard,
 	*type_priv = ini_file;
 }
 
+static int
+mlxsw_linecard_info_get(struct devlink_linecard *devlink_linecard, void *priv,
+			struct devlink_info_req *req,
+			struct netlink_ext_ack *extack)
+{
+	struct mlxsw_linecard *linecard = priv;
+	char buf[32];
+	int err;
+
+	if (!linecard->active)
+		return 0;
+
+	sprintf(buf, "%d", linecard->hw_revision);
+	err = devlink_info_version_fixed_put(req, "hw.revision", buf);
+	if (err)
+		return err;
+
+	sprintf(buf, "%d", linecard->ini_version);
+	return devlink_info_version_running_put(req, "ini.version", buf);
+}
+
 static const struct devlink_linecard_ops mlxsw_linecard_ops = {
 	.provision = mlxsw_linecard_provision,
 	.unprovision = mlxsw_linecard_unprovision,
 	.types_count = mlxsw_linecard_types_count,
 	.types_get = mlxsw_linecard_types_get,
+	.info_get = mlxsw_linecard_info_get,
 };
 
 static int mlxsw_linecard_event_delivery_set(struct mlxsw_core *mlxsw_core,

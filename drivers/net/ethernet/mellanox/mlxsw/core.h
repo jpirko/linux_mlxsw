@@ -578,6 +578,8 @@ struct mlxsw_linecard {
 	bool ready;
 	bool active;
 	bool unprovision_done;
+	u16 hw_revision;
+	u16 ini_version;
 };
 
 struct mlxsw_linecard_types_info;
