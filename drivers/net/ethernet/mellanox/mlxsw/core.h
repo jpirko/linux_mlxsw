@@ -580,6 +580,7 @@ struct mlxsw_linecard {
 	bool unprovision_done;
 	u16 hw_revision;
 	u16 ini_version;
+	struct list_head device_list;
 };
 
 struct mlxsw_linecard_types_info;
