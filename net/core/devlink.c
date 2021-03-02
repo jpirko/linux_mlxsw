@@ -2066,10 +2066,12 @@ struct devlink_linecard_device {
 	struct list_head list;
 	unsigned int index;
 	const char *flash_component;
+	void *priv;
 };
 
 static int
 devlink_nl_linecard_device_fill(struct sk_buff *msg,
+				struct devlink_linecard *linecard,
 				struct devlink_linecard_device *linecard_device)
 {
 	struct nlattr *attr;
@@ -2103,7 +2105,8 @@ static int devlink_nl_linecard_devices_fill(struct sk_buff *msg,
 	if (!attr)
 		return -EMSGSIZE;
 	list_for_each_entry(linecard_device, &linecard->device_list, list) {
-		err = devlink_nl_linecard_device_fill(msg, linecard_device);
+		err = devlink_nl_linecard_device_fill(msg, linecard,
+						      linecard_device);
 		if (err)
 			return err;
 	}
@@ -2415,6 +2418,66 @@ static int devlink_nl_cmd_linecard_set_doit(struct sk_buff *skb,
 }
 
 static int
+devlink_nl_linecard_device_info_fill(struct sk_buff *msg,
+				     struct devlink_linecard *linecard,
+				     struct devlink_linecard_device *linecard_device,
+				     struct netlink_ext_ack *extack)
+{
+	struct nlattr *attr, *attr2;
+
+	attr = nla_nest_start(msg, DEVLINK_ATTR_LINECARD_DEVICE);
+	if (!attr)
+		return -EMSGSIZE;
+	if (nla_put_u32(msg, DEVLINK_ATTR_LINECARD_DEVICE_INDEX,
+			linecard_device->index))
+		return -EMSGSIZE;
+	if (linecard->ops->device_info_get) {
+		struct devlink_info_req req;
+		int err;
+
+		attr2 = nla_nest_start(msg, DEVLINK_ATTR_LINECARD_DEVICE_INFO);
+		if (!attr2)
+			return -EMSGSIZE;
+		req.msg = msg;
+		err = linecard->ops->device_info_get(linecard_device,
+						     linecard_device->priv,
+						     &req, extack);
+		if (err)
+			return -EMSGSIZE;
+		nla_nest_end(msg, attr2);
+	}
+	nla_nest_end(msg, attr);
+
+	return 0;
+}
+
+static int devlink_nl_linecard_devices_info_fill(struct sk_buff *msg,
+						 struct devlink_linecard *linecard,
+						 struct netlink_ext_ack *extack)
+{
+	struct devlink_linecard_device *linecard_device;
+	struct nlattr *attr;
+	int err;
+
+	if (list_empty(&linecard->device_list))
+		return 0;
+
+	attr = nla_nest_start(msg, DEVLINK_ATTR_LINECARD_DEVICE_LIST);
+	if (!attr)
+		return -EMSGSIZE;
+	list_for_each_entry(linecard_device, &linecard->device_list, list) {
+		err = devlink_nl_linecard_device_info_fill(msg, linecard,
+							   linecard_device,
+							   extack);
+		if (err)
+			return err;
+	}
+	nla_nest_end(msg, attr);
+
+	return 0;
+}
+
+static int
 devlink_nl_linecard_info_fill(struct sk_buff *msg, struct devlink *devlink,
 			      struct devlink_linecard *linecard,
 			      enum devlink_command cmd, u32 portid,
@@ -2443,6 +2506,10 @@ devlink_nl_linecard_info_fill(struct sk_buff *msg, struct devlink *devlink,
 	if (err)
 		goto nla_put_failure;
 	nla_nest_end(msg, attr);
+
+	err = devlink_nl_linecard_devices_info_fill(msg, linecard, extack);
+	if (err)
+		goto nla_put_failure;
 
 	genlmsg_end(msg, hdr);
 	return 0;
@@ -10429,7 +10496,7 @@ EXPORT_SYMBOL_GPL(devlink_linecard_destroy);
 struct devlink_linecard_device *
 devlink_linecard_device_create(struct devlink_linecard *linecard,
 			       unsigned int device_index,
-			       const char *flash_component)
+			       const char *flash_component, void *priv)
 {
 	struct devlink_linecard_device *linecard_device;
 
@@ -10438,6 +10505,7 @@ devlink_linecard_device_create(struct devlink_linecard *linecard,
 		return ERR_PTR(-ENOMEM);
 	linecard_device->index = device_index;
 	linecard_device->flash_component = flash_component;
+	linecard_device->priv = priv;
 	mutex_lock(&linecard->devlink->lock);
 	list_add_tail(&linecard_device->list, &linecard->device_list);
 	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
