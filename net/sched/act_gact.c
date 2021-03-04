@@ -247,6 +247,8 @@ static int tcf_gact_offload_act_setup(struct tc_action *act, void *entry_data,
 			entry->id = FLOW_ACTION_DROP;
 		} else if (is_tcf_gact_trap(act)) {
 			entry->id = FLOW_ACTION_TRAP;
+		} else if (is_tcf_gact_trap_fwd(act)) {
+			entry->id = FLOW_ACTION_TRAP_FWD;
 		} else if (is_tcf_gact_goto_chain(act)) {
 			entry->id = FLOW_ACTION_GOTO;
 			entry->chain_index = tcf_gact_goto_chain_index(act);
