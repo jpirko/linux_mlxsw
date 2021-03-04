@@ -4015,6 +4015,7 @@ sch_handle_egress(struct sk_buff *skb, int *ret, struct net_device *dev)
 	switch (tcf_classify(skb, miniq->block, miniq->filter_list, &cl_res, false)) {
 	case TC_ACT_OK:
 	case TC_ACT_RECLASSIFY:
+	case TC_ACT_TRAP_FWD:
 		skb->tc_index = TC_H_MIN(cl_res.classid);
 		break;
 	case TC_ACT_SHOT:
@@ -5167,6 +5168,7 @@ sch_handle_ingress(struct sk_buff *skb, struct packet_type **pt_prev, int *ret,
 	switch (tcf_classify(skb, miniq->block, miniq->filter_list, &cl_res, false)) {
 	case TC_ACT_OK:
 	case TC_ACT_RECLASSIFY:
+	case TC_ACT_TRAP_FWD:
 		skb->tc_index = TC_H_MIN(cl_res.classid);
 		break;
 	case TC_ACT_SHOT:
