@@ -1104,6 +1104,7 @@ enum mlxsw_sp_mall_action_type {
 	MLXSW_SP_MALL_ACTION_TYPE_MIRROR,
 	MLXSW_SP_MALL_ACTION_TYPE_SAMPLE,
 	MLXSW_SP_MALL_ACTION_TYPE_TRAP,
+	MLXSW_SP_MALL_ACTION_TYPE_TRAP_FWD,
 };
 
 struct mlxsw_sp_mall_mirror_entry {
