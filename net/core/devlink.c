@@ -11855,6 +11855,7 @@ static const struct devlink_trap devlink_trap_generic[] = {
 	DEVLINK_TRAP(DMAC_FILTER, DROP),
 	DEVLINK_TRAP(EAPOL, CONTROL),
 	DEVLINK_TRAP(LOCKED_PORT, DROP),
+	DEVLINK_TRAP(ECN_MARK, DROP),
 };
 
 #define DEVLINK_TRAP_GROUP(_id)						      \
