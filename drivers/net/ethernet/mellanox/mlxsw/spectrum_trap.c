@@ -55,6 +55,8 @@ enum {
 	MLXSW_SP_MIRROR_REASON_POLICY_ENGINE = 2,
 	/* Packet was early dropped. */
 	MLXSW_SP_MIRROR_REASON_INGRESS_WRED = 9,
+	/* Packet was ECN marked. */
+	MLXSW_SP_MIRROR_REASON_EGRESS_ECN = 13,
 	/* Packet was mirrored from egress. */
 	MLXSW_SP_MIRROR_REASON_EGRESS = 14,
 };
@@ -1948,6 +1950,13 @@ mlxsw_sp2_trap_items_arr[] = {
 					 SP_PKT_SAMPLE,
 					 MLXSW_SP_MIRROR_REASON_POLICY_ENGINE),
 		},
+	},
+	{
+		.trap = MLXSW_SP_TRAP_BUFFER_DROP(ECN_MARK),
+		.listeners_arr = {
+			MLXSW_SP_RXL_BUFFER_DISCARD(EGRESS_ECN),
+		},
+		.is_source = true,
 	},
 };
 
