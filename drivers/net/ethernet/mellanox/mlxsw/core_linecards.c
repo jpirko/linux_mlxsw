@@ -778,6 +778,9 @@ mlxsw_linecard_provision_set(struct mlxsw_linecard *linecard, u8 card_type,
 			mlxsw_linecard_provision_fail(linecard);
 			return PTR_ERR(type);
 		}
+		printk("!!!queried name: %s\n", type);
+	} else {
+		printk("name by card_type: %s\n", type);
 	}
 	err = mlxsw_linecard_devices_attach(linecard);
 	if (err) {
@@ -849,7 +852,7 @@ static void mlxsw_linecard_active_clear(struct mlxsw_linecard *linecard)
 
 static int mlxsw_linecard_status_process(struct mlxsw_linecards *linecards,
 					 struct mlxsw_linecard *linecard,
-					 const char *mddq_pl)
+					 const char *mddq_pl, bool dsdsc)
 {
 	enum mlxsw_reg_mddq_slot_info_ready ready;
 	bool provisioned, sr_valid, active;
@@ -861,6 +864,8 @@ static int mlxsw_linecard_status_process(struct mlxsw_linecards *linecards,
 					&sr_valid, &ready, &active,
 					&hw_revision, &ini_version,
 					&card_type);
+	printk("%s lc %u, prov %d, sr_valid %d, ready %d, active %d, hw_revision %u, ini_version %u, card_type %u\n",
+	       dsdsc ? "DSDSC:" : "MDDQ query:", slot_index, provisioned, sr_valid, ready, active, hw_revision, ini_version, card_type);
 
 	if (linecard) {
 		if (WARN_ON(slot_index != linecard->slot_index))
@@ -919,7 +924,8 @@ static int mlxsw_linecard_status_get_and_process(struct mlxsw_core *mlxsw_core,
 	if (err)
 		return err;
 
-	return mlxsw_linecard_status_process(linecards, linecard, mddq_pl);
+	return mlxsw_linecard_status_process(linecards, linecard, mddq_pl,
+					     false);
 }
 
 static void mlxsw_linecards_irq_event_handler(struct mlxsw_core *mlxsw_core)
@@ -1063,6 +1069,7 @@ mlxsw_linecard_ini_erase(struct mlxsw_core *mlxsw_core,
 		return err;
 	}
 	mlxsw_reg_mbct_unpack(linecard->mbct_pl, NULL, &status, &fsm_state);
+	printk("ini erase status %u\n", status);
 	switch (status) {
 	case MLXSW_REG_MBCT_STATUS_ERASE_COMPLETE:
 		break;
@@ -1093,6 +1100,7 @@ static void mlxsw_linecard_bct_process(struct mlxsw_core *mlxsw_core,
 	u8 slot_index;
 
 	mlxsw_reg_mbct_unpack(mbct_pl, &slot_index, &status, &fsm_state);
+	printk("BCTOE slot_index %u, status %u, fsm_state %u\n", slot_index, status, fsm_state);
 	if (WARN_ON(slot_index > linecards->count))
 		return;
 	linecard = mlxsw_linecard_get(linecards, slot_index);
@@ -1128,6 +1136,7 @@ mlxsw_linecard_ini_activate(struct mlxsw_core *mlxsw_core,
 		return err;
 	}
 	mlxsw_reg_mbct_unpack(linecard->mbct_pl, NULL, &status, &fsm_state);
+	printk("Activation status %u, fsm_state %u\n", status, fsm_state);
 	if (status == MLXSW_REG_MBCT_STATUS_ACTIVATION_FAILED) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to activate linecard INI");
 		goto fix_fsm_err_out;
@@ -1159,6 +1168,7 @@ query_ini_status:
 	if (err)
 		return err;
 
+	printk("ini query fsm_state %u\n", fsm_state);
 	switch (fsm_state) {
 	case MLXSW_REG_MBCT_FSM_STATE_INI_IN_USE:
 		if (ini_wait_retries++ > MLXSW_LINECARD_INI_WAIT_RETRIES) {
@@ -1351,7 +1361,8 @@ static void mlxsw_linecard_status_event_work(struct work_struct *work)
 	event = container_of(work, struct mlxsw_linecard_status_event, work);
 	mlxsw_core = event->mlxsw_core;
 	linecards = mlxsw_core_linecards(mlxsw_core);
-	mlxsw_linecard_status_process(linecards, NULL, event->mddq_pl);
+	mlxsw_linecard_status_process(linecards, NULL, event->mddq_pl,
+				      true);
 	kfree(event);
 }
 

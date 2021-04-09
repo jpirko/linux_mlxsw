@@ -2874,8 +2874,8 @@ static int mlxsw_reg_trans_wait(struct mlxsw_reg_trans *trans)
 	err = trans->err;
 
 	if (trans->retries)
-		dev_warn(mlxsw_core->bus_info->dev, "EMAD retries (%d/%d) (tid=%llx)\n",
-			 trans->retries, MLXSW_EMAD_MAX_RETRY, trans->tid);
+		dev_warn(mlxsw_core->bus_info->dev, "EMAD retries (%d/%d) (tid=%llx),reg_id=%x(%s)\n",
+			 trans->retries, MLXSW_EMAD_MAX_RETRY, trans->tid, trans->reg->id, mlxsw_reg_id_str(trans->reg->id));
 	if (err) {
 		dev_err(mlxsw_core->bus_info->dev, "EMAD reg access failed (tid=%llx,reg_id=%x(%s),type=%s,status=%x(%s),fw_msg=\"%s\")\n",
 			trans->tid, trans->reg->id,
