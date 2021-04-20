@@ -3964,6 +3964,7 @@ mlxsw_sp_nexthop_group_refresh(struct mlxsw_sp *mlxsw_sp,
 	err = mlxsw_sp_nexthop_group_update(mlxsw_sp, nhgi, true);
 	if (err) {
 		dev_warn(mlxsw_sp->bus_info->dev, "Failed to update neigh MAC in adjacency table.\n");
+		// xxx does this leak old_adj_index?
 		goto set_trap;
 	}
 
