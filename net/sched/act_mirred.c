@@ -117,13 +117,6 @@ static int tcf_mirred_init(struct net *net, struct nlattr *nla,
 		return -EINVAL;
 	}
 	parm = nla_data(tb[TCA_MIRRED_PARMS]);
-	index = parm->index;
-	err = tcf_idr_check_alloc(tn, &index, a, bind);
-	if (err < 0)
-		return err;
-	exists = err;
-	if (exists && bind)
-		return 0;
 
 	switch (parm->eaction) {
 	case TCA_EGRESS_MIRROR:
@@ -132,13 +125,17 @@ static int tcf_mirred_init(struct net *net, struct nlattr *nla,
 	case TCA_INGRESS_MIRROR:
 		break;
 	default:
-		if (exists)
-			tcf_idr_release(*a, bind);
-		else
-			tcf_idr_cleanup(tn, index);
 		NL_SET_ERR_MSG_MOD(extack, "Unknown mirred option");
 		return -EINVAL;
 	}
+
+	index = parm->index;
+	err = tcf_idr_check_alloc(tn, &index, a, bind);
+	if (err < 0)
+		return err;
+	exists = err;
+	if (exists && bind)
+		return 0;
 
 	if (!exists) {
 		if (!parm->ifindex) {
