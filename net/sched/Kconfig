@@ -997,6 +997,16 @@ config NET_ACT_GATE
 	  To compile this code as a module, choose M here: the
 	  module will be called act_gate.
 
+config NET_ACT_DPXFER
+	tristate "Datapath Transfer"
+	depends on NET_CLS_ACT
+	help
+	  Say Y here to allow datapath transfer tc action. This action is
+	  for transferring packets between HW and SW datapaths.
+
+	  To compile this code as a module, choose M here: the
+	  module will be called act_dpxfer.
+
 config NET_IFE_SKBMARK
 	tristate "Support to encoding decoding skb mark on IFE action"
 	depends on NET_ACT_IFE
