@@ -1742,11 +1742,27 @@ static void nsim_dev_linecard_types_get(struct devlink_linecard *linecard,
 	*type_priv = &nsim_dev_linecard_port_counts[index];
 }
 
+static int nsim_dev_linecard_info_get(struct devlink_linecard *linecard,
+				      void *priv,
+				      struct devlink_info_req *req,
+				      struct netlink_ext_ack *extack)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard = priv;
+	char buf[32];
+
+	if (!nsim_dev_linecard->inserted)
+		return 0;
+
+	sprintf(buf, "1");
+	return devlink_info_version_fixed_put(req, "hw.revision", buf);
+}
+
 static const struct devlink_linecard_ops nsim_dev_linecard_ops = {
 	.provision = nsim_dev_linecard_provision,
 	.unprovision = nsim_dev_linecard_unprovision,
 	.types_count = nsim_dev_linecard_types_count,
 	.types_get = nsim_dev_linecard_types_get,
+	.info_get = nsim_dev_linecard_info_get,
 };
 
 static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
