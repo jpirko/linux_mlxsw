@@ -691,6 +691,17 @@ check_linecards_state()
 	check_err $? "Unexpected linecard 1 state (got $state, expected $expected_state_1)"
 }
 
+check_linecards_info()
+{
+	local hw_revision
+
+	hw_revision=$(devlink lc -v show $DL_HANDLE lc 0 -j | jq -e -r '.[][][].info.versions.fixed."hw.revision"')
+	check_err $? "Failed to get linecard 0 hw revision"
+
+	hw_revision=$(devlink lc -v show $DL_HANDLE lc 1 -j | jq -e -r '.[][][].info.versions.fixed."hw.revision"')
+	check_err $? "Failed to get linecard 1 hw revision"
+}
+
 linecard_test()
 {
 	RET=0
@@ -716,6 +727,8 @@ linecard_test()
 	check_err $? "Failed to insert linecard 1"
 
 	check_linecards_state "active" "active"
+
+	check_linecards_info
 
 	devlink lc set $DL_HANDLE lc 0 notype
 	check_err $? "Failed to unprovision linecard 0"
