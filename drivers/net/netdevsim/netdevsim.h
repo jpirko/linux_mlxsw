@@ -287,6 +287,8 @@ struct nsim_dev {
 	u16 esw_mode;
 };
 
+#define NSIM_DEV_LINECARD_DEVICE_COUNT 2
+
 struct nsim_dev_linecard {
 	struct list_head list;
 	struct devlink_linecard *devlink_linecard;
@@ -301,6 +303,8 @@ struct nsim_dev_linecard {
 	const char *inserted_type;
 	struct work_struct provision_work;
 	struct work_struct unprovision_work;
+	struct devlink_linecard_device *devlink_device[NSIM_DEV_LINECARD_DEVICE_COUNT];
+	char device_component_name[16];
 };
 
 static inline bool nsim_esw_mode_is_legacy(struct nsim_dev *nsim_dev)
