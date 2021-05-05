@@ -82,15 +82,86 @@ static inline unsigned int nsim_dev_port_index_to_vf_index(unsigned int port_ind
 }
 
 static int
+nsim_dev_linecard_device_info_get(struct devlink_linecard_device *devlink_linecard_device,
+				  void *priv, struct devlink_info_req *req,
+				  struct netlink_ext_ack *extack)
+{
+	struct nsim_dev_linecard *nsim_dev_linecard = priv;
+	char buf[32];
+
+	if (!nsim_dev_linecard->inserted)
+		return 0;
+
+	sprintf(buf, "1.2.3");
+	return devlink_info_version_running_put(req,
+						DEVLINK_INFO_VERSION_GENERIC_FW,
+						buf);
+}
+
+static int
+nsim_dev_linecard_devices_create(struct nsim_dev_linecard *nsim_dev_linecard)
+{
+	struct devlink_linecard_device *device;
+	char *component_name;
+	int err;
+	int i;
+
+	snprintf(nsim_dev_linecard->device_component_name,
+		 sizeof(nsim_dev_linecard->device_component_name), "lc%u_dev0",
+		 nsim_dev_linecard->linecard_index);
+	component_name = nsim_dev_linecard->device_component_name;
+
+	for (i = 0; i < NSIM_DEV_LINECARD_DEVICE_COUNT; i++) {
+		if (i > 0)
+			component_name = NULL;
+		device = devlink_linecard_device_create(nsim_dev_linecard->devlink_linecard,
+							i, component_name,
+							nsim_dev_linecard);
+		if (IS_ERR(device)) {
+			err = PTR_ERR(device);
+			goto rollback;
+		}
+		nsim_dev_linecard->devlink_device[i] = device;
+	}
+	return 0;
+
+rollback:
+	for (i--; i >= 0; i--) {
+		device = nsim_dev_linecard->devlink_device[i];
+		devlink_linecard_device_destroy(nsim_dev_linecard->devlink_linecard,
+						device);
+	}
+	return err;
+}
+
+static void
+nsim_dev_linecard_devices_destroy(struct nsim_dev_linecard *nsim_dev_linecard)
+{
+	struct devlink_linecard_device *device;
+	int i;
+
+	for (i = 0; i < NSIM_DEV_LINECARD_DEVICE_COUNT; i++) {
+		device = nsim_dev_linecard->devlink_device[i];
+		devlink_linecard_device_destroy(nsim_dev_linecard->devlink_linecard,
+						device);
+	}
+}
+
+static int
 nsim_dev_linecard_activate(struct nsim_dev_linecard *nsim_dev_linecard)
 {
 	struct nsim_dev_port *nsim_dev_port;
+	int err;
 
 	if (!nsim_dev_linecard->inserted || !nsim_dev_linecard->provisioned)
 		return 0;
 
 	if (strcmp(nsim_dev_linecard->type, nsim_dev_linecard->inserted_type))
 		return -EINVAL;
+
+	err = nsim_dev_linecard_devices_create(nsim_dev_linecard);
+	if (err)
+		return err;
 
 	list_for_each_entry(nsim_dev_port, &nsim_dev_linecard->port_list,
 			    list_lc)
@@ -110,6 +181,7 @@ nsim_dev_linecard_deactivate(struct nsim_dev_linecard *nsim_dev_linecard)
 	list_for_each_entry(nsim_dev_port, &nsim_dev_linecard->port_list,
 			    list_lc)
 		netif_carrier_off(nsim_dev_port->ns->netdev);
+	nsim_dev_linecard_devices_destroy(nsim_dev_linecard);
 }
 
 static int
@@ -1763,6 +1835,7 @@ static const struct devlink_linecard_ops nsim_dev_linecard_ops = {
 	.types_count = nsim_dev_linecard_types_count,
 	.types_get = nsim_dev_linecard_types_get,
 	.info_get = nsim_dev_linecard_info_get,
+	.device_info_get = nsim_dev_linecard_device_info_get,
 };
 
 static int __nsim_dev_linecard_add(struct nsim_dev *nsim_dev,
