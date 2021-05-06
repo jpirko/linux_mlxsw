@@ -702,6 +702,49 @@ check_linecards_info()
 	check_err $? "Failed to get linecard 1 hw revision"
 }
 
+check_linecard_devices()
+{
+	local lc=$1
+	local expected_device_count=$2
+	local device_count
+	local device
+	local running_device_fw
+	local flashable
+	local component
+	local componentstr
+
+	device_count=$(devlink lc show $DL_HANDLE lc $lc -j | jq -e -r ".[][][].devices |length")
+	check_err $? "Failed to get linecard $lc device count"
+	[ $device_count != 0 ]
+	check_err $? "No device found on linecard $lc"
+	[ $device_count == $expected_device_count ]
+	check_err $? "Unexpected device count on linecard $lc (got $expected_device_count, expected $device_count)"
+	for (( device=0; device<$device_count; device++ ))
+	do
+		running_device_fw=$(devlink lc -v show $DL_HANDLE lc $lc -j -p | jq -e -r ".[][][].devices[$device].info.versions.running.fw")
+		check_err $? "Failed to get linecard $lc device $device running fw version"
+		flashable=$(devlink lc -v show $DL_HANDLE lc $lc -j -p | jq -r ".[][][].devices[$device].flashable")
+		[[ "$flashable" == "null" ]]
+		check_fail $? "Failed to get linecard $lc device $device flashable flag"
+		if [[ "$flashable" == "true" ]]; then
+			component=$(devlink lc -v show $DL_HANDLE lc $lc -j -p | jq -e -r ".[][][].devices[$device].component")
+			check_err $? "Failed to get linecard $lc device $device component name"
+			componentstr=", component \"$component\""
+		elif [[ "$flashable" == "false" ]]; then
+			componentstr=""
+			[ $device == 0 ]
+			check_fail $? "Device 0 on linecard $lc is not flashable"
+		fi
+		log_info "Linecard $lc device $device running.fw: \"$running_device_fw\", flashable: \"$flashable\"$componentstr"
+	done
+}
+
+check_linecards_devices()
+{
+	check_linecard_devices 0 2
+	check_linecard_devices 1 2
+}
+
 linecard_test()
 {
 	RET=0
@@ -729,6 +772,8 @@ linecard_test()
 	check_linecards_state "active" "active"
 
 	check_linecards_info
+
+	check_linecards_devices
 
 	devlink lc set $DL_HANDLE lc 0 notype
 	check_err $? "Failed to unprovision linecard 0"
