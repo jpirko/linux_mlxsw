@@ -87,6 +87,7 @@ struct mlxsw_thermal_module {
 };
 
 struct mlxsw_thermal_area {
+	struct mlxsw_thermal *parent;
 	struct mlxsw_thermal_module *tz_module_arr;
 	u8 tz_module_num;
 	struct mlxsw_thermal_module *tz_gearbox_arr;
@@ -104,6 +105,7 @@ struct mlxsw_thermal {
 	u8 cooling_levels[MLXSW_THERMAL_MAX_STATE + 1];
 	struct mlxsw_thermal_trip trips[MLXSW_THERMAL_NUM_TRIPS];
 	struct mlxsw_thermal_area *main;
+	struct mlxsw_thermal_area **linecards;
 	unsigned int tz_highest_score;
 	struct thermal_zone_device *tz_highest_dev;
 };
@@ -948,6 +950,126 @@ mlxsw_thermal_gearboxes_fini(struct mlxsw_thermal *thermal,
 		mlxsw_thermal_gearbox_tz_fini(&area->tz_gearbox_arr[i]);
 }
 
+static void
+mlxsw_thermal_got_active(struct mlxsw_core *mlxsw_core, u8 slot_index,
+			 const struct mlxsw_linecard *linecard, void *priv)
+{
+	struct mlxsw_env_gearbox_sensors_map map;
+	struct mlxsw_thermal *thermal = priv;
+	struct mlxsw_thermal_area *lc;
+	int err;
+
+	lc = kzalloc(sizeof(*lc), GFP_KERNEL);
+	if (!lc)
+		return;
+
+	lc->slot_index = slot_index;
+	lc->parent = thermal;
+	thermal->linecards[slot_index - 1] = lc;
+	err = mlxsw_thermal_modules_init(thermal->bus_info->dev, thermal->core,
+					 thermal, lc);
+	if (err)
+		goto err_thermal_linecard_modules_init;
+
+	err = mlxsw_env_sensor_map_create(thermal->core, thermal->bus_info,
+					  linecard->slot_index, &map);
+	if (err)
+		goto err_thermal_linecard_env_sensor_map_create;
+
+	lc->gearbox_sensor_map = map.sensor_bit_map;
+	lc->tz_gearbox_num = map.sensor_count;
+	lc->tz_gearbox_arr = kcalloc(lc->tz_gearbox_num, sizeof(*lc->tz_gearbox_arr),
+				     GFP_KERNEL);
+	if (!lc->tz_gearbox_arr) {
+		err = -ENOMEM;
+		goto err_tz_gearbox_arr_alloc;
+	}
+
+	err = mlxsw_thermal_gearboxes_init(thermal->bus_info->dev, thermal->core,
+					   thermal, lc);
+	if (err)
+		goto err_thermal_linecard_gearboxes_init;
+
+	return;
+
+err_thermal_linecard_gearboxes_init:
+	kfree(lc->tz_gearbox_arr);
+err_tz_gearbox_arr_alloc:
+	mlxsw_env_sensor_map_destroy(thermal->bus_info,
+				     lc->gearbox_sensor_map);
+err_thermal_linecard_env_sensor_map_create:
+	mlxsw_thermal_modules_fini(thermal, lc);
+err_thermal_linecard_modules_init:
+	kfree(lc);
+	thermal->linecards[slot_index - 1] = NULL;
+}
+
+static void mlxsw_thermal_got_inactive(struct mlxsw_core *mlxsw_core, u8 slot_index,
+				       const struct mlxsw_linecard *linecard, void *priv)
+{
+	struct mlxsw_thermal *thermal = priv;
+	struct mlxsw_thermal_area *lc = thermal->linecards[slot_index - 1];
+
+	mlxsw_thermal_gearboxes_fini(thermal, lc);
+	kfree(lc->tz_gearbox_arr);
+	mlxsw_env_sensor_map_destroy(thermal->bus_info,
+				     lc->gearbox_sensor_map);
+	mlxsw_thermal_modules_fini(thermal, lc);
+	kfree(lc);
+	thermal->linecards[slot_index - 1] = NULL;
+}
+
+static struct mlxsw_linecards_event_ops mlxsw_thermal_event_ops = {
+	.got_active = mlxsw_thermal_got_active,
+	.got_inactive = mlxsw_thermal_got_inactive,
+};
+
+static int mlxsw_thermal_linecards_register(struct mlxsw_core *mlxsw_core,
+					    struct mlxsw_thermal *thermal)
+{
+	struct mlxsw_linecards *linecards = mlxsw_core_linecards(mlxsw_core);
+	int err;
+
+	if (!linecards || !linecards->count)
+		return 0;
+
+	thermal->linecards = kcalloc(linecards->count, sizeof(*thermal->linecards),
+				     GFP_KERNEL);
+	if (!thermal->linecards)
+		return -ENOMEM;
+
+	err = mlxsw_linecards_event_ops_register(mlxsw_core,
+						 &mlxsw_thermal_event_ops,
+						 thermal);
+	if (err)
+		goto err_linecards_event_ops_register;
+
+	return 0;
+
+err_linecards_event_ops_register:
+	kfree(thermal->linecards);
+	return err;
+}
+
+static void mlxsw_thermal_linecards_unregister(struct mlxsw_thermal *thermal)
+{
+	struct mlxsw_linecards *linecards = mlxsw_core_linecards(thermal->core);
+	int i;
+
+	if (!linecards || !linecards->count)
+		return;
+
+	for (i = 1; i <= linecards->count; i++) {
+		if (thermal->linecards[i - 1])
+			mlxsw_thermal_got_inactive(thermal->core, i, NULL,
+						   thermal);
+	}
+
+	mlxsw_linecards_event_ops_unregister(thermal->core,
+					     &mlxsw_thermal_event_ops, thermal);
+	kfree(thermal->linecards);
+}
+
 int mlxsw_thermal_init(struct mlxsw_core *core,
 		       const struct mlxsw_bus_info *bus_info,
 		       struct mlxsw_thermal **p_thermal)
@@ -1052,6 +1174,10 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 	if (err)
 		goto err_thermal_gearboxes_init;
 
+	err = mlxsw_thermal_linecards_register(core, thermal);
+	if (err)
+		goto err_linecards_register;
+
 	err = thermal_zone_device_enable(thermal->tzdev);
 	if (err)
 		goto err_thermal_zone_device_enable;
@@ -1060,6 +1186,8 @@ int mlxsw_thermal_init(struct mlxsw_core *core,
 	return 0;
 
 err_thermal_zone_device_enable:
+	mlxsw_thermal_linecards_unregister(thermal);
+err_linecards_register:
 	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
 err_thermal_gearboxes_init:
 	mlxsw_thermal_gearboxes_main_fini(thermal->main);
@@ -1087,6 +1215,7 @@ void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
 {
 	int i;
 
+	mlxsw_thermal_linecards_unregister(thermal);
 	mlxsw_thermal_gearboxes_fini(thermal, thermal->main);
 	mlxsw_thermal_gearboxes_main_fini(thermal->main);
 	mlxsw_thermal_modules_fini(thermal, thermal->main);
