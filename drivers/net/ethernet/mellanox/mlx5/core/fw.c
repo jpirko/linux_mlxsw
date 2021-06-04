@@ -512,6 +512,20 @@ struct mlx5_mlxfw_dev {
 	struct mlx5_core_dev *mlx5_core_dev;
 };
 
+static const char *mlx5_psid_get(struct mlxfw_dev *mlxfw_dev, u16 *psid_size)
+{
+	struct mlx5_mlxfw_dev *mlx5_mlxfw_dev =
+		container_of(mlxfw_dev, struct mlx5_mlxfw_dev, mlxfw_dev);
+	struct mlx5_core_dev *dev = mlx5_mlxfw_dev->mlx5_core_dev;
+
+	*psid_size = MLX5_BOARD_ID_LEN;
+	return dev->board_id;
+}
+
+static void mlx5_psid_put(const char *psid)
+{
+}
+
 static int mlx5_component_query(struct mlxfw_dev *mlxfw_dev,
 				u16 component_index, u32 *p_max_size,
 				u8 *p_align_bits, u16 *p_max_write_size)
@@ -670,6 +684,8 @@ static int mlx5_fsm_reactivate(struct mlxfw_dev *mlxfw_dev, u8 *status)
 }
 
 static const struct mlxfw_dev_ops mlx5_mlxfw_dev_ops = {
+	.psid_get		= mlx5_psid_get,
+	.psid_put		= mlx5_psid_put,
 	.component_query	= mlx5_component_query,
 	.fsm_lock		= mlx5_fsm_lock,
 	.fsm_component_update	= mlx5_fsm_component_update,
@@ -689,8 +705,6 @@ int mlx5_firmware_flash(struct mlx5_core_dev *dev,
 	struct mlx5_mlxfw_dev mlx5_mlxfw_dev = {
 		.mlxfw_dev = {
 			.ops = &mlx5_mlxfw_dev_ops,
-			.psid = dev->board_id,
-			.psid_size = strlen(dev->board_id),
 			.devlink = priv_to_devlink(dev),
 		},
 		.mlx5_core_dev = dev

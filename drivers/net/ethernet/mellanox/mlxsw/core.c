@@ -971,6 +971,21 @@ struct mlxsw_core_fw_info {
 	struct mlxsw_core *mlxsw_core;
 };
 
+static const char *mlxsw_core_fw_psid_get(struct mlxfw_dev *mlxfw_dev,
+					  u16 *psid_size)
+{
+	struct mlxsw_core_fw_info *mlxsw_core_fw_info =
+		container_of(mlxfw_dev, struct mlxsw_core_fw_info, mlxfw_dev);
+	struct mlxsw_core *mlxsw_core = mlxsw_core_fw_info->mlxsw_core;
+
+	*psid_size = strlen(mlxsw_core->bus_info->psid);
+	return mlxsw_core->bus_info->psid;
+}
+
+static void mlxsw_core_fw_psid_put(const char *psid)
+{
+}
+
 static int mlxsw_core_fw_component_query(struct mlxfw_dev *mlxfw_dev,
 					 u16 component_index, u32 *p_max_size,
 					 u8 *p_align_bits, u16 *p_max_write_size)
@@ -1109,6 +1124,8 @@ static void mlxsw_core_fw_fsm_release(struct mlxfw_dev *mlxfw_dev, u32 fwhandle)
 }
 
 static const struct mlxfw_dev_ops mlxsw_core_fw_mlxsw_dev_ops = {
+	.psid_get		= mlxsw_core_fw_psid_get,
+	.psid_put		= mlxsw_core_fw_psid_put,
 	.component_query	= mlxsw_core_fw_component_query,
 	.fsm_lock		= mlxsw_core_fw_fsm_lock,
 	.fsm_component_update	= mlxsw_core_fw_fsm_component_update,
@@ -1126,8 +1143,6 @@ static int mlxsw_core_fw_flash(struct mlxsw_core *mlxsw_core, const struct firmw
 	struct mlxsw_core_fw_info mlxsw_core_fw_info = {
 		.mlxfw_dev = {
 			.ops = &mlxsw_core_fw_mlxsw_dev_ops,
-			.psid = mlxsw_core->bus_info->psid,
-			.psid_size = strlen(mlxsw_core->bus_info->psid),
 			.devlink = priv_to_devlink(mlxsw_core),
 		},
 		.mlxsw_core = mlxsw_core

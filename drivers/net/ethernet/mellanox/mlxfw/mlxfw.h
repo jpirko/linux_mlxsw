@@ -11,8 +11,6 @@
 
 struct mlxfw_dev {
 	const struct mlxfw_dev_ops *ops;
-	const char *psid;
-	u16 psid_size;
 	struct devlink *devlink;
 };
 
@@ -70,6 +68,8 @@ enum mlxfw_fsm_reactivate_status {
 };
 
 struct mlxfw_dev_ops {
+	const char * (*psid_get)(struct mlxfw_dev *mlxfw_dev, u16 *psid_size);
+	void (*psid_put)(const char *psid);
 	int (*component_query)(struct mlxfw_dev *mlxfw_dev, u16 component_index,
 			       u32 *p_max_size, u8 *p_align_bits,
 			       u16 *p_max_write_size);

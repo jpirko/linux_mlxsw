@@ -303,7 +303,8 @@ err_out:
 	return err;
 }
 
-static int mlxfw_flash_components(struct mlxfw_dev *mlxfw_dev, u32 fwhandle,
+static int mlxfw_flash_components(struct mlxfw_dev *mlxfw_dev, const char *psid,
+				  u16 psid_size, u32 fwhandle,
 				  struct mlxfw_mfa2_file *mfa2_file,
 				  bool reactivate_supp,
 				  struct netlink_ext_ack *extack)
@@ -312,8 +313,7 @@ static int mlxfw_flash_components(struct mlxfw_dev *mlxfw_dev, u32 fwhandle,
 	int err;
 	int i;
 
-	err = mlxfw_mfa2_file_component_count(mfa2_file, mlxfw_dev->psid,
-					      mlxfw_dev->psid_size,
+	err = mlxfw_mfa2_file_component_count(mfa2_file, psid, psid_size,
 					      &component_count);
 	if (err) {
 		MLXFW_ERR_MSG(mlxfw_dev, extack,
@@ -324,8 +324,8 @@ static int mlxfw_flash_components(struct mlxfw_dev *mlxfw_dev, u32 fwhandle,
 	for (i = 0; i < component_count; i++) {
 		struct mlxfw_mfa2_component *comp;
 
-		comp = mlxfw_mfa2_file_component_get(mfa2_file, mlxfw_dev->psid,
-						     mlxfw_dev->psid_size, i);
+		comp = mlxfw_mfa2_file_component_get(mfa2_file, psid,
+						     psid_size, i);
 		if (IS_ERR(comp)) {
 			err = PTR_ERR(comp);
 			MLXFW_ERR_MSG(mlxfw_dev, extack,
@@ -350,6 +350,8 @@ int mlxfw_firmware_flash(struct mlxfw_dev *mlxfw_dev,
 {
 	struct mlxfw_mfa2_file *mfa2_file;
 	bool reactivate_supp = true;
+	const char *psid;
+	u16 psid_size;
 	u32 fwhandle;
 	int err;
 
@@ -391,8 +393,16 @@ int mlxfw_firmware_flash(struct mlxfw_dev *mlxfw_dev,
 	if (err)
 		goto err_state_wait_reactivate_to_locked;
 
-	err = mlxfw_flash_components(mlxfw_dev, fwhandle, mfa2_file,
+	psid = mlxfw_dev->ops->psid_get(mlxfw_dev, &psid_size);
+	if (IS_ERR(psid)) {
+		err = PTR_ERR(psid);
+		goto err_psid_get;
+	}
+
+	err = mlxfw_flash_components(mlxfw_dev, psid, psid_size,
+				     fwhandle, mfa2_file,
 				     reactivate_supp, extack);
+	mlxfw_dev->ops->psid_put(psid);
 	if (err)
 		goto err_flash_components;
 
@@ -421,6 +431,7 @@ int mlxfw_firmware_flash(struct mlxfw_dev *mlxfw_dev,
 err_state_wait_activate_to_locked:
 err_fsm_activate:
 err_flash_components:
+err_psid_get:
 err_state_wait_reactivate_to_locked:
 err_fsm_reactivate:
 err_state_wait_idle_to_locked:
