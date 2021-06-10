@@ -63,12 +63,30 @@ static const char *mlxsw_linecard_type_name(struct mlxsw_linecard *linecard)
 	return linecard->read_name;
 }
 
+struct mlxsw_linecard_device_info {
+	u16 fw_major;
+	u16 fw_minor;
+	u16 fw_sub_minor;
+};
+
 struct mlxsw_linecard_device {
 	struct list_head list;
 	u8 index;
 	struct mlxsw_linecard *linecard;
 	struct devlink_linecard_device *devlink_device;
+	struct mlxsw_linecard_device_info info;
 };
+
+static struct mlxsw_linecard_device *
+mlxsw_linecard_device_lookup(struct mlxsw_linecard *linecard, u8 index)
+{
+	struct mlxsw_linecard_device *device;
+
+	list_for_each_entry(device, &linecard->device_list, list)
+		if (device->index == index)
+			return device;
+	return NULL;
+}
 
 static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 					struct mlxsw_linecard *linecard,
@@ -85,7 +103,7 @@ static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 
 	device->devlink_device = devlink_linecard_device_create(linecard->devlink_linecard,
 								device_index,
-								NULL, NULL);
+								NULL, device);
 	if (IS_ERR(device->devlink_device)) {
 		err = PTR_ERR(device->devlink_device);
 		goto err_devlink_linecard_device_attach;
@@ -127,7 +145,8 @@ static int mlxsw_linecard_devices_attach(struct mlxsw_core *mlxsw_core,
 			return err;
 		mlxsw_reg_mddq_device_info_unpack(mddq_pl, &msg_seq,
 						  &data_valid, &flash_owner,
-						  &device_index);
+						  &device_index, NULL,
+						  NULL, NULL);
 		if (!data_valid)
 			break;
 		err = mlxsw_linecard_device_attach(mlxsw_core, linecard,
@@ -146,6 +165,71 @@ static void mlxsw_linecard_devices_detach(struct mlxsw_core *mlxsw_core,
 
 	list_for_each_entry_safe(device, tmp, &linecard->device_list, list)
 		mlxsw_linecard_device_detach(mlxsw_core, linecard, device);
+}
+
+static void mlxsw_linecard_device_update(struct mlxsw_core *mlxsw_core,
+					 struct mlxsw_linecard *linecard,
+					 u8 device_index,
+					 struct mlxsw_linecard_device_info *info)
+{
+	struct mlxsw_linecard_device *device;
+
+	device = mlxsw_linecard_device_lookup(linecard, device_index);
+	if (!device)
+		return;
+	device->info = *info;
+}
+
+static int mlxsw_linecard_devices_update(struct mlxsw_core *mlxsw_core,
+					 struct mlxsw_linecard *linecard)
+{
+	struct mlxsw_linecard_device_info info;
+	char mddq_pl[MLXSW_REG_MDDQ_LEN];
+	bool data_valid;
+	u8 device_index;
+	u8 msg_seq = 0;
+	int err;
+
+	do {
+		mlxsw_reg_mddq_device_info_pack(mddq_pl, linecard->slot_index,
+						msg_seq);
+		err =  mlxsw_reg_query(mlxsw_core, MLXSW_REG(mddq), mddq_pl);
+		if (err)
+			return err;
+		mlxsw_reg_mddq_device_info_unpack(mddq_pl, &msg_seq,
+						  &data_valid, NULL,
+						  &device_index,
+						  &info.fw_major,
+						  &info.fw_minor,
+						  &info.fw_sub_minor);
+		if (!data_valid)
+			break;
+		mlxsw_linecard_device_update(mlxsw_core, linecard,
+					     device_index, &info);
+	} while (msg_seq);
+
+	return 0;
+}
+
+static int
+mlxsw_linecard_device_info_get(struct devlink_linecard_device *devlink_linecard_device,
+			       void *priv, struct devlink_info_req *req,
+			       struct netlink_ext_ack *extack)
+{
+	struct mlxsw_linecard_device *device = priv;
+	struct mlxsw_linecard_device_info *info;
+	char buf[32];
+
+	if (!device->linecard->active)
+		return 0;
+
+	info = &device->info;
+
+	sprintf(buf, "%u.%u.%u", info->fw_major, info->fw_minor,
+		info->fw_sub_minor);
+	return devlink_info_version_running_put(req,
+						DEVLINK_INFO_VERSION_GENERIC_FW,
+						buf);
 }
 
 static void mlxsw_linecard_provision_fail(struct mlxsw_core *mlxsw_core,
@@ -217,13 +301,20 @@ static int mlxsw_linecard_ready_clear(struct mlxsw_core *mlxsw_core,
 	return 0;
 }
 
-static void mlxsw_linecard_active_set(struct mlxsw_linecard *linecard,
-				      u16 hw_revision, u16 ini_version)
+static int mlxsw_linecard_active_set(struct mlxsw_core *mlxsw_core,
+				     struct mlxsw_linecard *linecard,
+				     u16 hw_revision, u16 ini_version)
 {
+	int err;
+
+	err = mlxsw_linecard_devices_update(mlxsw_core, linecard);
+	if (err)
+		return err;
 	linecard->active = true;
 	linecard->hw_revision = hw_revision;
 	linecard->ini_version = ini_version;
 	devlink_linecard_activate(linecard->devlink_linecard);
+	return 0;
 }
 
 static void mlxsw_linecard_active_clear(struct mlxsw_linecard *linecard)
@@ -275,8 +366,12 @@ static int mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
 	}
 
 	if (!process_provision_only && !linecard->unprovision_done && active &&
-	    linecard->active != active && linecard->ready)
-		mlxsw_linecard_active_set(linecard, hw_revision, ini_version);
+	    linecard->active != active && linecard->ready) {
+		err = mlxsw_linecard_active_set(mlxsw_core, linecard,
+						hw_revision, ini_version);
+		if (err)
+			goto out;
+	}
 
 	if (!process_provision_only && !linecard->unprovision_done && !active &&
 	    linecard->active != active)
@@ -746,6 +841,7 @@ static const struct devlink_linecard_ops mlxsw_linecard_ops = {
 	.types_count = mlxsw_linecard_types_count,
 	.types_get = mlxsw_linecard_types_get,
 	.info_get = mlxsw_linecard_info_get,
+	.device_info_get = mlxsw_linecard_device_info_get,
 };
 
 static int mlxsw_linecard_event_delivery_set(struct mlxsw_core *mlxsw_core,
