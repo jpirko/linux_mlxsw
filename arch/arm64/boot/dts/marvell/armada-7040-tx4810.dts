@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/*
+ * Copyright (C) 2016 Marvell Technology Group Ltd.
+ * Copyright (C) 2021 Sartura Ltd.
+ *
+ * Device Tree file for Delta TX4810 switch
+ */
+
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "armada-7040.dtsi"
+
+/ {
+	model = "Delta TX4810";
+	compatible = "delta,tx4810", "marvell,armada7040",
+		     "marvell,armada-ap806-quad", "marvell,armada-ap806";
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		ethernet2 = &cp0_eth2;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		sys-amber {
+			gpios = <&cp0_gpio2 2 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_AMBER>;
+			label = "system:amber";
+			default-state = "off";
+			panic-indicator;
+		};
+
+		sys-green {
+			gpios = <&cp0_gpio1 31 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_GREEN>;
+			label = "system:green";
+			default-state = "on";
+		};
+
+		fan-amber {
+			gpios = <&cp0_gpio1 11 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_AMBER>;
+			label = "fan:amber";
+			default-state = "off";
+		};
+
+		fan-green {
+			gpios = <&cp0_gpio1 14 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_GREEN>;
+			label = "fan:green";
+			default-state = "on";
+		};
+
+		psu-amber {
+			gpios = <&cp0_gpio1 2 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_AMBER>;
+			label = "psu:amber";
+			default-state = "off";
+		};
+
+		psu-green {
+			gpios = <&cp0_gpio1 3 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_GREEN>;
+			label = "psu:green";
+			default-state = "on";
+		};
+	};
+};
+
+&uart0 {
+	status = "okay";
+	pinctrl-0 = <&uart0_pins>;
+	pinctrl-names = "default";
+};
+
+&spi0 {
+	status = "okay";
+
+	tpm0: slb9670@0 {
+		compatible = "infineon,slb9670";
+		reg = <0>;
+		spi-max-frequency = <38000000>;
+		status = "okay";
+	};
+};
+
+&cp0_spi0 {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <20000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "u-boot";
+				reg = <0x0 0x3f0000>;
+				read-only;
+			};
+
+			partition@3f0000 {
+				label = "u-boot-env";
+				reg = <0x3f0000 0x010000>;
+			};
+
+			partition@400000 {
+				label = "ONIE";
+				reg = <0x400000 0xc00000>;
+			};
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <100000>;
+
+	pca9546@70 {
+		compatible = "nxp,pca9546";
+		reg = <0x70>;
+		i2c-mux-idle-disconnect;
+	};
+};
+
+&cp0_i2c0 {
+	status = "okay";
+	clock-frequency = <100000>;
+
+	eeprom_at24: at24@56 {
+		compatible = "atmel,24c64";
+		reg = <0x56>;
+	};
+
+	adt7473@2e {
+		compatible = "adi,adt7473";
+		reg = <0x2e>;
+	};
+
+	tmp1075@4a {
+		compatible = "ti,tmp1075";
+		reg = <0x4a>;
+	};
+
+	tmp1075@4b {
+		compatible = "ti,tmp1075";
+		reg = <0x4b>;
+	};
+
+	tmp1075@4c {
+		compatible = "ti,tmp1075";
+		reg = <0x4c>;
+	};
+};
+
+&cp0_i2c1 {
+	status = "okay";
+	clock-frequency = <100000>;
+};
+
+&cp0_usb3_0 {
+	status = "okay";
+};
+
+&cp0_sata0 {
+	status = "okay";
+
+	sata-port@1 {
+		status = "okay";
+		phys = <&cp0_comphy3 1>;
+	};
+};
+
+&cp0_mdio {
+	status = "okay";
+
+	ethphy0: ethernet-phy@0 {
+		reg = <0>;
+	};
+};
+
+&cp0_ethernet {
+	status = "okay";
+};
+
+&cp0_eth2 {
+	status = "okay";
+	phy = <&ethphy0>;
+	phy-mode = "sgmii";
+	phys = <&cp0_comphy5 2>;
+};
+
+&cp0_pcie0 {
+	status = "okay";
+	num-lanes = <2>;
+	phys = <&cp0_comphy0 0>, <&cp0_comphy1 0>;
+	phy-names = "cp0-pcie0-x4-lane0-phy", "cp0-pcie0-x4-lane1-phy";
+
+	ranges = /* downstream I/O */
+		<0x81000000 0 0xf9020000 0  0xf9020000 0 0x10000
+		/* non-prefetchable memory */
+		0x82000000 0 0xc0000000 0  0xc0000000 0 0x400000>;
+};
