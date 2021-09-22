@@ -10,6 +10,7 @@ ALL_TESTS="
 	mc_backlog_test
 	red_mirror_test
 	red_trap_test
+	ecn_trap_test
 	ecn_mirror_test
 "
 : ${QDISC:=ets}
@@ -164,6 +165,26 @@ ecn_mirror_test()
 	do_mark_mirror_test 11 $BACKLOG2
 
 	uninstall_qdisc
+}
+
+ecn_trap_test()
+{
+	install_root_qdisc
+	install_qdisc_tc0 ecn qevent mark block 10
+	install_qdisc_tc1 ecn
+
+	do_mark_trap_test_pass 10 $BACKLOG1
+	do_mark_trap_test_fail 11 $BACKLOG2
+
+	uninstall_qdisc_tc1
+	install_qdisc_tc1 ecn qevent mark block 10
+
+	do_mark_trap_test_pass 10 $BACKLOG1
+	do_mark_trap_test_pass 11 $BACKLOG2
+
+	uninstall_qdisc_tc1
+	uninstall_qdisc_tc0
+	uninstall_root_qdisc
 }
 
 bail_on_lldpad

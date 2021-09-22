@@ -759,3 +759,24 @@ qevent_rule_uninstall_trap_fwd()
 {
 	tc filter del block 10 pref 1234 handle 102 matchall
 }
+
+do_mark_trap_test()
+{
+	local vlan=$1; shift
+	local limit=$1; shift
+	local should_fail=$1; shift
+
+	do_mark_test "$vlan" "$limit" trap_fwd \
+		     "qevent_counter_fetch_trap ecn_mark" \
+		     "$should_fail"
+}
+
+do_mark_trap_test_pass()
+{
+	do_mark_trap_test "$@" 0
+}
+
+do_mark_trap_test_fail()
+{
+	do_mark_trap_test "$@" 1
+}
