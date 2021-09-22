@@ -2314,7 +2314,8 @@ int mlxsw_sp_setup_tc_block_qevent_early_drop(struct mlxsw_sp_port *mlxsw_sp_por
 int mlxsw_sp_setup_tc_block_qevent_mark(struct mlxsw_sp_port *mlxsw_sp_port,
 					struct flow_block_offload *f)
 {
-	unsigned int action_mask = BIT(MLXSW_SP_MALL_ACTION_TYPE_MIRROR);
+	unsigned int action_mask = BIT(MLXSW_SP_MALL_ACTION_TYPE_MIRROR) |
+				   BIT(MLXSW_SP_MALL_ACTION_TYPE_TRAP_FWD);
 
 	return mlxsw_sp_setup_tc_block_qevent(mlxsw_sp_port, f,
 					      MLXSW_SP_SPAN_TRIGGER_ECN,
