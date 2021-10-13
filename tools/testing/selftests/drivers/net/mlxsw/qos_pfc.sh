@@ -52,10 +52,10 @@
 # |                                                       |                   |
 # | iPOOL0: 500KB dynamic                                 |                   |
 # | iPOOL1: 10MB static                                   |                   |
-# | iPOOL2: 1MB static                                    + $swp2             |
+# | iPOOL2: 1MB dynamic                                   + $swp2             |
 # | ePOOL4: 500KB dynamic                                 | iPOOL0            |
 # | ePOOL5: 10MB static                                   | ePOOL6            |
-# | ePOOL6: "infinite" static                             | 200Mbps shaper    |
+# | ePOOL6: "infinite" dynamic                            | 200Mbps shaper    |
 # +-------------------------------------------------------|-------------------+
 #                                                         |
 #                                                     +---|-------------------+
@@ -86,6 +86,9 @@ _100KB=$((100 * _1KB))
 _500KB=$((500 * _1KB))
 _1MB=$((1000 * _1KB))
 _10MB=$((10 * _1MB))
+
+th_11=11 # alpha 2
+th_16=16 # This should be infinite, but devlink can't do infinities.
 
 h1_create()
 {
@@ -151,10 +154,10 @@ switch_create()
 	devlink_pool_size_thtype_set 5 static $_10MB
 
 	# PFC pools. As per the writ, the size of egress PFC pool should be
-	# infinice, but actually it just needs to be large enough to not matter
+	# infinite, but actually it just needs to be large enough to not matter
 	# in practice, so reuse the 10MB limit.
-	devlink_pool_size_thtype_set 2 static $_1MB
-	devlink_pool_size_thtype_set 6 static $_10MB
+	devlink_pool_size_thtype_set 2 dynamic $_1MB
+	devlink_pool_size_thtype_set 6 dynamic $_10MB
 
 	# $swp1
 	# -----
@@ -181,8 +184,8 @@ switch_create()
 	vlan_create $swp2 111
 	ip link set dev $swp2.111 type vlan egress-qos-map 0:0 1:1
 
-	devlink_port_pool_th_set $swp2 6 $_10MB
-	devlink_tc_bind_pool_th_set $swp2 1 egress 6 $_10MB
+	devlink_port_pool_th_set $swp2 6 $th_16
+	devlink_tc_bind_pool_th_set $swp2 1 egress 6 $th_16
 
 	# prio 0->TC0 (band 7), 1->TC1 (band 6). TC1 is shaped.
 	tc qdisc replace dev $swp2 root handle 1: \
@@ -220,8 +223,8 @@ switch_create()
 	vlan_create $swp4 111
 	ip link set dev $swp4.111 type vlan ingress-qos-map 0:0 1:1
 
-	devlink_port_pool_th_set $swp4 2 $_1MB
-	devlink_tc_bind_pool_th_set $swp4 1 ingress 2 $_1MB
+	devlink_port_pool_th_set $swp4 2 $th_11
+	devlink_tc_bind_pool_th_set $swp4 1 ingress 2 $th_11
 
 	# Configure qdisc so that we can hand-tune headroom.
 	tc qdisc replace dev $swp4 root handle 1: \
