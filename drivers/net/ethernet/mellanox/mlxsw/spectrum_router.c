@@ -8925,6 +8925,24 @@ static int mlxsw_sp_router_port_pre_changeaddr_event(struct mlxsw_sp_rif *rif,
 						   info->dev_addr, extack);
 }
 
+static int mlxsw_sp_router_port_offload_xstats_get(struct mlxsw_sp_rif *rif,
+			    struct netdev_notifier_offload_xstats_info *info)
+{
+	int err = 0;
+
+	switch (info->attr_id) {
+	case IFLA_OFFLOAD_XSTATS_HW_STATS:
+		printk(KERN_WARNING "mlxsw_sp_router_port_offload_xstats_get %s\n",
+		       rif->dev->name);
+		info->handled = true;
+		if (info->stats)
+			info->stats->rx_packets += 1234;
+		break;
+	}
+
+	return err;
+}
+
 int mlxsw_sp_netdevice_router_port_event(struct net_device *dev,
 					 unsigned long event, void *ptr)
 {
@@ -8948,6 +8966,9 @@ int mlxsw_sp_netdevice_router_port_event(struct net_device *dev,
 		break;
 	case NETDEV_PRE_CHANGEADDR:
 		err = mlxsw_sp_router_port_pre_changeaddr_event(rif, ptr);
+		break;
+	case NETDEV_OFFLOAD_XSTATS_GET:
+		err = mlxsw_sp_router_port_offload_xstats_get(rif, ptr);
 		break;
 	}
 

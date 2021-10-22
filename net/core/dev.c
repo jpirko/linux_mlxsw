@@ -1685,7 +1685,7 @@ const char *netdev_cmd_to_name(enum netdev_cmd cmd)
 	N(UDP_TUNNEL_DROP_INFO) N(CHANGE_TX_QUEUE_LEN)
 	N(CVLAN_FILTER_PUSH_INFO) N(CVLAN_FILTER_DROP_INFO)
 	N(SVLAN_FILTER_PUSH_INFO) N(SVLAN_FILTER_DROP_INFO)
-	N(PRE_CHANGEADDR)
+	N(PRE_CHANGEADDR) N(OFFLOAD_XSTATS_GET)
 	}
 #undef N
 	return "UNKNOWN_NETDEV_EVENT";
@@ -8359,6 +8359,45 @@ void netdev_bonding_info_change(struct net_device *dev,
 				      &info.info);
 }
 EXPORT_SYMBOL(netdev_bonding_info_change);
+
+bool netdev_offload_xstats_has(struct net_device *dev, int attr_id)
+{
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.attr_id = attr_id,
+	};
+
+	call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_GET, &info.info);
+	return info.handled;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_has);
+
+int netdev_offload_xstats_get(struct net_device *dev, int attr_id,
+			      struct rtnl_link_stats64 *stats,
+			      struct netlink_ext_ack *extack)
+{
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.info.extack = extack,
+		.attr_id = attr_id,
+		.stats = stats,
+	};
+	int err;
+	int rc;
+
+	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_GET,
+					   &info.info);
+	err = notifier_to_errno(rc);
+	if (err) {
+		WARN_ON(!info.handled);
+		return err;
+	}
+
+	if (!info.handled)
+		return -EOPNOTSUPP;
+	return 0;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_get);
 
 /**
  * netdev_get_xmit_slave - Get the xmit slave of master device

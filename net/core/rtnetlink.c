@@ -5028,46 +5028,89 @@ static bool stats_attr_valid(unsigned int mask, int attrid, int idxattr)
 static int rtnl_get_offload_stats_attr_size(int attr_id)
 {
 	switch (attr_id) {
-	case IFLA_OFFLOAD_XSTATS_CPU_HIT:
+	case IFLA_OFFLOAD_XSTATS_CPU_HIT: /* Fall through. */
+	case IFLA_OFFLOAD_XSTATS_HW_STATS:
 		return sizeof(struct rtnl_link_stats64);
 	}
 
 	return 0;
 }
 
+struct rtnl_offload_xstats_info {
+	int attr_id;
+	size_t size;
+	bool (*has_offload_stats)(struct net_device *dev, int attr_id);
+	int (*get_offload_stats)(struct net_device *dev,  int attr_id,
+				 void *attr_data,
+				 struct netlink_ext_ack *extack);
+};
+
+static bool rtnl_offload_xstats_has_ndo(struct net_device *dev, int attr_id)
+{
+	return dev->netdev_ops &&
+		dev->netdev_ops->ndo_has_offload_stats &&
+		dev->netdev_ops->ndo_get_offload_stats &&
+		dev->netdev_ops->ndo_has_offload_stats(dev, attr_id);
+}
+
+static int
+rtnl_offload_xstats_get_ndo(struct net_device *dev, int attr_id,
+			    void *attr_data, struct netlink_ext_ack *extack)
+{
+	return dev->netdev_ops->ndo_get_offload_stats(attr_id, dev, attr_data);
+}
+
+static int rtnl_offload_xstats_get_hw_stats(struct net_device *dev, int attr_id,
+					    void *attr_data,
+					    struct netlink_ext_ack *extack)
+{
+	struct rtnl_link_stats64 *stats = attr_data;
+
+	return netdev_offload_xstats_get(dev, attr_id, stats, extack);
+}
+
+static const struct rtnl_offload_xstats_info rtnl_offload_xstats_info[] = {
+	{
+		.attr_id = IFLA_OFFLOAD_XSTATS_CPU_HIT,
+		.size = sizeof(struct rtnl_link_stats64),
+		.has_offload_stats = &rtnl_offload_xstats_has_ndo,
+		.get_offload_stats = &rtnl_offload_xstats_get_ndo,
+	},
+	{
+		.attr_id = IFLA_OFFLOAD_XSTATS_HW_STATS,
+		.size = sizeof(struct rtnl_link_stats64),
+		.has_offload_stats = &netdev_offload_xstats_has,
+		.get_offload_stats = &rtnl_offload_xstats_get_hw_stats,
+	},
+};
+
 static int rtnl_get_offload_stats(struct sk_buff *skb, struct net_device *dev,
-				  int *prividx)
+				  int *prividx, struct netlink_ext_ack *extack)
 {
 	struct nlattr *attr = NULL;
-	int attr_id, size;
 	void *attr_data;
 	int err;
+	int i;
 
-	if (!(dev->netdev_ops && dev->netdev_ops->ndo_has_offload_stats &&
-	      dev->netdev_ops->ndo_get_offload_stats))
-		return -ENODATA;
+	for (i = 0; i < ARRAY_SIZE(rtnl_offload_xstats_info); i++) {
+		const struct rtnl_offload_xstats_info *info;
 
-	for (attr_id = IFLA_OFFLOAD_XSTATS_FIRST;
-	     attr_id <= IFLA_OFFLOAD_XSTATS_MAX; attr_id++) {
-		if (attr_id < *prividx)
+		if (i < *prividx)
 			continue;
 
-		size = rtnl_get_offload_stats_attr_size(attr_id);
-		if (!size)
+		info = &rtnl_offload_xstats_info[i];
+		if (!info->has_offload_stats(dev, info->attr_id))
 			continue;
 
-		if (!dev->netdev_ops->ndo_has_offload_stats(dev, attr_id))
-			continue;
-
-		attr = nla_reserve_64bit(skb, attr_id, size,
+		attr = nla_reserve_64bit(skb, info->attr_id, info->size,
 					 IFLA_OFFLOAD_XSTATS_UNSPEC);
 		if (!attr)
 			goto nla_put_failure;
 
 		attr_data = nla_data(attr);
-		memset(attr_data, 0, size);
-		err = dev->netdev_ops->ndo_get_offload_stats(attr_id, dev,
-							     attr_data);
+		memset(attr_data, 0, info->size);
+		err = info->get_offload_stats(dev, info->attr_id, attr_data,
+					      extack);
 		if (err)
 			goto get_offload_stats_failure;
 	}
@@ -5081,25 +5124,24 @@ static int rtnl_get_offload_stats(struct sk_buff *skb, struct net_device *dev,
 nla_put_failure:
 	err = -EMSGSIZE;
 get_offload_stats_failure:
-	*prividx = attr_id;
+	*prividx = i;
 	return err;
 }
 
 static int rtnl_get_offload_stats_size(const struct net_device *dev)
 {
 	int nla_size = 0;
-	int attr_id;
-	int size;
+	int i;
 
-	if (!(dev->netdev_ops && dev->netdev_ops->ndo_has_offload_stats &&
-	      dev->netdev_ops->ndo_get_offload_stats))
-		return 0;
+	for (i = 0; i < ARRAY_SIZE(rtnl_offload_xstats_info); i++) {
+		const struct rtnl_offload_xstats_info *info;
+		int size;
 
-	for (attr_id = IFLA_OFFLOAD_XSTATS_FIRST;
-	     attr_id <= IFLA_OFFLOAD_XSTATS_MAX; attr_id++) {
-		if (!dev->netdev_ops->ndo_has_offload_stats(dev, attr_id))
+		info = &rtnl_offload_xstats_info[i];
+		if (!dev->netdev_ops->ndo_has_offload_stats(dev, info->attr_id))
 			continue;
-		size = rtnl_get_offload_stats_attr_size(attr_id);
+
+		size = rtnl_get_offload_stats_attr_size(info->attr_id);
 		nla_size += nla_total_size_64bit(size);
 	}
 
@@ -5112,7 +5154,8 @@ static int rtnl_get_offload_stats_size(const struct net_device *dev)
 static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 			       int type, u32 pid, u32 seq, u32 change,
 			       unsigned int flags, unsigned int filter_mask,
-			       int *idxattr, int *prividx)
+			       int *idxattr, int *prividx,
+			       struct netlink_ext_ack *extack)
 {
 	struct if_stats_msg *ifsm;
 	struct nlmsghdr *nlh;
@@ -5195,7 +5238,7 @@ static int rtnl_fill_statsinfo(struct sk_buff *skb, struct net_device *dev,
 		if (!attr)
 			goto nla_put_failure;
 
-		err = rtnl_get_offload_stats(skb, dev, prividx);
+		err = rtnl_get_offload_stats(skb, dev, prividx, extack);
 		if (err == -ENODATA)
 			nla_nest_cancel(skb, attr);
 		else
@@ -5392,7 +5435,7 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 	err = rtnl_fill_statsinfo(nskb, dev, RTM_NEWSTATS,
 				  NETLINK_CB(skb).portid, nlh->nlmsg_seq, 0,
-				  0, filter_mask, &idxattr, &prividx);
+				  0, filter_mask, &idxattr, &prividx, extack);
 	if (err < 0) {
 		/* -EMSGSIZE implies BUG in if_nlmsg_stats_size */
 		WARN_ON(err == -EMSGSIZE);
@@ -5444,7 +5487,8 @@ static int rtnl_stats_dump(struct sk_buff *skb, struct netlink_callback *cb)
 						  NETLINK_CB(cb->skb).portid,
 						  cb->nlh->nlmsg_seq, 0,
 						  flags, filter_mask,
-						  &s_idxattr, &s_prividx);
+						  &s_idxattr, &s_prividx,
+						  extack);
 			/* If we ran out of room on the first message,
 			 * we're in trouble
 			 */

@@ -2809,6 +2809,7 @@ enum netdev_cmd {
 	NETDEV_CVLAN_FILTER_DROP_INFO,
 	NETDEV_SVLAN_FILTER_PUSH_INFO,
 	NETDEV_SVLAN_FILTER_DROP_INFO,
+	NETDEV_OFFLOAD_XSTATS_GET,
 };
 const char *netdev_cmd_to_name(enum netdev_cmd cmd);
 
@@ -2858,6 +2859,23 @@ struct netdev_notifier_pre_changeaddr_info {
 	struct netdev_notifier_info info; /* must be first */
 	const unsigned char *dev_addr;
 };
+
+struct netdev_notifier_offload_xstats_info {
+	struct netdev_notifier_info info; /* must be first */
+	int attr_id;
+
+	/* `stats' is NULL for discovery whether there are any offload xstats
+	 * available. For stat collection, it points to a valid object.
+	 */
+	struct rtnl_link_stats64 *stats;
+
+	bool handled;
+};
+
+bool netdev_offload_xstats_has(struct net_device *dev, int attr_id);
+int netdev_offload_xstats_get(struct net_device *dev, int attr_id,
+			      struct rtnl_link_stats64 *stats,
+			      struct netlink_ext_ack *extack);
 
 static inline void netdev_notifier_info_init(struct netdev_notifier_info *info,
 					     struct net_device *dev)
