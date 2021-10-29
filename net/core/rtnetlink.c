@@ -2589,6 +2589,32 @@ static int do_set_proto_down(struct net_device *dev,
 	return 0;
 }
 
+#define RTNL_HW_STATS_EXPAND_MASK(T) | IFLA_HW_STATS_ ## T
+enum {
+	IFLA_HW_STATS_ANY = 0U NETDEV_HW_STATS_TYPES(RTNL_HW_STATS_EXPAND_MASK)
+};
+#undef RTNL_HW_STATS_EXPAND_MASK
+
+static enum netdev_hw_stats_type
+rtnl_hw_stats_from_ifla(struct nla_bitfield32 hw_stats_bf)
+{
+	enum netdev_hw_stats_type hw_stats = 0;
+
+	if (WARN_ON(hw_stats_bf.value & ~IFLA_HW_STATS_ANY))
+		goto out;
+
+#define RTNL_HW_STATS_MATCH(T)				\
+	if (hw_stats_bf.value & IFLA_HW_STATS_ ## T)	\
+		hw_stats |= NETDEV_HW_STATS_TYPE_ ## T;
+
+	NETDEV_HW_STATS_TYPES(RTNL_HW_STATS_MATCH);
+
+#undef RTNL_HW_STATS_MATCH
+
+out:
+	return hw_stats;
+}
+
 #define DO_SETLINK_MODIFIED	0x01
 /* notify flag means notify + modified. */
 #define DO_SETLINK_NOTIFY	0x03
@@ -2936,6 +2962,27 @@ static int do_setlink(const struct sk_buff *skb,
 				goto errout;
 			status |= DO_SETLINK_NOTIFY;
 		}
+	}
+
+	if (tb[IFLA_HW_STATS]) {
+		struct nla_bitfield32 hw_stats_bf =
+			nla_get_bitfield32(tca[IFLA_HW_STATS]);
+		enum netdev_hw_stats_type hw_stats;
+
+		printk(KERN_WARNING "rtnetlink.c: tb[IFLA_HW_STATS]\n");
+		if (hw_stats_bf.value == 0) {
+			netdev_offload_xstats_hw_stats_disable(dev);
+		} else {
+			hw_stats = rtnl_hw_stats_from_ifla(hw_stats_bf);
+			err = netdev_offload_xstats_hw_stats_enable(dev,
+								    hw_stats,
+								    extack);
+			if (err)
+				goto errout;
+		}
+
+		status |= DO_SETLINK_NOTIFY;
+
 	}
 
 errout:
@@ -5060,13 +5107,18 @@ rtnl_offload_xstats_get_ndo(struct net_device *dev, int attr_id,
 	return dev->netdev_ops->ndo_get_offload_stats(attr_id, dev, attr_data);
 }
 
+static bool rtnl_offload_xstats_has_hw_stats(struct net_device *dev, int attr_id)
+{
+	return dev->offload_hw_stats;
+}
+
 static int rtnl_offload_xstats_get_hw_stats(struct net_device *dev, int attr_id,
 					    void *attr_data,
 					    struct netlink_ext_ack *extack)
 {
 	struct rtnl_link_stats64 *stats = attr_data;
 
-	return netdev_offload_xstats_get(dev, attr_id, stats, extack);
+	return netdev_offload_xstats_hw_stats_get(dev, stats, extack);
 }
 
 static const struct rtnl_offload_xstats_info rtnl_offload_xstats_info[] = {
@@ -5079,7 +5131,7 @@ static const struct rtnl_offload_xstats_info rtnl_offload_xstats_info[] = {
 	{
 		.attr_id = IFLA_OFFLOAD_XSTATS_HW_STATS,
 		.size = sizeof(struct rtnl_link_stats64),
-		.has_offload_stats = &netdev_offload_xstats_has,
+		.has_offload_stats = &rtnl_offload_xstats_has_hw_stats,
 		.get_offload_stats = &rtnl_offload_xstats_get_hw_stats,
 	},
 };
@@ -5512,6 +5564,53 @@ out:
 	return skb->len;
 }
 
+static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
+			  struct netlink_ext_ack *extack)
+{
+	struct net *net = sock_net(skb->sk);
+	struct net_device *dev = NULL;
+	int idxattr = 0, prividx = 0;
+	struct if_stats_msg *ifsm;
+	struct sk_buff *nskb;
+	u32 filter_mask;
+	int err;
+
+	err = rtnl_valid_stats_req(nlh, netlink_strict_get_check(skb),
+				   false, extack);
+	if (err)
+		return err;
+
+	ifsm = nlmsg_data(nlh);
+	if (ifsm->ifindex > 0)
+		dev = __dev_get_by_index(net, ifsm->ifindex);
+	else
+		return -EINVAL;
+
+	if (!dev)
+		return -ENODEV;
+
+	filter_mask = ifsm->filter_mask;
+	if (!filter_mask)
+		return -EINVAL;
+
+	nskb = nlmsg_new(if_nlmsg_stats_size(dev, filter_mask), GFP_KERNEL);
+	if (!nskb)
+		return -ENOBUFS;
+
+	err = rtnl_fill_statsinfo(nskb, dev, RTM_NEWSTATS,
+				  NETLINK_CB(skb).portid, nlh->nlmsg_seq, 0,
+				  0, filter_mask, &idxattr, &prividx, extack);
+	if (err < 0) {
+		/* -EMSGSIZE implies BUG in if_nlmsg_stats_size */
+		WARN_ON(err == -EMSGSIZE);
+		kfree_skb(nskb);
+	} else {
+		err = rtnl_unicast(nskb, net, NETLINK_CB(skb).portid);
+	}
+
+	return err;
+}
+
 /* Process one rtnetlink message. */
 
 static int rtnetlink_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh,
@@ -5737,4 +5836,5 @@ void __init rtnetlink_init(void)
 
 	rtnl_register(PF_UNSPEC, RTM_GETSTATS, rtnl_stats_get, rtnl_stats_dump,
 		      0);
+	rtnl_register(PF_UNSPEC, RTM_SETSTATS, rtnl_stats_set, NULL, 0);
 }

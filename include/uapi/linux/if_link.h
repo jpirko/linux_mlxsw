@@ -1145,6 +1145,16 @@ enum {
 	IFLA_STATS_LINK_64,
 	IFLA_STATS_LINK_XSTATS,
 	IFLA_STATS_LINK_XSTATS_SLAVE,
+	// filter_mask above instructs the kernel to only collect stats that are
+	// interesting to the callee. However the filtering as made by the
+	// attribute. For offload_xstats, we have a nest of attributes and need
+	// a different filtering mechanism.
+	//
+	// So if (filter_mask & IFLA_STATS_FILTER_BIT(OFFLOAD_XSTATS)),
+	// the attribute may be present and be used for filtering.
+	//
+	// For rtnl_stats_set, the attribute will be used in the same way to
+	// toggle the use of offloaded xstats.
 	IFLA_STATS_LINK_OFFLOAD_XSTATS,
 	IFLA_STATS_AF_SPEC,
 	__IFLA_STATS_MAX,
@@ -1175,6 +1185,15 @@ enum {
 	__IFLA_OFFLOAD_XSTATS_MAX
 };
 #define IFLA_OFFLOAD_XSTATS_MAX (__IFLA_OFFLOAD_XSTATS_MAX - 1)
+
+/* HW stats type. This is modeled after TCA_ACT_HW_STATS_*. For details, please
+ * see pkt_cls.h.
+ */
+#define IFLA_HW_STATS_IMMEDIATE (1U << 0)
+/* When adding new entries to this list, please consult pkt_cls.h.
+ * Same-named enumerators should have the same semantics and the same
+ * value.
+ */
 
 /* XDP section */
 

@@ -8925,18 +8925,43 @@ static int mlxsw_sp_router_port_pre_changeaddr_event(struct mlxsw_sp_rif *rif,
 						   info->dev_addr, extack);
 }
 
-static int mlxsw_sp_router_port_offload_xstats_get(struct mlxsw_sp_rif *rif,
+static int
+mlxsw_sp_router_port_offload_xstats_report_delta(struct mlxsw_sp_rif *rif,
+			    struct netdev_notifier_offload_xstats_info *info)
+{
+	struct rtnl_link_stats64 stats = {
+		.rx_packets = 1234,
+	};
+
+	netdev_offload_xstats_report_delta(info->report_delta, &stats,
+					   NETDEV_HW_STATS_TYPE_IMMEDIATE);
+	return 0;
+}
+
+static int mlxsw_sp_router_port_offload_xstats_cmd(struct mlxsw_sp_rif *rif,
 			    struct netdev_notifier_offload_xstats_info *info)
 {
 	int err = 0;
+
+	switch (info->cmd) {
+	case NETDEV_OFFLOAD_XSTATS_CMD_ENABLE:
+		printk(KERN_WARNING "xstats enable %s\n", rif->dev->name);
+		break;
+	case NETDEV_OFFLOAD_XSTATS_CMD_DISABLE:
+		printk(KERN_WARNING "xstats disable %s\n", rif->dev->name);
+		break;
+	case NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA:
+		printk(KERN_WARNING "xstats report delta %s\n", rif->dev->name);
+		err = mlxsw_sp_router_port_offload_xstats_report_delta(rif,
+								       info);
+		break;
+	}
 
 	switch (info->attr_id) {
 	case IFLA_OFFLOAD_XSTATS_HW_STATS:
 		printk(KERN_WARNING "mlxsw_sp_router_port_offload_xstats_get %s\n",
 		       rif->dev->name);
-		info->handled = true;
-		if (info->stats)
-			info->stats->rx_packets += 1234;
+		info->stats->rx_packets += 1234;
 		break;
 	}
 
@@ -8967,8 +8992,8 @@ int mlxsw_sp_netdevice_router_port_event(struct net_device *dev,
 	case NETDEV_PRE_CHANGEADDR:
 		err = mlxsw_sp_router_port_pre_changeaddr_event(rif, ptr);
 		break;
-	case NETDEV_OFFLOAD_XSTATS_GET:
-		err = mlxsw_sp_router_port_offload_xstats_get(rif, ptr);
+	case NETDEV_OFFLOAD_XSTATS_CMD:
+		err = mlxsw_sp_router_port_offload_xstats_cmd(rif, ptr);
 		break;
 	}
 

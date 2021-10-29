@@ -8360,44 +8360,152 @@ void netdev_bonding_info_change(struct net_device *dev,
 }
 EXPORT_SYMBOL(netdev_bonding_info_change);
 
-bool netdev_offload_xstats_has(struct net_device *dev, int attr_id)
-{
-	struct netdev_notifier_offload_xstats_info info = {
-		.info.dev = dev,
-		.attr_id = attr_id,
-	};
-
-	call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_GET, &info.info);
-	return info.handled;
-}
-EXPORT_SYMBOL(netdev_offload_xstats_has);
-
-int netdev_offload_xstats_get(struct net_device *dev, int attr_id,
-			      struct rtnl_link_stats64 *stats,
-			      struct netlink_ext_ack *extack)
+static int netdev_offload_xstats_toggle(struct net_device *dev,
+					enum netdev_offload_xstats_cmd cmd,
+					struct netlink_ext_ack *extack)
 {
 	struct netdev_notifier_offload_xstats_info info = {
 		.info.dev = dev,
 		.info.extack = extack,
-		.attr_id = attr_id,
-		.stats = stats,
+		.cmd = cmd,
+	};
+	int rc;
+
+	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
+					   &info.info);
+	return notifier_to_errno(rc);
+}
+
+int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
+					  u32 req_hw_stats,
+					  struct netlink_ext_ack *extack)
+{
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.info.extack = extack,
+		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
+		.req_stats = req_hw_stats,
+	};
+	struct rtnl_link_stats64 *stats;
+	int err;
+	int rc;
+
+	if (WARN_ON(dev->offload_hw_stats))
+		return 0;
+
+	stats = kmalloc(sizeof(dev->offload_hw_stats), GFP_KERNEL);
+	if (!stats)
+		return -ENOMEM;
+
+	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
+					   &info.info);
+	err = notifier_to_errno(rc);
+	if (err)
+		// xxx note we need a way to roll back if the notifier chain
+		// fails midway through
+		goto free_stats;
+
+	dev->offload_hw_stats = stats;
+	return 0;
+
+free_stats:
+	kfree(stats);
+	return err;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_enable);
+
+void netdev_offload_xstats_hw_stats_disable(struct net_device *dev)
+{
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
+	};
+	int rc;
+
+	if (WARN_ON(!dev->offload_hw_stats))
+		return;
+
+	call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
+				      &info.info);
+	kfree(dev->offload_hw_stats);
+	dev->offload_hw_stats = NULL;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_disable);
+
+struct netdev_notifier_offload_xstats_report_delta {
+	struct rtnl_link_stats64 stats;
+	enum netdev_hw_stats_type hw_stats;
+};
+
+static void netdev_link_stats64_add(struct rtnl_link_stats64 *dest,
+				    const struct rtnl_link_stats64 *src)
+{
+        dest->rx_packets          += src->rx_packets;
+        dest->tx_packets          += src->tx_packets;
+        dest->rx_bytes            += src->rx_bytes;
+        dest->tx_bytes            += src->tx_bytes;
+        dest->rx_errors           += src->rx_errors;
+        dest->tx_errors           += src->tx_errors;
+        dest->rx_dropped          += src->rx_dropped;
+        dest->tx_dropped          += src->tx_dropped;
+        dest->multicast           += src->multicast;
+        dest->collisions          += src->collisions;
+        dest->rx_length_errors    += src->rx_length_errors;
+        dest->rx_over_errors      += src->rx_over_errors;
+        dest->rx_crc_errors       += src->rx_crc_errors;
+        dest->rx_frame_errors     += src->rx_frame_errors;
+        dest->rx_fifo_errors      += src->rx_fifo_errors;
+        dest->rx_missed_errors    += src->rx_missed_errors;
+        dest->tx_aborted_errors   += src->tx_aborted_errors;
+        dest->tx_carrier_errors   += src->tx_carrier_errors;
+        dest->tx_fifo_errors      += src->tx_fifo_errors;
+        dest->tx_heartbeat_errors += src->tx_heartbeat_errors;
+        dest->tx_window_errors    += src->tx_window_errors;
+        dest->rx_compressed       += src->rx_compressed;
+        dest->tx_compressed       += src->tx_compressed;
+        dest->rx_nohandler        += src->rx_nohandler;
+}
+
+int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
+				       struct rtnl_link_stats64 *stats,
+				       enum netdev_hw_stats_type *used_hw_stats,
+				       struct netlink_ext_ack *extack)
+{
+	struct netdev_notifier_offload_xstats_rd report_delta = {};
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.info.extack = extack,
+		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
+		.report_delta = &report_delta,
 	};
 	int err;
 	int rc;
 
-	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_GET,
+	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
-	err = notifier_to_errno(rc);
-	if (err) {
-		WARN_ON(!info.handled);
-		return err;
-	}
 
-	if (!info.handled)
-		return -EOPNOTSUPP;
-	return 0;
+	/* Cache whatever we got, even if there was an error, otherwise the
+	 * successful stats retrievals would get lost.
+	 */
+	netdev_link_stats64_add(netdev->offload_hw_stats, &report_delta.stats);
+	*stats = *netdev->offload_hw_stats;
+	*used_hw_stats = report_delta.hw_stats;
+
+	return notifier_to_errno(rc);
 }
 EXPORT_SYMBOL(netdev_offload_xstats_get);
+
+void
+netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,
+				   const struct rtnl_link_stats64 *stats,
+				   enum netdev_hw_stats_type hw_stats)
+{
+	WARN_ON(hweight32(hw_stats) == 1);
+
+	report_delta->hw_stats |= hw_stats;
+	netdev_link_stats64_add(&report_delta->stats, stats);
+}
+EXPORT_SYMBOL(netdev_offload_xstats_report_delta);
 
 /**
  * netdev_get_xmit_slave - Get the xmit slave of master device

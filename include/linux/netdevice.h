@@ -2266,6 +2266,7 @@ struct net_device {
 
 	/* protected by rtnl_lock */
 	struct bpf_xdp_entity	xdp_state[__MAX_XDP_MODE];
+	struct rtnl_link_stats64 *offload_hw_stats;
 };
 #define to_net_dev(d) container_of(d, struct net_device, dev)
 
@@ -2809,7 +2810,7 @@ enum netdev_cmd {
 	NETDEV_CVLAN_FILTER_DROP_INFO,
 	NETDEV_SVLAN_FILTER_PUSH_INFO,
 	NETDEV_SVLAN_FILTER_DROP_INFO,
-	NETDEV_OFFLOAD_XSTATS_GET,
+	NETDEV_OFFLOAD_XSTATS_CMD,
 };
 const char *netdev_cmd_to_name(enum netdev_cmd cmd);
 
@@ -2860,22 +2861,53 @@ struct netdev_notifier_pre_changeaddr_info {
 	const unsigned char *dev_addr;
 };
 
-struct netdev_notifier_offload_xstats_info {
-	struct netdev_notifier_info info; /* must be first */
-	int attr_id;
+// xxx naming. Are these types for hw_stats, or generally for offloaded stats?
+#define NETDEV_HW_STATS_TYPES(X)		\
+	X(IMMEDIATE)
 
-	/* `stats' is NULL for discovery whether there are any offload xstats
-	 * available. For stat collection, it points to a valid object.
-	 */
-	struct rtnl_link_stats64 *stats;
+#define NETDEV_HW_STATS_EXPAND_BITN(T)		\
+	NETDEV_HW_STATS_BITN_ ## T,
+enum {
+	NETDEV_HW_STATS_TYPES(NETDEV_HW_STATS_EXPAND_BITN)
+};
+#undef NETDEV_HW_STATS_EXPAND_BITN
 
-	bool handled;
+#define NETDEV_HW_STATS_EXPAND_TYPE(T)		\
+	NETDEV_HW_STATS_TYPE_ ## T = BIT(NETDEV_HW_STATS_BITN_ ## T),
+enum netdev_hw_stats_type {
+	NETDEV_HW_STATS_TYPES(NETDEV_HW_STATS_EXPAND_TYPE)
+};
+#undef NETDEV_HW_STATS_EXPAND_TYPE
+
+enum netdev_offload_xstats_cmd {
+	NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
+	NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
+	NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
 };
 
-bool netdev_offload_xstats_has(struct net_device *dev, int attr_id);
-int netdev_offload_xstats_get(struct net_device *dev, int attr_id,
-			      struct rtnl_link_stats64 *stats,
-			      struct netlink_ext_ack *extack);
+struct netdev_notifier_offload_xstats_info {
+	struct netdev_notifier_info info; /* must be first */
+	enum netdev_offload_xstats_cmd cmd;
+
+	union {
+		/* For ENABLE. A mask of enum netdev_hw_stats_type. */
+		enum netdev_hw_stats_type hw_stats;
+
+		/* For REPORT_DELTA. */
+		struct netdev_notifier_offload_xstats_rd *report_delta;
+	};
+};
+
+int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
+					  enum netdev_hw_stats_type hw_stats,
+					  struct netlink_ext_ack *extack);
+void netdev_offload_xstats_hw_stats_disable(struct net_device *dev);
+int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
+				       struct rtnl_link_stats64 *stats,
+				       struct netlink_ext_ack *extack);
+void netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,
+					const struct rtnl_link_stats64 *stats,
+					enum netdev_hw_stats_type hw_stats);
 
 static inline void netdev_notifier_info_init(struct netdev_notifier_info *info,
 					     struct net_device *dev)
