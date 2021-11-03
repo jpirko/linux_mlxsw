@@ -8943,25 +8943,20 @@ static int mlxsw_sp_router_port_offload_xstats_cmd(struct mlxsw_sp_rif *rif,
 {
 	int err = 0;
 
+	// xxx looks like there should be a way to bounce the notifier when an
+	// unknown stat is collected.
+
 	switch (info->cmd) {
 	case NETDEV_OFFLOAD_XSTATS_CMD_ENABLE:
-		printk(KERN_WARNING "xstats enable %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats enable %s\n", rif->dev->name);
 		break;
 	case NETDEV_OFFLOAD_XSTATS_CMD_DISABLE:
-		printk(KERN_WARNING "xstats disable %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats disable %s\n", rif->dev->name);
 		break;
 	case NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA:
-		printk(KERN_WARNING "xstats report delta %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats report delta %s\n", rif->dev->name);
 		err = mlxsw_sp_router_port_offload_xstats_report_delta(rif,
 								       info);
-		break;
-	}
-
-	switch (info->attr_id) {
-	case IFLA_OFFLOAD_XSTATS_HW_STATS:
-		printk(KERN_WARNING "mlxsw_sp_router_port_offload_xstats_get %s\n",
-		       rif->dev->name);
-		info->stats->rx_packets += 1234;
 		break;
 	}
 

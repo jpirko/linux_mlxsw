@@ -2904,6 +2904,7 @@ int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 void netdev_offload_xstats_hw_stats_disable(struct net_device *dev);
 int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 				       struct rtnl_link_stats64 *stats,
+				       enum netdev_hw_stats_type *used_hw_stats,
 				       struct netlink_ext_ack *extack);
 void netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,
 					const struct rtnl_link_stats64 *stats,

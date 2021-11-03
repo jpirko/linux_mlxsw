@@ -1685,7 +1685,7 @@ const char *netdev_cmd_to_name(enum netdev_cmd cmd)
 	N(UDP_TUNNEL_DROP_INFO) N(CHANGE_TX_QUEUE_LEN)
 	N(CVLAN_FILTER_PUSH_INFO) N(CVLAN_FILTER_DROP_INFO)
 	N(SVLAN_FILTER_PUSH_INFO) N(SVLAN_FILTER_DROP_INFO)
-	N(PRE_CHANGEADDR) N(OFFLOAD_XSTATS_GET)
+	N(PRE_CHANGEADDR) N(OFFLOAD_XSTATS_CMD)
 	}
 #undef N
 	return "UNKNOWN_NETDEV_EVENT";
@@ -8360,22 +8360,6 @@ void netdev_bonding_info_change(struct net_device *dev,
 }
 EXPORT_SYMBOL(netdev_bonding_info_change);
 
-static int netdev_offload_xstats_toggle(struct net_device *dev,
-					enum netdev_offload_xstats_cmd cmd,
-					struct netlink_ext_ack *extack)
-{
-	struct netdev_notifier_offload_xstats_info info = {
-		.info.dev = dev,
-		.info.extack = extack,
-		.cmd = cmd,
-	};
-	int rc;
-
-	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
-					   &info.info);
-	return notifier_to_errno(rc);
-}
-
 int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 					  u32 req_hw_stats,
 					  struct netlink_ext_ack *extack)
@@ -8384,7 +8368,7 @@ int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 		.info.dev = dev,
 		.info.extack = extack,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
-		.req_stats = req_hw_stats,
+		.hw_stats = req_hw_stats,
 	};
 	struct rtnl_link_stats64 *stats;
 	int err;
@@ -8420,7 +8404,6 @@ void netdev_offload_xstats_hw_stats_disable(struct net_device *dev)
 		.info.dev = dev,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
 	};
-	int rc;
 
 	if (WARN_ON(!dev->offload_hw_stats))
 		return;
@@ -8432,7 +8415,7 @@ void netdev_offload_xstats_hw_stats_disable(struct net_device *dev)
 }
 EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_disable);
 
-struct netdev_notifier_offload_xstats_report_delta {
+struct netdev_notifier_offload_xstats_rd {
 	struct rtnl_link_stats64 stats;
 	enum netdev_hw_stats_type hw_stats;
 };
@@ -8478,7 +8461,6 @@ int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
 		.report_delta = &report_delta,
 	};
-	int err;
 	int rc;
 
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
@@ -8487,13 +8469,13 @@ int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 	/* Cache whatever we got, even if there was an error, otherwise the
 	 * successful stats retrievals would get lost.
 	 */
-	netdev_link_stats64_add(netdev->offload_hw_stats, &report_delta.stats);
-	*stats = *netdev->offload_hw_stats;
+	netdev_link_stats64_add(dev->offload_hw_stats, &report_delta.stats);
+	*stats = *dev->offload_hw_stats;
 	*used_hw_stats = report_delta.hw_stats;
 
 	return notifier_to_errno(rc);
 }
-EXPORT_SYMBOL(netdev_offload_xstats_get);
+EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_get);
 
 void
 netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,

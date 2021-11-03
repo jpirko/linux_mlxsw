@@ -1145,16 +1145,6 @@ enum {
 	IFLA_STATS_LINK_64,
 	IFLA_STATS_LINK_XSTATS,
 	IFLA_STATS_LINK_XSTATS_SLAVE,
-	// filter_mask above instructs the kernel to only collect stats that are
-	// interesting to the callee. However the filtering as made by the
-	// attribute. For offload_xstats, we have a nest of attributes and need
-	// a different filtering mechanism.
-	//
-	// So if (filter_mask & IFLA_STATS_FILTER_BIT(OFFLOAD_XSTATS)),
-	// the attribute may be present and be used for filtering.
-	//
-	// For rtnl_stats_set, the attribute will be used in the same way to
-	// toggle the use of offloaded xstats.
 	IFLA_STATS_LINK_OFFLOAD_XSTATS,
 	IFLA_STATS_AF_SPEC,
 	__IFLA_STATS_MAX,
@@ -1163,6 +1153,17 @@ enum {
 #define IFLA_STATS_MAX (__IFLA_STATS_MAX - 1)
 
 #define IFLA_STATS_FILTER_BIT(ATTR)	(1 << (ATTR - 1))
+
+enum {
+	IFLA_STATS_GETSET_UNSPEC,
+	IFLA_STATS_GET_FILTERS, /* Nest of IFLA_STATS_LINK_*, each a u32 with a
+				 * filter mask for the corresponding stat group.
+				 */
+	IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS, /* IFLA_HW_STATS_* bitfield */
+	__IFLA_STATS_GETSET_MAX,
+};
+
+#define IFLA_STATS_GETSET_MAX (__IFLA_STATS_GETSET_MAX - 1)
 
 /* These are embedded into IFLA_STATS_LINK_XSTATS:
  * [IFLA_STATS_LINK_XSTATS]
@@ -1181,10 +1182,16 @@ enum {
 enum {
 	IFLA_OFFLOAD_XSTATS_UNSPEC,
 	IFLA_OFFLOAD_XSTATS_CPU_HIT, /* struct rtnl_link_stats64 */
-	IFLA_OFFLOAD_XSTATS_HW_STATS, /* struct rtnl_link_stats64 */
+	IFLA_OFFLOAD_XSTATS_HW_STATS, /* nest */
 	__IFLA_OFFLOAD_XSTATS_MAX
 };
 #define IFLA_OFFLOAD_XSTATS_MAX (__IFLA_OFFLOAD_XSTATS_MAX - 1)
+
+enum {
+	IFLA_OFFLOAD_XSTATS_HW_STATS_UNSPEC,
+	IFLA_OFFLOAD_XSTATS_HW_STATS_STATS,	/* struct rtnl_link_stats64 */
+	IFLA_OFFLOAD_XSTATS_HW_STATS_TYPE,	/* IFLA_HW_STATS_* bitfield */
+};
 
 /* HW stats type. This is modeled after TCA_ACT_HW_STATS_*. For details, please
  * see pkt_cls.h.

@@ -4692,7 +4692,7 @@ static int mlxsw_sp_netdevice_event(struct notifier_block *nb,
 	else if (event == NETDEV_PRE_CHANGEADDR ||
 		 event == NETDEV_CHANGEADDR ||
 		 event == NETDEV_CHANGEMTU ||
-		 event == NETDEV_OFFLOAD_XSTATS_GET)
+		 event == NETDEV_OFFLOAD_XSTATS_CMD)
 		// xxx ^^^ abstract this list away?
 		err = mlxsw_sp_netdevice_router_port_event(dev, event, ptr);
 	else if (mlxsw_sp_is_vrf_event(event, ptr))
