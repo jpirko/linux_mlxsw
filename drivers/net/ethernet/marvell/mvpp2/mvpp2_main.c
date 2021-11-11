@@ -7675,6 +7675,11 @@ static int mvpp2_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void mvpp2_shutdown(struct platform_device *pdev)
+{
+	mvpp2_remove(pdev);
+}
+
 static const struct of_device_id mvpp2_match[] = {
 	{
 		.compatible = "marvell,armada-375-pp2",
@@ -7699,6 +7704,7 @@ MODULE_DEVICE_TABLE(acpi, mvpp2_acpi_match);
 static struct platform_driver mvpp2_driver = {
 	.probe = mvpp2_probe,
 	.remove = mvpp2_remove,
+	.shutdown = mvpp2_shutdown,
 	.driver = {
 		.name = MVPP2_DRIVER_NAME,
 		.of_match_table = mvpp2_match,
