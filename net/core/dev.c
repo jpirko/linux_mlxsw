@@ -8374,12 +8374,12 @@ int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 	int err;
 	int rc;
 
-	if (WARN_ON(dev->offload_hw_stats))
-		return 0;
-
-	stats = kmalloc(sizeof(dev->offload_hw_stats), GFP_KERNEL);
-	if (!stats)
-		return -ENOMEM;
+	if (!dev->offload_hw_stats) {
+		dev->offload_hw_stats = kzalloc(sizeof(*dev->offload_hw_stats),
+						GFP_KERNEL);
+		if (!dev->offload_hw_stats)
+			return -ENOMEM;
+	}
 
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
@@ -8389,7 +8389,6 @@ int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 		// fails midway through
 		goto free_stats;
 
-	dev->offload_hw_stats = stats;
 	return 0;
 
 free_stats:
@@ -8405,7 +8404,7 @@ void netdev_offload_xstats_hw_stats_disable(struct net_device *dev)
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
 	};
 
-	if (WARN_ON(!dev->offload_hw_stats))
+	if (!dev->offload_hw_stats)
 		return;
 
 	call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
@@ -8463,6 +8462,9 @@ int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 	};
 	int rc;
 
+	if (!dev->offload_hw_stats)
+		return -ENOENT;
+
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
 
@@ -8482,7 +8484,7 @@ netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *rep
 				   const struct rtnl_link_stats64 *stats,
 				   enum netdev_hw_stats_type hw_stats)
 {
-	WARN_ON(hweight32(hw_stats) == 1);
+	WARN_ON(hweight32(hw_stats) != 1);
 
 	report_delta->hw_stats |= hw_stats;
 	netdev_link_stats64_add(&report_delta->stats, stats);

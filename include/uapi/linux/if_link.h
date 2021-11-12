@@ -1190,8 +1190,10 @@ enum {
 enum {
 	IFLA_OFFLOAD_XSTATS_HW_STATS_UNSPEC,
 	IFLA_OFFLOAD_XSTATS_HW_STATS_STATS,	/* struct rtnl_link_stats64 */
-	IFLA_OFFLOAD_XSTATS_HW_STATS_TYPE,	/* IFLA_HW_STATS_* bitfield */
+	IFLA_OFFLOAD_XSTATS_HW_STATS_USED_TYPE,	/* IFLA_HW_STATS_* bitfield */
+	__IFLA_OFFLOAD_XSTATS_HW_STATS_MAX,
 };
+#define IFLA_OFFLOAD_XSTATS_HW_STATS_MAX (__IFLA_OFFLOAD_XSTATS_HW_STATS_MAX - 1)
 
 /* HW stats type. This is modeled after TCA_ACT_HW_STATS_*. For details, please
  * see pkt_cls.h.

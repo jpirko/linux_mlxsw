@@ -8931,6 +8931,7 @@ mlxsw_sp_router_port_offload_xstats_report_delta(struct mlxsw_sp_rif *rif,
 {
 	struct rtnl_link_stats64 stats = {
 		.rx_packets = 1234,
+		.tx_packets = 5678,
 	};
 
 	netdev_offload_xstats_report_delta(info->report_delta, &stats,
