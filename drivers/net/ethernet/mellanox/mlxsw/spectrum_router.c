@@ -8929,13 +8929,17 @@ static int
 mlxsw_sp_router_port_offload_xstats_report_delta(struct mlxsw_sp_rif *rif,
 			    struct netdev_notifier_offload_xstats_info *info)
 {
+	struct netdev_notifier_offload_xstats_rd *ctx = info->report_delta.ctx;
 	struct rtnl_link_stats64 stats = {
 		.rx_packets = 1234,
 		.tx_packets = 5678,
 	};
 
-	netdev_offload_xstats_report_delta(info->report_delta, &stats,
-					   NETDEV_HW_STATS_TYPE_IMMEDIATE);
+	if (info->report_delta.report_stats)
+		netdev_offload_xstats_report_delta(ctx, &stats);
+	else
+		netdev_offload_xstats_report_delta(ctx, NULL);
+
 	return 0;
 }
 

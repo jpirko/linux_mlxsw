@@ -8361,25 +8361,23 @@ void netdev_bonding_info_change(struct net_device *dev,
 EXPORT_SYMBOL(netdev_bonding_info_change);
 
 int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
-					  u32 req_hw_stats,
 					  struct netlink_ext_ack *extack)
 {
 	struct netdev_notifier_offload_xstats_info info = {
 		.info.dev = dev,
 		.info.extack = extack,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
-		.hw_stats = req_hw_stats,
 	};
-	struct rtnl_link_stats64 *stats;
 	int err;
 	int rc;
 
-	if (!dev->offload_hw_stats) {
-		dev->offload_hw_stats = kzalloc(sizeof(*dev->offload_hw_stats),
-						GFP_KERNEL);
-		if (!dev->offload_hw_stats)
-			return -ENOMEM;
-	}
+	if (dev->offload_hw_stats)
+		return 0;
+
+	dev->offload_hw_stats = kzalloc(sizeof(*dev->offload_hw_stats),
+					GFP_KERNEL);
+	if (!dev->offload_hw_stats)
+		return -ENOMEM;
 
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
@@ -8392,7 +8390,8 @@ int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
 	return 0;
 
 free_stats:
-	kfree(stats);
+	kfree(dev->offload_hw_stats);
+	dev->offload_hw_stats = NULL;
 	return err;
 }
 EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_enable);
@@ -8414,9 +8413,15 @@ void netdev_offload_xstats_hw_stats_disable(struct net_device *dev)
 }
 EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_disable);
 
+bool netdev_offload_xstats_hw_stats_enabled(const struct net_device *dev)
+{
+	return dev->offload_hw_stats;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_enabled);
+
 struct netdev_notifier_offload_xstats_rd {
 	struct rtnl_link_stats64 stats;
-	enum netdev_hw_stats_type hw_stats;
+	u32 in_hw_count;
 };
 
 static void netdev_link_stats64_add(struct rtnl_link_stats64 *dest,
@@ -8450,7 +8455,7 @@ static void netdev_link_stats64_add(struct rtnl_link_stats64 *dest,
 
 int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 				       struct rtnl_link_stats64 *stats,
-				       enum netdev_hw_stats_type *used_hw_stats,
+				       u32 *in_hw_count,
 				       struct netlink_ext_ack *extack)
 {
 	struct netdev_notifier_offload_xstats_rd report_delta = {};
@@ -8458,12 +8463,12 @@ int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 		.info.dev = dev,
 		.info.extack = extack,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
-		.report_delta = &report_delta,
+		.report_delta.report_stats = (stats != NULL),
+		.report_delta.ctx = &report_delta,
 	};
 	int rc;
 
-	if (!dev->offload_hw_stats)
-		return -ENOENT;
+	WARN_ON(stats && !dev->offload_hw_stats);
 
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
@@ -8471,9 +8476,12 @@ int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 	/* Cache whatever we got, even if there was an error, otherwise the
 	 * successful stats retrievals would get lost.
 	 */
-	netdev_link_stats64_add(dev->offload_hw_stats, &report_delta.stats);
-	*stats = *dev->offload_hw_stats;
-	*used_hw_stats = report_delta.hw_stats;
+	if (dev->offload_hw_stats)
+		netdev_link_stats64_add(dev->offload_hw_stats,
+					&report_delta.stats);
+	if (stats)
+		*stats = *dev->offload_hw_stats;
+	*in_hw_count = report_delta.in_hw_count;
 
 	return notifier_to_errno(rc);
 }
@@ -8481,13 +8489,11 @@ EXPORT_SYMBOL(netdev_offload_xstats_hw_stats_get);
 
 void
 netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,
-				   const struct rtnl_link_stats64 *stats,
-				   enum netdev_hw_stats_type hw_stats)
+				   const struct rtnl_link_stats64 *stats)
 {
-	WARN_ON(hweight32(hw_stats) != 1);
-
-	report_delta->hw_stats |= hw_stats;
-	netdev_link_stats64_add(&report_delta->stats, stats);
+	report_delta->in_hw_count++;
+	if (stats)
+		netdev_link_stats64_add(&report_delta->stats, stats);
 }
 EXPORT_SYMBOL(netdev_offload_xstats_report_delta);
 

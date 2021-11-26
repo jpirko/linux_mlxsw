@@ -1159,7 +1159,7 @@ enum {
 	IFLA_STATS_GET_FILTERS, /* Nest of IFLA_STATS_LINK_*, each a u32 with a
 				 * filter mask for the corresponding stat group.
 				 */
-	IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS, /* IFLA_HW_STATS_* bitfield */
+	IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS, /* bool as u8 */
 	__IFLA_STATS_GETSET_MAX,
 };
 

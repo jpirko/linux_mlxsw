@@ -2861,24 +2861,6 @@ struct netdev_notifier_pre_changeaddr_info {
 	const unsigned char *dev_addr;
 };
 
-// xxx naming. Are these types for hw_stats, or generally for offloaded stats?
-#define NETDEV_HW_STATS_TYPES(X)		\
-	X(IMMEDIATE)
-
-#define NETDEV_HW_STATS_EXPAND_BITN(T)		\
-	NETDEV_HW_STATS_BITN_ ## T,
-enum {
-	NETDEV_HW_STATS_TYPES(NETDEV_HW_STATS_EXPAND_BITN)
-};
-#undef NETDEV_HW_STATS_EXPAND_BITN
-
-#define NETDEV_HW_STATS_EXPAND_TYPE(T)		\
-	NETDEV_HW_STATS_TYPE_ ## T = BIT(NETDEV_HW_STATS_BITN_ ## T),
-enum netdev_hw_stats_type {
-	NETDEV_HW_STATS_TYPES(NETDEV_HW_STATS_EXPAND_TYPE)
-};
-#undef NETDEV_HW_STATS_EXPAND_TYPE
-
 enum netdev_offload_xstats_cmd {
 	NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
 	NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
@@ -2890,25 +2872,23 @@ struct netdev_notifier_offload_xstats_info {
 	enum netdev_offload_xstats_cmd cmd;
 
 	union {
-		/* For ENABLE. A mask of enum netdev_hw_stats_type. */
-		enum netdev_hw_stats_type hw_stats;
-
-		/* For REPORT_DELTA. */
-		struct netdev_notifier_offload_xstats_rd *report_delta;
+		struct {
+			struct netdev_notifier_offload_xstats_rd *ctx;
+			bool report_stats;
+		} report_delta;
 	};
 };
 
 int netdev_offload_xstats_hw_stats_enable(struct net_device *dev,
-					  enum netdev_hw_stats_type hw_stats,
 					  struct netlink_ext_ack *extack);
 void netdev_offload_xstats_hw_stats_disable(struct net_device *dev);
+bool netdev_offload_xstats_hw_stats_enabled(const struct net_device *dev);
 int netdev_offload_xstats_hw_stats_get(struct net_device *dev,
 				       struct rtnl_link_stats64 *stats,
-				       enum netdev_hw_stats_type *used_hw_stats,
+				       u32 *in_hw_count,
 				       struct netlink_ext_ack *extack);
 void netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *report_delta,
-					const struct rtnl_link_stats64 *stats,
-					enum netdev_hw_stats_type hw_stats);
+					const struct rtnl_link_stats64 *stats);
 
 static inline void netdev_notifier_info_init(struct netdev_notifier_info *info,
 					     struct net_device *dev)
