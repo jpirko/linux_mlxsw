@@ -414,9 +414,6 @@ int mlxsw_env_reset_module(struct net_device *netdev,
 	    !(req & (ETH_RESET_PHY << ETH_RESET_SHARED_SHIFT)))
 		return 0;
 
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return -EINVAL;
-
 	mutex_lock(&mlxsw_env->module_info_lock);
 
 	if (mlxsw_env->module_info[module].num_ports_up) {
@@ -455,9 +452,6 @@ mlxsw_env_get_module_power_mode(struct mlxsw_core *mlxsw_core, u8 module,
 	char mcion_pl[MLXSW_REG_MCION_LEN];
 	u32 status_bits;
 	int err;
-
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return -EINVAL;
 
 	mutex_lock(&mlxsw_env->module_info_lock);
 
@@ -559,9 +553,6 @@ mlxsw_env_set_module_power_mode(struct mlxsw_core *mlxsw_core, u8 module,
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 	bool low_power;
 	int err = 0;
-
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return -EINVAL;
 
 	if (policy != ETHTOOL_MODULE_POWER_MODE_POLICY_HIGH &&
 	    policy != ETHTOOL_MODULE_POWER_MODE_POLICY_AUTO) {
@@ -901,9 +892,6 @@ mlxsw_env_module_overheat_counter_get(struct mlxsw_core *mlxsw_core, u8 module,
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return -EINVAL;
-
 	mutex_lock(&mlxsw_env->module_info_lock);
 	*p_counter = mlxsw_env->module_info[module].module_overheat_counter;
 	mutex_unlock(&mlxsw_env->module_info_lock);
@@ -916,9 +904,6 @@ void mlxsw_env_module_port_map(struct mlxsw_core *mlxsw_core, u8 module)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return;
-
 	mutex_lock(&mlxsw_env->module_info_lock);
 	mlxsw_env->module_info[module].num_ports_mapped++;
 	mutex_unlock(&mlxsw_env->module_info_lock);
@@ -928,9 +913,6 @@ EXPORT_SYMBOL(mlxsw_env_module_port_map);
 void mlxsw_env_module_port_unmap(struct mlxsw_core *mlxsw_core, u8 module)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
-
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return;
 
 	mutex_lock(&mlxsw_env->module_info_lock);
 	mlxsw_env->module_info[module].num_ports_mapped--;
@@ -942,9 +924,6 @@ int mlxsw_env_module_port_up(struct mlxsw_core *mlxsw_core, u8 module)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 	int err = 0;
-
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return -EINVAL;
 
 	mutex_lock(&mlxsw_env->module_info_lock);
 
@@ -974,9 +953,6 @@ EXPORT_SYMBOL(mlxsw_env_module_port_up);
 void mlxsw_env_module_port_down(struct mlxsw_core *mlxsw_core, u8 module)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
-
-	if (WARN_ON_ONCE(module >= mlxsw_env->module_count))
-		return;
 
 	mutex_lock(&mlxsw_env->module_info_lock);
 
