@@ -8929,16 +8929,16 @@ static int
 mlxsw_sp_router_port_offload_xstats_report_delta(struct mlxsw_sp_rif *rif,
 			    struct netdev_notifier_offload_xstats_info *info)
 {
-	struct netdev_notifier_offload_xstats_rd *ctx = info->report_delta.ctx;
+	struct netdev_notifier_offload_xstats_rd *rd = info->report_delta.rd;
 	struct rtnl_link_stats64 stats = {
 		.rx_packets = 1234,
 		.tx_packets = 5678,
 	};
 
 	if (info->report_delta.report_stats)
-		netdev_offload_xstats_report_delta(ctx, &stats);
+		netdev_offload_xstats_report_delta(rd, &stats);
 	else
-		netdev_offload_xstats_report_delta(ctx, NULL);
+		netdev_offload_xstats_report_delta(rd, NULL);
 
 	return 0;
 }
@@ -8953,13 +8953,16 @@ static int mlxsw_sp_router_port_offload_xstats_cmd(struct mlxsw_sp_rif *rif,
 
 	switch (info->cmd) {
 	case NETDEV_OFFLOAD_XSTATS_CMD_ENABLE:
-		printk(KERN_WARNING "hw_stats enable %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats enable %s type %d\n",
+		       rif->dev->name, info->enable.type);
 		break;
 	case NETDEV_OFFLOAD_XSTATS_CMD_DISABLE:
-		printk(KERN_WARNING "hw_stats disable %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats disable %s type %d\n",
+		       rif->dev->name, info->enable.type);
 		break;
 	case NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA:
-		printk(KERN_WARNING "hw_stats report delta %s\n", rif->dev->name);
+		printk(KERN_WARNING "hw_stats report delta %s type %d\n",
+		       rif->dev->name, info->report_delta.type);
 		err = mlxsw_sp_router_port_offload_xstats_report_delta(rif,
 								       info);
 		break;

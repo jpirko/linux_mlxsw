@@ -5070,50 +5070,58 @@ rtnl_offload_xstats_fill_ndo(struct net_device *dev, int attr_id,
 }
 
 static unsigned int
-rtnl_offload_xstats_get_size_hw_s_info(const struct net_device *dev)
+rtnl_offload_xstats_get_size_hw_s_info_one(const struct net_device *dev,
+				enum netdev_offload_xstats_type type)
 {
-	bool enabled = netdev_offload_xstats_hw_stats_enabled(dev);
+	bool enabled = netdev_offload_xstats_enabled(dev, type);
 
 	return (nla_total_size(sizeof(struct nlattr)) +
-		/* IFLA_OFFLOAD_XSTATS_HW_S_INFO_ENABLED */
+		/* IFLA_OFFLOAD_XSTATS_HW_S_INFO_REQUEST */
 		nla_total_size(sizeof(u8)) +
-		/* IFLA_OFFLOAD_XSTATS_HW_S_INFO_IN_HW_COUNT */
-		(enabled ? nla_total_size(sizeof(u32)) : 0) +
+		/* IFLA_OFFLOAD_XSTATS_HW_S_INFO_USED */
+		(enabled ? nla_total_size(sizeof(u8)) : 0) +
 		0);
 }
 
 static unsigned int
-rtnl_offload_xstats_get_size_hw_stats(const struct net_device *dev)
+rtnl_offload_xstats_get_size_hw_s_info(const struct net_device *dev)
 {
-	bool enabled = netdev_offload_xstats_hw_stats_enabled(dev);
+	return (nla_total_size(sizeof(struct nlattr)) +
+		/* IFLA_OFFLOAD_XSTATS_L3_STATS */
+		rtnl_offload_xstats_get_size_hw_s_info_one(dev,
+				    NETDEV_OFFLOAD_XSTATS_TYPE_L3) +
+		0);
+}
+
+static unsigned int
+rtnl_offload_xstats_get_size_stats(const struct net_device *dev,
+				   enum netdev_offload_xstats_type type)
+{
+	bool enabled = netdev_offload_xstats_enabled(dev, type);
 
 	return enabled ? sizeof(struct rtnl_link_stats64) : 0;
 }
 
+struct rtnl_offload_xstats_request_used {
+	bool request;
+	bool used;
+};
+
 static int
-rtnl_offload_xstats_fill_hw_s_info(struct net_device *dev, struct sk_buff *skb,
-				   int in_hw_count)
+rtnl_offload_xstats_fill_hw_s_info_one(struct sk_buff *skb, int attr_id,
+				struct rtnl_offload_xstats_request_used *ru)
 {
-	bool enabled = netdev_offload_xstats_hw_stats_enabled(dev);
 	struct nlattr *nest;
 
-	nest = nla_nest_start(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO);
-	if (!nest) {
-		printk(KERN_WARNING "nest overflowed\n");
+	nest = nla_nest_start(skb, attr_id);
+	if (!nest)
 		return -EMSGSIZE;
-	}
 
-	if (nla_put_u8(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO_ENABLED, enabled)) {
-		printk(KERN_WARNING "enabled overflowed\n");
+	if (nla_put_u8(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO_REQUEST, ru->request))
 		goto nla_put_failure;
-	}
 
-	if (enabled &&
-	    nla_put_u32(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO_IN_HW_COUNT,
-			in_hw_count)) {
-		printk(KERN_WARNING "in_hw_count overflowed\n");
+	if (nla_put_u8(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO_USED, ru->used))
 		goto nla_put_failure;
-	}
 
 	nla_nest_end(skb, nest);
 	return 0;
@@ -5123,18 +5131,67 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static unsigned int
-rtnl_offload_xstats_get_size_sw_stats(const struct net_device *dev)
+static int
+rtnl_offload_xstats_get_stats(struct net_device *dev,
+			      enum netdev_offload_xstats_type type,
+			      struct rtnl_offload_xstats_request_used *ru,
+			      struct rtnl_link_stats64 *stats,
+			      struct netlink_ext_ack *extack)
 {
-	return sizeof(struct rtnl_link_stats64);
+	bool request;
+	bool used;
+	int err;
+
+	request = netdev_offload_xstats_enabled(dev, type);
+	if (!request) {
+		used = false;
+		goto out;
+	}
+
+	err = netdev_offload_xstats_get(dev, type, stats, &used, extack);
+	if (err)
+		return err;
+
+out:
+	ru->request = request;
+	ru->used = used;
+	return 0;
 }
 
 static int
-rtnl_offload_xstats_fill_sw_stats(struct net_device *dev, struct sk_buff *skb,
-				  struct netlink_ext_ack *extack)
+rtnl_offload_xstats_fill_hw_s_info(struct sk_buff *skb, struct net_device *dev,
+			    struct rtnl_offload_xstats_request_used *ru_l3,
+			    struct netlink_ext_ack *extack)
 {
-	// xxx
+	struct rtnl_offload_xstats_request_used ru_l3_tmp;
+	struct nlattr *nest;
+	int err;
+
+	if (!ru_l3) {
+		err = rtnl_offload_xstats_get_stats(dev,
+						    NETDEV_OFFLOAD_XSTATS_TYPE_L3,
+						    &ru_l3_tmp, NULL, extack);
+		if (err)
+			return err;
+
+		ru_l3 = &ru_l3_tmp;
+	}
+
+	nest = nla_nest_start(skb, IFLA_OFFLOAD_XSTATS_HW_S_INFO);
+	if (!nest)
+		return -EMSGSIZE;
+
+	if (rtnl_offload_xstats_fill_hw_s_info_one(skb,
+						   IFLA_OFFLOAD_XSTATS_L3_STATS,
+						   ru_l3))
+		goto nla_put_failure;
+
+	nla_nest_end(skb, nest);
 	return 0;
+
+nla_put_failure:
+	nla_nest_cancel(skb, nest);
+	return -EMSGSIZE;
 }
 
 static int rtnl_get_offload_stats_size(const struct net_device *dev,
@@ -5151,12 +5208,8 @@ static int rtnl_get_offload_stats_size(const struct net_device *dev,
 		nla_size += nla_total_size_64bit(size);
 	}
 
-	if (off_filter_mask &
-	    IFLA_STATS_FILTER_BIT(IFLA_OFFLOAD_XSTATS_HW_STATS)) {
-		size = rtnl_offload_xstats_get_size_hw_stats(dev);
-		printk(KERN_WARNING "hw_stats size %d\n", size);
-		nla_size += nla_total_size_64bit(size);
-	}
+	// xxx I think CPU_HIT should be emitted for soft devices as well, so
+	// that there is a single UAPI to query for client tools.
 
 	if (off_filter_mask &
 	    IFLA_STATS_FILTER_BIT(IFLA_OFFLOAD_XSTATS_HW_S_INFO)) {
@@ -5166,9 +5219,10 @@ static int rtnl_get_offload_stats_size(const struct net_device *dev,
 	}
 
 	if (off_filter_mask &
-	    IFLA_STATS_FILTER_BIT(IFLA_OFFLOAD_XSTATS_SW_STATS)) {
-		size = rtnl_offload_xstats_get_size_sw_stats(dev);
-		printk(KERN_WARNING "sw_stats size %d\n", size);
+	    IFLA_STATS_FILTER_BIT(IFLA_OFFLOAD_XSTATS_L3_STATS)) {
+		size = rtnl_offload_xstats_get_size_stats(dev,
+						NETDEV_OFFLOAD_XSTATS_TYPE_L3);
+		printk(KERN_WARNING "l3_stats size %d\n", size);
 		nla_size += nla_total_size_64bit(size);
 	}
 
@@ -5185,83 +5239,78 @@ static int rtnl_fill_offload_stats(struct sk_buff *skb, struct net_device *dev,
 				   int *prividx, u32 off_filter_mask,
 				   struct netlink_ext_ack *extack)
 {
-	unsigned int hw_size = rtnl_offload_xstats_get_size_hw_stats(dev);
 	int attr_id_hw_s_info = IFLA_OFFLOAD_XSTATS_HW_S_INFO;
-	int attr_id_hw_stats = IFLA_OFFLOAD_XSTATS_HW_STATS;
-	int attr_id_sw_stats = IFLA_OFFLOAD_XSTATS_SW_STATS;
+	int attr_id_l3_stats = IFLA_OFFLOAD_XSTATS_L3_STATS;
 	int attr_id_cpu_hit = IFLA_OFFLOAD_XSTATS_CPU_HIT;
-	struct rtnl_link_stats64 *hw_stats = NULL;
-	u32 in_hw_count = 0;
+	struct rtnl_offload_xstats_request_used ru_l3;
+	struct rtnl_link_stats64 *stats_l3 = NULL;
+	unsigned int size_l3;
 	int err = -ENODATA;
 
-	if ((off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_cpu_hit)) &&
-	    *prividx <= attr_id_cpu_hit) {
+	/* To emit _HW_S_INFO, we need to know whether the group is enabled
+	 * ("request"), and whether it is actually implemented by some driver
+	 * ("used"). To get the "used" flag, we need to involve drivers, and
+	 * since we are doing it anyway, we might get them give us the counters
+	 * as well. But to do that, we need somewhere to store the stat set.
+	 * Keeping possibly multiple stat sets on stack is probably not a good
+	 * idea (and requires an extra copy, too), so below we reserve the space
+	 * directly in the SKB. So we need to emit the stat set attribute
+	 * _before_ _HW_S_INFO. But IFLA_OFFLOAD_XSTATS_L3_STATS comes after
+	 * _HW_S_INFO (and even if it didn't, another newly-added stat type of
+	 * this kind would), so the usual practice of handling prividx as a
+	 * linear index to keep track of where we stopped won't work. Instead,
+	 * use a bitfield with bits for yet-to-be-handled attributes set.
+	 */
+	if (!*prividx)
+		*prividx = off_filter_mask;
+
+	if (*prividx & IFLA_STATS_FILTER_BIT(attr_id_cpu_hit)) {
 		err = rtnl_offload_xstats_fill_ndo(dev, attr_id_cpu_hit, skb,
 						   extack);
-		if (err) {
-			*prividx = attr_id_cpu_hit;
+		if (err)
 			return err;
-		}
+		*prividx &= ~IFLA_STATS_FILTER_BIT(attr_id_cpu_hit);
 	}
 
-	/* Reserve space for IFLA_OFFLOAD_XSTATS_HW_STATS. This allocates the
-	 * attribute, but leaves the payload empty.
-	 *
-	 * xxx can this lead to issues in dumping when hw_stats_get() fails below?
-	 */
-	if (hw_size &&
-	    (off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_hw_stats)) &&
-	    *prividx <= attr_id_hw_stats) {
+	size_l3 = rtnl_offload_xstats_get_size_stats(dev,
+						NETDEV_OFFLOAD_XSTATS_TYPE_L3);
+	if (size_l3 && (*prividx & IFLA_STATS_FILTER_BIT(attr_id_l3_stats))) {
 		struct nlattr *attr;
 
-		attr = nla_reserve_64bit(skb, attr_id_hw_stats, hw_size,
+		printk(KERN_WARNING "reserve l3_stats\n");
+		attr = nla_reserve_64bit(skb, attr_id_l3_stats, size_l3,
 					 IFLA_OFFLOAD_XSTATS_UNSPEC);
-		if (!attr) {
-			printk(KERN_WARNING "hw_stats failed to reserve\n");
-			*prividx = attr_id_hw_stats;
+		if (!attr)
 			return -EMSGSIZE;
-		}
 
-		hw_stats = nla_data(attr);
+		stats_l3 = nla_data(attr);
 	}
 
-	/* Fetch the data for IFLA_OFFLOAD_XSTATS_HW_STATS and _HW_S_INFO,
-	 * filling the payload allocated above in the process. Note that
-	 * _HW_S_INFO needs to be emitted even if HW stats are disabled, so this
-	 * is always called to get in_hw_count.
+	/* Fetch the data for IFLA_OFFLOAD_XSTATS_L3_STATS and _HW_S_INFO,
+	 * filling the payload allocated above (if any) in the process. Note
+	 * that _HW_S_INFO needs to be emitted even if HW stats are disabled, so
+	 * this is always called to get request / used fields.
 	 */
-	if (((off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_hw_stats)) ||
-	     (off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_hw_s_info))) &&
-	    *prividx <= attr_id_hw_s_info) {
-		err = netdev_offload_xstats_hw_stats_get(dev, hw_stats,
-							 &in_hw_count, extack);
-		if (err) {
-			printk(KERN_WARNING "couldn't collect hw_stats\n");
-			*prividx = attr_id_hw_stats;
+	if ((*prividx & IFLA_STATS_FILTER_BIT(attr_id_l3_stats)) ||
+	    (*prividx & IFLA_STATS_FILTER_BIT(attr_id_hw_s_info))) {
+		printk(KERN_WARNING "fill l3_stats, get hw_s_info data in the process\n");
+		err = rtnl_offload_xstats_get_stats(dev,
+						NETDEV_OFFLOAD_XSTATS_TYPE_L3,
+						&ru_l3, stats_l3, extack);
+		if (err)
 			return err;
-		}
+
+		*prividx &= ~IFLA_STATS_FILTER_BIT(attr_id_l3_stats);
 	}
 
-	if ((off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_hw_s_info)) &&
-	    *prividx <= attr_id_hw_s_info) {
+	if (*prividx & IFLA_STATS_FILTER_BIT(attr_id_hw_s_info)) {
 		printk(KERN_WARNING "dump hw_s_info\n");
-		err = rtnl_offload_xstats_fill_hw_s_info(dev, skb, in_hw_count);
-		if (err) {
-			printk(KERN_WARNING "failed to dump hw_s_info\n");
-			*prividx = attr_id_hw_s_info;
+		err = rtnl_offload_xstats_fill_hw_s_info(skb, dev, &ru_l3,
+							 extack);
+		if (err)
 			return err;
-		}
-	}
 
-	if (hw_size &&
-	    (off_filter_mask & IFLA_STATS_FILTER_BIT(attr_id_sw_stats)) &&
-	    *prividx <= attr_id_sw_stats) {
-		err = rtnl_offload_xstats_fill_sw_stats(dev, skb, extack);
-		if (err) {
-			printk(KERN_WARNING "failed to dump sw_stats\n");
-			*prividx = attr_id_sw_stats;
-			return err;
-		}
+		*prividx &= ~IFLA_STATS_FILTER_BIT(attr_id_hw_s_info);
 	}
 
 	printk(KERN_WARNING "rtnl_fill_offload_stats done\n");
@@ -5552,7 +5601,7 @@ static const struct nla_policy ifla_stats_get_policy_filters[IFLA_STATS_MAX + 1]
 
 static const struct nla_policy ifla_stats_set_policy[IFLA_STATS_GETSET_MAX + 1] = {
 	[IFLA_STATS_GETSET_UNSPEC]		= { .strict_start_type = 1 },
-	[IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS] = { .type = NLA_U8 },
+	[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS] = { .type = NLA_U8 },
 };
 
 static int rtnl_stats_get_parse_filters(struct nlattr *ifla_filters,
@@ -5764,22 +5813,24 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err < 0)
 		return err;
 
-	if (tb[IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS]) {
-		u8 req = nla_get_u8(tb[IFLA_STATS_SET_OFFLOAD_XSTATS_HW_STATS]);
+	if (tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS]) {
+		u8 req = nla_get_u8(tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS]);
 
 		if (req >= 2) {
-			NL_SET_ERR_MSG(extack, "hw_stats request should be 0 or 1");
+			NL_SET_ERR_MSG(extack, "l3_stats request should be 0 or 1");
 			return -EINVAL;
 		}
 
 		if (req) {
-			err = netdev_offload_xstats_hw_stats_enable(dev,
-								    extack);
+			err = netdev_offload_xstats_enable(dev,
+						NETDEV_OFFLOAD_XSTATS_TYPE_L3,
+						extack);
 			if (err)
 				// xxx goto errout; rollback?
 				return err;
 		} else {
-			netdev_offload_xstats_hw_stats_disable(dev);
+			netdev_offload_xstats_disable(dev,
+						NETDEV_OFFLOAD_XSTATS_TYPE_L3);
 		}
 		// xxx notify to userspace
 	}
