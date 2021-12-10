@@ -217,6 +217,61 @@ int mlxsw_sp_rif_counter_value_get(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
+#define MLXSW_SP_RIF_COUNTERS_BASIC(X)	\
+	X(good_unicast_packets)		\
+	X(good_multicast_packets)	\
+	X(good_broadcast_packets)	\
+	X(good_unicast_bytes)		\
+	X(good_multicast_bytes)		\
+	X(good_broadcast_bytes)		\
+	X(error_packets)		\
+	X(discard_packets)		\
+	X(error_bytes)			\
+	X(discard_bytes)
+
+struct mlxsw_sp_rif_counter_set_basic {
+#define MLXSW_SP_RIF_COUNTER_FIELD(NAME) u64 NAME;
+
+	MLXSW_SP_RIF_COUNTERS_BASIC(MLXSW_SP_RIF_COUNTER_FIELD)
+
+#undef MLXSW_SP_RIF_COUNTER_FIELD
+};
+
+static int
+mlxsw_sp_rif_counter_fetch_clear(struct mlxsw_sp_rif *rif,
+				 enum mlxsw_sp_rif_counter_dir dir,
+				 struct mlxsw_sp_rif_counter_set_basic *set)
+{
+	struct mlxsw_sp *mlxsw_sp = rif->mlxsw_sp;
+	char ricnt_pl[MLXSW_REG_RICNT_LEN];
+	unsigned int *p_counter_index;
+	bool valid;
+	int err;
+
+	valid = mlxsw_sp_rif_counter_valid_get(rif, dir);
+	if (!valid)
+		return -EINVAL;
+
+	p_counter_index = mlxsw_sp_rif_p_counter_get(rif, dir);
+	if (!p_counter_index)
+		return -EINVAL;
+
+	mlxsw_reg_ricnt_pack(ricnt_pl, *p_counter_index,
+			     MLXSW_REG_RICNT_OPCODE_CLEAR);
+	err = mlxsw_reg_query(mlxsw_sp->core, MLXSW_REG(ricnt), ricnt_pl);
+	if (err)
+		return err;
+
+#define MLXSW_SP_RIF_COUNTER_EXTRACT(NAME)				\
+		set->NAME = mlxsw_reg_ricnt_ ## NAME ## _get(ricnt_pl);
+
+	MLXSW_SP_RIF_COUNTERS_BASIC(MLXSW_SP_RIF_COUNTER_EXTRACT);
+
+#undef MLXSW_SP_RIF_COUNTER_EXTRACT
+
+	return 0;
+}
+
 static int mlxsw_sp_rif_counter_clear(struct mlxsw_sp *mlxsw_sp,
 				      unsigned int counter_index)
 {
@@ -295,6 +350,9 @@ static void mlxsw_sp_rif_counters_free(struct mlxsw_sp_rif *rif)
 {
 	struct mlxsw_sp *mlxsw_sp = rif->mlxsw_sp;
 
+	// xxx handle ingress as well. But counters will need to be flushed and
+	// reported to core anyway, so perhaps the whole handling will be
+	// different.
 	mlxsw_sp_rif_counter_free(mlxsw_sp, rif, MLXSW_SP_RIF_COUNTER_EGRESS);
 }
 
@@ -8926,49 +8984,119 @@ static int mlxsw_sp_router_port_pre_changeaddr_event(struct mlxsw_sp_rif *rif,
 }
 
 static int
-mlxsw_sp_router_port_offload_xstats_report_delta(struct mlxsw_sp_rif *rif,
+mlxsw_sp_router_port_l3_stats_enable(struct mlxsw_sp_rif *rif)
+{
+	int err;
+
+	// xxx just pass rif only???
+	err = mlxsw_sp_rif_counter_alloc(rif->mlxsw_sp, rif,
+					 MLXSW_SP_RIF_COUNTER_INGRESS);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_rif_counter_alloc(rif->mlxsw_sp, rif,
+					 MLXSW_SP_RIF_COUNTER_EGRESS);
+	if (err)
+		goto err_alloc_egress;
+
+	printk(KERN_WARNING "l3_stats enable %s\n", rif->dev->name);
+	return 0;
+
+err_alloc_egress:
+	mlxsw_sp_rif_counter_free(rif->mlxsw_sp, rif,
+				  MLXSW_SP_RIF_COUNTER_INGRESS);
+	return err;
+}
+
+static void
+mlxsw_sp_router_port_l3_stats_disable(struct mlxsw_sp_rif *rif)
+{
+	mlxsw_sp_rif_counter_free(rif->mlxsw_sp, rif,
+				  MLXSW_SP_RIF_COUNTER_EGRESS);
+	mlxsw_sp_rif_counter_free(rif->mlxsw_sp, rif,
+				  MLXSW_SP_RIF_COUNTER_INGRESS);
+	printk(KERN_WARNING "l3_stats disable %s\n", rif->dev->name);
+}
+
+static int
+mlxsw_sp_router_port_l3_stats_report_used(struct mlxsw_sp_rif *rif,
 			    struct netdev_notifier_offload_xstats_info *info)
 {
-	struct netdev_notifier_offload_xstats_rd *rd = info->report_delta.rd;
-	struct rtnl_link_stats64 stats = {
-		.rx_packets = 1234,
-		.tx_packets = 5678,
-	};
+	netdev_offload_xstats_report_used(info->report_used);
+	return 0;
+}
 
-	if (info->report_delta.report_stats)
-		netdev_offload_xstats_report_delta(rd, &stats);
-	else
-		netdev_offload_xstats_report_delta(rd, NULL);
+static int
+mlxsw_sp_router_port_l3_stats_report_delta(struct mlxsw_sp_rif *rif,
+			    struct netdev_notifier_offload_xstats_info *info)
+{
+	struct mlxsw_sp_rif_counter_set_basic ingress;
+	struct mlxsw_sp_rif_counter_set_basic egress;
+	struct rtnl_link_stats64 stats = {};
+	int err;
 
+	err = mlxsw_sp_rif_counter_fetch_clear(rif,
+					       MLXSW_SP_RIF_COUNTER_INGRESS,
+					       &ingress);
+	if (err)
+		return err;
+
+	err = mlxsw_sp_rif_counter_fetch_clear(rif,
+					       MLXSW_SP_RIF_COUNTER_EGRESS,
+					       &egress);
+	if (err)
+		return err;
+
+#define MLXSW_SP_ROUTER_ALL_GOOD(SET, SFX)		\
+		((SET.good_unicast_ ## SFX) +		\
+		 (SET.good_multicast_ ## SFX) + 	\
+		 (SET.good_broadcast_ ## SFX))
+
+	stats.rx_packets = MLXSW_SP_ROUTER_ALL_GOOD(ingress, packets);
+	stats.tx_packets = MLXSW_SP_ROUTER_ALL_GOOD(egress, packets);
+	stats.rx_bytes = MLXSW_SP_ROUTER_ALL_GOOD(ingress, bytes);
+	stats.tx_bytes = MLXSW_SP_ROUTER_ALL_GOOD(egress, bytes);
+	stats.rx_errors = ingress.error_packets;
+	stats.tx_errors = egress.error_packets;
+	stats.rx_dropped = ingress.discard_packets;
+	stats.tx_dropped = egress.discard_packets;
+	stats.multicast = ingress.good_multicast_packets +
+			  ingress.good_broadcast_packets;
+
+#undef MLXSW_SP_ROUTER_ALL_GOOD
+
+	netdev_offload_xstats_report_delta(info->report_delta, &stats);
 	return 0;
 }
 
 static int mlxsw_sp_router_port_offload_xstats_cmd(struct mlxsw_sp_rif *rif,
 			    struct netdev_notifier_offload_xstats_info *info)
 {
-	int err = 0;
+	printk(KERN_WARNING "offload_xstats dev %s cmd %d type %d\n",
+	       rif->dev->name, info->cmd, info->type);
 
-	// xxx looks like there should be a way to bounce the notifier when an
-	// unknown stat is collected.
+	switch (info->type) {
+	case NETDEV_OFFLOAD_XSTATS_TYPE_L3:
+		break;
+	default:
+		return 0;
+	}
 
 	switch (info->cmd) {
 	case NETDEV_OFFLOAD_XSTATS_CMD_ENABLE:
-		printk(KERN_WARNING "hw_stats enable %s type %d\n",
-		       rif->dev->name, info->enable.type);
-		break;
+		return mlxsw_sp_router_port_l3_stats_enable(rif);
 	case NETDEV_OFFLOAD_XSTATS_CMD_DISABLE:
-		printk(KERN_WARNING "hw_stats disable %s type %d\n",
-		       rif->dev->name, info->enable.type);
-		break;
+		mlxsw_sp_router_port_l3_stats_disable(rif);
+		return 0;
 	case NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA:
-		printk(KERN_WARNING "hw_stats report delta %s type %d\n",
-		       rif->dev->name, info->report_delta.type);
-		err = mlxsw_sp_router_port_offload_xstats_report_delta(rif,
-								       info);
-		break;
+		return mlxsw_sp_router_port_l3_stats_report_delta(rif, info);
+	case NETDEV_OFFLOAD_XSTATS_CMD_REPORT_USED:
+		return mlxsw_sp_router_port_l3_stats_report_used(rif, info);
 	}
 
-	return err;
+	/* Do not silently ignore unknown commands for a recognized stat type.
+	 */
+	return -EOPNOTSUPP;
 }
 
 int mlxsw_sp_netdevice_router_port_event(struct net_device *dev,

@@ -2864,6 +2864,7 @@ struct netdev_notifier_pre_changeaddr_info {
 enum netdev_offload_xstats_cmd { // xxx namespace as xstats_offload, not offload_xstats
 	NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
 	NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
+	NETDEV_OFFLOAD_XSTATS_CMD_REPORT_USED,
 	NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
 };
 
@@ -2874,19 +2875,11 @@ enum netdev_offload_xstats_type {
 struct netdev_notifier_offload_xstats_info {
 	struct netdev_notifier_info info; /* must be first */
 	enum netdev_offload_xstats_cmd cmd;
+	enum netdev_offload_xstats_type type;
 
 	union {
-		struct {
-			enum netdev_offload_xstats_type type;
-		} enable;
-		struct {
-			enum netdev_offload_xstats_type type;
-		} disable;
-		struct {
-			enum netdev_offload_xstats_type type;
-			struct netdev_notifier_offload_xstats_rd *rd;
-			bool report_stats;
-		} report_delta;
+		struct netdev_notifier_offload_xstats_rd *report_delta;
+		struct netdev_notifier_offload_xstats_ru *report_used;
 	};
 };
 
@@ -2906,6 +2899,8 @@ int netdev_offload_xstats_get(struct net_device *dev,
 void
 netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *rd,
 				   const struct rtnl_link_stats64 *stats);
+void
+netdev_offload_xstats_report_used(struct netdev_notifier_offload_xstats_ru *ru);
 
 static inline void netdev_notifier_info_init(struct netdev_notifier_info *info,
 					     struct net_device *dev)

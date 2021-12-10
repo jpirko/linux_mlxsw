@@ -8367,7 +8367,7 @@ static int netdev_offload_xstats_enable_l3(struct net_device *dev,
 		.info.dev = dev,
 		.info.extack = extack,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_ENABLE,
-		.enable.type = NETDEV_OFFLOAD_XSTATS_TYPE_L3,
+		.type = NETDEV_OFFLOAD_XSTATS_TYPE_L3,
 	};
 	int err;
 	int rc;
@@ -8415,7 +8415,7 @@ static void netdev_offload_xstats_disable_l3(struct net_device *dev)
 	struct netdev_notifier_offload_xstats_info info = {
 		.info.dev = dev,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_DISABLE,
-		.disable.type = NETDEV_OFFLOAD_XSTATS_TYPE_L3,
+		.type = NETDEV_OFFLOAD_XSTATS_TYPE_L3,
 	};
 
 	call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
@@ -8461,6 +8461,10 @@ bool netdev_offload_xstats_enabled(const struct net_device *dev,
 }
 EXPORT_SYMBOL(netdev_offload_xstats_enabled);
 
+struct netdev_notifier_offload_xstats_ru {
+	bool used;
+};
+
 struct netdev_notifier_offload_xstats_rd {
 	struct rtnl_link_stats64 stats;
 	bool used;
@@ -8495,10 +8499,33 @@ static void netdev_link_stats64_add(struct rtnl_link_stats64 *dest,
         dest->rx_nohandler        += src->rx_nohandler;
 }
 
-int netdev_offload_xstats_get(struct net_device *dev,
-			      enum netdev_offload_xstats_type type,
-			      struct rtnl_link_stats64 *p_stats, bool *p_used,
-			      struct netlink_ext_ack *extack)
+static int netdev_offload_xstats_get_used(struct net_device *dev,
+					  enum netdev_offload_xstats_type type,
+					  bool *p_used,
+					  struct netlink_ext_ack *extack)
+{
+	struct netdev_notifier_offload_xstats_ru report_used = {};
+	struct netdev_notifier_offload_xstats_info info = {
+		.info.dev = dev,
+		.info.extack = extack,
+		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_REPORT_USED,
+		.type = type,
+		.report_used = &report_used,
+	};
+	int rc;
+
+	WARN_ON(!netdev_offload_xstats_enabled(dev, type));
+	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
+					   &info.info);
+	*p_used = report_used.used;
+	return notifier_to_errno(rc);
+}
+
+static int netdev_offload_xstats_get_stats(struct net_device *dev,
+					   enum netdev_offload_xstats_type type,
+					   struct rtnl_link_stats64 *p_stats,
+					   bool *p_used,
+					   struct netlink_ext_ack *extack)
 {
 
 	struct netdev_notifier_offload_xstats_rd report_delta = {};
@@ -8506,15 +8533,14 @@ int netdev_offload_xstats_get(struct net_device *dev,
 		.info.dev = dev,
 		.info.extack = extack,
 		.cmd = NETDEV_OFFLOAD_XSTATS_CMD_REPORT_DELTA,
-		.report_delta.report_stats = (p_stats != NULL),
-		.report_delta.rd = &report_delta,
-		.report_delta.type = type,
+		.type = type,
+		.report_delta = &report_delta,
 	};
 	struct rtnl_link_stats64 *stats;
 	int rc;
 
 	stats = netdev_offload_xstats_get_ptr(dev, type);
-	WARN_ON(stats && !stats);
+	WARN_ON(!stats);
 
 	rc = call_netdevice_notifiers_info(NETDEV_OFFLOAD_XSTATS_CMD,
 					   &info.info);
@@ -8531,6 +8557,19 @@ int netdev_offload_xstats_get(struct net_device *dev,
 
 	return notifier_to_errno(rc);
 }
+
+int netdev_offload_xstats_get(struct net_device *dev,
+			      enum netdev_offload_xstats_type type,
+			      struct rtnl_link_stats64 *p_stats, bool *p_used,
+			      struct netlink_ext_ack *extack)
+{
+	if (p_stats)
+		return netdev_offload_xstats_get_stats(dev, type, p_stats,
+						       p_used, extack);
+	else
+		return netdev_offload_xstats_get_used(dev, type, p_used,
+						      extack);
+}
 EXPORT_SYMBOL(netdev_offload_xstats_get);
 
 void
@@ -8538,10 +8577,16 @@ netdev_offload_xstats_report_delta(struct netdev_notifier_offload_xstats_rd *rep
 				   const struct rtnl_link_stats64 *stats)
 {
 	report_delta->used = true;
-	if (stats)
-		netdev_link_stats64_add(&report_delta->stats, stats);
+	netdev_link_stats64_add(&report_delta->stats, stats);
 }
 EXPORT_SYMBOL(netdev_offload_xstats_report_delta);
+
+void
+netdev_offload_xstats_report_used(struct netdev_notifier_offload_xstats_ru *report_used)
+{
+	report_used->used = true;
+}
+EXPORT_SYMBOL(netdev_offload_xstats_report_used);
 
 /**
  * netdev_get_xmit_slave - Get the xmit slave of master device
