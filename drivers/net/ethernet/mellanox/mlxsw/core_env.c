@@ -694,6 +694,53 @@ out:
 }
 EXPORT_SYMBOL(mlxsw_env_set_module_power_mode);
 
+int mlxsw_env_sensor_map_create(struct mlxsw_core *core,
+				const struct mlxsw_bus_info *bus_info,
+				u8 slot_index,
+				struct mlxsw_env_gearbox_sensors_map *map)
+{
+	char mtecr_pl[MLXSW_REG_MTECR_LEN];
+	u16 last_sensor, offset;
+	int i, bit, err;
+
+	mlxsw_reg_mtecr_pack(mtecr_pl, slot_index);
+	err = mlxsw_reg_query(core, MLXSW_REG(mtecr), mtecr_pl);
+	if (err)
+		return err;
+
+	mlxsw_reg_mtecr_unpack(mtecr_pl, &map->sensor_count, &last_sensor, NULL);
+	if (!map->sensor_count) {
+		map->sensor_bit_map = NULL;
+		return 0;
+	}
+
+	/* Fill out sensor mapping array. */
+	map->sensor_bit_map = kcalloc(map->sensor_count, sizeof(u16), GFP_KERNEL);
+	if (!map->sensor_bit_map)
+		return -ENOMEM;
+
+	/* Sensors bitmap is size variable based on the last_sensor field and
+	 * in granularity of 32 bits. Calculate an offset in payload buffer to
+	 * start from.
+	 */
+	offset = MLXSW_REG_MTECR_SENSOR_MAP_LEN * 8 - last_sensor - 1;
+	offset -= offset % 32;
+	for (bit = 0, i = 0; bit <= last_sensor && i < map->sensor_count; bit++) {
+		if (mlxsw_reg_mtecr_sensor_map_get(mtecr_pl, bit + offset))
+			map->sensor_bit_map[i++] = bit;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(mlxsw_env_sensor_map_create);
+
+void mlxsw_env_sensor_map_destroy(const struct mlxsw_bus_info *bus_info,
+				  u16 *sensor_bit_map)
+{
+	kfree(sensor_bit_map);
+}
+EXPORT_SYMBOL(mlxsw_env_sensor_map_destroy);
+
 static int mlxsw_env_module_has_temp_sensor(struct mlxsw_core *mlxsw_core,
 					    u8 slot_index, u8 module,
 					    bool *p_has_temp_sensor)
