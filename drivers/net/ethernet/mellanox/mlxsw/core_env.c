@@ -1259,6 +1259,77 @@ mlxsw_env_module_event_disable(struct mlxsw_env *mlxsw_env, u8 slot_index)
 {
 }
 
+static void
+mlxsw_env_got_active(struct mlxsw_core *mlxsw_core, u8 slot_index,
+		     const struct mlxsw_linecard *linecard, void *priv)
+{
+	struct mlxsw_env *mlxsw_env = priv;
+	char mgpir_pl[MLXSW_REG_MGPIR_LEN];
+	int err;
+
+	mlxsw_reg_mgpir_pack(mgpir_pl, slot_index);
+	err = mlxsw_reg_query(mlxsw_env->core, MLXSW_REG(mgpir), mgpir_pl);
+	if (err)
+		return;
+
+	mlxsw_reg_mgpir_unpack(mgpir_pl, NULL, NULL, NULL,
+			       &mlxsw_env->line_cards[slot_index]->module_count,
+			       NULL);
+	mlxsw_env_module_event_enable(mlxsw_env, slot_index);
+}
+
+static void
+mlxsw_env_got_inactive(struct mlxsw_core *mlxsw_core, u8 slot_index,
+		       const struct mlxsw_linecard *linecard, void *priv)
+{
+	struct mlxsw_env *mlxsw_env = priv;
+
+	mlxsw_env_module_event_disable(mlxsw_env, slot_index);
+}
+
+static struct mlxsw_linecards_event_ops mlxsw_env_event_ops = {
+	.got_active = mlxsw_env_got_active,
+	.got_inactive = mlxsw_env_got_inactive,
+};
+
+static int mlxsw_env_linecards_register(struct mlxsw_env *mlxsw_env)
+{
+	struct mlxsw_linecards *linecards = mlxsw_core_linecards(mlxsw_env->core);
+	int err;
+
+	if (!linecards || !linecards->count)
+		return 0;
+
+	err = mlxsw_linecards_event_ops_register(mlxsw_env->core,
+						 &mlxsw_env_event_ops,
+						 mlxsw_env);
+	if (err)
+		goto err_linecards_event_ops_register;
+
+	return 0;
+
+err_linecards_event_ops_register:
+	return err;
+}
+
+static void mlxsw_env_linecards_unregister(struct mlxsw_env *mlxsw_env)
+{
+	struct mlxsw_linecards *linecards = mlxsw_core_linecards(mlxsw_env->core);
+	int i;
+
+	if (!linecards || !linecards->count)
+		return;
+
+	for (i = 1; i <= linecards->count; i++) {
+		if (mlxsw_env->line_cards[i]->module_count)
+			mlxsw_env_got_inactive(mlxsw_env->core, i, NULL,
+					       mlxsw_env);
+	}
+
+	mlxsw_linecards_event_ops_unregister(mlxsw_env->core,
+					     &mlxsw_env_event_ops, mlxsw_env);
+}
+
 int mlxsw_env_init(struct mlxsw_core *mlxsw_core, struct mlxsw_env **p_env)
 {
 	u8 module_count, num_of_slots, max_module_count;
@@ -1295,6 +1366,10 @@ int mlxsw_env_init(struct mlxsw_core *mlxsw_core, struct mlxsw_env **p_env)
 	mutex_init(&env->line_cards_lock);
 	*p_env = env;
 
+	err = mlxsw_env_linecards_register(env);
+	if (err)
+		goto err_linecards_register;
+
 	err = mlxsw_env_temp_warn_event_register(mlxsw_core);
 	if (err)
 		goto err_temp_warn_event_register;
@@ -1322,6 +1397,8 @@ err_mlxsw_env_module_event_enable:
 err_module_plug_event_register:
 	mlxsw_env_temp_warn_event_unregister(env);
 err_temp_warn_event_register:
+	mlxsw_env_linecards_unregister(env);
+err_linecards_register:
 	mutex_destroy(&env->line_cards_lock);
 	mlxsw_env_line_cards_free(env);
 err_mlxsw_env_line_cards_alloc:
@@ -1336,6 +1413,7 @@ void mlxsw_env_fini(struct mlxsw_env *env)
 	/* Make sure there is no more event work scheduled. */
 	mlxsw_core_flush_owq();
 	mlxsw_env_temp_warn_event_unregister(env);
+	mlxsw_env_linecards_unregister(env);
 	mutex_destroy(&env->line_cards_lock);
 	mlxsw_env_line_cards_free(env);
 	kfree(env);
