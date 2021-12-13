@@ -156,6 +156,7 @@ unprovision_test()
 
 LC_16X100G_TYPE="16x100G"
 LC_16X100G_PORT_COUNT=16
+LC_16X100G_DEVICE_COUNT=4
 
 supported_types_check()
 {
@@ -234,6 +235,66 @@ interface_check()
 	ip link set $h2 down
 }
 
+lc_info_check()
+{
+	local lc=$1
+	local expected_device_count=$2
+	local device_count
+	local device
+	local running_device_fw
+	local flashable
+	local component
+	local componentstr
+
+	device_count=$(devlink lc info $DEVLINK_DEV lc $lc -j | jq -e -r ".[][][].devices |length")
+	check_err $? "Failed to get linecard $lc device count"
+	[ $device_count != 0 ]
+	check_err $? "No device found on linecard $lc"
+	[ $device_count == $expected_device_count ]
+	check_err $? "Unexpected device count on linecard $lc (got $expected_device_count, expected $device_count)"
+	for (( device=0; device<$device_count; device++ ))
+	do
+		running_device_fw=$(devlink lc -v info $DEVLINK_DEV lc $lc -j | jq -e -r ".[][][].devices[$device].info.versions.running.fw")
+		check_err $? "Failed to get linecard $lc device $device running fw version"
+		log_info "Linecard $lc device $device running.fw: \"$running_device_fw\""
+	done
+}
+
+lc_devices_check()
+{
+	local lc=$1
+	local expected_device_count=$2
+	local device_count
+	local device
+	local running_device_fw
+	local flashable
+	local component
+	local componentstr
+
+	device_count=$(devlink lc show $DEVLINK_DEV lc $lc -j | jq -e -r ".[][][].devices |length")
+	check_err $? "Failed to get linecard $lc device count"
+	[ $device_count != 0 ]
+	check_err $? "No device found on linecard $lc"
+	[ $device_count == $expected_device_count ]
+	check_err $? "Unexpected device count on linecard $lc (got $expected_device_count, expected $device_count)"
+	for (( device=0; device<$device_count; device++ ))
+	do
+		flashable=$(devlink lc -v show $DEVLINK_DEV lc $lc -j -p | jq -r ".[][][].devices[$device].flashable")
+		[[ "$flashable" == "null" ]]
+		check_fail $? "Failed to get linecard $lc device $device flashable flag"
+		if [[ "$flashable" == "true" ]]; then
+			component=$(devlink lc -v show $DEVLINK_DEV lc $lc -j -p | jq -e -r ".[][][].devices[$device].component")
+			check_err $? "Failed to get linecard $lc device $device component name"
+			componentstr=", component \"$component\""
+		elif [[ "$flashable" == "false" ]]; then
+			componentstr=""
+			[ $device == 0 ]
+			check_fail $? "Device 0 on linecard $lc is not flashable"
+		fi
+		log_info "Linecard $lc device $device flashable: \"$flashable\"$componentstr"
+	done
+}
+
 activation_16x100G_test()
 {
 	RET=0
@@ -255,6 +316,9 @@ activation_16x100G_test()
 	state=$(lc_wait_until_state_becomes $lc "active" \
 		$ACTIVATION_TIMEOUT)
 	check_err $? "Failed to get linecard $lc activated (timeout)"
+
+	lc_info_check $lc $LC_16X100G_DEVICE_COUNT
+	lc_devices_check $lc $LC_16X100G_DEVICE_COUNT
 
 	interface_check
 
