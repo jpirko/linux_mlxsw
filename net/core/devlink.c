@@ -418,8 +418,10 @@ devlink_linecard_get_from_info(struct devlink *devlink, struct genl_info *info)
 
 static void devlink_linecard_put(struct devlink_linecard *linecard)
 {
-	if (refcount_dec_and_test(&linecard->refcount))
+	if (refcount_dec_and_test(&linecard->refcount)) {
+		mutex_destroy(&linecard->state_lock);
 		kfree(linecard);
+	}
 }
 
 struct devlink_sb {
@@ -2028,6 +2030,12 @@ static int devlink_nl_cmd_rate_del_doit(struct sk_buff *skb,
 	return err;
 }
 
+struct devlink_linecard_type {
+	struct list_head list;
+	const char *type;
+	const void *priv;
+};
+
 static int devlink_nl_linecard_fill(struct sk_buff *msg,
 				    struct devlink *devlink,
 				    struct devlink_linecard *linecard,
@@ -2035,7 +2043,10 @@ static int devlink_nl_linecard_fill(struct sk_buff *msg,
 				    u32 seq, int flags,
 				    struct netlink_ext_ack *extack)
 {
+	struct devlink_linecard_type *linecard_type;
+	struct nlattr *attr;
 	void *hdr;
+	int i;
 
 	hdr = genlmsg_put(msg, portid, seq, &devlink_nl_family, flags, cmd);
 	if (!hdr)
@@ -2045,6 +2056,25 @@ static int devlink_nl_linecard_fill(struct sk_buff *msg,
 		goto nla_put_failure;
 	if (nla_put_u32(msg, DEVLINK_ATTR_LINECARD_INDEX, linecard->index))
 		goto nla_put_failure;
+	if (nla_put_u8(msg, DEVLINK_ATTR_LINECARD_STATE, linecard->state))
+		goto nla_put_failure;
+	if (linecard->state >= DEVLINK_LINECARD_STATE_PROVISIONED &&
+	    nla_put_string(msg, DEVLINK_ATTR_LINECARD_TYPE, linecard->type))
+		goto nla_put_failure;
+
+	if (linecard->types_count) {
+		attr = nla_nest_start(msg,
+				      DEVLINK_ATTR_LINECARD_SUPPORTED_TYPES);
+		if (!attr)
+			goto nla_put_failure;
+		for (i = 0; i < linecard->types_count; i++) {
+			linecard_type = &linecard->types[i];
+			if (nla_put_string(msg, DEVLINK_ATTR_LINECARD_TYPE,
+					   linecard_type->type))
+				goto nla_put_failure;
+		}
+		nla_nest_end(msg, attr);
+	}
 
 	genlmsg_end(msg, hdr);
 	return 0;
@@ -2130,12 +2160,14 @@ static int devlink_nl_cmd_linecard_get_dumpit(struct sk_buff *msg,
 				idx++;
 				continue;
 			}
+			mutex_lock(&linecard->state_lock);
 			err = devlink_nl_linecard_fill(msg, devlink, linecard,
 						       DEVLINK_CMD_LINECARD_NEW,
 						       NETLINK_CB(cb->skb).portid,
 						       cb->nlh->nlmsg_seq,
 						       NLM_F_MULTI,
 						       cb->extack);
+			mutex_unlock(&linecard->state_lock);
 			if (err) {
 				mutex_unlock(&devlink->linecards_lock);
 				devlink_put(devlink);
@@ -2152,6 +2184,153 @@ out:
 
 	cb->args[0] = idx;
 	return msg->len;
+}
+
+static struct devlink_linecard_type *
+devlink_linecard_type_lookup(struct devlink_linecard *linecard,
+			     const char *type)
+{
+	struct devlink_linecard_type *linecard_type;
+	int i;
+
+	for (i = 0; i < linecard->types_count; i++) {
+		linecard_type = &linecard->types[i];
+		if (!strcmp(type, linecard_type->type))
+			return linecard_type;
+	}
+	return NULL;
+}
+
+static int devlink_linecard_type_set(struct devlink_linecard *linecard,
+				     const char *type,
+				     struct netlink_ext_ack *extack)
+{
+	struct devlink_linecard_type *linecard_type;
+	int err;
+
+	mutex_lock(&linecard->state_lock);
+	if (linecard->state == DEVLINK_LINECARD_STATE_PROVISIONING) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard is currently being provisioned");
+		err = -EBUSY;
+		goto out;
+	}
+	if (linecard->state == DEVLINK_LINECARD_STATE_UNPROVISIONING) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard is currently being unprovisioned");
+		err = -EBUSY;
+		goto out;
+	}
+	if (linecard->state != DEVLINK_LINECARD_STATE_UNPROVISIONED &&
+	    linecard->state != DEVLINK_LINECARD_STATE_PROVISIONING_FAILED) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard already provisioned");
+		err = -EBUSY;
+		goto out;
+	}
+
+	linecard_type = devlink_linecard_type_lookup(linecard, type);
+	if (!linecard_type) {
+		NL_SET_ERR_MSG_MOD(extack, "Unsupported provision type provided");
+		err = -EINVAL;
+		goto out;
+	}
+
+	linecard->state = DEVLINK_LINECARD_STATE_PROVISIONING;
+	linecard->type = linecard_type->type;
+	devlink_linecard_notify(linecard,
+				DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+	err = linecard->ops->provision(linecard, linecard->priv,
+				       linecard_type->type, linecard_type->priv,
+				       extack);
+	if (err) {
+		/* Provisioning failed. Assume the linecard is unprovisioned
+		 * for future operations.
+		 */
+		mutex_lock(&linecard->state_lock);
+		linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONED;
+		devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+		mutex_unlock(&linecard->state_lock);
+	}
+	return err;
+
+out:
+	mutex_unlock(&linecard->state_lock);
+	return err;
+}
+
+static int devlink_linecard_type_unset(struct devlink_linecard *linecard,
+				       struct netlink_ext_ack *extack)
+{
+	int err;
+
+	mutex_lock(&linecard->state_lock);
+	if (linecard->state == DEVLINK_LINECARD_STATE_PROVISIONING) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard is currently being provisioned");
+		err = -EBUSY;
+		goto out;
+	}
+	if (linecard->state == DEVLINK_LINECARD_STATE_UNPROVISIONING) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard is currently being unprovisioned");
+		err = -EBUSY;
+		goto out;
+	}
+	if (linecard->state == DEVLINK_LINECARD_STATE_PROVISIONING_FAILED) {
+		linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONED;
+		linecard->type = NULL;
+		devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+		err = 0;
+		goto out;
+	}
+
+	if (linecard->state == DEVLINK_LINECARD_STATE_UNPROVISIONED ||
+	    linecard->state == DEVLINK_LINECARD_STATE_UNSPEC) {
+		NL_SET_ERR_MSG_MOD(extack, "Linecard is not provisioned");
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+	linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONING;
+	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+	err = linecard->ops->unprovision(linecard, linecard->priv,
+					 extack);
+	if (err) {
+		/* Unprovisioning failed. Assume the linecard is unprovisioned
+		 * for future operations.
+		 */
+		mutex_lock(&linecard->state_lock);
+		linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONED;
+		devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+		mutex_unlock(&linecard->state_lock);
+	}
+	return err;
+
+out:
+	mutex_unlock(&linecard->state_lock);
+	return err;
+}
+
+static int devlink_nl_cmd_linecard_set_doit(struct sk_buff *skb,
+					    struct genl_info *info)
+{
+	struct devlink_linecard *linecard = info->user_ptr[1];
+	struct netlink_ext_ack *extack = info->extack;
+	int err;
+
+	if (info->attrs[DEVLINK_ATTR_LINECARD_TYPE]) {
+		const char *type;
+
+		type = nla_data(info->attrs[DEVLINK_ATTR_LINECARD_TYPE]);
+		if (strcmp(type, "")) {
+			err = devlink_linecard_type_set(linecard, type, extack);
+			if (err)
+				return err;
+		} else {
+			err = devlink_linecard_type_unset(linecard, extack);
+			if (err)
+				return err;
+		}
+	}
+
+	return 0;
 }
 
 static int devlink_nl_sb_fill(struct sk_buff *msg, struct devlink *devlink,
@@ -8784,6 +8963,7 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 	[DEVLINK_ATTR_RATE_NODE_NAME] = { .type = NLA_NUL_STRING },
 	[DEVLINK_ATTR_RATE_PARENT_NODE_NAME] = { .type = NLA_NUL_STRING },
 	[DEVLINK_ATTR_LINECARD_INDEX] = { .type = NLA_U32 },
+	[DEVLINK_ATTR_LINECARD_TYPE] = { .type = NLA_NUL_STRING },
 };
 
 static const struct genl_small_ops devlink_nl_ops[] = {
@@ -8866,6 +9046,13 @@ static const struct genl_small_ops devlink_nl_ops[] = {
 		.internal_flags = DEVLINK_NL_FLAG_NEED_LINECARD |
 				  DEVLINK_NL_FLAG_NO_LOCK,
 		/* can be retrieved by unprivileged users */
+	},
+	{
+		.cmd = DEVLINK_CMD_LINECARD_SET,
+		.doit = devlink_nl_cmd_linecard_set_doit,
+		.flags = GENL_ADMIN_PERM,
+		.internal_flags = DEVLINK_NL_FLAG_NEED_LINECARD |
+				  DEVLINK_NL_FLAG_NO_LOCK,
 	},
 	{
 		.cmd = DEVLINK_CMD_SB_GET,
@@ -9900,35 +10087,85 @@ static int __devlink_port_phys_port_name_get(struct devlink_port *devlink_port,
 	return 0;
 }
 
+static int devlink_linecard_types_init(struct devlink_linecard *linecard)
+{
+	struct devlink_linecard_type *linecard_type;
+	unsigned int count;
+	int i;
+
+	count = linecard->ops->types_count(linecard, linecard->priv);
+	linecard->types = kmalloc_array(count, sizeof(*linecard_type),
+					GFP_KERNEL);
+	if (!linecard->types)
+		return -ENOMEM;
+	linecard->types_count = count;
+
+	for (i = 0; i < count; i++) {
+		linecard_type = &linecard->types[i];
+		linecard->ops->types_get(linecard, linecard->priv, i,
+					 &linecard_type->type,
+					 &linecard_type->priv);
+	}
+	return 0;
+}
+
+static void devlink_linecard_types_fini(struct devlink_linecard *linecard)
+{
+	kfree(linecard->types);
+}
+
 /**
  *	devlink_linecard_create - Create devlink linecard
  *
  *	@devlink: devlink
  *	@linecard_index: driver-specific numerical identifier of the linecard
+ *	@ops: linecards ops
+ *	@priv: user priv pointer
  *
  *	Create devlink linecard instance with provided linecard index.
  *	Caller can use any indexing, even hw-related one.
  */
-struct devlink_linecard *devlink_linecard_create(struct devlink *devlink,
-						 unsigned int linecard_index)
+struct devlink_linecard *
+devlink_linecard_create(struct devlink *devlink, unsigned int linecard_index,
+			const struct devlink_linecard_ops *ops, void *priv)
 {
 	struct devlink_linecard *linecard;
+	int err;
+
+	if (WARN_ON(!ops || !ops->provision || !ops->unprovision ||
+		    !ops->types_count || !ops->types_get))
+		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&devlink->linecards_lock);
 	if (devlink_linecard_index_exists(devlink, linecard_index)) {
-		mutex_unlock(&devlink->linecards_lock);
-		return ERR_PTR(-EEXIST);
+		linecard = ERR_PTR(-EEXIST);
+		goto unlock;
 	}
 
 	linecard = kzalloc(sizeof(*linecard), GFP_KERNEL);
-	if (!linecard)
-		return ERR_PTR(-ENOMEM);
+	if (!linecard) {
+		linecard = ERR_PTR(-ENOMEM);
+		goto unlock;
+	}
 
 	linecard->devlink = devlink;
 	linecard->index = linecard_index;
+	linecard->ops = ops;
+	linecard->priv = priv;
+	linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONED;
+	mutex_init(&linecard->state_lock);
+
+	err = devlink_linecard_types_init(linecard);
+	if (err) {
+		kfree(linecard);
+		linecard = ERR_PTR(err);
+		goto unlock;
+	}
+
 	list_add_tail(&linecard->list, &devlink->linecard_list);
 	refcount_set(&linecard->refcount, 1);
 	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+unlock:
 	mutex_unlock(&devlink->linecards_lock);
 	return linecard;
 }
@@ -9944,12 +10181,60 @@ void devlink_linecard_destroy(struct devlink_linecard *linecard)
 	struct devlink *devlink = linecard->devlink;
 
 	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_DEL);
+	devlink_linecard_types_fini(linecard);
 	mutex_lock(&devlink->linecards_lock);
 	list_del(&linecard->list);
 	mutex_unlock(&devlink->linecards_lock);
 	devlink_linecard_put(linecard);
 }
 EXPORT_SYMBOL_GPL(devlink_linecard_destroy);
+
+/**
+ *	devlink_linecard_provision_set - Set provisioning on linecard
+ *
+ *	@linecard: devlink linecard
+ *	@type: linecard type
+ */
+void devlink_linecard_provision_set(struct devlink_linecard *linecard,
+				    const char *type)
+{
+	mutex_lock(&linecard->state_lock);
+	WARN_ON(linecard->type && linecard->type != type);
+	linecard->state = DEVLINK_LINECARD_STATE_PROVISIONED;
+	linecard->type = type;
+	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+}
+EXPORT_SYMBOL_GPL(devlink_linecard_provision_set);
+
+/**
+ *	devlink_linecard_provision_clear - Clear provisioning on linecard
+ *
+ *	@linecard: devlink linecard
+ */
+void devlink_linecard_provision_clear(struct devlink_linecard *linecard)
+{
+	mutex_lock(&linecard->state_lock);
+	linecard->state = DEVLINK_LINECARD_STATE_UNPROVISIONED;
+	linecard->type = NULL;
+	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+}
+EXPORT_SYMBOL_GPL(devlink_linecard_provision_clear);
+
+/**
+ *	devlink_linecard_provision_fail - Fail provisioning on linecard
+ *
+ *	@linecard: devlink linecard
+ */
+void devlink_linecard_provision_fail(struct devlink_linecard *linecard)
+{
+	mutex_lock(&linecard->state_lock);
+	linecard->state = DEVLINK_LINECARD_STATE_PROVISIONING_FAILED;
+	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+}
+EXPORT_SYMBOL_GPL(devlink_linecard_provision_fail);
 
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
