@@ -10236,6 +10236,42 @@ void devlink_linecard_provision_fail(struct devlink_linecard *linecard)
 }
 EXPORT_SYMBOL_GPL(devlink_linecard_provision_fail);
 
+/**
+ *	devlink_linecard_activate - Set linecard active
+ *
+ *	@devlink_linecard: devlink linecard
+ */
+void devlink_linecard_activate(struct devlink_linecard *linecard)
+{
+	mutex_lock(&linecard->state_lock);
+	WARN_ON(linecard->state != DEVLINK_LINECARD_STATE_PROVISIONED);
+	linecard->state = DEVLINK_LINECARD_STATE_ACTIVE;
+	devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+}
+EXPORT_SYMBOL_GPL(devlink_linecard_activate);
+
+/**
+ *	devlink_linecard_deactivate - Set linecard inactive
+ *
+ *	@devlink_linecard: devlink linecard
+ */
+void devlink_linecard_deactivate(struct devlink_linecard *linecard)
+{
+	bool should_notify = false;
+
+	mutex_lock(&linecard->state_lock);
+	if (linecard->state != DEVLINK_LINECARD_STATE_UNPROVISIONING) {
+		WARN_ON(linecard->state != DEVLINK_LINECARD_STATE_ACTIVE);
+		linecard->state = DEVLINK_LINECARD_STATE_PROVISIONED;
+		should_notify = true;
+	}
+	if (should_notify)
+		devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
+	mutex_unlock(&linecard->state_lock);
+}
+EXPORT_SYMBOL_GPL(devlink_linecard_deactivate);
+
 int devlink_sb_register(struct devlink *devlink, unsigned int sb_index,
 			u32 size, u16 ingress_pools_count,
 			u16 egress_pools_count, u16 ingress_tc_count,
