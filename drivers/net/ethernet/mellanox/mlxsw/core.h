@@ -554,6 +554,9 @@ struct mlxsw_linecard {
 	char read_name[MLXSW_REG_MDDQ_SLOT_ACII_NAME_LEN];
 	char mbct_pl[MLXSW_REG_MBCT_LEN]; /* too big for stack */
 	bool provisioned;
+	bool ready;
+	bool active;
+	bool unprovision_done;
 };
 
 struct mlxsw_linecard_types_info;

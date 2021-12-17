@@ -66,6 +66,8 @@ static const char *mlxsw_linecard_type_name(struct mlxsw_linecard *linecard)
 static void mlxsw_linecard_provision_fail(struct mlxsw_linecard *linecard)
 {
 	linecard->provisioned = false;
+	linecard->ready = false;
+	linecard->active = false;
 	devlink_linecard_provision_fail(linecard->devlink_linecard);
 }
 
@@ -93,10 +95,51 @@ static void mlxsw_linecard_provision_clear(struct mlxsw_linecard *linecard)
 	devlink_linecard_provision_clear(linecard->devlink_linecard);
 }
 
+static int mlxsw_linecard_ready_set(struct mlxsw_core *mlxsw_core,
+				    struct mlxsw_linecard *linecard)
+{
+	char mddc_pl[MLXSW_REG_MDDC_LEN];
+	int err;
+
+	mlxsw_reg_mddc_pack(mddc_pl, linecard->slot_index, false, true);
+	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(mddc), mddc_pl);
+	if (err)
+		return err;
+	linecard->ready = true;
+	return 0;
+}
+
+static int mlxsw_linecard_ready_clear(struct mlxsw_core *mlxsw_core,
+				      struct mlxsw_linecard *linecard)
+{
+	char mddc_pl[MLXSW_REG_MDDC_LEN];
+	int err;
+
+	mlxsw_reg_mddc_pack(mddc_pl, linecard->slot_index, false, false);
+	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(mddc), mddc_pl);
+	if (err)
+		return err;
+	linecard->ready = false;
+	return 0;
+}
+
+static void mlxsw_linecard_active_set(struct mlxsw_linecard *linecard)
+{
+	linecard->active = true;
+	devlink_linecard_activate(linecard->devlink_linecard);
+}
+
+static void mlxsw_linecard_active_clear(struct mlxsw_linecard *linecard)
+{
+	linecard->active = false;
+	devlink_linecard_deactivate(linecard->devlink_linecard);
+}
+
 static int __mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
 					   struct mlxsw_linecards *linecards,
 					   struct mlxsw_linecard *linecard,
-					   const char *mddq_pl)
+					   const char *mddq_pl,
+					   bool process_provision_only)
 {
 	enum mlxsw_reg_mddq_card_type card_type;
 	enum mlxsw_reg_mddq_ready ready;
@@ -131,6 +174,27 @@ static int __mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
 			goto out;
 	}
 
+	if (!process_provision_only && !linecard->unprovision_done &&
+	    ready == MLXSW_REG_MDDQ_READY_READY && !linecard->ready) {
+		err = mlxsw_linecard_ready_set(mlxsw_core, linecard);
+		if (err)
+			goto out;
+	}
+
+	if (!process_provision_only && !linecard->unprovision_done && active &&
+	    linecard->active != active && linecard->ready)
+		mlxsw_linecard_active_set(linecard);
+
+	if (!process_provision_only && !active && linecard->active != active)
+		mlxsw_linecard_active_clear(linecard);
+
+	if (!process_provision_only && ready != MLXSW_REG_MDDQ_READY_READY &&
+	    linecard->ready) {
+		err = mlxsw_linecard_ready_clear(mlxsw_core, linecard);
+		if (err)
+			goto out;
+	}
+
 	if (!provisioned && linecard->provisioned != provisioned)
 		mlxsw_linecard_provision_clear(linecard);
 
@@ -145,13 +209,14 @@ int mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
 	struct mlxsw_linecards *linecards = mlxsw_core_linecards(mlxsw_core);
 
 	return __mlxsw_linecard_status_process(mlxsw_core, linecards, NULL,
-					       mddq_pl);
+					       mddq_pl, false);
 }
 EXPORT_SYMBOL(mlxsw_linecard_status_process);
 
 static int mlxsw_linecard_status_get_and_process(struct mlxsw_core *mlxsw_core,
 						 struct mlxsw_linecards *linecards,
-						 struct mlxsw_linecard *linecard)
+						 struct mlxsw_linecard *linecard,
+						 bool process_provision_only)
 {
 	char mddq_pl[MLXSW_REG_MDDQ_LEN];
 	int err;
@@ -162,7 +227,7 @@ static int mlxsw_linecard_status_get_and_process(struct mlxsw_core *mlxsw_core,
 		return err;
 
 	return __mlxsw_linecard_status_process(mlxsw_core, linecards, linecard,
-					       mddq_pl);
+					       mddq_pl, process_provision_only);
 }
 
 static int __mlxsw_linecard_fix_fsm_state(struct mlxsw_linecard *linecard)
@@ -307,6 +372,7 @@ static int mlxsw_linecard_provision(struct devlink_linecard *devlink_linecard,
 
 	mutex_lock(&linecard->lock);
 
+	linecard->unprovision_done = false;
 	linecards = linecard->linecards;
 	mlxsw_core = linecards->mlxsw_core;
 	mlxsw_reg_mbct_pack(linecard->mbct_pl, linecard->slot_index,
@@ -415,6 +481,7 @@ query_ini_status:
 		NL_SET_ERR_MSG_MOD(extack, "Failed to erase linecard INI while being used");
 		goto fix_fsm_err_out;
 	}
+	linecard->unprovision_done = true;
 	goto out;
 
 fix_fsm_err_out:
@@ -477,7 +544,7 @@ static int mlxsw_linecard_init(struct mlxsw_core *mlxsw_core,
 	linecard->devlink_linecard = devlink_linecard;
 
 	err = mlxsw_linecard_status_get_and_process(mlxsw_core, linecards,
-						    linecard);
+						    linecard, true);
 	if (err)
 		goto err_status_get_and_process;
 
@@ -513,7 +580,7 @@ static int mlxsw_linecard_post_init(struct mlxsw_core *mlxsw_core,
 		return err;
 
 	err = mlxsw_linecard_status_get_and_process(mlxsw_core, linecards,
-						    linecard);
+						    linecard, false);
 	if (err)
 		goto err_status_get_and_process;
 
@@ -532,6 +599,10 @@ static void mlxsw_linecard_pre_fini(struct mlxsw_core *mlxsw_core,
 
 	linecard = mlxsw_linecard_get(linecards, slot_index);
 	mlxsw_linecard_event_delivery_set(mlxsw_core, linecard, false);
+	/* Make sure all scheduled events are processed */
+	mlxsw_core_flush_owq();
+	if (linecard->active)
+		mlxsw_linecard_active_clear(linecard);
 }
 
 static void mlxsw_linecard_fini(struct mlxsw_core *mlxsw_core,
@@ -752,8 +823,6 @@ void mlxsw_linecards_pre_fini(struct mlxsw_core *mlxsw_core,
 		return;
 	for (i = 0; i < linecards->count; i++)
 		mlxsw_linecard_pre_fini(mlxsw_core, linecards, i + 1);
-	/* Make sure all scheduled events are processed */
-	mlxsw_core_flush_owq();
 }
 
 void mlxsw_linecards_fini(struct mlxsw_core *mlxsw_core,
