@@ -423,6 +423,15 @@ out:
 #define MLXSW_LINECARD_INI_WAIT_RETRIES 10
 #define MLXSW_LINECARD_INI_WAIT_MS 500
 
+static bool mlxsw_linecard_port_selector(void *priv, u16 local_port)
+{
+	struct mlxsw_linecard *linecard = priv;
+	struct mlxsw_core *mlxsw_core;
+
+	mlxsw_core = linecard->linecards->mlxsw_core;
+	return linecard == mlxsw_core_port_linecard_get(mlxsw_core, local_port);
+}
+
 static int mlxsw_linecard_unprovision(struct devlink_linecard *devlink_linecard,
 				      void *priv,
 				      struct netlink_ext_ack *extack)
@@ -439,6 +448,10 @@ static int mlxsw_linecard_unprovision(struct devlink_linecard *devlink_linecard,
 
 	linecards = linecard->linecards;
 	mlxsw_core = linecard->linecards->mlxsw_core;
+
+	mlxsw_core_ports_remove_selected(mlxsw_core,
+					 mlxsw_linecard_port_selector,
+					 linecard);
 
 query_ini_status:
 	err = mlxsw_linecard_query_status(linecard, &status,
