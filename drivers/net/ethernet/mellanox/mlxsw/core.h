@@ -35,6 +35,10 @@ unsigned int mlxsw_core_max_ports(const struct mlxsw_core *mlxsw_core);
 
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core);
 
+struct mlxsw_linecards *mlxsw_core_linecards(struct mlxsw_core *mlxsw_core);
+
+const char *mlxsw_core_lc_ini_bundle_filename(struct mlxsw_core *mlxsw_core);
+
 bool mlxsw_core_temp_warn_enabled(const struct mlxsw_core *mlxsw_core);
 
 bool
@@ -309,6 +313,7 @@ struct mlxsw_driver {
 	size_t priv_size;
 	const struct mlxsw_fw_rev *fw_req_rev;
 	const char *fw_filename;
+	const char *lc_ini_bundle_filename;
 	int (*init)(struct mlxsw_core *mlxsw_core,
 		    const struct mlxsw_bus_info *mlxsw_bus_info,
 		    struct netlink_ext_ack *extack);
@@ -538,5 +543,49 @@ static inline struct mlxsw_skb_cb *mlxsw_skb_cb(struct sk_buff *skb)
 	BUILD_BUG_ON(sizeof(mlxsw_skb_cb) > sizeof(skb->cb));
 	return (struct mlxsw_skb_cb *) skb->cb;
 }
+
+struct mlxsw_linecards;
+
+struct mlxsw_linecard {
+	u8 slot_index;
+	struct mlxsw_linecards *linecards;
+	struct devlink_linecard *devlink_linecard;
+	struct mutex lock; /* Locks accesses to the linecard structure */
+	char read_name[MLXSW_REG_MDDQ_SLOT_ACII_NAME_LEN];
+	char mbct_pl[MLXSW_REG_MBCT_LEN]; /* too big for stack */
+	bool provisioned;
+};
+
+struct mlxsw_linecard_types_info;
+
+struct mlxsw_linecards {
+	struct list_head event_ops_list;
+	struct workqueue_struct *wq;
+	struct mlxsw_core *mlxsw_core;
+	const struct mlxsw_bus_info *bus_info;
+	u8 count;
+	struct mlxsw_linecard_types_info *types_info;
+	struct mlxsw_linecard linecards[0];
+};
+
+static inline struct mlxsw_linecard *
+mlxsw_linecard_get(struct mlxsw_linecards *linecards, u8 slot_index)
+{
+	return &linecards->linecards[slot_index - 1];
+}
+
+int mlxsw_linecards_init(struct mlxsw_core *mlxsw_core,
+			 const struct mlxsw_bus_info *bus_info,
+			 struct mlxsw_linecards **p_linecards);
+int mlxsw_linecards_post_init(struct mlxsw_core *mlxsw_core,
+			      struct mlxsw_linecards *linecards);
+void mlxsw_linecards_pre_fini(struct mlxsw_core *mlxsw_core,
+			      struct mlxsw_linecards *linecards);
+void mlxsw_linecards_fini(struct mlxsw_core *mlxsw_core,
+			  struct mlxsw_linecards *linecards);
+int mlxsw_linecard_status_process(struct mlxsw_core *mlxsw_core,
+				  const char *mddq_pl);
+int mlxsw_linecard_bct_process(struct mlxsw_core *mlxsw_core,
+			       const char *mbct_pl);
 
 #endif

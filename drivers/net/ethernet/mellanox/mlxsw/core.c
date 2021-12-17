@@ -82,6 +82,7 @@ struct mlxsw_core {
 	struct mlxsw_res res;
 	struct mlxsw_hwmon *hwmon;
 	struct mlxsw_thermal *thermal;
+	struct mlxsw_linecards *linecards;
 	struct mlxsw_core_port *ports;
 	unsigned int max_ports;
 	atomic_t active_ports_count;
@@ -93,6 +94,16 @@ struct mlxsw_core {
 	unsigned long driver_priv[];
 	/* driver_priv has to be always the last item */
 };
+
+struct mlxsw_linecards *mlxsw_core_linecards(struct mlxsw_core *mlxsw_core)
+{
+	return mlxsw_core->linecards;
+}
+
+const char *mlxsw_core_lc_ini_bundle_filename(struct mlxsw_core *mlxsw_core)
+{
+	return mlxsw_core->driver->lc_ini_bundle_filename;
+}
 
 #define MLXSW_PORT_MAX_PORTS_DEFAULT	0x40
 
@@ -2144,6 +2155,11 @@ __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 	if (err)
 		goto err_emad_init;
 
+	err = mlxsw_linecards_init(mlxsw_core, mlxsw_bus_info,
+				   &mlxsw_core->linecards);
+	if (err)
+		goto err_linecards_init;
+
 	if (!reload) {
 		err = mlxsw_core_params_register(mlxsw_core);
 		if (err)
@@ -2178,12 +2194,19 @@ __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 			goto err_driver_init;
 	}
 
+	err = mlxsw_linecards_post_init(mlxsw_core, mlxsw_core->linecards);
+	if (err)
+		goto err_linecards_post_init;
+
 	if (!reload) {
 		devlink_set_features(devlink, DEVLINK_F_RELOAD);
 		devlink_register(devlink);
 	}
 	return 0;
 
+err_linecards_post_init:
+	if (mlxsw_core->driver->fini)
+		mlxsw_core->driver->fini(mlxsw_core);
 err_driver_init:
 	mlxsw_env_fini(mlxsw_core->env);
 err_env_init:
@@ -2197,6 +2220,8 @@ err_fw_rev_validate:
 	if (!reload)
 		mlxsw_core_params_unregister(mlxsw_core);
 err_register_params:
+	mlxsw_linecards_fini(mlxsw_core, mlxsw_core->linecards);
+err_linecards_init:
 	mlxsw_emad_fini(mlxsw_core);
 err_emad_init:
 err_trap_groups_set:
@@ -2259,6 +2284,7 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 			return;
 	}
 
+	mlxsw_linecards_pre_fini(mlxsw_core, mlxsw_core->linecards);
 	if (mlxsw_core->driver->fini)
 		mlxsw_core->driver->fini(mlxsw_core);
 	mlxsw_env_fini(mlxsw_core->env);
@@ -2267,6 +2293,7 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 	mlxsw_core_health_fini(mlxsw_core);
 	if (!reload)
 		mlxsw_core_params_unregister(mlxsw_core);
+	mlxsw_linecards_fini(mlxsw_core, mlxsw_core->linecards);
 	mlxsw_emad_fini(mlxsw_core);
 	kfree(mlxsw_core->lag.mapping);
 	mlxsw_ports_fini(mlxsw_core, reload);
