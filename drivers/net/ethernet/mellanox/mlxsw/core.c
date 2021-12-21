@@ -2031,7 +2031,7 @@ static int mlxsw_core_health_fw_fatal_config(struct mlxsw_core *mlxsw_core,
 	if (err)
 		return err;
 	mlxsw_reg_mfgd_en_debug_assert_set(mfgd_pl, enable);
-	mlxsw_reg_mfgd_fatal_event_mode_set(mfgd_pl, enable);
+	mlxsw_reg_mfgd_fatal_event_mode_set(mfgd_pl, 2);
 	return mlxsw_reg_write(mlxsw_core, MLXSW_REG(mfgd), mfgd_pl);
 }
 
