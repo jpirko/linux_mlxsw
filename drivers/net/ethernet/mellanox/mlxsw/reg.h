@@ -11248,9 +11248,16 @@ static inline void mlxsw_reg_mtpcpc_pack(char *payload, bool pport,
 
 MLXSW_REG_DEFINE(mfgd, MLXSW_REG_MFGD_ID, MLXSW_REG_MFGD_LEN);
 
+/* reg_mfgd_en_debug_assert
+ * Enables INTR severity for fatal events sent by MFDE
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mfgd, en_debug_assert, 0x00, 16, 1);
+
 /* reg_mfgd_fw_fatal_event_mode
  * 0 - don't check FW fatal (default)
  * 1 - check FW fatal - enable MFDE trap
+ * 2 - check FW fatal stop FW - enable MFDE trap and stop FW
  * Access: RW
  */
 MLXSW_ITEM32(reg, mfgd, fatal_event_mode, 0x00, 9, 2);
