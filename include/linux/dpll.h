@@ -26,4 +26,9 @@ void dpll_device_register(struct dpll_device *dpll);
 void dpll_device_unregister(struct dpll_device *dpll);
 void dpll_device_free(struct dpll_device *dpll);
 void *dpll_priv(struct dpll_device *dpll);
+
+int dpll_notify_status_locked(int dpll_id);
+int dpll_notify_status_unlocked(int dpll_id);
+int dpll_notify_source_change(int dpll_id, int source_id, int source_type);
+int dpll_notify_output_change(int dpll_id, int output_id, int output_type);
 #endif
