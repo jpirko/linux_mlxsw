@@ -47,6 +47,9 @@ struct param {
 	int dpll_source_type;
 	int dpll_output_id;
 	int dpll_output_type;
+	int dpll_status;
+	int dpll_event_group;
+	const char *dpll_name;
 };
 
 struct dpll_dump_ctx {
@@ -240,6 +243,9 @@ static int dpll_genl_cmd_set_source(struct sk_buff *skb, struct genl_info *info)
 	ret = dpll->ops->set_source_type(dpll, src_id, type);
 	mutex_unlock(&dpll->lock);
 
+	if (!ret)
+		dpll_notify_source_change(dpll->id, src_id, type);
+
 	return ret;
 }
 
@@ -262,6 +268,9 @@ static int dpll_genl_cmd_set_output(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&dpll->lock);
 	ret = dpll->ops->set_output_type(dpll, out_id, type);
 	mutex_unlock(&dpll->lock);
+
+	if (!ret)
+		dpll_notify_output_change(dpll->id, out_id, type);
 
 	return ret;
 }
@@ -399,6 +408,148 @@ static struct genl_family dpll_gnl_family __ro_after_init = {
 	.n_mcgrps	= ARRAY_SIZE(dpll_genl_mcgrps),
 	.pre_doit	= dpll_pre_doit,
 };
+
+static int dpll_event_device_create(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+	    nla_put_string(p->msg, DPLLA_DEVICE_NAME, p->dpll_name))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int dpll_event_device_delete(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int dpll_event_status(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+		nla_put_u32(p->msg, DPLLA_LOCK_STATUS, p->dpll_status))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int dpll_event_source_change(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+	    nla_put_u32(p->msg, DPLLA_SOURCE_ID, p->dpll_source_id) ||
+		nla_put_u32(p->msg, DPLLA_SOURCE_TYPE, p->dpll_source_type))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int dpll_event_output_change(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+	    nla_put_u32(p->msg, DPLLA_OUTPUT_ID, p->dpll_output_id) ||
+		nla_put_u32(p->msg, DPLLA_OUTPUT_TYPE, p->dpll_output_type))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static const cb_t event_cb[] = {
+	[DPLL_EVENT_DEVICE_CREATE]	= dpll_event_device_create,
+	[DPLL_EVENT_DEVICE_DELETE]	= dpll_event_device_delete,
+	[DPLL_EVENT_STATUS_LOCKED]	= dpll_event_status,
+	[DPLL_EVENT_STATUS_UNLOCKED]	= dpll_event_status,
+	[DPLL_EVENT_SOURCE_CHANGE]	= dpll_event_source_change,
+	[DPLL_EVENT_OUTPUT_CHANGE]	= dpll_event_output_change,
+};
+/*
+ * Generic netlink DPLL event encoding
+ */
+static int dpll_send_event(enum dpll_genl_event event,
+				   struct param *p)
+{
+	struct sk_buff *msg;
+	int ret = -EMSGSIZE;
+	void *hdr;
+
+	msg = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+	p->msg = msg;
+
+	hdr = genlmsg_put(msg, 0, 0, &dpll_gnl_family, 0, event);
+	if (!hdr)
+		goto out_free_msg;
+
+	ret = event_cb[event](p);
+	if (ret)
+		goto out_cancel_msg;
+
+	genlmsg_end(msg, hdr);
+
+	genlmsg_multicast(&dpll_gnl_family, msg, 0, p->dpll_event_group, GFP_KERNEL);
+
+	return 0;
+
+out_cancel_msg:
+	genlmsg_cancel(msg, hdr);
+out_free_msg:
+	nlmsg_free(msg);
+
+	return ret;
+}
+
+int dpll_notify_device_create(int dpll_id, const char *name)
+{
+	struct param p = { .dpll_id = dpll_id, .dpll_name = name,
+			   .dpll_event_group = 0 };
+
+	return dpll_send_event(DPLL_EVENT_DEVICE_CREATE, &p);
+}
+
+int dpll_notify_device_delete(int dpll_id)
+{
+	struct param p = { .dpll_id = dpll_id, .dpll_event_group = 0 };
+
+	return dpll_send_event(DPLL_EVENT_DEVICE_DELETE, &p);
+}
+
+int dpll_notify_status_locked(int dpll_id)
+{
+	struct param p = { .dpll_id = dpll_id, .dpll_status = 1,
+			   .dpll_event_group = 3 };
+
+	return dpll_send_event(DPLL_EVENT_STATUS_LOCKED, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_status_locked);
+
+int dpll_notify_status_unlocked(int dpll_id)
+{
+	struct param p = { .dpll_id = dpll_id, .dpll_status = 0,
+			   .dpll_event_group = 3 };
+
+	return dpll_send_event(DPLL_EVENT_STATUS_UNLOCKED, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_status_unlocked);
+
+int dpll_notify_source_change(int dpll_id, int source_id, int source_type)
+{
+	struct param p =  { .dpll_id = dpll_id, .dpll_source_id = source_id,
+			    .dpll_source_type = source_type, .dpll_event_group = 1 };
+
+	return dpll_send_event(DPLL_EVENT_SOURCE_CHANGE, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_source_change);
+
+int dpll_notify_output_change(int dpll_id, int output_id, int output_type)
+{
+	struct param p =  { .dpll_id = dpll_id, .dpll_output_id = output_id,
+			    .dpll_output_type = output_type, .dpll_event_group = 2 };
+
+	return dpll_send_event(DPLL_EVENT_OUTPUT_CHANGE, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_output_change);
 
 int __init dpll_netlink_init(void)
 {
