@@ -218,7 +218,8 @@ mlxsw_env_module_temp_thresholds_get(struct mlxsw_core *core, u8 slot_index,
 	return 0;
 }
 
-int mlxsw_env_get_module_info(struct mlxsw_core *mlxsw_core, u8 slot_index,
+int mlxsw_env_get_module_info(struct net_device *netdev,
+			      struct mlxsw_core *mlxsw_core, u8 slot_index,
 			      int module, struct ethtool_modinfo *modinfo)
 {
 	u8 module_info[MLXSW_REG_MCIA_EEPROM_MODULE_INFO_SIZE];

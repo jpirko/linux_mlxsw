@@ -111,7 +111,7 @@ static int mlxsw_m_get_module_info(struct net_device *netdev,
 	struct mlxsw_m_port *mlxsw_m_port = netdev_priv(netdev);
 	struct mlxsw_core *core = mlxsw_m_port->mlxsw_m->core;
 
-	return mlxsw_env_get_module_info(core, 0, mlxsw_m_port->module,
+	return mlxsw_env_get_module_info(netdev, core, 0, mlxsw_m_port->module,
 					 modinfo);
 }
 
