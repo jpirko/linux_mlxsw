@@ -18,6 +18,7 @@ struct mlxsw_env_module_info {
 	int num_ports_mapped;
 	int num_ports_up;
 	enum ethtool_module_power_mode_policy power_mode_policy;
+	enum mlxsw_reg_pmtm_module_type module_type;
 };
 
 struct mlxsw_env_module_line_cards {
@@ -1049,18 +1050,39 @@ out_unlock:
 }
 EXPORT_SYMBOL(mlxsw_env_module_port_down);
 
+static int
+mlxsw_env_module_type_set(struct mlxsw_env_module_info *module_info,
+			  struct mlxsw_core *mlxsw_core,
+			  u8 slot_index, u8 module)
+{
+	char pmtm_pl[MLXSW_REG_PMTM_LEN];
+	int err;
+
+	mlxsw_reg_pmtm_pack(pmtm_pl, slot_index, module);
+
+	err = mlxsw_reg_query(mlxsw_core, MLXSW_REG(pmtm), pmtm_pl);
+	if (err)
+		return err;
+
+	module_info->module_type = mlxsw_reg_pmtm_module_type_get(pmtm_pl);
+	return 0;
+}
+
 static int mlxsw_env_line_cards_alloc(struct mlxsw_env *env)
 {
 	struct mlxsw_env_module_info *module_info;
 	int i, j;
+	int err;
 
 	for (i = 0; i < env->num_of_slots; i++) {
 		env->line_cards[i] = kzalloc(struct_size(env->line_cards[i],
 							 module_info,
 							 env->max_module_count),
 							 GFP_KERNEL);
-		if (!env->line_cards[i])
+		if (!env->line_cards[i]) {
+			err = -ENOMEM;
 			goto kzalloc_err;
+		}
 
 		/* Firmware defaults to high power mode policy where modules
 		 * are transitioned to high power mode following plug-in.
@@ -1069,15 +1091,21 @@ static int mlxsw_env_line_cards_alloc(struct mlxsw_env *env)
 			module_info = &env->line_cards[i]->module_info[j];
 			module_info->power_mode_policy =
 					ETHTOOL_MODULE_POWER_MODE_POLICY_HIGH;
+			err = mlxsw_env_module_type_set(module_info,
+							env->core, i, j);
+			if (err)
+				goto module_type_set_err;
 		}
 	}
 
 	return 0;
 
+module_type_set_err:
+	kfree(env->line_cards[i]);
 kzalloc_err:
 	for (i--; i >= 0; i--)
 		kfree(env->line_cards[i]);
-	return -ENOMEM;
+	return err;
 }
 
 static void mlxsw_env_line_cards_free(struct mlxsw_env *env)
