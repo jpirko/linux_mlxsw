@@ -497,6 +497,12 @@ int mlxsw_env_reset_module(struct net_device *netdev,
 
 	mutex_lock(&mlxsw_env->line_cards_lock);
 
+	err = __mlxsw_env_validate_module_type(mlxsw_core, slot_index, module);
+	if (err) {
+		netdev_err(netdev, "Reset module is not supported on port module type\n");
+		goto out;
+	}
+
 	module_info = mlxsw_env_module_info_get(mlxsw_core, slot_index, module);
 	if (module_info->num_ports_up) {
 		netdev_err(netdev, "Cannot reset module when ports using it are administratively up\n");
