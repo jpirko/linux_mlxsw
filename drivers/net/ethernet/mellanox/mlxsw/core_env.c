@@ -539,6 +539,12 @@ mlxsw_env_get_module_power_mode(struct mlxsw_core *mlxsw_core, u8 slot_index,
 
 	mutex_lock(&mlxsw_env->line_cards_lock);
 
+	err = __mlxsw_env_validate_module_type(mlxsw_core, slot_index, module);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Power mode is not supported on port module type");
+		goto out;
+	}
+
 	module_info = mlxsw_env_module_info_get(mlxsw_core, slot_index, module);
 	params->policy = module_info->power_mode_policy;
 
@@ -652,6 +658,13 @@ mlxsw_env_set_module_power_mode(struct mlxsw_core *mlxsw_core, u8 slot_index,
 	}
 
 	mutex_lock(&mlxsw_env->line_cards_lock);
+
+	err = __mlxsw_env_validate_module_type(mlxsw_core, slot_index, module);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Power mode set is not supported on port module type");
+		goto out;
+	}
 
 	module_info = mlxsw_env_module_info_get(mlxsw_core, slot_index, module);
 	if (module_info->power_mode_policy == policy)
