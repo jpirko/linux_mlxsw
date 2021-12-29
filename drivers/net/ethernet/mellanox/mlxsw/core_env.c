@@ -34,6 +34,46 @@ struct mlxsw_env {
 	struct mlxsw_env_module_line_cards *line_cards[];
 };
 
+static struct
+mlxsw_env_module_info *mlxsw_env_module_info_get(struct mlxsw_core *mlxsw_core,
+						 u8 slot_index, u8 module)
+{
+	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
+
+	return &mlxsw_env->line_cards[slot_index]->module_info[module];
+}
+
+static int __mlxsw_env_validate_module_type(struct mlxsw_core *core,
+					    u8 slot_index, u8 module)
+{
+	struct mlxsw_env_module_info *module_info;
+	int err;
+
+	module_info = mlxsw_env_module_info_get(core, slot_index, module);
+	switch (module_info->module_type) {
+	case MLXSW_REG_PMTM_MODULE_TYPE_TWISTED_PAIR:
+		err = -EINVAL;
+		break;
+	default:
+		err = 0;
+	}
+
+	return err;
+}
+
+static int mlxsw_env_validate_module_type(struct mlxsw_core *core,
+					  u8 slot_index, u8 module)
+{
+	struct mlxsw_env *mlxsw_env = mlxsw_core_env(core);
+	int err;
+
+	mutex_lock(&mlxsw_env->line_cards_lock);
+	err = __mlxsw_env_validate_module_type(core, slot_index, module);
+	mutex_unlock(&mlxsw_env->line_cards_lock);
+
+	return err;
+}
+
 static int
 mlxsw_env_validate_cable_ident(struct mlxsw_core *core, u8 slot_index, int id,
 			       bool *qsfp, bool *cmis)
@@ -42,6 +82,10 @@ mlxsw_env_validate_cable_ident(struct mlxsw_core *core, u8 slot_index, int id,
 	char *eeprom_tmp;
 	u8 ident;
 	int err;
+
+	err = mlxsw_env_validate_module_type(core, slot_index, id);
+	if (err)
+		return err;
 
 	mlxsw_reg_mcia_pack(mcia_pl, slot_index, id, 0,
 			    MLXSW_REG_MCIA_PAGE0_LO_OFF, 0, 1,
@@ -229,6 +273,13 @@ int mlxsw_env_get_module_info(struct net_device *netdev,
 	unsigned int read_size;
 	int err;
 
+	err = mlxsw_env_validate_module_type(mlxsw_core, slot_index, module);
+	if (err) {
+		netdev_err(netdev,
+			   "EEPROM is not equipped on port module type");
+		return err;
+	}
+
 	err = mlxsw_env_query_module_eeprom(mlxsw_core, slot_index, module, 0,
 					    offset, module_info, false,
 					    &read_size);
@@ -376,15 +427,22 @@ mlxsw_env_get_module_eeprom_by_page(struct mlxsw_core *mlxsw_core,
 {
 	u32 bytes_read = 0;
 	u16 device_addr;
+	int err;
 
 	/* Offset cannot be larger than 2 * ETH_MODULE_EEPROM_PAGE_LEN */
 	device_addr = page->offset;
+
+	err = mlxsw_env_validate_module_type(mlxsw_core, slot_index,
+					     module);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "EEPROM is not equipped on port module type");
+		return err;
+	}
 
 	while (bytes_read < page->length) {
 		char mcia_pl[MLXSW_REG_MCIA_LEN];
 		char *eeprom_tmp;
 		u8 size;
-		int err;
 
 		size = min_t(u8, page->length - bytes_read,
 			     MLXSW_REG_MCIA_EEPROM_SIZE);
@@ -412,15 +470,6 @@ mlxsw_env_get_module_eeprom_by_page(struct mlxsw_core *mlxsw_core,
 	return bytes_read;
 }
 EXPORT_SYMBOL(mlxsw_env_get_module_eeprom_by_page);
-
-static struct
-mlxsw_env_module_info *mlxsw_env_module_info_get(struct mlxsw_core *mlxsw_core,
-						 u8 slot_index, u8 module)
-{
-	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
-
-	return &mlxsw_env->line_cards[slot_index]->module_info[module];
-}
 
 static int mlxsw_env_module_reset(struct mlxsw_core *mlxsw_core, u8 slot_index,
 				  u8 module)
