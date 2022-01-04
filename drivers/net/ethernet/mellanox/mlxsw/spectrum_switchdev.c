@@ -1424,7 +1424,8 @@ static int mlxsw_sp_port_fdb_tunnel_uc_op(struct mlxsw_sp *mlxsw_sp,
 }
 
 static int __mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u16 local_port,
-				     const char *mac, u16 fid, bool adding,
+				     const char *mac, u16 fid, u16 vid,
+				     bool adding,
 				     enum mlxsw_reg_sfd_rec_action action,
 				     enum mlxsw_reg_sfd_rec_policy policy)
 {
@@ -1437,7 +1438,8 @@ static int __mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 		return -ENOMEM;
 
 	mlxsw_reg_sfd_pack(sfd_pl, mlxsw_sp_sfd_op(adding), 0);
-	mlxsw_reg_sfd_uc_pack(sfd_pl, 0, policy, mac, fid, action, local_port);
+	mlxsw_reg_sfd_uc_pack(sfd_pl, 0, policy, mac, fid, vid, action,
+			      local_port);
 	num_rec = mlxsw_reg_sfd_num_rec_get(sfd_pl);
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sfd), sfd_pl);
 	if (err)
@@ -1452,18 +1454,18 @@ out:
 }
 
 static int mlxsw_sp_port_fdb_uc_op(struct mlxsw_sp *mlxsw_sp, u16 local_port,
-				   const char *mac, u16 fid, bool adding,
-				   bool dynamic)
+				   const char *mac, u16 fid, u16 vid,
+				   bool adding, bool dynamic)
 {
-	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, local_port, mac, fid, adding,
-					 MLXSW_REG_SFD_REC_ACTION_NOP,
+	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, local_port, mac, fid, vid,
+					 adding, MLXSW_REG_SFD_REC_ACTION_NOP,
 					 mlxsw_sp_sfd_rec_policy(dynamic));
 }
 
 int mlxsw_sp_rif_fdb_op(struct mlxsw_sp *mlxsw_sp, const char *mac, u16 fid,
 			bool adding)
 {
-	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, 0, mac, fid, adding,
+	return __mlxsw_sp_port_fdb_uc_op(mlxsw_sp, 0, mac, fid, 0, adding,
 					 MLXSW_REG_SFD_REC_ACTION_FORWARD_IP_ROUTER,
 					 MLXSW_REG_SFD_REC_POLICY_STATIC_ENTRY);
 }
@@ -1525,7 +1527,7 @@ mlxsw_sp_port_fdb_set(struct mlxsw_sp_port *mlxsw_sp_port,
 	if (!bridge_port->lagged)
 		return mlxsw_sp_port_fdb_uc_op(mlxsw_sp,
 					       bridge_port->system_port,
-					       fdb_info->addr, fid_index,
+					       fdb_info->addr, fid_index, vid,
 					       adding, false);
 	else
 		return mlxsw_sp_port_fdb_uc_lag_op(mlxsw_sp,
@@ -2675,7 +2677,7 @@ static void mlxsw_sp_fdb_notify_mac_process(struct mlxsw_sp *mlxsw_sp,
 
 do_fdb_op:
 	err = mlxsw_sp_port_fdb_uc_op(mlxsw_sp, local_port, mac, fid,
-				      adding, true);
+				      mlxsw_sp_port_vlan->vid, adding, true);
 	if (err) {
 		dev_err_ratelimited(mlxsw_sp->bus_info->dev, "Failed to set FDB entry\n");
 		return;
