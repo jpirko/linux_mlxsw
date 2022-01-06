@@ -238,7 +238,7 @@ int mlxsw_sp_fid_vni_set(struct mlxsw_sp_fid *fid, enum mlxsw_sp_nve_type type,
 	struct mlxsw_sp *mlxsw_sp = fid_family->mlxsw_sp;
 	int err;
 
-	if (WARN_ON(!ops->vni_set || fid->vni_valid))
+	if (WARN_ON(fid->vni_valid))
 		return -EINVAL;
 
 	fid->nve_type = type;
@@ -815,6 +815,11 @@ mlxsw_sp_fid_rfid_port_vid_unmap(struct mlxsw_sp_fid *fid,
 	mlxsw_sp->fid_core->port_fid_mappings[local_port]--;
 }
 
+static int mlxsw_sp_fid_rfid_vni_set(struct mlxsw_sp_fid *fid, __be32 vni)
+{
+	return -EOPNOTSUPP;
+}
+
 static const struct mlxsw_sp_fid_ops mlxsw_sp_fid_rfid_ops = {
 	.configure		= mlxsw_sp_fid_rfid_configure,
 	.deconfigure		= mlxsw_sp_fid_rfid_deconfigure,
@@ -822,6 +827,7 @@ static const struct mlxsw_sp_fid_ops mlxsw_sp_fid_rfid_ops = {
 	.compare		= mlxsw_sp_fid_rfid_compare,
 	.port_vid_map		= mlxsw_sp_fid_rfid_port_vid_map,
 	.port_vid_unmap		= mlxsw_sp_fid_rfid_port_vid_unmap,
+	.vni_set                = mlxsw_sp_fid_rfid_vni_set,
 };
 
 #define MLXSW_SP_RFID_BASE	(15 * 1024)
@@ -862,11 +868,17 @@ static bool mlxsw_sp_fid_dummy_compare(const struct mlxsw_sp_fid *fid,
 	return true;
 }
 
+static int mlxsw_sp_fid_dummy_vni_set(struct mlxsw_sp_fid *fid, __be32 vni)
+{
+	return -EOPNOTSUPP;
+}
+
 static const struct mlxsw_sp_fid_ops mlxsw_sp_fid_dummy_ops = {
 	.configure		= mlxsw_sp_fid_dummy_configure,
 	.deconfigure		= mlxsw_sp_fid_dummy_deconfigure,
 	.index_alloc		= mlxsw_sp_fid_dummy_index_alloc,
 	.compare		= mlxsw_sp_fid_dummy_compare,
+	.vni_set                = mlxsw_sp_fid_dummy_vni_set,
 };
 
 static const struct mlxsw_sp_fid_family mlxsw_sp_fid_dummy_family = {
