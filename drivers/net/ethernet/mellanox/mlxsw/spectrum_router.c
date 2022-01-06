@@ -9301,8 +9301,7 @@ static int mlxsw_sp_rif_subport_configure(struct mlxsw_sp_rif *rif,
 	if (err)
 		goto err_rif_fdb_op;
 
-	mlxsw_sp_fid_rif_set(rif->fid, rif);
-	return 0;
+	return mlxsw_sp_fid_rif_set(rif->fid, rif, rif->rif_index);
 
 err_rif_fdb_op:
 	mlxsw_sp_rif_subport_op(rif, false);
@@ -9315,7 +9314,7 @@ static void mlxsw_sp_rif_subport_deconfigure(struct mlxsw_sp_rif *rif)
 {
 	struct mlxsw_sp_fid *fid = rif->fid;
 
-	mlxsw_sp_fid_rif_set(fid, NULL);
+	mlxsw_sp_fid_rif_unset(fid);
 	mlxsw_sp_rif_fdb_op(rif->mlxsw_sp, rif->dev->dev_addr,
 			    mlxsw_sp_fid_index(fid), false);
 	mlxsw_sp_rif_macvlan_flush(rif);
@@ -9411,8 +9410,7 @@ static int mlxsw_sp_rif_fid_configure(struct mlxsw_sp_rif *rif,
 	if (err)
 		goto err_rif_fdb_op;
 
-	mlxsw_sp_fid_rif_set(rif->fid, rif);
-	return 0;
+	return mlxsw_sp_fid_rif_set(rif->fid, rif, rif->rif_index);
 
 err_rif_fdb_op:
 	mlxsw_sp_rif_fid_mc_bc_flood_configure(rif, false);
@@ -9428,7 +9426,7 @@ static void mlxsw_sp_rif_fid_deconfigure(struct mlxsw_sp_rif *rif)
 	u16 fid_index = mlxsw_sp_fid_index(rif->fid);
 	struct mlxsw_sp_fid *fid = rif->fid;
 
-	mlxsw_sp_fid_rif_set(fid, NULL);
+	mlxsw_sp_fid_rif_unset(fid);
 	mlxsw_sp_rif_fdb_op(rif->mlxsw_sp, rif->dev->dev_addr,
 			    mlxsw_sp_fid_index(fid), false);
 	mlxsw_sp_rif_macvlan_flush(rif);

@@ -134,6 +134,8 @@ static const int *mlxsw_sp_packet_type_sfgc_types[] = {
 	[MLXSW_SP_FLOOD_TYPE_MC]	= mlxsw_sp_sfgc_mc_packet_types,
 };
 
+static int mlxsw_sp_fid_configure(const struct mlxsw_sp_fid *fid);
+
 bool mlxsw_sp_fid_is_dummy(struct mlxsw_sp *mlxsw_sp, u16 fid_index)
 {
 	enum mlxsw_sp_fid_type fid_type = MLXSW_SP_FID_TYPE_DUMMY;
@@ -375,9 +377,130 @@ enum mlxsw_sp_fid_type mlxsw_sp_fid_type(const struct mlxsw_sp_fid *fid)
 	return fid->fid_family->type;
 }
 
-void mlxsw_sp_fid_rif_set(struct mlxsw_sp_fid *fid, struct mlxsw_sp_rif *rif)
+static int __mlxsw_sp_fid_to_fid_rif_update(const struct mlxsw_sp_fid *fid)
 {
+	return mlxsw_sp_fid_configure(fid);
+}
+
+static int __mlxsw_sp_fid_vni_fid_map(const struct mlxsw_sp_fid *fid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	char svfa_pl[MLXSW_REG_SVFA_LEN];
+	bool irif_v = false;
+	u16 irif_index = 0;
+
+	if (fid->rif) {
+		irif_v = true;
+		irif_index = mlxsw_sp_rif_index(fid->rif);
+	}
+
+	mlxsw_reg_svfa_vni_pack(svfa_pl, fid->vni_valid, fid->fid_index,
+				be32_to_cpu(fid->vni), irif_v, irif_index);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+}
+
+static int __mlxsw_sp_fid_vni_to_fid_rif_update(const struct mlxsw_sp_fid *fid)
+{
+	if (!fid->vni_valid)
+		return 0;
+
+	return __mlxsw_sp_fid_vni_fid_map(fid);
+}
+
+static int
+__mlxsw_sp_fid_vid_to_fid_rif_update_one(const struct mlxsw_sp_fid *fid,
+					 u16 irif_index,
+					 struct mlxsw_sp_fid_port_vid *port_vid,
+					 bool irif_valid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	u16 local_port = port_vid->local_port;
+	char svfa_pl[MLXSW_REG_SVFA_LEN];
+
+	if (mlxsw_sp->fid_core->port_fid_mappings[local_port])
+		mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, true,
+					     fid->fid_index, port_vid->vid,
+					     irif_valid, irif_index);
+	else
+		mlxsw_reg_svfa_vid_pack(svfa_pl, true, fid->fid_index,
+					port_vid->vid, irif_valid, irif_index);
+
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+}
+
+static int __mlxsw_sp_fid_vid_to_fid_rif_update(const struct mlxsw_sp_fid *fid,
+						u16 irif_index, bool irif_valid)
+{
+	struct mlxsw_sp_fid_port_vid *port_vid, *tmp;
+	int err;
+
+	list_for_each_entry_safe(port_vid, tmp, &fid->port_vid_list, list) {
+		err = __mlxsw_sp_fid_vid_to_fid_rif_update_one(fid, irif_index,
+							       port_vid,
+							       irif_valid);
+		if (err)
+			goto err_vid_to_fid_rif_update_one;
+	}
+
+	return 0;
+
+err_vid_to_fid_rif_update_one:
+	if (!irif_valid)
+		return err;
+
+	list_for_each_entry_continue_reverse(port_vid, &fid->port_vid_list,
+					     list)
+		__mlxsw_sp_fid_vid_to_fid_rif_update_one(fid, irif_index,
+							 port_vid, !irif_valid);
+	return err;
+}
+
+int mlxsw_sp_fid_rif_set(struct mlxsw_sp_fid *fid, struct mlxsw_sp_rif *rif,
+			 u16 rif_index)
+{
+	int err;
+
 	fid->rif = rif;
+
+	if (!fid->fid_family->mlxsw_sp->ubridge)
+		return 0;
+
+	err = __mlxsw_sp_fid_to_fid_rif_update(fid);
+	if (err) {
+		fid->rif = NULL;
+		goto err_fid_to_fid_rif_update;
+	}
+
+	err = __mlxsw_sp_fid_vni_to_fid_rif_update(fid);
+	if (err) {
+		fid->rif = NULL;
+		goto err_vni_to_fid_rif_update;
+	}
+
+	err = __mlxsw_sp_fid_vid_to_fid_rif_update(fid, rif_index, true);
+	if (err)
+		goto err_vid_to_fid_rif_update;
+
+	return 0;
+
+err_vid_to_fid_rif_update:
+	fid->rif = NULL;
+	__mlxsw_sp_fid_vni_to_fid_rif_update(fid);
+err_vni_to_fid_rif_update:
+	__mlxsw_sp_fid_to_fid_rif_update(fid);
+err_fid_to_fid_rif_update:
+	return err;
+}
+
+void mlxsw_sp_fid_rif_unset(struct mlxsw_sp_fid *fid)
+{
+	fid->rif = NULL;
+	if (!fid->fid_family->mlxsw_sp->ubridge)
+		return;
+
+	__mlxsw_sp_fid_vid_to_fid_rif_update(fid, 0, false);
+	__mlxsw_sp_fid_vni_to_fid_rif_update(fid);
+	__mlxsw_sp_fid_to_fid_rif_update(fid);
 }
 
 struct mlxsw_sp_rif *mlxsw_sp_fid_rif(const struct mlxsw_sp_fid *fid)
@@ -429,6 +552,11 @@ __mlxsw_sp_fid_configure_fill(const struct mlxsw_sp_fid *fid, char *sfmr_pl)
 
 	mlxsw_reg_sfmr_flood_rsp_set(sfmr_pl, fid_family->flood_rsp);
 	mlxsw_reg_sfmr_flood_bridge_type_set(sfmr_pl, fid_family->bridge_type);
+
+	if (fid->rif) {
+		mlxsw_reg_sfmr_irif_v_set(sfmr_pl, true);
+		mlxsw_reg_sfmr_irif_set(sfmr_pl, mlxsw_sp_rif_index(fid->rif));
+	}
 }
 
 static int mlxsw_sp_fid_configure(const struct mlxsw_sp_fid *fid)
@@ -467,15 +595,6 @@ __mlxsw_sp_fid_vni_map(const struct mlxsw_sp_fid *fid, bool vni_valid)
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sfmr), sfmr_pl);
 }
 
-static int __mlxsw_sp_fid_vni_fid_map(struct mlxsw_sp *mlxsw_sp, u16 fid_index,
-				      __be32 vni, bool valid)
-{
-	char svfa_pl[MLXSW_REG_SVFA_LEN];
-
-	mlxsw_reg_svfa_vni_pack(svfa_pl, valid, fid_index, be32_to_cpu(vni));
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
-}
-
 static int mlxsw_sp_fid_vni_op(const struct mlxsw_sp_fid *fid)
 {
 	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
@@ -491,8 +610,7 @@ static int mlxsw_sp_fid_vni_op(const struct mlxsw_sp_fid *fid)
 	if (!mlxsw_sp->ubridge)
 		return 0;
 
-	err = __mlxsw_sp_fid_vni_fid_map(mlxsw_sp, fid->fid_index, fid->vni,
-					 fid->vni_valid);
+	err = __mlxsw_sp_fid_vni_fid_map(fid);
 
 	if (err)
 		goto err_vni_fid;
@@ -510,9 +628,17 @@ static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 {
 	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
 	char svfa_pl[MLXSW_REG_SVFA_LEN];
+	bool irif_v = false;
+	u16 irif_index = 0;
+
+	/* SVFA.irif_v and SVFA.irif are reserved using legacy ubridge model. */
+	if (mlxsw_sp->ubridge && fid->rif) {
+		irif_v = true;
+		irif_index = mlxsw_sp_rif_index(fid->rif);
+	}
 
 	mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, valid, fid->fid_index,
-				     vid);
+				     vid, irif_v, irif_index);
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
 }
 
