@@ -444,6 +444,59 @@ static int mlxsw_sp_fid_deconfigure(const struct mlxsw_sp_fid *fid)
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sfmr), sfmr_pl);
 }
 
+static int
+__mlxsw_sp_fid_vni_map(const struct mlxsw_sp_fid *fid, bool vni_valid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	char sfmr_pl[MLXSW_REG_SFMR_LEN];
+
+	__mlxsw_sp_fid_configure_fill(fid, sfmr_pl);
+
+	if (vni_valid != fid->vni_valid)
+		/* Used for error path. */
+		mlxsw_reg_sfmr_vv_set(sfmr_pl, vni_valid);
+
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sfmr), sfmr_pl);
+}
+
+static int __mlxsw_sp_fid_vni_fid_map(struct mlxsw_sp *mlxsw_sp, u16 fid_index,
+				      __be32 vni, bool valid)
+{
+	char svfa_pl[MLXSW_REG_SVFA_LEN];
+
+	mlxsw_reg_svfa_vni_pack(svfa_pl, valid, fid_index, be32_to_cpu(vni));
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+}
+
+static int mlxsw_sp_fid_vni_op(const struct mlxsw_sp_fid *fid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	int err;
+
+	err = __mlxsw_sp_fid_vni_map(fid, fid->vni_valid);
+	if (err)
+		return err;
+
+	/* In unified bridge model, SFMR only configures egress (FID→VNI),
+	 * ingress configuration (VNI→FID) is performed via SVFA.
+	 */
+	if (!mlxsw_sp->ubridge)
+		return 0;
+
+	err = __mlxsw_sp_fid_vni_fid_map(mlxsw_sp, fid->fid_index, fid->vni,
+					 fid->vni_valid);
+
+	if (err)
+		goto err_vni_fid;
+
+	return 0;
+
+err_vni_fid:
+	if (fid->vni_valid)
+		__mlxsw_sp_fid_vni_map(fid, !fid->vni_valid);
+	return err;
+}
+
 static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 				       u16 local_port, u16 vid, bool valid)
 {
@@ -668,23 +721,23 @@ mlxsw_sp_fid_8021d_port_vid_unmap(struct mlxsw_sp_fid *fid,
 
 static int mlxsw_sp_fid_8021d_vni_set(struct mlxsw_sp_fid *fid, __be32 vni)
 {
-	return mlxsw_sp_fid_configure(fid);
+	return mlxsw_sp_fid_vni_op(fid);
 }
 
 static void mlxsw_sp_fid_8021d_vni_clear(struct mlxsw_sp_fid *fid)
 {
-	mlxsw_sp_fid_configure(fid);
+	mlxsw_sp_fid_vni_op(fid);
 }
 
 static int mlxsw_sp_fid_8021d_nve_flood_index_set(struct mlxsw_sp_fid *fid,
 						  u32 nve_flood_index)
 {
-	return mlxsw_sp_fid_configure(fid);
+	return mlxsw_sp_fid_vni_op(fid);
 }
 
 static void mlxsw_sp_fid_8021d_nve_flood_index_clear(struct mlxsw_sp_fid *fid)
 {
-	mlxsw_sp_fid_configure(fid);
+	mlxsw_sp_fid_vni_op(fid);
 }
 
 static void
