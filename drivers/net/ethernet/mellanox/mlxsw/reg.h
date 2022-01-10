@@ -7142,6 +7142,15 @@ static inline void mlxsw_reg_ritr_sp_if_pack(char *payload, bool lag,
 	mlxsw_reg_ritr_sp_if_vid_set(payload, vid);
 }
 
+static inline void mlxsw_reg_ritr_sp_if_ub_pack(char *payload, bool lag,
+						u16 system_port)
+{
+	mlxsw_reg_ritr_sp_if_lag_set(payload, lag);
+	mlxsw_reg_ritr_sp_if_system_port_set(payload, system_port);
+	/* Reserved when ubridge = 1 */
+	mlxsw_reg_ritr_sp_if_vid_set(payload, 0);
+}
+
 static inline void mlxsw_reg_ritr_pack(char *payload, bool enable,
 				       enum mlxsw_reg_ritr_if_type type,
 				       u16 rif, u16 vr_id, u16 mtu)

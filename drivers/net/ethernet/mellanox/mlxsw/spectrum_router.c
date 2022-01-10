@@ -9272,10 +9272,18 @@ static int mlxsw_sp_rif_subport_op(struct mlxsw_sp_rif *rif, bool enable)
 			    rif->rif_index, rif->vr_id, rif->dev->mtu);
 	mlxsw_reg_ritr_mac_pack(ritr_pl, rif->dev->dev_addr);
 	mlxsw_reg_ritr_if_mac_profile_id_set(ritr_pl, rif->mac_profile_id);
-	mlxsw_reg_ritr_sp_if_pack(ritr_pl, rif_subport->lag,
-				  rif_subport->lag ? rif_subport->lag_id :
-						     rif_subport->system_port,
-				  rif_subport->vid);
+
+	if (!mlxsw_sp->ubridge)
+		mlxsw_reg_ritr_sp_if_pack(ritr_pl, rif_subport->lag,
+					  rif_subport->lag ?
+					  rif_subport->lag_id :
+					  rif_subport->system_port,
+					  rif_subport->vid);
+	else
+		mlxsw_reg_ritr_sp_if_ub_pack(ritr_pl, rif_subport->lag,
+					     rif_subport->lag ?
+					     rif_subport->lag_id :
+					     rif_subport->system_port);
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(ritr), ritr_pl);
 }
