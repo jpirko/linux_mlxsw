@@ -455,6 +455,57 @@ err_vid_to_fid_rif_update_one:
 	return err;
 }
 
+static int mlxsw_sp_fid_erif_eport_to_vid_map(struct mlxsw_sp_fid *fid,
+					      u16 rif_index, bool valid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	struct mlxsw_sp_fid_port_vid *port_vid, *tmp;
+	char reiv_pl[MLXSW_REG_REIV_LEN] = {};
+	bool records_to_write = false;
+	u8 rec_num, current_page = 0;
+	u16 last_local_port;
+	int err;
+
+	mlxsw_reg_reiv_pack(reiv_pl, current_page, rif_index);
+	last_local_port = current_page * MLXSW_REG_REIV_REC_MAX_COUNT +
+			  MLXSW_REG_REIV_REC_MAX_COUNT - 1;
+
+	list_for_each_entry_safe(port_vid, tmp, &fid->port_vid_list, list) {
+		/* The list is sorted by local_port. */
+		if (port_vid->local_port > last_local_port)
+			goto reg_write;
+
+new_record_fill:
+		rec_num = port_vid->local_port % MLXSW_REG_REIV_REC_MAX_COUNT;
+		mlxsw_reg_reiv_rec_update_set(reiv_pl, rec_num, true);
+		mlxsw_reg_reiv_rec_evid_set(reiv_pl, rec_num,
+					    valid ? port_vid->vid : 0);
+		records_to_write = true;
+		goto next_list_node;
+
+reg_write:
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(reiv), reiv_pl);
+	if (err)
+		return err;
+
+	records_to_write = false;
+	current_page++;
+	memset(reiv_pl, 0, MLXSW_REG_REIV_LEN);
+	mlxsw_reg_reiv_pack(reiv_pl, current_page, rif_index);
+	last_local_port = current_page * MLXSW_REG_REIV_REC_MAX_COUNT +
+			  MLXSW_REG_REIV_REC_MAX_COUNT - 1;
+	goto new_record_fill;
+
+next_list_node:
+		continue;
+	}
+
+	if (records_to_write)
+		return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(reiv),
+				       reiv_pl);
+	return 0;
+}
+
 int mlxsw_sp_fid_rif_set(struct mlxsw_sp_fid *fid, struct mlxsw_sp_rif *rif,
 			 u16 rif_index)
 {
@@ -481,8 +532,14 @@ int mlxsw_sp_fid_rif_set(struct mlxsw_sp_fid *fid, struct mlxsw_sp_rif *rif,
 	if (err)
 		goto err_vid_to_fid_rif_update;
 
+	err = mlxsw_sp_fid_erif_eport_to_vid_map(fid, rif_index, true);
+	if (err)
+		goto err_erif_eport_to_vid_map;
+
 	return 0;
 
+err_erif_eport_to_vid_map:
+	__mlxsw_sp_fid_vid_to_fid_rif_update(fid, rif_index, false);
 err_vid_to_fid_rif_update:
 	fid->rif = NULL;
 	__mlxsw_sp_fid_vni_to_fid_rif_update(fid);
@@ -494,10 +551,17 @@ err_fid_to_fid_rif_update:
 
 void mlxsw_sp_fid_rif_unset(struct mlxsw_sp_fid *fid)
 {
+	u16 rif_index = 0;
+
+	if (fid->rif)
+		rif_index = mlxsw_sp_rif_index(fid->rif);
+
 	fid->rif = NULL;
+
 	if (!fid->fid_family->mlxsw_sp->ubridge)
 		return;
 
+	mlxsw_sp_fid_erif_eport_to_vid_map(fid, rif_index, false);
 	__mlxsw_sp_fid_vid_to_fid_rif_update(fid, 0, false);
 	__mlxsw_sp_fid_vni_to_fid_rif_update(fid);
 	__mlxsw_sp_fid_to_fid_rif_update(fid);
@@ -623,6 +687,22 @@ err_vni_fid:
 	return err;
 }
 
+static int
+mlxsw_sp_fid_erif_eport_to_vid_map_one(const struct mlxsw_sp_fid *fid,
+				       u16 rif_index, u16 local_port, u16 vid,
+				       bool valid)
+{
+	u8 port_page = local_port / (MLXSW_REG_REIV_REC_MAX_COUNT - 1);
+	u8 rec_num = local_port % MLXSW_REG_REIV_REC_MAX_COUNT;
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	char reiv_pl[MLXSW_REG_REIV_LEN];
+
+	mlxsw_reg_reiv_pack(reiv_pl, port_page, rif_index);
+	mlxsw_reg_reiv_rec_update_set(reiv_pl, rec_num, true);
+	mlxsw_reg_reiv_rec_evid_set(reiv_pl, rec_num, valid ? vid : 0);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(reiv), reiv_pl);
+}
+
 static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 				       u16 local_port, u16 vid, bool valid)
 {
@@ -630,6 +710,7 @@ static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 	char svfa_pl[MLXSW_REG_SVFA_LEN];
 	bool irif_v = false;
 	u16 irif_index = 0;
+	int err;
 
 	/* SVFA.irif_v and SVFA.irif are reserved using legacy ubridge model. */
 	if (mlxsw_sp->ubridge && fid->rif) {
@@ -639,7 +720,28 @@ static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 
 	mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, valid, fid->fid_index,
 				     vid, irif_v, irif_index);
-	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+	if (err || !fid->rif)
+		return err;
+
+	if (!fid->fid_family->mlxsw_sp->ubridge)
+		return err;
+
+	err = mlxsw_sp_fid_erif_eport_to_vid_map_one(fid, irif_index,
+						     local_port, vid, valid);
+	if (err)
+		goto err_erif_eport_to_vid_map_one;
+
+	return 0;
+
+err_erif_eport_to_vid_map_one:
+	if (valid) {
+		mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, !valid,
+					     fid->fid_index, vid, irif_v,
+					     irif_index);
+		mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
+	}
+	return err;
 }
 
 static struct mlxsw_sp_fid_8021d *
