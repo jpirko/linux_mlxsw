@@ -1123,6 +1123,7 @@ mlxsw_env_module_type_set(struct mlxsw_env_module_info *module_info,
 			  struct mlxsw_core *mlxsw_core,
 			  u8 slot_index, u8 module)
 {
+#if 0
 	char pmtm_pl[MLXSW_REG_PMTM_LEN];
 	int err;
 
@@ -1133,6 +1134,7 @@ mlxsw_env_module_type_set(struct mlxsw_env_module_info *module_info,
 		return err;
 
 	module_info->module_type = mlxsw_reg_pmtm_module_type_get(pmtm_pl);
+#endif
 	return 0;
 }
 
