@@ -703,6 +703,45 @@ mlxsw_sp_fid_erif_eport_to_vid_map_one(const struct mlxsw_sp_fid *fid,
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(reiv), reiv_pl);
 }
 
+static int
+mlxsw_sp_fid_mpe_table_map(const struct mlxsw_sp_fid *fid, u16 local_port,
+			   u16 vid, bool valid)
+{
+	struct mlxsw_sp *mlxsw_sp = fid->fid_family->mlxsw_sp;
+	char smpe_pl[MLXSW_REG_SMPE_LEN];
+
+	mlxsw_reg_smpe_pack(smpe_pl, local_port, fid->fid_index,
+			    valid ? vid : 0);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(smpe), smpe_pl);
+}
+
+static int mlxsw_sp_fid_evid_map(const struct mlxsw_sp_fid *fid, u16 local_port,
+				 u16 vid, bool valid)
+{
+	u16 rif_index;
+	int err;
+
+	err = mlxsw_sp_fid_mpe_table_map(fid, local_port, vid, valid);
+	if (err)
+		return err;
+
+	if (!fid->rif)
+		return 0;
+
+	rif_index = mlxsw_sp_rif_index(fid->rif);
+	err = mlxsw_sp_fid_erif_eport_to_vid_map_one(fid, rif_index, local_port,
+						     vid, valid);
+	if (err)
+		goto err_erif_eport_to_vid_map_one;
+
+	return 0;
+
+err_erif_eport_to_vid_map_one:
+	if (valid)
+		mlxsw_sp_fid_mpe_table_map(fid, local_port, vid, !valid);
+	return err;
+}
+
 static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 				       u16 local_port, u16 vid, bool valid)
 {
@@ -721,20 +760,19 @@ static int __mlxsw_sp_fid_port_vid_map(const struct mlxsw_sp_fid *fid,
 	mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, valid, fid->fid_index,
 				     vid, irif_v, irif_index);
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(svfa), svfa_pl);
-	if (err || !fid->rif)
+	if (err)
 		return err;
 
 	if (!fid->fid_family->mlxsw_sp->ubridge)
 		return err;
 
-	err = mlxsw_sp_fid_erif_eport_to_vid_map_one(fid, irif_index,
-						     local_port, vid, valid);
+	err = mlxsw_sp_fid_evid_map(fid, local_port, vid, valid);
 	if (err)
-		goto err_erif_eport_to_vid_map_one;
+		goto err_fid_evid_map;
 
 	return 0;
 
-err_erif_eport_to_vid_map_one:
+err_fid_evid_map:
 	if (valid) {
 		mlxsw_reg_svfa_port_vid_pack(svfa_pl, local_port, !valid,
 					     fid->fid_index, vid, irif_v,
