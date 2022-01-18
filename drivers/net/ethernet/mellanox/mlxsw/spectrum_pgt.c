@@ -11,6 +11,7 @@ struct mlxsw_sp_pgt {
 	struct idr pgt_idr;
 	u16 max_index;
 	struct mutex lock;
+	bool smpe_index_valid;
 };
 
 struct mlxsw_sp_pgt_entry {
@@ -27,6 +28,28 @@ struct mlxsw_pgt_entry_port {
 
 #define MLXSW_SP_PGT_START_INDEX 0
 
+static void mlxsw_sp1_pgt_smpe_index_valid_set(struct mlxsw_sp_pgt *pgt)
+{
+	pgt->smpe_index_valid = true;
+}
+
+static void mlxsw_sp2_pgt_smpe_index_valid_set(struct mlxsw_sp_pgt *pgt)
+{
+	pgt->smpe_index_valid = false;
+}
+
+struct mlxsw_sp_pgt_ops {
+	void (*smpe_index_valid_set)(struct mlxsw_sp_pgt *pgt);
+};
+
+const struct mlxsw_sp_pgt_ops mlxsw_sp1_pgt_ops = {
+	.smpe_index_valid_set = mlxsw_sp1_pgt_smpe_index_valid_set,
+};
+
+const struct mlxsw_sp_pgt_ops mlxsw_sp2_pgt_ops = {
+	.smpe_index_valid_set = mlxsw_sp2_pgt_smpe_index_valid_set,
+};
+
 int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_pgt *pgt;
@@ -39,6 +62,7 @@ int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp)
 	pgt->max_index = MLXSW_CORE_RES_GET(mlxsw_sp->core, PGT_SIZE);
 	mutex_init(&pgt->lock);
 	mlxsw_sp->pgt = pgt;
+	mlxsw_sp->pgt_ops->smpe_index_valid_set(mlxsw_sp->pgt);
 	return 0;
 }
 

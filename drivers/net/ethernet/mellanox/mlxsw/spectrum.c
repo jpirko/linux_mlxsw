@@ -3199,6 +3199,7 @@ static int mlxsw_sp1_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->trap_ops = &mlxsw_sp1_trap_ops;
 	mlxsw_sp->mall_ops = &mlxsw_sp1_mall_ops;
 	mlxsw_sp->router_ops = &mlxsw_sp1_router_ops;
+	mlxsw_sp->pgt_ops = &mlxsw_sp1_pgt_ops;
 	mlxsw_sp->listeners = mlxsw_sp1_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp1_listener);
 	mlxsw_sp->fid_family_arr = mlxsw_sp_fid_family_arr;
@@ -3235,6 +3236,7 @@ static int mlxsw_sp2_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->listeners = mlxsw_sp2_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp2_listener);
 	mlxsw_sp->fid_family_arr = mlxsw_sp2_fid_family_arr;
+	mlxsw_sp->pgt_ops = &mlxsw_sp2_pgt_ops;
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP2;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);
@@ -3268,6 +3270,7 @@ static int mlxsw_sp3_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->listeners = mlxsw_sp2_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp2_listener);
 	mlxsw_sp->fid_family_arr = mlxsw_sp2_fid_family_arr;
+	mlxsw_sp->pgt_ops = &mlxsw_sp2_pgt_ops;
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP3;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);
@@ -3301,6 +3304,7 @@ static int mlxsw_sp4_init(struct mlxsw_core *mlxsw_core,
 	mlxsw_sp->listeners = mlxsw_sp2_listener;
 	mlxsw_sp->listeners_count = ARRAY_SIZE(mlxsw_sp2_listener);
 	mlxsw_sp->fid_family_arr = mlxsw_sp2_fid_family_arr;
+	mlxsw_sp->pgt_ops = &mlxsw_sp2_pgt_ops;
 	mlxsw_sp->lowest_shaper_bs = MLXSW_REG_QEEC_LOWEST_SHAPER_BS_SP4;
 
 	return mlxsw_sp_init(mlxsw_core, mlxsw_bus_info, extack);

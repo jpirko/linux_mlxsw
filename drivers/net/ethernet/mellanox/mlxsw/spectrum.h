@@ -204,6 +204,7 @@ struct mlxsw_sp {
 	const struct mlxsw_sp_trap_ops *trap_ops;
 	const struct mlxsw_sp_mall_ops *mall_ops;
 	const struct mlxsw_sp_router_ops *router_ops;
+	const struct mlxsw_sp_pgt_ops *pgt_ops;
 	const struct mlxsw_listener *listeners;
 	const struct mlxsw_sp_fid_family **fid_family_arr;
 	size_t listeners_count;
@@ -1464,6 +1465,8 @@ void mlxsw_sp_policers_fini(struct mlxsw_sp *mlxsw_sp);
 int mlxsw_sp_policer_resources_register(struct mlxsw_core *mlxsw_core);
 
 /* spectrum_pgt.c */
+extern const struct mlxsw_sp_pgt_ops mlxsw_sp1_pgt_ops;
+extern const struct mlxsw_sp_pgt_ops mlxsw_sp2_pgt_ops;
 int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp);
 void mlxsw_sp_pgt_fini(struct mlxsw_sp *mlxsw_sp);
 int
