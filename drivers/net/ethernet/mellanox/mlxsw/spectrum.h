@@ -1473,5 +1473,13 @@ int
 mlxsw_sp_pgt_alloc_range(struct mlxsw_sp *mlxsw_sp, u16 mid_base, u16 count);
 int mlxsw_sp_pgt_alloc(struct mlxsw_sp *mlxsw_sp, u16 *p_mid);
 void mlxsw_sp_pgt_free(struct mlxsw_sp *mlxsw_sp, u16 mid_base, u16 count);
+int mlxsw_sp_pgt_entry_port_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
+				u16 local_port, bool member);
+int
+mlxsw_sp_pgt_entry_port_range_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
+				  long *ports_bitmap, bool member);
+bool mlxsw_sp_pgt_is_ports_list_empty(struct mlxsw_sp *mlxsw_sp, u16 mid);
+bool mlxsw_sp_pgt_is_port_in_mid_entry(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				       u16 local_port);
 
 #endif
