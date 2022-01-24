@@ -323,6 +323,73 @@ mlxsw_sp_fid_flood_table_lookup(const struct mlxsw_sp_fid *fid,
 	return NULL;
 }
 
+#define MLXSW_SP_FID_PGT_MID_BASE 0
+
+#define MLXSW_SP_FID_PGT_UC_T0_MID_BASE	0    /* 4K entries */
+#define MLXSW_SP_FID_PGT_MC_T0_MID_BASE	4000 /* 4K entries */
+#define MLXSW_SP_FID_PGT_BC_T0_MID_BASE	8000 /* 4K entries */
+
+#define MLXSW_SP_FID_PGT_UC_T1_MID_BASE	12000 /* 1K entries */
+#define MLXSW_SP_FID_PGT_MC_T1_MID_BASE	13000 /* 1K entries */
+#define MLXSW_SP_FID_PGT_BC_T1_MID_BASE	14000 /* 1K entries */
+
+#define MLXSW_SP_FID_PGT_FLOOD_ENTRIES 15000
+
+static int
+mlxsw_sp_fid_flood_type0_to_mid_base(enum mlxsw_sp_flood_type packet_type,
+				     u16 *p_mid_base)
+{
+	switch (packet_type) {
+	case MLXSW_SP_FLOOD_TYPE_UC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_UC_T0_MID_BASE;
+		 return 0;
+	case MLXSW_SP_FLOOD_TYPE_BC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_BC_T0_MID_BASE;
+		 return 0;
+	case MLXSW_SP_FLOOD_TYPE_MC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_MC_T0_MID_BASE;
+		 return 0;
+	default:
+		 return -EINVAL;
+	}
+}
+
+static int
+mlxsw_sp_fid_flood_type1_to_mid_base(enum mlxsw_sp_flood_type packet_type,
+				     u16 *p_mid_base)
+{
+	switch (packet_type) {
+	case MLXSW_SP_FLOOD_TYPE_UC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_UC_T1_MID_BASE;
+		 return 0;
+	case MLXSW_SP_FLOOD_TYPE_BC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_BC_T1_MID_BASE;
+		 return 0;
+	case MLXSW_SP_FLOOD_TYPE_MC:
+		 *p_mid_base = MLXSW_SP_FID_PGT_MC_T1_MID_BASE;
+		 return 0;
+	default:
+		 return -EINVAL;
+	}
+}
+
+static int
+mlxsw_sp_fid_flood_type_to_mid_base(enum mlxsw_sp_flood_type packet_type,
+				    enum mlxsw_sp_fid_type type,
+				    u16 *p_mid_base)
+{
+	switch (type) {
+	case MLXSW_SP_FID_TYPE_8021Q:
+		return mlxsw_sp_fid_flood_type0_to_mid_base(packet_type,
+							    p_mid_base);
+	case MLXSW_SP_FID_TYPE_8021D:
+		return mlxsw_sp_fid_flood_type1_to_mid_base(packet_type,
+							    p_mid_base);
+	default:
+		return -EINVAL;
+	}
+}
+
 int mlxsw_sp_fid_flood_set(struct mlxsw_sp_fid *fid,
 			   enum mlxsw_sp_flood_type packet_type, u16 local_port,
 			   bool member)
@@ -331,6 +398,8 @@ int mlxsw_sp_fid_flood_set(struct mlxsw_sp_fid *fid,
 	const struct mlxsw_sp_fid_ops *ops = fid_family->ops;
 	const struct mlxsw_sp_flood_table *flood_table;
 	char *sftr2_pl;
+	u16 fid_offset;
+	u16 mid_base;
 	int err;
 
 	if (WARN_ON(!fid_family->flood_tables || !ops->flood_index))
@@ -340,6 +409,12 @@ int mlxsw_sp_fid_flood_set(struct mlxsw_sp_fid *fid,
 	if (!flood_table)
 		return -ESRCH;
 
+	if (fid_family->mlxsw_sp->ubridge)
+		goto ubridge1;
+	else
+		goto ubridge0;
+
+ubridge0:
 	sftr2_pl = kmalloc(MLXSW_REG_SFTR2_LEN, GFP_KERNEL);
 	if (!sftr2_pl)
 		return -ENOMEM;
@@ -351,6 +426,17 @@ int mlxsw_sp_fid_flood_set(struct mlxsw_sp_fid *fid,
 			      sftr2_pl);
 	kfree(sftr2_pl);
 	return err;
+
+ubridge1:
+	err = mlxsw_sp_fid_flood_type_to_mid_base(packet_type, fid_family->type,
+						  &mid_base);
+	if (err)
+		return err;
+
+	fid_offset = fid->fid_index - fid_family->start_index;
+	return mlxsw_sp_pgt_entry_port_set(fid_family->mlxsw_sp,
+					   mid_base + fid_offset,
+					   fid->fid_index, local_port, member);
 }
 
 int mlxsw_sp_fid_port_vid_map(struct mlxsw_sp_fid *fid,
@@ -1423,19 +1509,33 @@ mlxsw_sp_fid_flood_table_init(struct mlxsw_sp_fid_family *fid_family,
 {
 	enum mlxsw_sp_flood_type packet_type = flood_table->packet_type;
 	const int *sfgc_packet_types;
-	int i;
+	u16 mid_base;
+	int err, i;
+
+	err = mlxsw_sp_fid_flood_type_to_mid_base(packet_type, fid_family->type,
+						  &mid_base);
+	if (err)
+		return err;
 
 	sfgc_packet_types = mlxsw_sp_packet_type_sfgc_types[packet_type];
 	for (i = 0; i < MLXSW_REG_SFGC_TYPE_MAX; i++) {
 		struct mlxsw_sp *mlxsw_sp = fid_family->mlxsw_sp;
 		char sfgc_pl[MLXSW_REG_SFGC_LEN];
-		int err;
 
 		if (!sfgc_packet_types[i])
 			continue;
-		mlxsw_reg_sfgc_pack(sfgc_pl, i, fid_family->bridge_type,
-				    flood_table->table_type,
-				    flood_table->table_index);
+
+		if (!fid_family->mlxsw_sp->ubridge)
+			mlxsw_reg_sfgc_pack(sfgc_pl, i,
+					    fid_family->bridge_type,
+					    flood_table->table_type,
+					    flood_table->table_index);
+		else
+			mlxsw_reg_sfgc_ub_pack(sfgc_pl, i,
+					       fid_family->bridge_type,
+					       flood_table->table_type,
+					       mid_base);
+
 		err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(sfgc), sfgc_pl);
 		if (err)
 			return err;
@@ -1562,8 +1662,14 @@ int mlxsw_sp_fids_init(struct mlxsw_sp *mlxsw_sp)
 			goto err_fid_ops_register;
 	}
 
+	err = mlxsw_sp_pgt_alloc_range(mlxsw_sp, MLXSW_SP_FID_PGT_MID_BASE,
+				       MLXSW_SP_FID_PGT_FLOOD_ENTRIES);
+	if (err)
+		goto err_pgt_alloc_range;
+
 	return 0;
 
+err_pgt_alloc_range:
 err_fid_ops_register:
 	for (i--; i >= 0; i--) {
 		struct mlxsw_sp_fid_family *fid_family;
@@ -1586,6 +1692,8 @@ void mlxsw_sp_fids_fini(struct mlxsw_sp *mlxsw_sp)
 	struct mlxsw_sp_fid_core *fid_core = mlxsw_sp->fid_core;
 	int i;
 
+	mlxsw_sp_pgt_free(mlxsw_sp, MLXSW_SP_FID_PGT_MID_BASE,
+			  MLXSW_SP_FID_PGT_FLOOD_ENTRIES);
 	for (i = 0; i < MLXSW_SP_FID_TYPE_MAX; i++)
 		mlxsw_sp_fid_family_unregister(mlxsw_sp,
 					       fid_core->fid_family_arr[i]);
