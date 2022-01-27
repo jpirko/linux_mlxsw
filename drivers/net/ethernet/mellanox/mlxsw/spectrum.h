@@ -1481,5 +1481,7 @@ mlxsw_sp_pgt_entry_port_range_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
 bool mlxsw_sp_pgt_is_ports_list_empty(struct mlxsw_sp *mlxsw_sp, u16 mid);
 bool mlxsw_sp_pgt_is_port_in_mid_entry(struct mlxsw_sp *mlxsw_sp, u16 mid,
 				       u16 local_port);
+u16
+mlxsw_sp_pgt_mid_index_get_ubridge(const struct mlxsw_sp *mlxsw_sp, u16 mid);
 
 #endif

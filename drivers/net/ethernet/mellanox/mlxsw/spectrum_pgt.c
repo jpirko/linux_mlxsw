@@ -296,6 +296,22 @@ __mlxsw_sp_pgt_entry_port_add_del(struct mlxsw_sp_pgt_entry *pgt_entry,
 	return 0;
 }
 
+#define MLXSW_SP_FID_PGT_FLOOD_ENTRIES 15000
+
+u16 mlxsw_sp_pgt_mid_index_get_ubridge(const struct mlxsw_sp *mlxsw_sp, u16 mid)
+{
+	if (!mlxsw_sp->ubridge)
+		/* PGT code saves 15K entries for flooding, these entries are
+		 * not in use yet. Currently, ubridge0 model is used and FW
+		 * manages PGT table, to not exceed FW limitation for MDB
+		 * entries, subtract 15K flood entries from mid index which was
+		 * allocated using PGT API.
+		 */
+		return mid - MLXSW_SP_FID_PGT_FLOOD_ENTRIES;
+	else
+		return mid;
+}
+
 int mlxsw_sp_pgt_entry_port_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
 				u16 local_port, bool member)
 {
@@ -326,6 +342,8 @@ int mlxsw_sp_pgt_entry_port_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
 		err = -ENOMEM;
 		goto err_smid2_pl_alloc;
 	}
+
+	mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid);
 
 	if (mlxsw_sp->ubridge)
 		mlxsw_reg_smid2_smpe_pack(smid2_pl, mid, local_port, member,
@@ -373,6 +391,8 @@ mlxsw_sp_pgt_entry_port_range_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
 		err = -ENOMEM;
 		goto err_smid2_pl_alloc;
 	}
+
+	mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid);
 
 	if (mlxsw_sp->ubridge)
 		mlxsw_reg_smid2_smpe_pack(smid2_pl, mid, 0, 0,
