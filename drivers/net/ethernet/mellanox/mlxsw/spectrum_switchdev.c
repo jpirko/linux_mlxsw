@@ -111,7 +111,7 @@ static void
 mlxsw_sp_bridge_port_mdb_flush(struct mlxsw_sp_port *mlxsw_sp_port,
 			       struct mlxsw_sp_bridge_port *bridge_port);
 
-static void
+static int
 mlxsw_sp_bridge_mdb_mc_enable_sync(struct mlxsw_sp_port *mlxsw_sp_port,
 				   struct mlxsw_sp_bridge_device
 				   *bridge_device);
@@ -842,8 +842,10 @@ static int mlxsw_sp_port_mc_disabled_set(struct mlxsw_sp_port *mlxsw_sp_port,
 
 	if (bridge_device->multicast_enabled != !mc_disabled) {
 		bridge_device->multicast_enabled = !mc_disabled;
-		mlxsw_sp_bridge_mdb_mc_enable_sync(mlxsw_sp_port,
-						   bridge_device);
+		err = mlxsw_sp_bridge_mdb_mc_enable_sync(mlxsw_sp_port,
+							 bridge_device);
+		if (err)
+			return err;
 	}
 
 	list_for_each_entry(bridge_port, &bridge_device->ports_list, list) {
@@ -1825,7 +1827,7 @@ err_out:
 	return err;
 }
 
-static void
+static int
 mlxsw_sp_bridge_mdb_mc_enable_sync(struct mlxsw_sp_port *mlxsw_sp_port,
 				   struct mlxsw_sp_bridge_device
 				   *bridge_device)
@@ -1833,16 +1835,33 @@ mlxsw_sp_bridge_mdb_mc_enable_sync(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct mlxsw_sp_mid *mid;
 	bool mc_enabled;
+	int err;
 
 	mc_enabled = bridge_device->multicast_enabled;
 
 	list_for_each_entry(mid, &bridge_device->mids_list, list) {
 		if (mc_enabled)
+			err = mlxsw_sp_mc_write_mdb_entry(mlxsw_sp, mid,
+							  bridge_device);
+		else
+			err = mlxsw_sp_mc_remove_mdb_entry(mlxsw_sp, mid);
+
+		if (err)
+			goto err_mdb_entry_update;
+	}
+
+	return 0;
+
+err_mdb_entry_update:
+	list_for_each_entry_continue_reverse(mid, &bridge_device->mids_list,
+					     list) {
+		if (mc_enabled)
+			mlxsw_sp_mc_remove_mdb_entry(mlxsw_sp, mid);
+		else
 			mlxsw_sp_mc_write_mdb_entry(mlxsw_sp, mid,
 						    bridge_device);
-		else
-			mlxsw_sp_mc_remove_mdb_entry(mlxsw_sp, mid);
 	}
+	return err;
 }
 
 static void
