@@ -102,6 +102,15 @@ struct mlxsw_sp_switchdev_ops {
 	void (*init)(struct mlxsw_sp *mlxsw_sp);
 };
 
+struct mlxsw_sp_mid {
+	struct list_head list;
+	unsigned char addr[ETH_ALEN];
+	u16 fid;
+	u16 mid;
+	bool in_hw;
+	unsigned long *ports_in_mid; /* bits array */
+};
+
 static int
 mlxsw_sp_bridge_port_fdb_flush(struct mlxsw_sp *mlxsw_sp,
 			       struct mlxsw_sp_bridge_port *bridge_port,
@@ -120,6 +129,10 @@ static void
 mlxsw_sp_port_mrouter_update_mdb(struct mlxsw_sp_port *mlxsw_sp_port,
 				 struct mlxsw_sp_bridge_port *bridge_port,
 				 bool add);
+
+static void mlxsw_sp_mc_mdb_fini(struct mlxsw_sp *mlxsw_sp,
+				 struct mlxsw_sp_mid *mid,
+				 struct mlxsw_sp_bridge_device *bridge_device);
 
 static struct mlxsw_sp_bridge_device *
 mlxsw_sp_bridge_device_find(const struct mlxsw_sp_bridge *bridge,
@@ -878,6 +891,26 @@ static int mlxsw_sp_smid_router_port_set(struct mlxsw_sp *mlxsw_sp,
 			     mlxsw_sp_router_port(mlxsw_sp), add);
 	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(smid2), smid2_pl);
 	kfree(smid2_pl);
+	return err;
+}
+
+/* Unused only until next patch in the series, `attribute` will be removed. */
+static int __attribute__((unused))
+__mlxsw_sp_port_mdb_add_del(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_bridge_device *bridge_device,
+			    struct mlxsw_sp_mid *mid, u16 local_port, bool add)
+{
+	int err;
+
+	err = mlxsw_sp_pgt_entry_port_set(mlxsw_sp, mid->mid, mid->fid,
+					  local_port, add);
+	if (err || add)
+		return err;
+
+	if (!mlxsw_sp_pgt_is_ports_list_empty(mlxsw_sp, mid->mid))
+		return err;
+
+	mlxsw_sp_mc_mdb_fini(mlxsw_sp, mid, bridge_device);
 	return err;
 }
 
@@ -1771,6 +1804,86 @@ static int mlxsw_sp_port_remove_from_mid(struct mlxsw_sp_port *mlxsw_sp_port,
 		kfree(mid);
 	}
 	return err;
+}
+
+static int
+mlxsw_sp_mc_pgt_mrouters_set(struct mlxsw_sp *mlxsw_sp,
+			     struct mlxsw_sp_bridge_device *bridge_device,
+			     struct mlxsw_sp_mid *mid, bool add)
+{
+	unsigned long *ports_bitmap;
+	unsigned int num_of_ports;
+	int err;
+
+	num_of_ports = mlxsw_core_max_ports(mlxsw_sp->core);
+	ports_bitmap = bitmap_zalloc(num_of_ports, GFP_KERNEL);
+	if (!ports_bitmap)
+		return -ENOMEM;
+
+	mlxsw_sp_mc_get_mrouters_bitmap(ports_bitmap, bridge_device, mlxsw_sp);
+	err = mlxsw_sp_pgt_entry_port_range_set(mlxsw_sp, mid->mid, mid->fid,
+						ports_bitmap, add);
+	bitmap_free(ports_bitmap);
+	return err;
+}
+
+/* Unused only until next patch in the series, `attribute` will be removed. */
+static struct mlxsw_sp_mid __attribute__((unused)) *
+mlxsw_sp_mc_mdb_init(struct mlxsw_sp *mlxsw_sp,
+		     struct mlxsw_sp_bridge_device *bridge_device,
+		     const unsigned char *addr, u16 fid)
+{
+	struct mlxsw_sp_mid *mid;
+	u16 tmp_mid;
+	int err;
+
+	mid = kzalloc(sizeof(*mid), GFP_KERNEL);
+	if (!mid)
+		return NULL;
+
+	ether_addr_copy(mid->addr, addr);
+	mid->fid = fid;
+	err = mlxsw_sp_pgt_alloc(mlxsw_sp, &mid->mid);
+	if (err)
+		goto err_pgt_alloc;
+
+	err = mlxsw_sp_mc_pgt_mrouters_set(mlxsw_sp, bridge_device, mid, true);
+	if (err)
+		goto err_pgt_mrouters_set;
+
+	if (!bridge_device->multicast_enabled)
+		goto out;
+
+	tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid->mid);
+	err = mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, tmp_mid,
+				   true);
+	if (err)
+		goto err_port_mdb_op;
+
+out:
+	list_add_tail(&mid->list, &bridge_device->mids_list);
+	return mid;
+
+err_port_mdb_op:
+	mlxsw_sp_mc_pgt_mrouters_set(mlxsw_sp, bridge_device, mid, false);
+err_pgt_mrouters_set:
+	mlxsw_sp_pgt_free(mlxsw_sp, mid->mid, 1);
+err_pgt_alloc:
+	kfree(mid);
+	return NULL;
+}
+
+static void mlxsw_sp_mc_mdb_fini(struct mlxsw_sp *mlxsw_sp,
+				 struct mlxsw_sp_mid *mid,
+				 struct mlxsw_sp_bridge_device *bridge_device)
+{
+	u16 tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid->mid);
+
+	list_del(&mid->list);
+	mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, tmp_mid, false);
+	mlxsw_sp_mc_pgt_mrouters_set(mlxsw_sp, bridge_device, mid, false);
+	mlxsw_sp_pgt_free(mlxsw_sp, mid->mid, 1);
+	kfree(mid);
 }
 
 static int mlxsw_sp_port_mdb_add(struct mlxsw_sp_port *mlxsw_sp_port,
