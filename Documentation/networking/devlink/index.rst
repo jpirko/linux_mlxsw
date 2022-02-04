@@ -23,6 +23,7 @@ general.
    devlink-resource
    devlink-reload
    devlink-trap
+   devlink-linecard
 
 Driver-specific documentation
 -----------------------------
