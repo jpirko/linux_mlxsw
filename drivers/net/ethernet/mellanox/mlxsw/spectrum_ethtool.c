@@ -1035,7 +1035,8 @@ static int mlxsw_sp_get_module_info(struct net_device *netdev,
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(netdev);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 
-	return mlxsw_env_get_module_info(netdev, mlxsw_sp->core, 0,
+	return mlxsw_env_get_module_info(netdev, mlxsw_sp->core,
+					 mlxsw_sp_port->mapping.slot_index,
 					 mlxsw_sp_port->mapping.module,
 					 modinfo);
 }
@@ -1046,7 +1047,8 @@ static int mlxsw_sp_get_module_eeprom(struct net_device *netdev,
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(netdev);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 
-	return mlxsw_env_get_module_eeprom(netdev, mlxsw_sp->core, 0,
+	return mlxsw_env_get_module_eeprom(netdev, mlxsw_sp->core,
+					   mlxsw_sp_port->mapping.slot_index,
 					   mlxsw_sp_port->mapping.module, ee,
 					   data);
 }
@@ -1058,10 +1060,11 @@ mlxsw_sp_get_module_eeprom_by_page(struct net_device *dev,
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	u8 slot_index = mlxsw_sp_port->mapping.slot_index;
 	u8 module = mlxsw_sp_port->mapping.module;
 
-	return mlxsw_env_get_module_eeprom_by_page(mlxsw_sp->core, 0, module,
-						   page, extack);
+	return mlxsw_env_get_module_eeprom_by_page(mlxsw_sp->core, slot_index,
+						   module, page, extack);
 }
 
 static int
@@ -1202,9 +1205,11 @@ static int mlxsw_sp_reset(struct net_device *dev, u32 *flags)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	u8 slot_index = mlxsw_sp_port->mapping.slot_index;
 	u8 module = mlxsw_sp_port->mapping.module;
 
-	return mlxsw_env_reset_module(dev, mlxsw_sp->core, 0, module, flags);
+	return mlxsw_env_reset_module(dev, mlxsw_sp->core, slot_index,
+				      module, flags);
 }
 
 static int
