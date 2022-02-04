@@ -159,6 +159,7 @@ struct mlxsw_sp_parsing {
 
 struct mlxsw_sp {
 	struct mlxsw_sp_port **ports;
+	struct mutex ports_lock; /* Protects ports array */
 	struct mlxsw_core *core;
 	const struct mlxsw_bus_info *bus_info;
 	unsigned char base_mac[ETH_ALEN];
