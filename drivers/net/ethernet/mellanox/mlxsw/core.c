@@ -82,6 +82,7 @@ struct mlxsw_core {
 	struct mlxsw_res res;
 	struct mlxsw_hwmon *hwmon;
 	struct mlxsw_thermal *thermal;
+	struct mlxsw_linecards *linecards;
 	struct mlxsw_core_port *ports;
 	unsigned int max_ports;
 	atomic_t active_ports_count;
@@ -93,6 +94,22 @@ struct mlxsw_core {
 	unsigned long driver_priv[];
 	/* driver_priv has to be always the last item */
 };
+
+struct mlxsw_linecards *mlxsw_core_linecards(struct mlxsw_core *mlxsw_core)
+{
+	return mlxsw_core->linecards;
+}
+
+void mlxsw_core_linecards_set(struct mlxsw_core *mlxsw_core,
+			      struct mlxsw_linecards *linecards)
+{
+	mlxsw_core->linecards = linecards;
+}
+
+const char *mlxsw_core_lc_ini_bundle_filename(struct mlxsw_core *mlxsw_core)
+{
+	return mlxsw_core->driver->lc_ini_bundle_filename;
+}
 
 #define MLXSW_PORT_MAX_PORTS_DEFAULT	0x40
 
@@ -2149,6 +2166,10 @@ __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 	if (err)
 		goto err_fw_rev_validate;
 
+	err = mlxsw_linecards_init(mlxsw_core, mlxsw_bus_info);
+	if (err)
+		goto err_linecards_init;
+
 	err = mlxsw_core_health_init(mlxsw_core);
 	if (err)
 		goto err_health_init;
@@ -2187,6 +2208,8 @@ err_thermal_init:
 err_hwmon_init:
 	mlxsw_core_health_fini(mlxsw_core);
 err_health_init:
+	mlxsw_linecards_fini(mlxsw_core);
+err_linecards_init:
 err_fw_rev_validate:
 	if (!reload)
 		mlxsw_core_params_unregister(mlxsw_core);
@@ -2259,6 +2282,7 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 	mlxsw_thermal_fini(mlxsw_core->thermal);
 	mlxsw_hwmon_fini(mlxsw_core->hwmon);
 	mlxsw_core_health_fini(mlxsw_core);
+	mlxsw_linecards_fini(mlxsw_core);
 	if (!reload)
 		mlxsw_core_params_unregister(mlxsw_core);
 	mlxsw_emad_fini(mlxsw_core);

@@ -89,6 +89,11 @@ static const struct mlxsw_fw_rev mlxsw_sp3_fw_rev = {
 	"." __stringify(MLXSW_SP_FWREV_MINOR) \
 	"." __stringify(MLXSW_SP_FWREV_SUBMINOR) ".mfa2"
 
+#define MLXSW_SP_LINECARDS_INI_BUNDLE_FILENAME \
+	"mellanox/lc_ini_bundle_" \
+	__stringify(MLXSW_SP_FWREV_MINOR) "_" \
+	__stringify(MLXSW_SP_FWREV_SUBMINOR) ".bin"
+
 static const char mlxsw_sp1_driver_name[] = "mlxsw_spectrum";
 static const char mlxsw_sp2_driver_name[] = "mlxsw_spectrum2";
 static const char mlxsw_sp3_driver_name[] = "mlxsw_spectrum3";
@@ -3710,6 +3715,7 @@ static struct mlxsw_driver mlxsw_sp1_driver = {
 	.priv_size			= sizeof(struct mlxsw_sp),
 	.fw_req_rev			= &mlxsw_sp1_fw_rev,
 	.fw_filename			= MLXSW_SP1_FW_FILENAME,
+	.lc_ini_bundle_filename		= MLXSW_SP_LINECARDS_INI_BUNDLE_FILENAME,
 	.init				= mlxsw_sp1_init,
 	.fini				= mlxsw_sp_fini,
 	.port_split			= mlxsw_sp_port_split,
@@ -3783,6 +3789,7 @@ static struct mlxsw_driver mlxsw_sp3_driver = {
 	.priv_size			= sizeof(struct mlxsw_sp),
 	.fw_req_rev			= &mlxsw_sp3_fw_rev,
 	.fw_filename			= MLXSW_SP3_FW_FILENAME,
+	.lc_ini_bundle_filename		= MLXSW_SP_LINECARDS_INI_BUNDLE_FILENAME,
 	.init				= mlxsw_sp3_init,
 	.fini				= mlxsw_sp_fini,
 	.port_split			= mlxsw_sp_port_split,
@@ -3818,6 +3825,7 @@ static struct mlxsw_driver mlxsw_sp3_driver = {
 static struct mlxsw_driver mlxsw_sp4_driver = {
 	.kind				= mlxsw_sp4_driver_name,
 	.priv_size			= sizeof(struct mlxsw_sp),
+	.lc_ini_bundle_filename		= MLXSW_SP_LINECARDS_INI_BUNDLE_FILENAME,
 	.init				= mlxsw_sp4_init,
 	.fini				= mlxsw_sp_fini,
 	.port_split			= mlxsw_sp_port_split,
@@ -5115,3 +5123,4 @@ MODULE_DEVICE_TABLE(pci, mlxsw_sp4_pci_id_table);
 MODULE_FIRMWARE(MLXSW_SP1_FW_FILENAME);
 MODULE_FIRMWARE(MLXSW_SP2_FW_FILENAME);
 MODULE_FIRMWARE(MLXSW_SP3_FW_FILENAME);
+MODULE_FIRMWARE(MLXSW_SP_LINECARDS_INI_BUNDLE_FILENAME);
