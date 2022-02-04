@@ -492,11 +492,13 @@ mlxsw_sp_port_module_info_parse(struct mlxsw_sp *mlxsw_sp,
 {
 	bool separate_rxtx;
 	u8 first_lane;
+	u8 slot_index;
 	u8 module;
 	u8 width;
 	int i;
 
 	module = mlxsw_reg_pmlp_module_get(pmlp_pl, 0);
+	slot_index = mlxsw_reg_pmlp_slot_index_get(pmlp_pl, 0);
 	width = mlxsw_reg_pmlp_width_get(pmlp_pl);
 	separate_rxtx = mlxsw_reg_pmlp_rxtx_get(pmlp_pl);
 	first_lane = mlxsw_reg_pmlp_tx_lane_get(pmlp_pl, 0);
@@ -510,6 +512,11 @@ mlxsw_sp_port_module_info_parse(struct mlxsw_sp *mlxsw_sp,
 	for (i = 0; i < width; i++) {
 		if (mlxsw_reg_pmlp_module_get(pmlp_pl, i) != module) {
 			dev_err(mlxsw_sp->bus_info->dev, "Port %d: Unsupported module config: contains multiple modules\n",
+				local_port);
+			return -EINVAL;
+		}
+		if (mlxsw_reg_pmlp_slot_index_get(pmlp_pl, i) != slot_index) {
+			dev_err(mlxsw_sp->bus_info->dev, "Port %d: Unsupported module config: contains multiple slot indexes\n",
 				local_port);
 			return -EINVAL;
 		}
@@ -528,6 +535,7 @@ mlxsw_sp_port_module_info_parse(struct mlxsw_sp *mlxsw_sp,
 	}
 
 	port_mapping->module = module;
+	port_mapping->slot_index = slot_index;
 	port_mapping->width = width;
 	port_mapping->module_width = width;
 	port_mapping->lane = mlxsw_reg_pmlp_tx_lane_get(pmlp_pl, 0);
@@ -561,6 +569,8 @@ mlxsw_sp_port_module_map(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 	mlxsw_reg_pmlp_pack(pmlp_pl, local_port);
 	mlxsw_reg_pmlp_width_set(pmlp_pl, port_mapping->width);
 	for (i = 0; i < port_mapping->width; i++) {
+		mlxsw_reg_pmlp_slot_index_set(pmlp_pl, i,
+					      port_mapping->slot_index);
 		mlxsw_reg_pmlp_module_set(pmlp_pl, i, port_mapping->module);
 		mlxsw_reg_pmlp_tx_lane_set(pmlp_pl, i, port_mapping->lane + i); /* Rx & Tx */
 	}
@@ -1542,7 +1552,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 	}
 
 	splittable = lanes > 1 && !split;
-	err = mlxsw_core_port_init(mlxsw_sp->core, local_port,
+	err = mlxsw_core_port_init(mlxsw_sp->core, local_port, slot_index,
 				   port_number, split, split_port_subnumber,
 				   splittable, lanes, mlxsw_sp->base_mac,
 				   sizeof(mlxsw_sp->base_mac));
@@ -2157,7 +2167,8 @@ static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u16 local_port,
 		return -EINVAL;
 	}
 
-	mlxsw_reg_pmtdb_pack(pmtdb_pl, 0, mlxsw_sp_port->mapping.module,
+	mlxsw_reg_pmtdb_pack(pmtdb_pl, mlxsw_sp_port->mapping.slot_index,
+			     mlxsw_sp_port->mapping.module,
 			     mlxsw_sp_port->mapping.module_width / count,
 			     count);
 	err = mlxsw_reg_query(mlxsw_core, MLXSW_REG(pmtdb), pmtdb_pl);
@@ -2227,7 +2238,8 @@ static int mlxsw_sp_port_unsplit(struct mlxsw_core *mlxsw_core, u16 local_port,
 	count = mlxsw_sp_port->mapping.module_width /
 		mlxsw_sp_port->mapping.width;
 
-	mlxsw_reg_pmtdb_pack(pmtdb_pl, 0, mlxsw_sp_port->mapping.module,
+	mlxsw_reg_pmtdb_pack(pmtdb_pl, mlxsw_sp_port->mapping.slot_index,
+			     mlxsw_sp_port->mapping.module,
 			     mlxsw_sp_port->mapping.module_width / count,
 			     count);
 	err = mlxsw_reg_query(mlxsw_core, MLXSW_REG(pmtdb), pmtdb_pl);
