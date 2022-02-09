@@ -824,9 +824,6 @@ static int mlxsw_env_temp_warn_event_register(struct mlxsw_core *mlxsw_core)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 
-	if (!mlxsw_core_temp_warn_enabled(mlxsw_core))
-		return 0;
-
 	return mlxsw_core_trap_register(mlxsw_core,
 					&mlxsw_env_temp_warn_listener,
 					mlxsw_env);
@@ -834,9 +831,6 @@ static int mlxsw_env_temp_warn_event_register(struct mlxsw_core *mlxsw_core)
 
 static void mlxsw_env_temp_warn_event_unregister(struct mlxsw_env *mlxsw_env)
 {
-	if (!mlxsw_core_temp_warn_enabled(mlxsw_env->core))
-		return;
-
 	mlxsw_core_trap_unregister(mlxsw_env->core,
 				   &mlxsw_env_temp_warn_listener, mlxsw_env);
 }
@@ -915,9 +909,6 @@ mlxsw_env_module_plug_event_register(struct mlxsw_core *mlxsw_core)
 {
 	struct mlxsw_env *mlxsw_env = mlxsw_core_env(mlxsw_core);
 
-	if (!mlxsw_core_temp_warn_enabled(mlxsw_core))
-		return 0;
-
 	return mlxsw_core_trap_register(mlxsw_core,
 					&mlxsw_env_module_plug_listener,
 					mlxsw_env);
@@ -926,9 +917,6 @@ mlxsw_env_module_plug_event_register(struct mlxsw_core *mlxsw_core)
 static void
 mlxsw_env_module_plug_event_unregister(struct mlxsw_env *mlxsw_env)
 {
-	if (!mlxsw_core_temp_warn_enabled(mlxsw_env->core))
-		return;
-
 	mlxsw_core_trap_unregister(mlxsw_env->core,
 				   &mlxsw_env_module_plug_listener,
 				   mlxsw_env);
