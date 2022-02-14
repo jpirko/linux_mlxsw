@@ -1660,7 +1660,6 @@ mlxsw_sp_mc_mdb_init(struct mlxsw_sp *mlxsw_sp,
 		     const unsigned char *addr, u16 fid)
 {
 	struct mlxsw_sp_mid *mid;
-	u16 tmp_mid;
 	int err;
 
 	mid = kzalloc(sizeof(*mid), GFP_KERNEL);
@@ -1680,8 +1679,7 @@ mlxsw_sp_mc_mdb_init(struct mlxsw_sp *mlxsw_sp,
 	if (!bridge_device->multicast_enabled)
 		goto out;
 
-	tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid->mid);
-	err = mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, tmp_mid,
+	err = mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, mid->mid,
 				   true);
 	if (err)
 		goto err_port_mdb_op;
@@ -1703,10 +1701,8 @@ static void mlxsw_sp_mc_mdb_fini(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_mid *mid,
 				 struct mlxsw_sp_bridge_device *bridge_device)
 {
-	u16 tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp, mid->mid);
-
 	list_del(&mid->list);
-	mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, tmp_mid, false);
+	mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, mid->mid, false);
 	mlxsw_sp_mc_pgt_mrouters_set(mlxsw_sp, bridge_device, mid, false);
 	mlxsw_sp_pgt_free(mlxsw_sp, mid->mid, 1);
 	kfree(mid);
@@ -1776,16 +1772,13 @@ mlxsw_sp_bridge_mdb_mc_enable_sync(struct mlxsw_sp_port *mlxsw_sp_port,
 	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
 	struct mlxsw_sp_mid *mid;
 	bool mc_enabled;
-	u16 tmp_mid;
 	int err;
 
 	mc_enabled = bridge_device->multicast_enabled;
 
 	list_for_each_entry(mid, &bridge_device->mids_list, list) {
-		tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp,
-							     mid->mid);
 		err = mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid,
-					   tmp_mid, mc_enabled);
+					   mid->mid, mc_enabled);
 		if (err)
 			goto err_mdb_entry_update;
 	}
@@ -1794,9 +1787,7 @@ mlxsw_sp_bridge_mdb_mc_enable_sync(struct mlxsw_sp_port *mlxsw_sp_port,
 err_mdb_entry_update:
 	list_for_each_entry_continue_reverse(mid, &bridge_device->mids_list,
 					     list) {
-		tmp_mid = mlxsw_sp_pgt_mid_index_get_ubridge(mlxsw_sp,
-							     mid->mid);
-		mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, tmp_mid,
+		mlxsw_sp_port_mdb_op(mlxsw_sp, mid->addr, mid->fid, mid->mid,
 				     !mc_enabled);
 	}
 	return err;

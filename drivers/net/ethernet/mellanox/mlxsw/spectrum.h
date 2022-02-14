@@ -83,7 +83,6 @@ struct mlxsw_sp_upper {
 
 enum mlxsw_sp_rif_type {
 	MLXSW_SP_RIF_TYPE_SUBPORT,
-	MLXSW_SP_RIF_TYPE_VLAN_EMU,
 	MLXSW_SP_RIF_TYPE_VLAN,
 	MLXSW_SP_RIF_TYPE_FID,
 	MLXSW_SP_RIF_TYPE_IPIP_LB, /* IP-in-IP loopback. */
@@ -103,18 +102,9 @@ extern const struct mlxsw_sp_switchdev_ops mlxsw_sp2_switchdev_ops;
 enum mlxsw_sp_fid_type {
 	MLXSW_SP_FID_TYPE_8021Q,
 	MLXSW_SP_FID_TYPE_8021D,
-	MLXSW_SP_FID_TYPE_RFID,
 	MLXSW_SP_FID_TYPE_DUMMY,
+	MLXSW_SP_FID_TYPE_RFID,
 	MLXSW_SP_FID_TYPE_MAX,
-
-	/* As preparation, do not register these families, they will be moved
-	 * to be before MLXSW_SP_FID_TYPE_MAX later.
-	 */
-	MLXSW_SP_FID_TYPE_8021Q_UB,
-	MLXSW_SP_FID_TYPE_8021D_UB,
-	MLXSW_SP_FID_TYPE_DUMMY_UB,
-	MLXSW_SP_FID_TYPE_RFID_UB,
-	MLXSW_SP_FID_TYPE_MAX_UB,
 };
 
 enum mlxsw_sp_nve_type {
@@ -212,7 +202,6 @@ struct mlxsw_sp {
 	u32 lowest_shaper_bs;
 	struct rhashtable ipv6_addr_ht;
 	struct mutex ipv6_addr_ht_lock; /* Protects ipv6_addr_ht */
-	bool ubridge;
 	struct mlxsw_sp_pgt *pgt;
 };
 
@@ -1482,7 +1471,5 @@ mlxsw_sp_pgt_entry_port_range_set(struct mlxsw_sp *mlxsw_sp, u16 mid, u16 smpe,
 bool mlxsw_sp_pgt_is_ports_list_empty(struct mlxsw_sp *mlxsw_sp, u16 mid);
 bool mlxsw_sp_pgt_is_port_in_mid_entry(struct mlxsw_sp *mlxsw_sp, u16 mid,
 				       u16 local_port);
-u16
-mlxsw_sp_pgt_mid_index_get_ubridge(const struct mlxsw_sp *mlxsw_sp, u16 mid);
 
 #endif

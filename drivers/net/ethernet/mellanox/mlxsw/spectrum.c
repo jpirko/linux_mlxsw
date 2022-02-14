@@ -3129,7 +3129,6 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_ports_create;
 	}
 
-	mlxsw_sp->ubridge = false;
 	return 0;
 
 err_ports_create:
@@ -3351,20 +3350,15 @@ static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 	mlxsw_sp_parsing_fini(mlxsw_sp);
 }
 
-#define MLXSW_SP_FID_OFFSET_FLOOD_TABLE_SIZE	VLAN_VID_MASK
-
 static const struct mlxsw_config_profile mlxsw_sp1_config_profile = {
-	.used_max_mid			= 1,
-	.max_mid			= MLXSW_SP_MID_MAX,
-	.used_flood_tables		= 1,
-	.used_flood_mode		= 1,
-	.flood_mode			= 3,
-	.max_fid_offset_flood_tables	= 3,
-	.fid_offset_flood_table_size	= MLXSW_SP_FID_OFFSET_FLOOD_TABLE_SIZE,
+	.used_flood_mode                = 1,
+	.flood_mode                     = 4,
 	.used_max_ib_mc			= 1,
 	.max_ib_mc			= 0,
 	.used_max_pkey			= 1,
 	.max_pkey			= 0,
+	.used_ubridge			= 1,
+	.ubridge			= 1,
 	.used_kvd_sizes			= 1,
 	.kvd_hash_single_parts		= 59,
 	.kvd_hash_double_parts		= 41,
@@ -3378,19 +3372,16 @@ static const struct mlxsw_config_profile mlxsw_sp1_config_profile = {
 };
 
 static const struct mlxsw_config_profile mlxsw_sp2_config_profile = {
-	.used_max_mid			= 1,
-	.max_mid			= MLXSW_SP_MID_MAX,
-	.used_flood_tables		= 1,
-	.used_flood_mode		= 1,
-	.flood_mode			= 3,
-	.max_fid_offset_flood_tables	= 3,
-	.fid_offset_flood_table_size	= MLXSW_SP_FID_OFFSET_FLOOD_TABLE_SIZE,
+	.used_flood_mode                = 1,
+	.flood_mode                     = 4,
 	.used_max_ib_mc			= 1,
 	.max_ib_mc			= 0,
 	.used_max_pkey			= 1,
 	.max_pkey			= 0,
 	.used_kvh_xlt_cache_mode	= 1,
 	.kvh_xlt_cache_mode		= 1,
+	.used_ubridge			= 1,
+	.ubridge			= 1,
 	.swid_config			= {
 		{
 			.used_type	= 1,
