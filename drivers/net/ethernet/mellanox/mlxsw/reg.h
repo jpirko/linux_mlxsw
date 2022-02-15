@@ -1059,9 +1059,11 @@ enum mlxsw_reg_sfgc_type {
  */
 MLXSW_ITEM32(reg, sfgc, type, 0x00, 0, 4);
 
-enum mlxsw_reg_sfgc_bridge_type {
-	MLXSW_REG_SFGC_BRIDGE_TYPE_1Q_FID = 0,
-	MLXSW_REG_SFGC_BRIDGE_TYPE_VFID = 1,
+/* bridge_type is used in SFGC and SFMR. */
+enum mlxsw_reg_bridge_type {
+	MLXSW_REG_BRIDGE_TYPE_RESERVED = 0,
+	MLXSW_REG_BRIDGE_TYPE_0 = 0, /* Used for .1q FIDs. */
+	MLXSW_REG_BRIDGE_TYPE_1 = 1, /* Used for .1d FIDs. */
 };
 
 /* reg_sfgc_bridge_type
@@ -1116,7 +1118,7 @@ MLXSW_ITEM32(reg, sfgc, mid_base, 0x10, 0, 16);
 
 static inline void
 mlxsw_reg_sfgc_pack(char *payload, enum mlxsw_reg_sfgc_type type,
-		    enum mlxsw_reg_sfgc_bridge_type bridge_type,
+		    enum mlxsw_reg_bridge_type bridge_type,
 		    enum mlxsw_flood_table_type table_type,
 		    unsigned int flood_table)
 {
@@ -1129,7 +1131,7 @@ mlxsw_reg_sfgc_pack(char *payload, enum mlxsw_reg_sfgc_type type,
 
 static inline void
 mlxsw_reg_sfgc_ub_pack(char *payload, enum mlxsw_reg_sfgc_type type,
-		       enum mlxsw_reg_sfgc_bridge_type bridge_type,
+		       enum mlxsw_reg_bridge_type bridge_type,
 		       enum mlxsw_flood_table_type table_type, u16 mid_base)
 {
 	MLXSW_REG_ZERO(sfgc, payload);
