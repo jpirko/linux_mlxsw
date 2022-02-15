@@ -109,6 +109,7 @@ struct mlxsw_sp_fid_family {
 	enum mlxsw_sp_rif_type rif_type;
 	const struct mlxsw_sp_fid_ops *ops;
 	struct mlxsw_sp *mlxsw_sp;
+	bool flood_rsp;
 };
 
 static const int mlxsw_sp_sfgc_uc_packet_types[MLXSW_REG_SFGC_TYPE_MAX] = {
@@ -416,11 +417,17 @@ __mlxsw_sp_fid_configure_fill(const struct mlxsw_sp_fid *fid, char *sfmr_pl)
 {
 	struct mlxsw_sp_fid_family *fid_family = fid->fid_family;
 	u16 fid_offset = fid_family->ops->flood_index(fid);
+	struct mlxsw_sp *mlxsw_sp = fid_family->mlxsw_sp;
 
 	mlxsw_reg_sfmr_pack(sfmr_pl, MLXSW_REG_SFMR_OP_CREATE_FID,
 			    fid->fid_index, fid_offset,
 			    fid->nve_flood_index_valid, fid->nve_flood_index,
 			    fid->vni_valid, be32_to_cpu(fid->vni));
+
+	if (!mlxsw_sp->ubridge)
+		return;
+
+	mlxsw_reg_sfmr_flood_rsp_set(sfmr_pl, fid_family->flood_rsp);
 }
 
 static int mlxsw_sp_fid_configure(const struct mlxsw_sp_fid *fid)
@@ -794,6 +801,7 @@ static const struct mlxsw_sp_fid_family mlxsw_sp_fid_8021d_family = {
 	.nr_flood_tables	= ARRAY_SIZE(mlxsw_sp_fid_8021d_flood_tables),
 	.rif_type		= MLXSW_SP_RIF_TYPE_FID,
 	.ops			= &mlxsw_sp_fid_8021d_ops,
+	.flood_rsp		= false,
 };
 
 static bool
@@ -842,6 +850,7 @@ static const struct mlxsw_sp_fid_family mlxsw_sp_fid_8021q_emu_family = {
 	.nr_flood_tables	= ARRAY_SIZE(mlxsw_sp_fid_8021d_flood_tables),
 	.rif_type		= MLXSW_SP_RIF_TYPE_VLAN_EMU,
 	.ops			= &mlxsw_sp_fid_8021q_emu_ops,
+	.flood_rsp		= false,
 };
 
 static int mlxsw_sp_fid_rfid_configure(struct mlxsw_sp_fid *fid)
@@ -948,6 +957,7 @@ static const struct mlxsw_sp_fid_family mlxsw_sp_fid_rfid_family = {
 	.end_index		= MLXSW_SP_RFID_BASE + MLXSW_SP_RFID_MAX - 1,
 	.rif_type		= MLXSW_SP_RIF_TYPE_SUBPORT,
 	.ops			= &mlxsw_sp_fid_rfid_ops,
+	.flood_rsp		= true,
 };
 
 static int mlxsw_sp_fid_dummy_configure(struct mlxsw_sp_fid *fid)
@@ -999,6 +1009,7 @@ static const struct mlxsw_sp_fid_family mlxsw_sp_fid_dummy_family = {
 	.start_index		= VLAN_N_VID - 1,
 	.end_index		= VLAN_N_VID - 1,
 	.ops			= &mlxsw_sp_fid_dummy_ops,
+	.flood_rsp		= false,
 };
 
 const struct mlxsw_sp_fid_family *mlxsw_sp_fid_family_arr[] = {
