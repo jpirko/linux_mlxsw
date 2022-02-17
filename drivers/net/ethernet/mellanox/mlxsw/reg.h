@@ -1119,20 +1119,7 @@ MLXSW_ITEM32(reg, sfgc, mid_base, 0x10, 0, 16);
 static inline void
 mlxsw_reg_sfgc_pack(char *payload, enum mlxsw_reg_sfgc_type type,
 		    enum mlxsw_reg_bridge_type bridge_type,
-		    enum mlxsw_flood_table_type table_type,
-		    unsigned int flood_table)
-{
-	MLXSW_REG_ZERO(sfgc, payload);
-	mlxsw_reg_sfgc_type_set(payload, type);
-	mlxsw_reg_sfgc_bridge_type_set(payload, bridge_type);
-	mlxsw_reg_sfgc_table_type_set(payload, table_type);
-	mlxsw_reg_sfgc_flood_table_set(payload, flood_table);
-}
-
-static inline void
-mlxsw_reg_sfgc_ub_pack(char *payload, enum mlxsw_reg_sfgc_type type,
-		       enum mlxsw_reg_bridge_type bridge_type,
-		       enum mlxsw_flood_table_type table_type, u16 mid_base)
+		    enum mlxsw_flood_table_type table_type, u16 mid_base)
 {
 	MLXSW_REG_ZERO(sfgc, payload);
 	mlxsw_reg_sfgc_type_set(payload, type);
@@ -7135,15 +7122,7 @@ static inline void mlxsw_reg_ritr_rif_pack(char *payload, u16 rif)
 }
 
 static inline void mlxsw_reg_ritr_sp_if_pack(char *payload, bool lag,
-					     u16 system_port, u16 vid)
-{
-	mlxsw_reg_ritr_sp_if_lag_set(payload, lag);
-	mlxsw_reg_ritr_sp_if_system_port_set(payload, system_port);
-	mlxsw_reg_ritr_sp_if_vid_set(payload, vid);
-}
-
-static inline void mlxsw_reg_ritr_sp_if_ub_pack(char *payload, bool lag,
-						u16 system_port, u16 efid)
+					     u16 system_port, u16 efid)
 {
 	mlxsw_reg_ritr_sp_if_lag_set(payload, lag);
 	mlxsw_reg_ritr_sp_if_system_port_set(payload, system_port);
