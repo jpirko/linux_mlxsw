@@ -71,7 +71,6 @@ static const struct rhashtable_params mlxsw_sp_fid_vni_ht_params = {
 struct mlxsw_sp_flood_table {
 	enum mlxsw_sp_flood_type packet_type;
 	enum mlxsw_flood_table_type table_type;
-	int table_index;
 };
 
 struct mlxsw_sp_fid_ops {
@@ -1134,17 +1133,14 @@ static const struct mlxsw_sp_flood_table mlxsw_sp_fid_8021d_flood_tables[] = {
 	{
 		.packet_type	= MLXSW_SP_FLOOD_TYPE_UC,
 		.table_type	= MLXSW_REG_SFGC_TABLE_TYPE_FID_OFFSET,
-		.table_index	= 0,
 	},
 	{
 		.packet_type	= MLXSW_SP_FLOOD_TYPE_MC,
 		.table_type	= MLXSW_REG_SFGC_TABLE_TYPE_FID_OFFSET,
-		.table_index	= 1,
 	},
 	{
 		.packet_type	= MLXSW_SP_FLOOD_TYPE_BC,
 		.table_type	= MLXSW_REG_SFGC_TABLE_TYPE_FID_OFFSET,
-		.table_index	= 2,
 	},
 };
 
