@@ -106,6 +106,15 @@ enum mlxsw_sp_fid_type {
 	MLXSW_SP_FID_TYPE_RFID,
 	MLXSW_SP_FID_TYPE_DUMMY,
 	MLXSW_SP_FID_TYPE_MAX,
+
+	/* As preparation, do not register these families, they will be moved
+	 * to be before MLXSW_SP_FID_TYPE_MAX later.
+	 */
+	MLXSW_SP_FID_TYPE_8021Q_UB,
+	MLXSW_SP_FID_TYPE_8021D_UB,
+	MLXSW_SP_FID_TYPE_DUMMY_UB,
+	MLXSW_SP_FID_TYPE_RFID_UB,
+	MLXSW_SP_FID_TYPE_MAX_UB,
 };
 
 enum mlxsw_sp_nve_type {
