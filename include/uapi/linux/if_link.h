@@ -1164,6 +1164,7 @@ enum {
 				 * bitfield32 with a filter mask for the
 				 * corresponding stat group.
 				 */
+	IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS, /* 0 or 1 as u8 */
 	__IFLA_STATS_GETSET_MAX,
 };
 
