@@ -430,7 +430,7 @@ static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 
 	device->devlink_device = devlink_linecard_device_create(linecard->devlink_linecard,
 								device_index,
-								component_name,
+								component_name, NULL,
 								device);
 	if (IS_ERR(device->devlink_device)) {
 		err = PTR_ERR(device->devlink_device);

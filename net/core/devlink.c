@@ -2063,6 +2063,7 @@ struct devlink_linecard_device {
 	struct list_head list;
 	unsigned int index;
 	const char *flash_component;
+	const char *type;
 	void *priv;
 };
 
@@ -2083,6 +2084,12 @@ devlink_nl_linecard_device_fill(struct sk_buff *msg,
 	if (linecard_device->flash_component &&
 	    nla_put_string(msg, DEVLINK_ATTR_FLASH_UPDATE_COMPONENT,
 			   linecard_device->flash_component)) {
+		nla_nest_cancel(msg, attr);
+		return -EMSGSIZE;
+	}
+	if (linecard_device->type &&
+	    nla_put_string(msg, DEVLINK_ATTR_LINECARD_DEVICE_TYPE,
+			   linecard_device->type)) {
 		nla_nest_cancel(msg, attr);
 		return -EMSGSIZE;
 	}
@@ -10559,6 +10566,7 @@ EXPORT_SYMBOL_GPL(devlink_linecard_destroy);
  *	@device_index: index of the linecard device
  *	@flash_component: name of flash update component,
  *			  NULL if unable to flash
+ *	@type: name of the device type
  *	@priv: user priv pointer
  *
  *	Return: Line card device structure or an ERR_PTR() encoded error code.
@@ -10566,15 +10574,19 @@ EXPORT_SYMBOL_GPL(devlink_linecard_destroy);
 struct devlink_linecard_device *
 devlink_linecard_device_create(struct devlink_linecard *linecard,
 			       unsigned int device_index,
-			       const char *flash_component, void *priv)
+			       const char *flash_component,
+			       const char *type, void *priv)
 {
 	struct devlink_linecard_device *linecard_device;
 
+	if (WARN_ON(!type))
+		return ERR_PTR(-EINVAL);
 	linecard_device = kzalloc(sizeof(*linecard_device), GFP_KERNEL);
 	if (!linecard_device)
 		return ERR_PTR(-ENOMEM);
 	linecard_device->index = device_index;
 	linecard_device->flash_component = flash_component;
+	linecard_device->type = type;
 	linecard_device->priv = priv;
 	mutex_lock(&linecard->state_lock);
 	list_add_tail(&linecard_device->list, &linecard->device_list);
