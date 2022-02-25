@@ -102,6 +102,7 @@ struct mlxsw_linecard_device {
 	struct mlxsw_linecard *linecard;
 	struct devlink_linecard_device *devlink_device;
 	struct mlxsw_linecard_device_info info;
+	char type_name[MLXSW_REG_MDDQ_DEVICE_TYPE_NAME_LEN];
 };
 
 static struct mlxsw_linecard_device *
@@ -403,7 +404,8 @@ static int mlxsw_linecard_device_flash_cb(struct mlxsw_core *mlxsw_core,
 
 static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 					struct mlxsw_linecard *linecard,
-					u8 device_index, bool flash_owner)
+					u8 device_index, bool flash_owner,
+					const char *type_name)
 {
 	struct mlxsw_linecard_device *device;
 	char *component_name = NULL;
@@ -428,9 +430,12 @@ static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 			goto err_flash_component_register;
 	}
 
+	strlcpy(device->type_name, type_name, sizeof(device->type_name));
+
 	device->devlink_device = devlink_linecard_device_create(linecard->devlink_linecard,
 								device_index,
-								component_name, NULL,
+								component_name,
+								device->type_name,
 								device);
 	if (IS_ERR(device->devlink_device)) {
 		err = PTR_ERR(device->devlink_device);
@@ -478,6 +483,7 @@ static int mlxsw_linecard_devices_attach(struct mlxsw_linecard *linecard)
 	int err;
 
 	do {
+		char type_name[MLXSW_REG_MDDQ_DEVICE_TYPE_NAME_LEN];
 		char mddq_pl[MLXSW_REG_MDDQ_LEN];
 		bool flash_owner;
 		bool data_valid;
@@ -491,11 +497,12 @@ static int mlxsw_linecard_devices_attach(struct mlxsw_linecard *linecard)
 		mlxsw_reg_mddq_device_info_unpack(mddq_pl, &msg_seq,
 						  &data_valid, &flash_owner,
 						  &device_index, NULL,
-						  NULL, NULL, NULL);
+						  NULL, NULL, type_name);
 		if (!data_valid)
 			break;
 		err = mlxsw_linecard_device_attach(mlxsw_core, linecard,
-						   device_index, flash_owner);
+						   device_index, flash_owner,
+						   type_name);
 		if (err)
 			goto rollback;
 	} while (msg_seq);
