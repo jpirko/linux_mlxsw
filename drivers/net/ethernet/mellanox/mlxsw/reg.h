@@ -12229,6 +12229,15 @@ MLXSW_ITEM32(reg, mddq, device_info_fw_minor, 0x18, 16, 16);
  */
 MLXSW_ITEM32(reg, mddq, device_info_fw_sub_minor, 0x18, 0, 16);
 
+#define MLXSW_REG_MDDQ_DEVICE_TYPE_NAME_LEN 8
+
+/* reg_mddq_device_type_name
+ * Device type ASCII name.
+ * Access: RO
+ */
+MLXSW_ITEM_BUF(reg, mddq, device_type_name, 0x20,
+	       MLXSW_REG_MDDQ_DEVICE_TYPE_NAME_LEN);
+
 static inline void
 mlxsw_reg_mddq_device_info_pack(char *payload, u8 slot_index,
 				u8 request_msg_seq)
@@ -12242,7 +12251,8 @@ static inline void
 mlxsw_reg_mddq_device_info_unpack(const char *payload, u8 *p_response_msg_seq,
 				  bool *p_data_valid, bool *p_flash_owner,
 				  u8 *p_device_index, u16 *p_fw_major,
-				  u16 *p_fw_minor, u16 *p_fw_sub_minor)
+				  u16 *p_fw_minor, u16 *p_fw_sub_minor,
+				  char *device_type_name)
 {
 	*p_response_msg_seq = mlxsw_reg_mddq_response_msg_seq_get(payload);
 	*p_data_valid = mlxsw_reg_mddq_data_valid_get(payload);
@@ -12255,6 +12265,9 @@ mlxsw_reg_mddq_device_info_unpack(const char *payload, u8 *p_response_msg_seq,
 		*p_fw_minor = mlxsw_reg_mddq_device_info_fw_minor_get(payload);
 	if (p_fw_sub_minor)
 		*p_fw_sub_minor = mlxsw_reg_mddq_device_info_fw_sub_minor_get(payload);
+	if (device_type_name)
+		mlxsw_reg_mddq_device_type_name_memcpy_from(payload,
+							    device_type_name);
 }
 
 #define MLXSW_REG_MDDQ_SLOT_ASCII_NAME_LEN 20

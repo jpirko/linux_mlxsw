@@ -491,7 +491,7 @@ static int mlxsw_linecard_devices_attach(struct mlxsw_linecard *linecard)
 		mlxsw_reg_mddq_device_info_unpack(mddq_pl, &msg_seq,
 						  &data_valid, &flash_owner,
 						  &device_index, NULL,
-						  NULL, NULL);
+						  NULL, NULL, NULL);
 		if (!data_valid)
 			break;
 		err = mlxsw_linecard_device_attach(mlxsw_core, linecard,
@@ -562,7 +562,7 @@ static int mlxsw_linecard_devices_update(struct mlxsw_linecard *linecard)
 						  &device_index,
 						  &info.fw_major,
 						  &info.fw_minor,
-						  &info.fw_sub_minor);
+						  &info.fw_sub_minor, NULL);
 		if (!data_valid)
 			break;
 
