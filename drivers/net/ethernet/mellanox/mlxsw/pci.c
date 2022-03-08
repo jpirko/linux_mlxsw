@@ -1582,6 +1582,14 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_config_profile;
 
+	/* Some resources depend on unified bridge model, which is configured
+	 * as part of config_profile. Query the resources again to get correct
+	 * values.
+	 */
+	err = mlxsw_core_resources_query(mlxsw_core, mbox, res);
+	if (err)
+		goto err_requery_resources;
+
 	err = mlxsw_pci_aqs_init(mlxsw_pci, mbox);
 	if (err)
 		goto err_aqs_init;
@@ -1599,6 +1607,7 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 err_request_eq_irq:
 	mlxsw_pci_aqs_fini(mlxsw_pci);
 err_aqs_init:
+err_requery_resources:
 err_config_profile:
 err_cqe_v_check:
 err_query_resources:
