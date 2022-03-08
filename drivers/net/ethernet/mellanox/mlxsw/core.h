@@ -636,6 +636,7 @@ typedef void mlxsw_linecards_event_op_t(struct mlxsw_core *mlxsw_core,
 					u8 slot_index, void *priv);
 
 struct mlxsw_linecards_event_ops {
+	mlxsw_linecards_event_op_t *got_provisioned;
 	mlxsw_linecards_event_op_t *got_active;
 	mlxsw_linecards_event_op_t *got_inactive;
 };

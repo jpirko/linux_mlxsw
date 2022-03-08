@@ -649,6 +649,20 @@ mlxsw_linecard_event_op_call(struct mlxsw_linecard *linecard,
 }
 
 static void
+mlxsw_linecard_provision_ops_call(struct mlxsw_linecard *linecard)
+{
+	struct mlxsw_linecards *linecards = linecard->linecards;
+	struct mlxsw_linecards_event_ops_item *item;
+
+	mutex_lock(&linecards->event_ops_list_lock);
+	list_for_each_entry(item, &linecards->event_ops_list, list)
+		mlxsw_linecard_event_op_call(linecard,
+					     item->event_ops->got_provisioned,
+					     item->priv);
+	mutex_unlock(&linecards->event_ops_list_lock);
+}
+
+static void
 mlxsw_linecard_active_ops_call(struct mlxsw_linecard *linecard)
 {
 	struct mlxsw_linecards *linecards = linecard->linecards;
@@ -686,6 +700,10 @@ mlxsw_linecards_event_ops_register_call(struct mlxsw_linecards *linecards,
 	for (i = 0; i < linecards->count; i++) {
 		linecard = mlxsw_linecard_get(linecards, i + 1);
 		mutex_lock(&linecard->lock);
+		if (linecard->provisioned)
+			mlxsw_linecard_event_op_call(linecard,
+						     item->event_ops->got_provisioned,
+						     item->priv);
 		if (linecard->active)
 			mlxsw_linecard_event_op_call(linecard,
 						     item->event_ops->got_active,
@@ -794,6 +812,7 @@ mlxsw_linecard_provision_set(struct mlxsw_linecard *linecard, u8 card_type,
 		mlxsw_linecard_provision_fail(linecard);
 		return err;
 	}
+	mlxsw_linecard_provision_ops_call(linecard);
 	linecard->provisioned = true;
 	linecard->hw_revision = hw_revision;
 	linecard->ini_version = ini_version;
