@@ -485,6 +485,20 @@ be added to the following table:
      - Traps incoming packets that the device decided to drop because
        the destination MAC is not configured in the MAC table and
        the interface is not in promiscuous mode
+   * - ``eapol``
+     - ``control``
+     - Traps "Extensible Authentication Protocol over LAN" (EAPOL) packets
+       specified in IEEE 802.1X
+   * - ``fdb_miss``
+     - ``exception``
+     - Traps packets that ingress the bridge via a locked port and whose {SMAC,
+       VID} is not present in the FDB. Such packets will cause the bridge to
+       populate its FDB with a new "locked" entry. Used for MAB (MAC
+       Authentication Bypass)
+   * - ``fdb_mismatch``
+     - ``drop``
+     - Traps packets that ingress the bridge via a locked port and whose {SMAC,
+       VID} is present in the FDB, but with a different port
 
 Driver-specific Packet Traps
 ============================
@@ -589,6 +603,12 @@ narrow. The description of these groups must be added to the following table:
    * - ``parser_error_drops``
      - Contains packet traps for packets that were marked by the device during
        parsing as erroneous
+   * - ``eapol``
+     - Contains packet traps for "Extensible Authentication Protocol over LAN"
+       (EAPOL) packets specified in IEEE 802.1X
+   * - ``l2_exceptions``
+     - Contains packet traps for packets that hit an exception (e.g., FDB miss)
+       during layer 2 forwarding
 
 Packet Trap Policers
 ====================
