@@ -1954,16 +1954,15 @@ static void mlxsw_sp_port_mapping_events_work(struct work_struct *work)
 		if (err)
 			goto out;
 
-		if (WARN_ON_ONCE(!port_mapping.width))
-			goto out;
-
 		devl_lock(devlink);
 
-		if (!mlxsw_sp_port_created(mlxsw_sp, local_port))
+		if (port_mapping.width &&
+		    !mlxsw_sp_port_created(mlxsw_sp, local_port))
 			mlxsw_sp_port_create(mlxsw_sp, local_port,
 					     false, &port_mapping);
-		else
-			WARN_ON_ONCE(1);
+		else if (!port_mapping.width &&
+		      mlxsw_sp_port_created(mlxsw_sp, local_port))
+			mlxsw_sp_port_remove(mlxsw_sp, local_port);
 
 		devl_unlock(devlink);
 
