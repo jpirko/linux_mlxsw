@@ -14,6 +14,18 @@ struct mlxsw_sp_pgt {
 	bool smpe_index_valid;
 };
 
+struct mlxsw_sp_pgt_entry {
+	struct list_head ports_list;
+	u16 index;
+	u16 smpe_index;
+};
+
+struct mlxsw_sp_pgt_entry_port {
+	struct list_head list; /* Member of 'ports_list'. */
+	u16 local_port;
+	refcount_t refcount;
+};
+
 int mlxsw_sp_pgt_mid_alloc(struct mlxsw_sp *mlxsw_sp, u16 *p_mid)
 {
 	int index, err = 0;
@@ -92,6 +104,389 @@ mlxsw_sp_pgt_mid_free_range(struct mlxsw_sp *mlxsw_sp, u16 mid_base, u16 count)
 		WARN_ON_ONCE(idr_remove(pgt_idr, mid_base + i));
 
 	mutex_unlock(&mlxsw_sp->pgt->lock);
+}
+
+static struct mlxsw_sp_pgt_entry_port *
+mlxsw_sp_pgt_entry_port_lookup(struct mlxsw_sp_pgt_entry *pgt_entry,
+			       u16 local_port)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+
+	list_for_each_entry(pgt_entry_port, &pgt_entry->ports_list, list) {
+		if (pgt_entry_port->local_port == local_port)
+			return pgt_entry_port;
+	}
+
+	return NULL;
+}
+
+static struct mlxsw_sp_pgt_entry *
+mlxsw_sp_pgt_entry_create(struct mlxsw_sp_pgt *pgt, u16 mid, u16 smpe)
+{
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	void *ret;
+	int err;
+
+	pgt_entry = kzalloc(sizeof(*pgt_entry), GFP_KERNEL);
+	if (!pgt_entry)
+		return ERR_PTR(-ENOMEM);
+
+	ret = idr_replace(&pgt->pgt_idr, pgt_entry, mid);
+	if (IS_ERR(ret)) {
+		err = PTR_ERR(ret);
+		goto err_idr_replace;
+	}
+
+	INIT_LIST_HEAD(&pgt_entry->ports_list);
+	pgt_entry->index = mid;
+	pgt_entry->smpe_index = smpe;
+	return pgt_entry;
+
+err_idr_replace:
+	kfree(pgt_entry);
+	return ERR_PTR(err);
+}
+
+static void mlxsw_sp_pgt_entry_destroy(struct mlxsw_sp_pgt *pgt,
+				       struct mlxsw_sp_pgt_entry *pgt_entry)
+{
+	WARN_ON(!list_empty(&pgt_entry->ports_list));
+
+	pgt_entry = idr_replace(&pgt->pgt_idr, NULL, pgt_entry->index);
+	if (WARN_ON(IS_ERR(pgt_entry)))
+		return;
+
+	kfree(pgt_entry);
+}
+
+static struct mlxsw_sp_pgt_entry *
+mlxsw_sp_pgt_entry_get(struct mlxsw_sp_pgt *pgt, u16 mid, u16 smpe)
+{
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+
+	pgt_entry = idr_find(&pgt->pgt_idr, mid);
+	if (pgt_entry)
+		return pgt_entry;
+
+	return mlxsw_sp_pgt_entry_create(pgt, mid, smpe);
+}
+
+static void mlxsw_sp_pgt_entry_put(struct mlxsw_sp_pgt *pgt, u16 mid)
+{
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+
+	pgt_entry = idr_find(&pgt->pgt_idr, mid);
+	if (WARN_ON(!pgt_entry))
+		return;
+
+	if (list_empty(&pgt_entry->ports_list))
+		mlxsw_sp_pgt_entry_destroy(pgt, pgt_entry);
+}
+
+static int
+mlxsw_sp_pgt_smid2_pl_init(const struct mlxsw_sp *mlxsw_sp,
+			   const struct mlxsw_sp_pgt_entry *pgt_entry,
+			   char **smid2_pl)
+{
+	bool smpe_index_valid;
+	u16 smpe;
+
+	*smid2_pl = kmalloc(MLXSW_REG_SMID2_LEN, GFP_KERNEL);
+	if (!*smid2_pl)
+		return -ENOMEM;
+
+	smpe_index_valid = mlxsw_sp->ubridge ? mlxsw_sp->pgt->smpe_index_valid :
+			   false;
+	smpe = mlxsw_sp->ubridge ? pgt_entry->smpe_index : 0;
+
+	mlxsw_reg_smid2_pack(*smid2_pl, pgt_entry->index, 0, 0,
+			     smpe_index_valid, smpe);
+	return 0;
+}
+
+static void mlxsw_sp_pgt_smid2_pl_fini(char *smid2_pl)
+{
+	kfree(smid2_pl);
+}
+
+static void mlxsw_sp_pgt_smid2_port_set(char *smid2_pl, u16 local_port,
+					bool member)
+{
+	mlxsw_reg_smid2_port_set(smid2_pl, local_port, member);
+	mlxsw_reg_smid2_port_mask_set(smid2_pl, local_port, 1);
+}
+
+static int
+mlxsw_sp_pgt_entry_port_write(struct mlxsw_sp *mlxsw_sp,
+			      const struct mlxsw_sp_pgt_entry *pgt_entry,
+			      u16 local_port, char *smid2_pl, bool member)
+{
+	int err;
+
+	if (smid2_pl) {
+		/* Only write the port in the provided payload. This allows us
+		 * to batch multiple port configurations in a single register
+		 * write.
+		 */
+		mlxsw_sp_pgt_smid2_port_set(smid2_pl, local_port, member);
+		return 0;
+	}
+
+	err = mlxsw_sp_pgt_smid2_pl_init(mlxsw_sp, pgt_entry, &smid2_pl);
+	if (err)
+		return err;
+
+	mlxsw_sp_pgt_smid2_port_set(smid2_pl, local_port, member);
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(smid2), smid2_pl);
+
+	mlxsw_sp_pgt_smid2_pl_fini(smid2_pl);
+
+	return err;
+}
+
+static struct mlxsw_sp_pgt_entry_port *
+mlxsw_sp_pgt_entry_port_create(struct mlxsw_sp *mlxsw_sp,
+			       struct mlxsw_sp_pgt_entry *pgt_entry,
+			       u16 local_port, char *smid2_pl)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+	int err;
+
+	pgt_entry_port = kzalloc(sizeof(*pgt_entry_port), GFP_KERNEL);
+	if (!pgt_entry_port)
+		return ERR_PTR(-ENOMEM);
+
+	err = mlxsw_sp_pgt_entry_port_write(mlxsw_sp, pgt_entry, local_port,
+					    smid2_pl, true);
+	if (err)
+		goto err_pgt_entry_port_write;
+
+	pgt_entry_port->local_port = local_port;
+	refcount_set(&pgt_entry_port->refcount, 1);
+	list_add(&pgt_entry_port->list, &pgt_entry->ports_list);
+
+	return pgt_entry_port;
+
+err_pgt_entry_port_write:
+	kfree(pgt_entry_port);
+	return ERR_PTR(err);
+}
+
+static void
+mlxsw_sp_pgt_entry_port_destroy(struct mlxsw_sp *mlxsw_sp,
+				struct mlxsw_sp_pgt_entry *pgt_entry,
+				struct mlxsw_sp_pgt_entry_port *pgt_entry_port,
+				char *smid2_pl)
+
+{
+	list_del(&pgt_entry_port->list);
+	mlxsw_sp_pgt_entry_port_write(mlxsw_sp, pgt_entry,
+				      pgt_entry_port->local_port, smid2_pl,
+				      false);
+	kfree(pgt_entry_port);
+}
+
+static struct mlxsw_sp_pgt_entry_port *
+mlxsw_sp_pgt_entry_port_get(struct mlxsw_sp *mlxsw_sp,
+			    struct mlxsw_sp_pgt_entry *pgt_entry,
+			    u16 local_port, char *smid2_pl)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+
+	pgt_entry_port = mlxsw_sp_pgt_entry_port_lookup(pgt_entry, local_port);
+	if (pgt_entry_port) {
+		refcount_inc(&pgt_entry_port->refcount);
+		return pgt_entry_port;
+	}
+
+	return mlxsw_sp_pgt_entry_port_create(mlxsw_sp, pgt_entry, local_port,
+					      smid2_pl);
+}
+
+static void mlxsw_sp_pgt_entry_port_put(struct mlxsw_sp *mlxsw_sp,
+					struct mlxsw_sp_pgt_entry *pgt_entry,
+					u16 local_port, char *smid2_pl)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+
+	pgt_entry_port = mlxsw_sp_pgt_entry_port_lookup(pgt_entry, local_port);
+	if (!pgt_entry_port)
+		return;
+
+	if (!refcount_dec_and_test(&pgt_entry_port->refcount))
+		return;
+
+	mlxsw_sp_pgt_entry_port_destroy(mlxsw_sp, pgt_entry, pgt_entry_port,
+					smid2_pl);
+}
+
+static int mlxsw_sp_pgt_entry_port_add(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				       u16 smpe, u16 local_port)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	int err;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+
+	pgt_entry = mlxsw_sp_pgt_entry_get(mlxsw_sp->pgt, mid, smpe);
+	if (IS_ERR(pgt_entry)) {
+		err = PTR_ERR(pgt_entry);
+		goto err_pgt_entry_get;
+	}
+
+	pgt_entry_port = mlxsw_sp_pgt_entry_port_get(mlxsw_sp, pgt_entry,
+						     local_port, NULL);
+	if (IS_ERR(pgt_entry_port)) {
+		err = PTR_ERR(pgt_entry_port);
+		goto err_pgt_entry_port_get;
+	}
+
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return 0;
+
+err_pgt_entry_port_get:
+	mlxsw_sp_pgt_entry_put(mlxsw_sp->pgt, mid);
+err_pgt_entry_get:
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return err;
+}
+
+static void mlxsw_sp_pgt_entry_port_del(struct mlxsw_sp *mlxsw_sp,
+					u16 mid, u16 smpe, u16 local_port)
+{
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+
+	pgt_entry = idr_find(&mlxsw_sp->pgt->pgt_idr, mid);
+	if (!pgt_entry)
+		goto out;
+
+	mlxsw_sp_pgt_entry_port_put(mlxsw_sp, pgt_entry, local_port,
+				    NULL);
+
+	mlxsw_sp_pgt_entry_put(mlxsw_sp->pgt, mid);
+
+out:
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+}
+
+int mlxsw_sp_pgt_entry_port_set(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				u16 smpe, u16 local_port, bool member)
+{
+	if (member)
+		return mlxsw_sp_pgt_entry_port_add(mlxsw_sp, mid, smpe,
+						   local_port);
+
+	mlxsw_sp_pgt_entry_port_del(mlxsw_sp, mid, smpe, local_port);
+	return 0;
+}
+
+static int
+mlxsw_sp_pgt_entry_port_bitmap_add(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				   u16 smpe,
+				   struct mlxsw_sp_ports_bitmap *ports_bm)
+{
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	unsigned int nbits = ports_bm->nbits;
+	char *smid2_pl;
+	int i, err;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+
+	pgt_entry = mlxsw_sp_pgt_entry_get(mlxsw_sp->pgt, mid, smpe);
+	if (IS_ERR(pgt_entry)) {
+		err = PTR_ERR(pgt_entry);
+		goto err_pgt_entry_get;
+	}
+
+	err = mlxsw_sp_pgt_smid2_pl_init(mlxsw_sp, pgt_entry, &smid2_pl);
+	if (err)
+		goto err_pgt_smid2_pl_init;
+
+	for_each_set_bit(i, ports_bm->bitmap, nbits) {
+		pgt_entry_port = mlxsw_sp_pgt_entry_port_get(mlxsw_sp,
+							     pgt_entry, i,
+							     smid2_pl);
+		if (IS_ERR(pgt_entry_port)) {
+			nbits = i;
+			err = PTR_ERR(pgt_entry_port);
+			goto err_pgt_entry_port_get;
+		}
+	}
+
+	err = mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(smid2), smid2_pl);
+	if (err)
+		goto err_reg_write;
+
+	mlxsw_sp_pgt_smid2_pl_fini(smid2_pl);
+
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return 0;
+
+err_reg_write:
+err_pgt_entry_port_get:
+	for_each_set_bit(i, ports_bm->bitmap, nbits)
+		mlxsw_sp_pgt_entry_port_put(mlxsw_sp, pgt_entry, i, smid2_pl);
+	mlxsw_sp_pgt_smid2_pl_fini(smid2_pl);
+err_pgt_smid2_pl_init:
+	mlxsw_sp_pgt_entry_put(mlxsw_sp->pgt, mid);
+err_pgt_entry_get:
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return err;
+}
+
+static void
+mlxsw_sp_pgt_entry_port_bitmap_del(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				   u16 smpe,
+				   struct mlxsw_sp_ports_bitmap *ports_bm)
+{
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	unsigned int nbits = ports_bm->nbits;
+	char *smid2_pl;
+	int i, err;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+
+	pgt_entry = idr_find(&mlxsw_sp->pgt->pgt_idr, mid);
+	if (!pgt_entry)
+		goto err_idr_find;
+
+	err = mlxsw_sp_pgt_smid2_pl_init(mlxsw_sp, pgt_entry, &smid2_pl);
+	if (err)
+		goto err_pgt_smid2_pl_init;
+
+	for_each_set_bit(i, ports_bm->bitmap, nbits)
+		mlxsw_sp_pgt_entry_port_put(mlxsw_sp, pgt_entry, i, smid2_pl);
+
+	mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(smid2), smid2_pl);
+
+	mlxsw_sp_pgt_smid2_pl_fini(smid2_pl);
+
+	mlxsw_sp_pgt_entry_put(mlxsw_sp->pgt, mid);
+
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return;
+
+err_pgt_smid2_pl_init:
+err_idr_find:
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+}
+
+int
+mlxsw_sp_pgt_entry_port_bitmap_set(struct mlxsw_sp *mlxsw_sp, u16 mid,
+				   u16 smpe,
+				   struct mlxsw_sp_ports_bitmap *ports_bm,
+				   bool member)
+{
+	if (member)
+		return mlxsw_sp_pgt_entry_port_bitmap_add(mlxsw_sp, mid, smpe,
+							  ports_bm);
+
+	mlxsw_sp_pgt_entry_port_bitmap_del(mlxsw_sp, mid, smpe, ports_bm);
+	return 0;
 }
 
 int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp)
