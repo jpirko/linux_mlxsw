@@ -3159,6 +3159,7 @@ static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 		goto err_ports_create;
 	}
 
+	mlxsw_sp->ubridge = false;
 	return 0;
 
 err_ports_create:
