@@ -489,6 +489,47 @@ mlxsw_sp_pgt_entry_port_bitmap_set(struct mlxsw_sp *mlxsw_sp, u16 mid,
 	return 0;
 }
 
+bool mlxsw_sp_pgt_is_ports_list_empty(const struct mlxsw_sp *mlxsw_sp, u16 mid)
+{
+	struct idr *pgt_idr = &mlxsw_sp->pgt->pgt_idr;
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	bool ret;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+
+	pgt_entry = idr_find(pgt_idr, mid);
+	ret = !pgt_entry || list_empty(&pgt_entry->ports_list);
+
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+
+	return ret;
+}
+
+bool mlxsw_sp_pgt_is_port_in_mid_entry(const struct mlxsw_sp *mlxsw_sp, u16 mid,
+				       u16 local_port)
+{
+	struct idr *pgt_idr = &mlxsw_sp->pgt->pgt_idr;
+	struct mlxsw_sp_pgt_entry_port *pgt_entry_port;
+	struct mlxsw_sp_pgt_entry *pgt_entry;
+	bool ret = false;
+
+	mutex_lock(&mlxsw_sp->pgt->lock);
+	pgt_entry = idr_find(pgt_idr, mid);
+	if (!pgt_entry)
+		goto out;
+
+	list_for_each_entry(pgt_entry_port, &pgt_entry->ports_list, list) {
+		if (pgt_entry_port->local_port == local_port) {
+			ret = true;
+			break;
+		}
+	}
+
+out:
+	mutex_unlock(&mlxsw_sp->pgt->lock);
+	return ret;
+}
+
 int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp)
 {
 	struct mlxsw_sp_pgt *pgt;

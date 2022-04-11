@@ -1506,6 +1506,9 @@ mlxsw_sp_pgt_entry_port_bitmap_set(struct mlxsw_sp *mlxsw_sp, u16 mid,
 				   u16 smpe,
 				   struct mlxsw_sp_ports_bitmap *ports_bm,
 				   bool member);
+bool mlxsw_sp_pgt_is_ports_list_empty(const struct mlxsw_sp *mlxsw_sp, u16 mid);
+bool mlxsw_sp_pgt_is_port_in_mid_entry(const struct mlxsw_sp *mlxsw_sp, u16 mid,
+				       u16 local_port);
 int mlxsw_sp_pgt_init(struct mlxsw_sp *mlxsw_sp);
 void mlxsw_sp_pgt_fini(struct mlxsw_sp *mlxsw_sp);
 
