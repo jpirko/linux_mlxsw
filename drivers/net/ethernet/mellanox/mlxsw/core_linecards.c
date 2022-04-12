@@ -91,6 +91,7 @@ struct mlxsw_linecard_device_info {
 	u16 fw_major;
 	u16 fw_minor;
 	u16 fw_sub_minor;
+	char psid[MLXSW_REG_MGIR_FW_INFO_PSID_SIZE];
 };
 
 struct mlxsw_linecard_device {
@@ -208,6 +209,27 @@ static void mlxsw_linecard_device_update(struct mlxsw_linecard *linecard,
 	device->info = *info;
 }
 
+static int mlxsw_linecard_device_psid_get(struct mlxsw_linecard *linecard,
+					  u8 device_index, char *psid)
+{
+	struct mlxsw_core *mlxsw_core = linecard->linecards->mlxsw_core;
+	char mddt_pl[MLXSW_REG_MDDT_LEN];
+	char *mgir_pl;
+	int err;
+
+	mlxsw_reg_mddt_pack(mddt_pl, linecard->slot_index, device_index,
+			    MLXSW_REG_MDDT_METHOD_QUERY,
+			    MLXSW_REG(mgir), &mgir_pl);
+
+	mlxsw_reg_mgir_pack(mgir_pl);
+	err = mlxsw_reg_query(mlxsw_core, MLXSW_REG(mddt), mddt_pl);
+	if (err)
+		return err;
+
+	mlxsw_reg_mgir_fw_info_psid_memcpy_from(mgir_pl, psid);
+	return 0;
+}
+
 static int mlxsw_linecard_devices_update(struct mlxsw_linecard *linecard)
 {
 	struct mlxsw_core *mlxsw_core = linecard->linecards->mlxsw_core;
@@ -233,6 +255,12 @@ static int mlxsw_linecard_devices_update(struct mlxsw_linecard *linecard)
 						  &info.fw_sub_minor);
 		if (!data_valid)
 			break;
+
+		err = mlxsw_linecard_device_psid_get(linecard, device_index,
+						     info.psid);
+		if (err)
+			return err;
+
 		mlxsw_linecard_device_update(linecard, device_index, &info);
 	} while (msg_seq);
 
@@ -248,6 +276,7 @@ mlxsw_linecard_device_info_get(struct devlink_linecard_device *devlink_linecard_
 	struct mlxsw_linecard_device_info *info;
 	struct mlxsw_linecard *linecard;
 	char buf[32];
+	int err;
 
 	linecard = device->linecard;
 	mutex_lock(&linecard->lock);
@@ -258,6 +287,12 @@ mlxsw_linecard_device_info_get(struct devlink_linecard_device *devlink_linecard_
 
 	info = &device->info;
 
+	err = devlink_info_version_fixed_put(req,
+					     DEVLINK_INFO_VERSION_GENERIC_FW_PSID,
+					     info->psid);
+	if (err)
+		goto err_out;
+
 	sprintf(buf, "%u.%u.%u", info->fw_major, info->fw_minor,
 		info->fw_sub_minor);
 	mutex_unlock(&linecard->lock);
@@ -265,6 +300,9 @@ mlxsw_linecard_device_info_get(struct devlink_linecard_device *devlink_linecard_
 	return devlink_info_version_running_put(req,
 						DEVLINK_INFO_VERSION_GENERIC_FW,
 						buf);
+err_out:
+	mutex_unlock(&linecard->lock);
+	return err;
 }
 
 static void mlxsw_linecard_provision_fail(struct mlxsw_linecard *linecard)

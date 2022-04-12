@@ -87,6 +87,9 @@ The ``mlxsw`` driver reports the following versions for line card devices
    * - Name
      - Type
      - Description
+   * - ``fw.psid``
+     - fixed
+     - Firmware PSID
    * - ``fw.version``
      - running
      - Three digit firmware version
