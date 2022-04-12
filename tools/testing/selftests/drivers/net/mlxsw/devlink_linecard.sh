@@ -276,6 +276,11 @@ lc_devices_info_check()
 				    jq -e -r ".[][][].devices[$device].versions.running.fw")
 		check_err $? "Failed to get linecard $lc device $device running fw version"
 		log_info "Linecard $lc device $device running.fw: \"$running_device_fw\""
+		fixed_device_fw_psid=$(devlink lc -v info $DEVLINK_DEV lc $lc -j | \
+				       jq -e -r ".[][][].devices[$device].versions.fixed" | \
+				       jq -e -r '."fw.psid"')
+		check_err $? "Failed to get linecard $lc device $device fixed fw PSID"
+		log_info "Linecard $lc device $device fixed.fw.psid: \"$fixed_device_fw_psid\""
 	done
 }
 
