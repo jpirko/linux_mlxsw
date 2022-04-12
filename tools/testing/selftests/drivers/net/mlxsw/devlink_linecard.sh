@@ -200,6 +200,9 @@ lc_devices_check()
 	local expected_device_count=$2
 	local device_count
 	local device
+	local flashable
+	local component
+	local componentstr
 
 	device_count=$(devlink lc show $DEVLINK_DEV lc $lc -j | \
 		       jq -e -r ".[][][].devices |length")
@@ -210,7 +213,21 @@ lc_devices_check()
 	check_err $? "Unexpected device count on linecard $lc (got $expected_device_count, expected $device_count)"
 	for (( device=0; device<device_count; device++ ))
 	do
-		log_info "Linecard $lc device $device"
+		flashable=$(devlink lc -v show $DEVLINK_DEV lc $lc -j -p | \
+			    jq -r ".[][][].devices[$device].flashable")
+		[[ "$flashable" == "null" ]]
+		check_fail $? "Failed to get linecard $lc device $device flashable flag"
+		if [[ "$flashable" == "true" ]]; then
+			component=$(devlink lc -v show $DEVLINK_DEV lc $lc -j -p | \
+				    jq -e -r ".[][][].devices[$device].component")
+			check_err $? "Failed to get linecard $lc device $device component name"
+			componentstr=", component \"$component\""
+		elif [[ "$flashable" == "false" ]]; then
+			componentstr=""
+			[ $device == 0 ]
+			check_fail $? "Device 0 on linecard $lc is not flashable"
+		fi
+		log_info "Linecard $lc device $device flashable: \"$flashable\"$componentstr"
 	done
 }
 
