@@ -126,7 +126,8 @@ static int mlxsw_linecard_device_attach(struct mlxsw_core *mlxsw_core,
 	device->linecard = linecard;
 
 	device->devlink_device = devlink_linecard_device_create(linecard->devlink_linecard,
-								device_index, device);
+								device_index,
+								NULL, device);
 	if (IS_ERR(device->devlink_device)) {
 		err = PTR_ERR(device->devlink_device);
 		goto err_devlink_linecard_device_attach;

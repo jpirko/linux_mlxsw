@@ -1590,7 +1590,8 @@ devlink_linecard_create(struct devlink *devlink, unsigned int linecard_index,
 void devlink_linecard_destroy(struct devlink_linecard *linecard);
 struct devlink_linecard_device *
 devlink_linecard_device_create(struct devlink_linecard *linecard,
-			       unsigned int device_index, void *priv);
+			       unsigned int device_index,
+			       const char *flash_component, void *priv);
 void
 devlink_linecard_device_destroy(struct devlink_linecard *linecard,
 				struct devlink_linecard_device *linecard_device);
