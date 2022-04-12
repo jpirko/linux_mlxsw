@@ -458,6 +458,10 @@ static int mlxsw_linecard_ready_set(struct mlxsw_linecard *linecard)
 	char mddc_pl[MLXSW_REG_MDDC_LEN];
 	int err;
 
+	err = mlxsw_linecard_devices_update(linecard);
+	if (err)
+		return err;
+
 	mlxsw_reg_mddc_pack(mddc_pl, linecard->slot_index, false, true);
 	err = mlxsw_reg_write(mlxsw_core, MLXSW_REG(mddc), mddc_pl);
 	if (err)
@@ -482,12 +486,6 @@ static int mlxsw_linecard_ready_clear(struct mlxsw_linecard *linecard)
 
 static int mlxsw_linecard_active_set(struct mlxsw_linecard *linecard)
 {
-	int err;
-
-	err = mlxsw_linecard_devices_update(linecard);
-	if (err)
-		return err;
-
 	mlxsw_linecard_active_ops_call(linecard);
 	linecard->active = true;
 	devlink_linecard_activate(linecard->devlink_linecard);
@@ -540,11 +538,8 @@ static int mlxsw_linecard_status_process(struct mlxsw_linecards *linecards,
 			goto out;
 	}
 
-	if (active && linecard->active != active) {
-		err = mlxsw_linecard_active_set(linecard);
-		if (err)
-			goto out;
-	}
+	if (active && linecard->active != active)
+		mlxsw_linecard_active_set(linecard);
 
 	if (!active && linecard->active != active)
 		mlxsw_linecard_active_clear(linecard);
