@@ -47,6 +47,18 @@ mlxsw_core_fw_rev_minor_subminor_validate(const struct mlxsw_fw_rev *rev,
 int mlxsw_core_driver_register(struct mlxsw_driver *mlxsw_driver);
 void mlxsw_core_driver_unregister(struct mlxsw_driver *mlxsw_driver);
 
+typedef int (*mlxsw_core_flash_update_cb)(struct mlxsw_core *mlxsw_core,
+					  const struct firmware *firmware,
+					  struct netlink_ext_ack *extack,
+					  void *priv);
+
+int mlxsw_core_flash_component_register(struct mlxsw_core *mlxsw_core,
+					const char *name,
+					mlxsw_core_flash_update_cb cb,
+					void *priv);
+void mlxsw_core_flash_component_unregister(struct mlxsw_core *mlxsw_core,
+					   const char *name);
+
 int mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 				   const struct mlxsw_bus *mlxsw_bus,
 				   void *bus_priv, bool reload,

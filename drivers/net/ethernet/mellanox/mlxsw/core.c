@@ -92,6 +92,10 @@ struct mlxsw_core {
 		struct devlink_health_reporter *fw_fatal;
 	} health;
 	struct mlxsw_env *env;
+	struct list_head flash_component_list;
+	struct mutex flash_update_lock; /* Protects component list and component
+					 * callbacks.
+					 */
 	unsigned long driver_priv[];
 	/* driver_priv has to be always the last item */
 };
@@ -1183,12 +1187,111 @@ static int mlxsw_core_fw_rev_validate(struct mlxsw_core *mlxsw_core,
 		return 0;
 }
 
+static int mlxsw_core_fw_flash_cb(struct mlxsw_core *mlxsw_core,
+				  const struct firmware *firmware,
+				  struct netlink_ext_ack *extack, void *priv)
+{
+	return mlxsw_core_fw_flash(mlxsw_core, firmware, extack);
+}
+
+struct mlxsw_core_flash_component {
+	struct list_head list;
+	const char *name;
+	mlxsw_core_flash_update_cb cb;
+	void *priv;
+};
+
+static bool
+mlxsw_core_flash_component_name_match(const struct mlxsw_core_flash_component *component,
+				      const char *name)
+{
+	/* NULL value of name corresponds to ASIC firmware, the default one. */
+	if (!name && !component->name)
+		return true;
+	if (!name || !component->name)
+		return false;
+	return !strcmp(name, component->name);
+}
+
+static struct mlxsw_core_flash_component *
+mlxsw_core_flash_component_lookup(struct mlxsw_core *mlxsw_core,
+				  const char *name)
+{
+	struct mlxsw_core_flash_component *component;
+
+	list_for_each_entry(component, &mlxsw_core->flash_component_list,
+			    list) {
+		if (mlxsw_core_flash_component_name_match(component, name))
+			return component;
+	}
+	return NULL;
+}
+
 static int mlxsw_core_fw_flash_update(struct mlxsw_core *mlxsw_core,
 				      struct devlink_flash_update_params *params,
 				      struct netlink_ext_ack *extack)
 {
-	return mlxsw_core_fw_flash(mlxsw_core, params->fw, extack);
+	struct mlxsw_core_flash_component *component;
+	int err;
+
+	mutex_lock(&mlxsw_core->flash_update_lock);
+	component = mlxsw_core_flash_component_lookup(mlxsw_core,
+						      params->component);
+	if (!component) {
+		NL_SET_ERR_MSG_MOD(extack, "Component does not exist");
+		err = -ENOENT;
+		goto unlock;
+	}
+	err = component->cb(mlxsw_core, params->fw, extack, component->priv);
+unlock:
+	mutex_unlock(&mlxsw_core->flash_update_lock);
+	return err;
 }
+
+int mlxsw_core_flash_component_register(struct mlxsw_core *mlxsw_core,
+					const char *name,
+					mlxsw_core_flash_update_cb cb,
+					void *priv)
+{
+	struct mlxsw_core_flash_component *component;
+	int err = 0;
+
+	mutex_lock(&mlxsw_core->flash_update_lock);
+	component = mlxsw_core_flash_component_lookup(mlxsw_core, name);
+	if (WARN_ON(component)) {
+		err = -EEXIST;
+		goto unlock;
+	}
+	component = kzalloc(sizeof(*component), GFP_KERNEL);
+	if (!component) {
+		err = -ENOMEM;
+		goto unlock;
+	}
+	component->name = name;
+	component->cb = cb;
+	component->priv = priv;
+	list_add_tail(&component->list, &mlxsw_core->flash_component_list);
+unlock:
+	mutex_unlock(&mlxsw_core->flash_update_lock);
+	return err;
+}
+EXPORT_SYMBOL(mlxsw_core_flash_component_register);
+
+void mlxsw_core_flash_component_unregister(struct mlxsw_core *mlxsw_core,
+					   const char *name)
+{
+	struct mlxsw_core_flash_component *component;
+
+	mutex_lock(&mlxsw_core->flash_update_lock);
+	component = mlxsw_core_flash_component_lookup(mlxsw_core, name);
+	if (WARN_ON(!component))
+		goto unlock;
+	list_del(&component->list);
+unlock:
+	mutex_unlock(&mlxsw_core->flash_update_lock);
+	kfree(component);
+}
+EXPORT_SYMBOL(mlxsw_core_flash_component_unregister);
 
 static int mlxsw_core_devlink_param_fw_load_policy_validate(struct devlink *devlink, u32 id,
 							    union devlink_param_value val,
@@ -1633,6 +1736,7 @@ mlxsw_devlink_trap_policer_counter_get(struct devlink *devlink,
 }
 
 static const struct devlink_ops mlxsw_devlink_ops = {
+	.supported_flash_update_params	= DEVLINK_SUPPORT_FLASH_UPDATE_COMPONENT,
 	.reload_actions		= BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT) |
 				  BIT(DEVLINK_RELOAD_ACTION_FW_ACTIVATE),
 	.reload_down		= mlxsw_devlink_core_bus_device_reload_down,
@@ -2077,6 +2181,30 @@ static void mlxsw_core_health_fini(struct mlxsw_core *mlxsw_core)
 	devlink_health_reporter_destroy(mlxsw_core->health.fw_fatal);
 }
 
+static int mlxsw_core_flash_init(struct mlxsw_core *mlxsw_core)
+{
+	int err;
+
+	INIT_LIST_HEAD(&mlxsw_core->flash_component_list);
+	mutex_init(&mlxsw_core->flash_update_lock);
+	err = mlxsw_core_flash_component_register(mlxsw_core, NULL,
+						  mlxsw_core_fw_flash_cb,
+						  NULL);
+	if (err)
+		goto err_flash_component_register;
+	return 0;
+
+err_flash_component_register:
+	mutex_destroy(&mlxsw_core->flash_update_lock);
+	return err;
+}
+
+static void mlxsw_core_flash_fini(struct mlxsw_core *mlxsw_core)
+{
+	mlxsw_core_flash_component_unregister(mlxsw_core, NULL);
+	mutex_destroy(&mlxsw_core->flash_update_lock);
+}
+
 static int
 __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 				 const struct mlxsw_bus *mlxsw_bus,
@@ -2111,6 +2239,12 @@ __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 	mlxsw_core->bus = mlxsw_bus;
 	mlxsw_core->bus_priv = bus_priv;
 	mlxsw_core->bus_info = mlxsw_bus_info;
+
+	if (!reload) {
+		err = mlxsw_core_flash_init(mlxsw_core);
+		if (err)
+			goto err_flash_init;
+	}
 
 	err = mlxsw_bus->init(bus_priv, mlxsw_core, mlxsw_driver->profile,
 			      &mlxsw_core->res);
@@ -2219,6 +2353,9 @@ err_register_resources:
 	mlxsw_bus->fini(bus_priv);
 err_bus_init:
 	if (!reload)
+		mlxsw_core_flash_fini(mlxsw_core);
+err_flash_init:
+	if (!reload)
 		devlink_free(devlink);
 err_devlink_alloc:
 	return err;
@@ -2283,8 +2420,10 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 	if (!reload)
 		devlink_resources_unregister(devlink);
 	mlxsw_core->bus->fini(mlxsw_core->bus_priv);
-	if (!reload)
+	if (!reload) {
+		mlxsw_core_flash_fini(mlxsw_core);
 		devlink_free(devlink);
+	}
 
 	return;
 
