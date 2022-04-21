@@ -922,6 +922,24 @@ static int mlxsw_linecard_status_get_and_process(struct mlxsw_core *mlxsw_core,
 	return mlxsw_linecard_status_process(linecards, linecard, mddq_pl);
 }
 
+static void mlxsw_linecards_irq_event_handler(struct mlxsw_core *mlxsw_core)
+{
+	struct mlxsw_linecards *linecards = mlxsw_core_linecards(mlxsw_core);
+	struct devlink *devlink = priv_to_devlink(mlxsw_core);
+	int i;
+
+	/* Handle change of line card active state. */
+	devl_lock(devlink);
+	for (i = 0; i < linecards->count; i++) {
+		struct mlxsw_linecard *linecard = mlxsw_linecard_get(linecards,
+								     i + 1);
+
+		mlxsw_linecard_status_get_and_process(mlxsw_core, linecards,
+						      linecard);
+	}
+	devl_unlock(devlink);
+}
+
 static const char * const mlxsw_linecard_status_event_type_name[] = {
 	[MLXSW_LINECARD_STATUS_EVENT_TYPE_PROVISION] = "provision",
 	[MLXSW_LINECARD_STATUS_EVENT_TYPE_UNPROVISION] = "unprovision",
@@ -1691,6 +1709,11 @@ int mlxsw_linecards_init(struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_traps_register;
 
+	err = mlxsw_core_irq_event_handler_register(mlxsw_core,
+						    mlxsw_linecards_irq_event_handler);
+	if (err)
+		goto err_irq_event_handler_register;
+
 	mlxsw_core_linecards_set(mlxsw_core, linecards);
 
 	for (i = 0; i < linecards->count; i++) {
@@ -1715,6 +1738,9 @@ err_linecard_event_delivery_init:
 err_linecard_init:
 	for (i--; i >= 0; i--)
 		mlxsw_linecard_fini(mlxsw_core, linecards, i + 1);
+	mlxsw_core_irq_event_handler_unregister(mlxsw_core,
+						mlxsw_linecards_irq_event_handler);
+err_irq_event_handler_register:
 	mlxsw_core_traps_unregister(mlxsw_core, mlxsw_linecard_listener,
 				    ARRAY_SIZE(mlxsw_linecard_listener),
 				    mlxsw_core);
@@ -1736,6 +1762,8 @@ void mlxsw_linecards_fini(struct mlxsw_core *mlxsw_core)
 		mlxsw_linecard_event_delivery_fini(mlxsw_core, linecards, i + 1);
 	for (i = 0; i < linecards->count; i++)
 		mlxsw_linecard_fini(mlxsw_core, linecards, i + 1);
+	mlxsw_core_irq_event_handler_unregister(mlxsw_core,
+						mlxsw_linecards_irq_event_handler);
 	mlxsw_core_traps_unregister(mlxsw_core, mlxsw_linecard_listener,
 				    ARRAY_SIZE(mlxsw_linecard_listener),
 				    mlxsw_core);
