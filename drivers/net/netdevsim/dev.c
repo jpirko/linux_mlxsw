@@ -997,6 +997,11 @@ static int nsim_dev_info_get(struct devlink *devlink,
 	err = devlink_info_driver_name_put(req, DRV_NAME);
 	if (err)
 		return err;
+	err = devlink_info_version_fixed_put(req,
+					     DEVLINK_INFO_VERSION_GENERIC_BOARD_ID,
+					     "DummyBoard");
+	if (err)
+		return err;
 	err = devlink_info_version_stored_put_ext(req, "fw.mgmt", "10.20.30",
 						  DEVLINK_INFO_VERSION_TYPE_COMPONENT);
 	if (err)
