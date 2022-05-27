@@ -1662,6 +1662,16 @@ int devlink_region_snapshot_id_get(struct devlink *devlink, u32 *id);
 void devlink_region_snapshot_id_put(struct devlink *devlink, u32 id);
 int devlink_region_snapshot_create(struct devlink_region *region,
 				   u8 *data, u32 snapshot_id);
+int devlink_flash_component_register(struct devlink *devlink,
+				     const char *component_name,
+				     int (*info_get)(struct devlink *devlink,
+						     struct devlink_info_req *req,
+						     void *component_priv,
+						     struct netlink_ext_ack *extack),
+				     void *component_priv);
+void devlink_flash_component_unregister(struct devlink *devlink,
+					const char *component_name,
+					void *component_priv);
 int devlink_info_serial_number_put(struct devlink_info_req *req,
 				   const char *sn);
 int devlink_info_driver_name_put(struct devlink_info_req *req,

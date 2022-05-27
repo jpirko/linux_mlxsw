@@ -56,6 +56,8 @@ struct devlink {
 	struct list_head trap_policer_list;
 	struct list_head linecard_list;
 	struct mutex linecards_lock; /* protects linecard_list */
+	struct list_head component_list;
+	struct mutex components_lock; /* protects component_list */
 	const struct devlink_ops *ops;
 	u64 features;
 	struct xarray snapshot_ids;
@@ -6361,6 +6363,89 @@ out_dev:
 	return err;
 }
 
+struct devlink_flash_component {
+	struct list_head list;
+	const char *name;
+	int (*info_get)(struct devlink *devlink,
+			struct devlink_info_req *req,
+			void *component_priv,
+			struct netlink_ext_ack *extack);
+	void *priv;
+};
+
+static struct devlink_flash_component *
+devlink_flash_component_find(struct devlink *devlink,
+			     const char *component_name, void *component_priv)
+{
+	struct devlink_flash_component *component;
+
+	list_for_each_entry(component, &devlink->component_list, list) {
+		if (!strcmp(component->name, component_name) &&
+		    component->priv == component_priv)
+			return component;
+	}
+	return NULL;
+}
+
+/**
+ *	devlink_flash_component_register - devlink flash component register
+ *
+ *	@devlink: devlink
+ *	@component_name: component name
+ *	@info_get: callback to get component info
+ *	@component_priv: component priv
+ */
+int devlink_flash_component_register(struct devlink *devlink,
+				     const char *component_name,
+				     int (*info_get)(struct devlink *devlink,
+						     struct devlink_info_req *req,
+						     void *component_priv,
+						     struct netlink_ext_ack *extack),
+				     void *component_priv)
+{
+	struct devlink_flash_component *component;
+
+	WARN_ON(!component_name || !info_get);
+
+	component = kzalloc(sizeof(*component), GFP_KERNEL);
+	if (!component)
+		return -ENOMEM;
+	component->name = component_name;
+	component->info_get = info_get;
+	component->priv = component_priv;
+
+	mutex_lock(&devlink->components_lock);
+	WARN_ON(devlink_flash_component_find(devlink, component_name,
+					     component_priv));
+	list_add_tail(&component->list, &devlink->component_list);
+	mutex_unlock(&devlink->components_lock);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devlink_flash_component_register);
+
+/**
+ *	devlink_flash_component_unregister - devlink flash component unregister
+ *
+ *	@devlink: devlink
+ *	@component_name: component name
+ *	@component_priv: component priv
+ */
+void devlink_flash_component_unregister(struct devlink *devlink,
+					const char *component_name,
+					void *component_priv)
+{
+	struct devlink_flash_component *component;
+
+	mutex_lock(&devlink->components_lock);
+	component = devlink_flash_component_find(devlink, component_name,
+						 component_priv);
+	WARN_ON(!component);
+	list_del(&component->list);
+	mutex_unlock(&devlink->components_lock);
+	kfree(component);
+}
+EXPORT_SYMBOL_GPL(devlink_flash_component_unregister);
+
 struct devlink_info_req {
 	struct sk_buff *msg;
 };
@@ -6447,6 +6532,8 @@ devlink_nl_info_fill(struct sk_buff *msg, struct devlink *devlink,
 		     enum devlink_command cmd, u32 portid,
 		     u32 seq, int flags, struct netlink_ext_ack *extack)
 {
+	struct devlink_flash_component *component;
+	struct nlattr *component_attr;
 	struct devlink_info_req req;
 	void *hdr;
 	int err;
@@ -6464,9 +6551,26 @@ devlink_nl_info_fill(struct sk_buff *msg, struct devlink *devlink,
 	if (err)
 		goto err_cancel_msg;
 
+	mutex_lock(&devlink->components_lock);
+	list_for_each_entry(component, &devlink->component_list, list) {
+		component_attr = nla_nest_start(msg, DEVLINK_ATTR_INFO_COMPONENT);
+		if (!component_attr)
+			goto err_cancel_msg_unlock;
+		if (nla_put_string(msg, DEVLINK_ATTR_FLASH_UPDATE_COMPONENT,
+				   component->name))
+			goto err_cancel_msg_unlock;
+		err = component->info_get(devlink, &req, component->priv,
+					  extack);
+		if (err)
+			goto err_cancel_msg_unlock;
+		nla_nest_end(msg, component_attr);
+	}
+	mutex_unlock(&devlink->components_lock);
 	genlmsg_end(msg, hdr);
 	return 0;
 
+err_cancel_msg_unlock:
+	mutex_unlock(&devlink->components_lock);
 err_cancel_msg:
 	genlmsg_cancel(msg, hdr);
 	return err;
@@ -9473,9 +9577,11 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 	INIT_LIST_HEAD(&devlink->trap_list);
 	INIT_LIST_HEAD(&devlink->trap_group_list);
 	INIT_LIST_HEAD(&devlink->trap_policer_list);
+	INIT_LIST_HEAD(&devlink->component_list);
 	mutex_init(&devlink->lock);
 	mutex_init(&devlink->reporters_lock);
 	mutex_init(&devlink->linecards_lock);
+	mutex_init(&devlink->components_lock);
 	refcount_set(&devlink->refcount, 1);
 	init_completion(&devlink->comp);
 
@@ -9617,9 +9723,11 @@ void devlink_free(struct devlink *devlink)
 {
 	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
 
+	mutex_destroy(&devlink->components_lock);
 	mutex_destroy(&devlink->linecards_lock);
 	mutex_destroy(&devlink->reporters_lock);
 	mutex_destroy(&devlink->lock);
+	WARN_ON(!list_empty(&devlink->component_list));
 	WARN_ON(!list_empty(&devlink->trap_policer_list));
 	WARN_ON(!list_empty(&devlink->trap_group_list));
 	WARN_ON(!list_empty(&devlink->trap_list));
