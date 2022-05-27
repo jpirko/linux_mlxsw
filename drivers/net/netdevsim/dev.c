@@ -1055,6 +1055,54 @@ static int nsim_dev_flash_update(struct devlink *devlink,
 	return 0;
 }
 
+static int nsim_dev_component_dummy1_info_get(struct devlink *devlink,
+					      struct devlink_info_req *req,
+					      void *priv,
+					      struct netlink_ext_ack *extack)
+{
+	return devlink_info_version_running_put(req,
+						DEVLINK_INFO_VERSION_GENERIC_FW,
+						"10.20.30");
+}
+
+static int nsim_dev_component_dummy2_info_get(struct devlink *devlink,
+					      struct devlink_info_req *req,
+					      void *priv,
+					      struct netlink_ext_ack *extack)
+{
+	return devlink_info_version_running_put(req,
+						DEVLINK_INFO_VERSION_GENERIC_FW,
+						"11.22.33");
+}
+
+static int nsim_dev_flash_components_init(struct devlink *devlink)
+{
+	int err;
+
+	err = devlink_flash_component_register(devlink, "dummy1",
+					       nsim_dev_component_dummy1_info_get,
+					       NULL);
+	if (err)
+		return err;
+
+	err = devlink_flash_component_register(devlink, "dummy2",
+					       nsim_dev_component_dummy2_info_get,
+					       NULL);
+	if (err)
+		goto err_dummy1_unregister;
+	return 0;
+
+err_dummy1_unregister:
+	devlink_flash_component_unregister(devlink, "dummy1", NULL);
+	return err;
+}
+
+static void nsim_dev_flash_components_exit(struct devlink *devlink)
+{
+	devlink_flash_component_unregister(devlink, "dummy2", NULL);
+	devlink_flash_component_unregister(devlink, "dummy1", NULL);
+}
+
 static struct nsim_trap_item *
 nsim_dev_trap_item_lookup(struct nsim_dev *nsim_dev, u16 trap_id)
 {
@@ -1572,9 +1620,13 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev)
 		goto err_devlink_free;
 	}
 
-	err = nsim_dev_resources_register(devlink);
+	err = nsim_dev_flash_components_init(devlink);
 	if (err)
 		goto err_vfc_free;
+
+	err = nsim_dev_resources_register(devlink);
+	if (err)
+		goto err_flash_components_exit;
 
 	err = devlink_params_register(devlink, nsim_devlink_params,
 				      ARRAY_SIZE(nsim_devlink_params));
@@ -1646,6 +1698,8 @@ err_params_unregister:
 				  ARRAY_SIZE(nsim_devlink_params));
 err_dl_unregister:
 	devlink_resources_unregister(devlink);
+err_flash_components_exit:
+	nsim_dev_flash_components_exit(devlink);
 err_vfc_free:
 	kfree(nsim_dev->vfconfigs);
 err_devlink_free:
@@ -1692,6 +1746,7 @@ void nsim_drv_remove(struct nsim_bus_dev *nsim_bus_dev)
 	devlink_params_unregister(devlink, nsim_devlink_params,
 				  ARRAY_SIZE(nsim_devlink_params));
 	devlink_resources_unregister(devlink);
+	nsim_dev_flash_components_exit(devlink);
 	kfree(nsim_dev->vfconfigs);
 	devlink_free(devlink);
 	dev_set_drvdata(&nsim_bus_dev->dev, NULL);
