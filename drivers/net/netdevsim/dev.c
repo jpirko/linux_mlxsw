@@ -995,7 +995,21 @@ static int nsim_dev_info_get(struct devlink *devlink,
 			     struct devlink_info_req *req,
 			     struct netlink_ext_ack *extack)
 {
-	return devlink_info_driver_name_put(req, DRV_NAME);
+	int err;
+
+	err = devlink_info_driver_name_put(req, DRV_NAME);
+	if (err)
+		return err;
+
+	err = devlink_info_version_fixed_put(req,
+					     DEVLINK_INFO_VERSION_GENERIC_BOARD_ID,
+					     "DummyBoard");
+	if (err)
+		return err;
+
+	return devlink_info_version_running_put(req,
+						DEVLINK_INFO_VERSION_GENERIC_FW,
+						"1.2.3");
 }
 
 #define NSIM_DEV_FLASH_SIZE 500000
