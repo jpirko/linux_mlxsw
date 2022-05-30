@@ -6501,6 +6501,11 @@ static int devlink_info_version_put(struct devlink_info_req *req, int attr,
 	if (err)
 		goto nla_put_failure;
 
+	err = nla_put_u8(req->msg, DEVLINK_ATTR_INFO_VERSION_IS_COMPONENT,
+			 version_type == DEVLINK_INFO_VERSION_TYPE_COMPONENT);
+	if (err)
+		goto nla_put_failure;
+
 	nla_nest_end(req->msg, nest);
 
 	return 0;
