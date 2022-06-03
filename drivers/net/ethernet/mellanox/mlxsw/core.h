@@ -566,6 +566,7 @@ struct mlxsw_linecard_device_info {
 	u16 fw_major;
 	u16 fw_minor;
 	u16 fw_sub_minor;
+	char psid[MLXSW_REG_MGIR_FW_INFO_PSID_SIZE];
 };
 
 struct mlxsw_linecard {
