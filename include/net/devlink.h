@@ -1675,6 +1675,9 @@ enum devlink_info_version_type {
 	DEVLINK_INFO_VERSION_TYPE_COMPONENT, /* May be used as flash update
 					      * component by name.
 					      */
+	DEVLINK_INFO_VERSION_TYPE_FLASH_UPDATE_DEFAULT, /* Is default flash
+							 * update target.
+							 */
 };
 
 int devlink_info_version_fixed_put(struct devlink_info_req *req,

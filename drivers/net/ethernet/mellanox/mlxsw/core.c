@@ -1483,9 +1483,10 @@ mlxsw_devlink_info_get(struct devlink *devlink, struct devlink_info_req *req,
 	if (err)
 		return err;
 
-	return devlink_info_version_running_put(req,
-						DEVLINK_INFO_VERSION_GENERIC_FW,
-						buf);
+	return devlink_info_version_running_put_ext(req,
+						    DEVLINK_INFO_VERSION_GENERIC_FW,
+						    buf,
+						    DEVLINK_INFO_VERSION_TYPE_FLASH_UPDATE_DEFAULT);
 }
 
 static int

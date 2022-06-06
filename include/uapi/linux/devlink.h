@@ -579,6 +579,7 @@ enum devlink_attr {
 	DEVLINK_ATTR_NESTED_DEVLINK,		/* nested */
 
 	DEVLINK_ATTR_INFO_VERSION_IS_COMPONENT,	/* u8 0 or 1 */
+	DEVLINK_ATTR_INFO_VERSION_IS_FLASH_UPDATE_DEFAULT,	/* u8 0 or 1 */
 
 	/* add new attributes above here, update the policy in devlink.c */
 
