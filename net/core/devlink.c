@@ -4758,6 +4758,7 @@ struct devlink_info_req {
 			   enum devlink_info_version_type version_type,
 			   void *version_cb_priv);
 	void *version_cb_priv;
+	unsigned int flash_update_default_count;
 };
 
 struct devlink_flash_component_lookup_ctx {
@@ -6598,6 +6599,12 @@ static int devlink_info_version_put(struct devlink_info_req *req, int attr,
 	if (!req->msg)
 		return 0;
 
+	if (version_type == DEVLINK_INFO_VERSION_TYPE_FLASH_UPDATE_DEFAULT) {
+		if (WARN_ON(req->flash_update_default_count++))
+			/* Max one flash update default is allowed. */
+			return -EINVAL;
+	}
+
 	nest = nla_nest_start_noflag(req->msg, attr);
 	if (!nest)
 		return -EMSGSIZE;
@@ -6614,6 +6621,11 @@ static int devlink_info_version_put(struct devlink_info_req *req, int attr,
 
 	err = nla_put_u8(req->msg, DEVLINK_ATTR_INFO_VERSION_IS_COMPONENT,
 			 version_type == DEVLINK_INFO_VERSION_TYPE_COMPONENT);
+	if (err)
+		goto nla_put_failure;
+
+	err = nla_put_u8(req->msg, DEVLINK_ATTR_INFO_VERSION_IS_FLASH_UPDATE_DEFAULT,
+			 version_type == DEVLINK_INFO_VERSION_TYPE_FLASH_UPDATE_DEFAULT);
 	if (err)
 		goto nla_put_failure;
 
