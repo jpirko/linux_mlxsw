@@ -1005,7 +1005,8 @@ static int nsim_dev_info_get(struct devlink *devlink,
 						   DEVLINK_INFO_VERSION_TYPE_COMPONENT);
 	if (err)
 		return err;
-	err = devlink_info_version_stored_put(req, "fw", "11.22.33");
+	err = devlink_info_version_stored_put_ext(req, "fw", "11.22.33",
+						  DEVLINK_INFO_VERSION_TYPE_FLASH_UPDATE_DEFAULT);
 	if (err)
 		return err;
 	return devlink_info_version_running_put(req, "fw", "11.22.33");
