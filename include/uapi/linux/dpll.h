@@ -55,11 +55,13 @@ enum dpll_genl_status {
 
 /* DPLL signal types used as source or as output */
 enum dpll_genl_signal_type {
+	DPLL_TYPE_NONE,
 	DPLL_TYPE_EXT_1PPS,
 	DPLL_TYPE_EXT_10MHZ,
 	DPLL_TYPE_SYNCE_ETH_PORT,
 	DPLL_TYPE_INT_OSCILLATOR,
 	DPLL_TYPE_GNSS,
+	DPLL_TYPE_CUSTOM,
 
 	__DPLL_TYPE_MAX,
 };
