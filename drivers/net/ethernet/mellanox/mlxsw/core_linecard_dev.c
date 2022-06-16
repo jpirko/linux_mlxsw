@@ -170,6 +170,9 @@ static struct auxiliary_driver mlxsw_linecard_driver = {
 	.probe = mlxsw_linecard_bdev_probe,
 	.remove = mlxsw_linecard_bdev_remove,
 	.id_table = mlxsw_linecard_bdev_id_table,
+	.driver = {
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+	},
 };
 
 int mlxsw_linecard_driver_register(void)
