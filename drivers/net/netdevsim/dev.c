@@ -557,15 +557,15 @@ static int nsim_dev_dummy_region_init(struct nsim_dev *nsim_dev,
 				      struct devlink *devlink)
 {
 	nsim_dev->dummy_region =
-		devl_region_create(devlink, &dummy_region_ops,
-				   NSIM_DEV_DUMMY_REGION_SNAPSHOT_MAX,
-				   NSIM_DEV_DUMMY_REGION_SIZE);
+		devlink_region_create(devlink, &dummy_region_ops,
+				      NSIM_DEV_DUMMY_REGION_SNAPSHOT_MAX,
+				      NSIM_DEV_DUMMY_REGION_SIZE);
 	return PTR_ERR_OR_ZERO(nsim_dev->dummy_region);
 }
 
 static void nsim_dev_dummy_region_exit(struct nsim_dev *nsim_dev)
 {
-	devl_region_destroy(nsim_dev->dummy_region);
+	devlink_region_destroy(nsim_dev->dummy_region);
 }
 
 static int

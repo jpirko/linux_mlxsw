@@ -5667,8 +5667,7 @@ static void devlink_nl_region_notify(struct devlink_region *region,
 	struct sk_buff *msg;
 
 	WARN_ON(cmd != DEVLINK_CMD_REGION_NEW && cmd != DEVLINK_CMD_REGION_DEL);
-	if (!xa_get_mark(&devlinks, devlink->index, DEVLINK_REGISTERED))
-		return;
+	ASSERT_DEVLINK_REGISTERED(devlink);
 
 	msg = devlink_nl_region_notify_build(region, snapshot, cmd, 0, 0);
 	if (IS_ERR(msg))
@@ -11098,21 +11097,22 @@ void devlink_param_value_changed(struct devlink *devlink, u32 param_id)
 EXPORT_SYMBOL_GPL(devlink_param_value_changed);
 
 /**
- * devl_region_create - create a new address region
+ * devlink_region_create - create a new address region
  *
  * @devlink: devlink
  * @ops: region operations and name
  * @region_max_snapshots: Maximum supported number of snapshots for region
  * @region_size: size of region
  */
-struct devlink_region *devl_region_create(struct devlink *devlink,
-					  const struct devlink_region_ops *ops,
-					  u32 region_max_snapshots,
-					  u64 region_size)
+struct devlink_region *
+devlink_region_create(struct devlink *devlink,
+		      const struct devlink_region_ops *ops,
+		      u32 region_max_snapshots,
+		      u64 region_size)
 {
 	struct devlink_region *region;
 
-	devl_assert_locked(devlink);
+	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
 
 	if (WARN_ON(!ops) || WARN_ON(!ops->destructor))
 		return ERR_PTR(-EINVAL);
@@ -11130,33 +11130,7 @@ struct devlink_region *devl_region_create(struct devlink *devlink,
 	region->size = region_size;
 	INIT_LIST_HEAD(&region->snapshot_list);
 	list_add_tail(&region->list, &devlink->region_list);
-	devlink_nl_region_notify(region, NULL, DEVLINK_CMD_REGION_NEW);
 
-	return region;
-}
-EXPORT_SYMBOL_GPL(devl_region_create);
-
-/**
- *	devlink_region_create - create a new address region
- *
- *	@devlink: devlink
- *	@ops: region operations and name
- *	@region_max_snapshots: Maximum supported number of snapshots for region
- *	@region_size: size of region
- *
- *	Context: Takes and release devlink->lock <mutex>.
- */
-struct devlink_region *
-devlink_region_create(struct devlink *devlink,
-		      const struct devlink_region_ops *ops,
-		      u32 region_max_snapshots, u64 region_size)
-{
-	struct devlink_region *region;
-
-	devl_lock(devlink);
-	region = devl_region_create(devlink, ops, region_max_snapshots,
-				    region_size);
-	devl_unlock(devlink);
 	return region;
 }
 EXPORT_SYMBOL_GPL(devlink_region_create);
@@ -11168,8 +11142,6 @@ EXPORT_SYMBOL_GPL(devlink_region_create);
  *	@ops: region operations and name
  *	@region_max_snapshots: Maximum supported number of snapshots for region
  *	@region_size: size of region
- *
- *	Context: Takes and release devlink->lock <mutex>.
  */
 struct devlink_region *
 devlink_port_region_create(struct devlink_port *port,
@@ -11181,6 +11153,7 @@ devlink_port_region_create(struct devlink_port *port,
 	int err = 0;
 
 	ASSERT_DEVLINK_PORT_INITIALIZED(port);
+	ASSERT_DEVLINK_PORT_NOT_REGISTERED(port);
 
 	if (WARN_ON(!ops) || WARN_ON(!ops->destructor))
 		return ERR_PTR(-EINVAL);
@@ -11205,7 +11178,6 @@ devlink_port_region_create(struct devlink_port *port,
 	region->size = region_size;
 	INIT_LIST_HEAD(&region->snapshot_list);
 	list_add_tail(&region->list, &port->region_list);
-	devlink_nl_region_notify(region, NULL, DEVLINK_CMD_REGION_NEW);
 
 	devl_unlock(devlink);
 	return region;
@@ -11217,16 +11189,18 @@ unlock:
 EXPORT_SYMBOL_GPL(devlink_port_region_create);
 
 /**
- * devl_region_destroy - destroy address region
+ * devlink_region_destroy - destroy address region
  *
  * @region: devlink region to destroy
  */
-void devl_region_destroy(struct devlink_region *region)
+void devlink_region_destroy(struct devlink_region *region)
 {
-	struct devlink *devlink = region->devlink;
 	struct devlink_snapshot *snapshot, *ts;
 
-	devl_assert_locked(devlink);
+	if (region->port)
+		ASSERT_DEVLINK_PORT_NOT_REGISTERED(region->port);
+	else
+		ASSERT_DEVLINK_NOT_REGISTERED(region->devlink);
 
 	/* Free all snapshots of region */
 	list_for_each_entry_safe(snapshot, ts, &region->snapshot_list, list)
@@ -11234,25 +11208,7 @@ void devl_region_destroy(struct devlink_region *region)
 
 	list_del(&region->list);
 
-	devlink_nl_region_notify(region, NULL, DEVLINK_CMD_REGION_DEL);
 	kfree(region);
-}
-EXPORT_SYMBOL_GPL(devl_region_destroy);
-
-/**
- *	devlink_region_destroy - destroy address region
- *
- *	@region: devlink region to destroy
- *
- *	Context: Takes and release devlink->lock <mutex>.
- */
-void devlink_region_destroy(struct devlink_region *region)
-{
-	struct devlink *devlink = region->devlink;
-
-	devl_lock(devlink);
-	devl_region_destroy(region);
-	devl_unlock(devlink);
 }
 EXPORT_SYMBOL_GPL(devlink_region_destroy);
 
