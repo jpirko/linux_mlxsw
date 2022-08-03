@@ -23,6 +23,7 @@ static const struct nla_policy dpll_genl_get_policy[] = {
 	[DPLLA_DEVICE_ID]	= { .type = NLA_U32 },
 	[DPLLA_DEVICE_NAME]	= { .type = NLA_STRING,
 				    .len = DPLL_NAME_LENGTH },
+	[DPLLA_DEVICE_SRC_SELECT_MODE] = { .type = NLA_U32 },
 	[DPLLA_FLAGS]		= { .type = NLA_U32 },
 };
 
@@ -38,13 +39,26 @@ static const struct nla_policy dpll_genl_set_output_policy[] = {
 	[DPLLA_OUTPUT_TYPE]	= { .type = NLA_U32 },
 };
 
+static const struct nla_policy dpll_genl_set_src_select_mode_policy[] = {
+	[DPLLA_DEVICE_ID]		  = { .type = NLA_U32 },
+	[DPLLA_DEVICE_SRC_SELECT_MODE] = { .type = NLA_U32 },
+};
+
+static const struct nla_policy dpll_genl_set_source_prio_policy[] = {
+	[DPLLA_DEVICE_ID]	= { .type = NLA_U32 },
+	[DPLLA_SOURCE_ID]	= { .type = NLA_U32 },
+	[DPLLA_SOURCE_PRIO]	= { .type = NLA_U32 },
+};
+
 struct param {
 	struct netlink_callback *cb;
 	struct dpll_device *dpll;
 	struct sk_buff *msg;
 	int dpll_id;
+	int dpll_src_select_mode;
 	int dpll_source_id;
 	int dpll_source_type;
+	int dpll_source_prio;
 	int dpll_output_id;
 	int dpll_output_type;
 	int dpll_status;
@@ -84,8 +98,8 @@ static int __dpll_cmd_device_dump_one(struct dpll_device *dpll,
 static int __dpll_cmd_dump_sources(struct dpll_device *dpll,
 					   struct sk_buff *msg)
 {
+	int i, ret = 0, type, prio;
 	struct nlattr *src_attr;
-	int i, ret = 0, type;
 
 	for (i = 0; i < dpll->sources_count; i++) {
 		src_attr = nla_nest_start(msg, DPLLA_SOURCE);
@@ -109,6 +123,14 @@ static int __dpll_cmd_dump_sources(struct dpll_device *dpll,
 				}
 			}
 			ret = 0;
+		}
+		if (dpll->ops->get_source_prio) {
+			prio = dpll->ops->get_source_prio(dpll, i);
+			if (nla_put_u32(msg, DPLLA_SOURCE_PRIO, prio)) {
+				nla_nest_cancel(msg, src_attr);
+				ret = -EMSGSIZE;
+				break;
+			}
 		}
 		nla_nest_end(msg, src_attr);
 	}
@@ -154,24 +176,43 @@ static int __dpll_cmd_dump_outputs(struct dpll_device *dpll,
 static int __dpll_cmd_dump_status(struct dpll_device *dpll,
 					   struct sk_buff *msg)
 {
-	int ret;
+	struct dpll_device_ops *ops = dpll->ops;
+	int ret, type, attr;
 
-	if (dpll->ops->get_status) {
-		ret = dpll->ops->get_status(dpll);
+	if (ops->get_status) {
+		ret = ops->get_status(dpll);
 		if (nla_put_u32(msg, DPLLA_STATUS, ret))
 			return -EMSGSIZE;
 	}
 
-	if (dpll->ops->get_temp) {
-		ret = dpll->ops->get_temp(dpll);
+	if (ops->get_temp) {
+		ret = ops->get_temp(dpll);
 		if (nla_put_u32(msg, DPLLA_TEMP, ret))
 			return -EMSGSIZE;
 	}
 
-	if (dpll->ops->get_lock_status) {
-		ret = dpll->ops->get_lock_status(dpll);
+	if (ops->get_lock_status) {
+		ret = ops->get_lock_status(dpll);
 		if (nla_put_u32(msg, DPLLA_LOCK_STATUS, ret))
 			return -EMSGSIZE;
+	}
+
+	if (ops->get_source_select_mode) {
+		ret = ops->get_source_select_mode(dpll);
+		if (nla_put_u32(msg, DPLLA_DEVICE_SRC_SELECT_MODE, ret))
+			return -EMSGSIZE;
+	}
+
+	if (ops->get_source_select_mode_supported) {
+		attr = DPLLA_DEVICE_SRC_SELECT_MODE_SUPPORTED;
+		for (type = 0; type <= DPLL_SRC_SELECT_MAX; type++) {
+			ret = ops->get_source_select_mode_supported(dpll,
+								    type);
+			if (ret && nla_put_u32(msg, attr, type)) {
+				ret = -EMSGSIZE;
+				break;
+			}
+		}
 	}
 
 	return 0;
@@ -271,6 +312,56 @@ static int dpll_genl_cmd_set_output(struct sk_buff *skb, struct genl_info *info)
 
 	if (!ret)
 		dpll_notify_output_change(dpll->id, out_id, type);
+
+	return ret;
+}
+
+static int dpll_genl_cmd_set_source_prio(struct sk_buff *skb, struct genl_info *info)
+{
+	struct dpll_device *dpll = info->user_ptr[0];
+	struct nlattr **attrs = info->attrs;
+	int ret = 0, src_id, prio;
+
+	if (!attrs[DPLLA_SOURCE_ID] ||
+	    !attrs[DPLLA_SOURCE_PRIO])
+		return -EINVAL;
+
+	if (!dpll->ops->set_source_prio)
+		return -EOPNOTSUPP;
+
+	src_id = nla_get_u32(attrs[DPLLA_SOURCE_ID]);
+	prio = nla_get_u32(attrs[DPLLA_SOURCE_PRIO]);
+
+	mutex_lock(&dpll->lock);
+	ret = dpll->ops->set_source_prio(dpll, src_id, prio);
+	mutex_unlock(&dpll->lock);
+
+	if (!ret)
+		dpll_notify_source_prio_change(dpll->id, src_id, prio);
+
+	return ret;
+}
+
+static int dpll_genl_cmd_set_select_mode(struct sk_buff *skb, struct genl_info *info)
+{
+	struct dpll_device *dpll = info->user_ptr[0];
+	struct nlattr **attrs = info->attrs;
+	int ret = 0, mode;
+
+	if (!attrs[DPLLA_DEVICE_SRC_SELECT_MODE])
+		return -EINVAL;
+
+	if (!dpll->ops->set_source_select_mode)
+		return -EOPNOTSUPP;
+
+	mode = nla_get_u32(attrs[DPLLA_DEVICE_SRC_SELECT_MODE]);
+
+	mutex_lock(&dpll->lock);
+	ret = dpll->ops->set_source_select_mode(dpll, mode);
+	mutex_unlock(&dpll->lock);
+
+	if (!ret)
+		dpll_notify_source_select_mode_change(dpll->id, mode);
 
 	return ret;
 }
@@ -396,6 +487,20 @@ static const struct genl_ops dpll_genl_ops[] = {
 		.policy	= dpll_genl_set_output_policy,
 		.maxattr = ARRAY_SIZE(dpll_genl_set_output_policy) - 1,
 	},
+	{
+		.cmd	= DPLL_CMD_SET_SRC_SELECT_MODE,
+		.flags	= GENL_UNS_ADMIN_PERM,
+		.doit	= dpll_genl_cmd_set_select_mode,
+		.policy	= dpll_genl_set_src_select_mode_policy,
+		.maxattr = ARRAY_SIZE(dpll_genl_set_src_select_mode_policy) - 1,
+	},
+	{
+		.cmd	= DPLL_CMD_SET_SOURCE_PRIO,
+		.flags	= GENL_UNS_ADMIN_PERM,
+		.doit	= dpll_genl_cmd_set_source_prio,
+		.policy	= dpll_genl_set_source_prio_policy,
+		.maxattr = ARRAY_SIZE(dpll_genl_set_source_prio_policy) - 1,
+	},
 };
 
 static struct genl_family dpll_gnl_family __ro_after_init = {
@@ -455,6 +560,26 @@ static int dpll_event_output_change(struct param *p)
 	return 0;
 }
 
+static int dpll_event_source_prio(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+	    nla_put_u32(p->msg, DPLLA_SOURCE_ID, p->dpll_source_id) ||
+	    nla_put_u32(p->msg, DPLLA_SOURCE_PRIO, p->dpll_source_prio))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
+static int dpll_event_select_mode(struct param *p)
+{
+	if (nla_put_u32(p->msg, DPLLA_DEVICE_ID, p->dpll_id) ||
+	    nla_put_u32(p->msg, DPLLA_DEVICE_SRC_SELECT_MODE,
+		    p->dpll_src_select_mode))
+		return -EMSGSIZE;
+
+	return 0;
+}
+
 static const cb_t event_cb[] = {
 	[DPLL_EVENT_DEVICE_CREATE]	= dpll_event_device_create,
 	[DPLL_EVENT_DEVICE_DELETE]	= dpll_event_device_delete,
@@ -462,7 +587,10 @@ static const cb_t event_cb[] = {
 	[DPLL_EVENT_STATUS_UNLOCKED]	= dpll_event_status,
 	[DPLL_EVENT_SOURCE_CHANGE]	= dpll_event_source_change,
 	[DPLL_EVENT_OUTPUT_CHANGE]	= dpll_event_output_change,
+	[DPLL_EVENT_SOURCE_PRIO]        = dpll_event_source_prio,
+	[DPLL_EVENT_SELECT_MODE]        = dpll_event_select_mode,
 };
+
 /*
  * Generic netlink DPLL event encoding
  */
@@ -550,6 +678,26 @@ int dpll_notify_output_change(int dpll_id, int output_id, int output_type)
 	return dpll_send_event(DPLL_EVENT_OUTPUT_CHANGE, &p);
 }
 EXPORT_SYMBOL_GPL(dpll_notify_output_change);
+
+int dpll_notify_source_select_mode_change(int dpll_id, int new_mode)
+{
+	struct param p =  { .dpll_id = dpll_id,
+			    .dpll_src_select_mode = new_mode,
+			    .dpll_event_group = 0 };
+
+	return dpll_send_event(DPLL_EVENT_SELECT_MODE, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_source_select_mode_change);
+
+int dpll_notify_source_prio_change(int dpll_id, int source_id, int prio)
+{
+	struct param p =  { .dpll_id = dpll_id, .dpll_source_id = source_id,
+			    .dpll_source_prio = prio,
+			    .dpll_event_group = 1 };
+
+	return dpll_send_event(DPLL_EVENT_SOURCE_PRIO, &p);
+}
+EXPORT_SYMBOL_GPL(dpll_notify_source_prio_change);
 
 int __init dpll_netlink_init(void)
 {

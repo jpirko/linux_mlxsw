@@ -21,10 +21,13 @@ enum dpll_genl_attr {
 	DPLLA_UNSPEC,
 	DPLLA_DEVICE_ID,
 	DPLLA_DEVICE_NAME,
+	DPLLA_DEVICE_SRC_SELECT_MODE,
+	DPLLA_DEVICE_SRC_SELECT_MODE_SUPPORTED,
 	DPLLA_SOURCE,
 	DPLLA_SOURCE_ID,
 	DPLLA_SOURCE_TYPE,
 	DPLLA_SOURCE_SUPPORTED,
+	DPLLA_SOURCE_PRIO,
 	DPLLA_OUTPUT,
 	DPLLA_OUTPUT_ID,
 	DPLLA_OUTPUT_TYPE,
@@ -82,6 +85,8 @@ enum dpll_genl_event {
 	DPLL_EVENT_STATUS_UNLOCKED,	/* DPLL device freerun */
 	DPLL_EVENT_SOURCE_CHANGE,		/* DPLL device source changed */
 	DPLL_EVENT_OUTPUT_CHANGE,		/* DPLL device output changed */
+	DPLL_EVENT_SOURCE_PRIO,
+	DPLL_EVENT_SELECT_MODE,
 
 	__DPLL_EVENT_MAX,
 };
@@ -90,12 +95,27 @@ enum dpll_genl_event {
 /* Commands supported by the dpll_genl_family */
 enum dpll_genl_cmd {
 	DPLL_CMD_UNSPEC,
-	DPLL_CMD_DEVICE_GET,	/* List of DPLL devices id */
+	DPLL_CMD_DEVICE_GET,		/* List of DPLL devices id */
 	DPLL_CMD_SET_SOURCE_TYPE,	/* Set the DPLL device source type */
 	DPLL_CMD_SET_OUTPUT_TYPE,	/* Set the DPLL device output type */
+	DPLL_CMD_SET_SRC_SELECT_MODE,/* Set mode for selection of a source */
+	DPLL_CMD_SET_SOURCE_PRIO,	/* Set priority of a source */
 
 	__DPLL_CMD_MAX,
 };
 #define DPLL_CMD_MAX (__DPLL_CMD_MAX - 1)
+
+/* Source select modes of dpll */
+enum dpll_genl_source_select_mode {
+	DPLL_SRC_SELECT_UNSPEC,
+	DPLL_SRC_SELECT_FORCED,   /* Source forced by DPLL_CMD_SET_SOURCE_TYPE */
+	DPLL_SRC_SELECT_AUTOMATIC,/* highest prio, valid source, auto selected by dpll */
+	DPLL_SRC_SELECT_HOLDOVER, /* forced holdover */
+	DPLL_SRC_SELECT_FREERUN,  /* dpll driven on system clk, no holdover available */
+	DPLL_SRC_SELECT_NCO,	     /* Set the DPLL device output type */
+
+	__DPLL_SRC_SELECT_MAX,
+};
+#define DPLL_SRC_SELECT_MAX (__DPLL_SRC_SELECT_MAX - 1)
 
 #endif /* _UAPI_LINUX_DPLL_H */
