@@ -53,6 +53,23 @@ struct dpll_device *dpll_device_get_by_id(int id)
 	return dpll;
 }
 
+struct dpll_device *dpll_device_get_by_name(const char *name)
+{
+	struct dpll_device *dpll, *ret = NULL;
+	unsigned long index;
+
+	mutex_lock(&dpll_device_xa_lock);
+	xa_for_each_marked(&dpll_device_xa, index, dpll, DPLL_REGISTERED) {
+		if (!strcmp(dev_name(&dpll->dev), name)) {
+			ret = dpll;
+			break;
+		}
+	}
+	mutex_unlock(&dpll_device_xa_lock);
+
+	return ret;
+}
+
 void *dpll_priv(struct dpll_device *dpll)
 {
 	return dpll->priv;

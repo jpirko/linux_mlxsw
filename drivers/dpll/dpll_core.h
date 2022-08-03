@@ -36,5 +36,6 @@ struct dpll_device {
 int for_each_dpll_device(int id, int (*cb)(struct dpll_device *, void *),
 			  void *data);
 struct dpll_device *dpll_device_get_by_id(int id);
+struct dpll_device *dpll_device_get_by_name(const char *name);
 void dpll_device_unregister(struct dpll_device *dpll);
 #endif

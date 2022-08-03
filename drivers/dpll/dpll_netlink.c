@@ -387,17 +387,31 @@ out_free_msg:
 static int dpll_pre_doit(const struct genl_split_ops *ops, struct sk_buff *skb,
 						 struct genl_info *info)
 {
-	struct dpll_device *dpll;
-	int id;
+	struct dpll_device *dpll_id = NULL, *dpll_name = NULL;
 
-	if (!info->attrs[DPLLA_DEVICE_ID])
+	if (!info->attrs[DPLLA_DEVICE_ID] &&
+	    !info->attrs[DPLLA_DEVICE_NAME])
 		return -EINVAL;
-	id = nla_get_u32(info->attrs[DPLLA_DEVICE_ID]);
 
-	dpll = dpll_device_get_by_id(id);
-	if (!dpll)
-		return -ENODEV;
-	info->user_ptr[0] = dpll;
+	if (info->attrs[DPLLA_DEVICE_ID]) {
+		u32 id = nla_get_u32(info->attrs[DPLLA_DEVICE_ID]);
+
+		dpll_id = dpll_device_get_by_id(id);
+		if (!dpll_id)
+			return -ENODEV;
+		info->user_ptr[0] = dpll_id;
+	}
+	if (info->attrs[DPLLA_DEVICE_NAME]) {
+		const char *name = nla_data(info->attrs[DPLLA_DEVICE_NAME]);
+
+		dpll_name = dpll_device_get_by_name(name);
+		if (!dpll_name)
+			return -ENODEV;
+
+		if (dpll_id && dpll_name != dpll_id)
+			return -EINVAL;
+		info->user_ptr[0] = dpll_name;
+	}
 
 	return 0;
 }
