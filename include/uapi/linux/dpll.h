@@ -19,7 +19,6 @@
 /* Attributes of dpll_genl_family */
 enum dpll_genl_attr {
 	DPLLA_UNSPEC,
-	DPLLA_DEVICE,
 	DPLLA_DEVICE_ID,
 	DPLLA_DEVICE_NAME,
 	DPLLA_SOURCE,
