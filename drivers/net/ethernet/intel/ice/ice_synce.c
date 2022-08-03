@@ -281,6 +281,102 @@ ice_synce_get_output_supported(struct dpll_device *dpll, int id, int type)
 	return ret;
 }
 
+/**
+ * ice_synce_get_source_select_mode
+ * @dpll: registered dpll pointer
+ *
+ * dpll subsystem callback.
+ * Check source selection mode of dpll.
+ * Return: source selection mode
+ */
+static int ice_synce_get_source_select_mode(struct dpll_device *dpll)
+{
+	return DPLL_SRC_SELECT_AUTOMATIC;
+}
+
+/**
+ * ice_synce_get_src_select_supported
+ * @dpll: registered dpll pointer
+ * @mode: mode to be tested
+ *
+ * dpll subsystem callback.
+ * Check if given mode is supported by the dpll.
+ * Return:
+ * * true if supported
+ * * false otherwise
+ */
+static int ice_synce_get_src_select_supported(struct dpll_device *dpll, int mode)
+{
+	if (mode == DPLL_SRC_SELECT_AUTOMATIC)
+		return true;
+
+	return false;
+}
+
+/**
+ * ice_synce_get_source_prio
+ * @dpll: registered dpll pointer
+ * @id: source index
+ *
+ * dpll subsystem callback.
+ * Get source priority value.
+ * Return: source priority value
+ */
+static int ice_synce_get_source_prio(struct dpll_device *dpll, int id)
+{
+	struct ice_pf *pf = dpll_priv(dpll);
+	u8 idx = (u8)id;
+	int ret;
+
+	if (idx >= pf->synce.num_inputs)
+		return 0xFF;
+
+	mutex_lock(&pf->synce.lock);
+	ret = pf->synce.inputs[idx].prio;
+	mutex_unlock(&pf->synce.lock);
+
+	return ret;
+}
+
+/**
+ * ice_synce_set_source_prio
+ * @dpll: registered dpll pointer
+ * @id: source index
+ * @prio: expected priority value
+ *
+ * dpll subsystem callback.
+ * Set source priority value.
+ * Return:
+ * * 0 - success
+ * * negative - failure
+ */
+static int ice_synce_set_source_prio(struct dpll_device *dpll, int id, int prio)
+{
+	struct ice_pf *pf = dpll_priv(dpll);
+	struct ice_synce *se = &pf->synce;
+	u8 idx = (u8)id, priov = (u8)prio;
+	int ret;
+
+	if (priov > ICE_SYNCE_PRIO_MAX)
+		return -EINVAL;
+
+	if (idx >= pf->synce.num_inputs)
+		return -EINVAL;
+
+	mutex_lock(&pf->synce.lock);
+	ret = ice_aq_set_cgu_ref_prio(&pf->hw, se->dpll_idx, idx, priov);
+	if (!ret)
+		se->inputs[idx].prio = priov;
+	mutex_unlock(&pf->synce.lock);
+	if (ret)
+		dev_dbg(ice_pf_to_dev(pf),
+			"err:%d %s failed to set pin prio:%u on pin:%u\n",
+			ret, ice_aq_str(pf->hw.adminq.sq_last_status),
+			priov, idx);
+
+	return ret;
+}
+
 static struct dpll_device_ops ice_synce_dpll_ops = {
 	.get_status = ice_synce_get_status,
 	.get_lock_status = ice_synce_get_lock_status,
@@ -290,6 +386,10 @@ static struct dpll_device_ops ice_synce_dpll_ops = {
 	.get_output_type = ice_synce_get_output_type,
 	.set_output_type = ice_synce_set_output_type,
 	.get_output_supported = ice_synce_get_output_supported,
+	.get_source_select_mode = ice_synce_get_source_select_mode,
+	.get_source_select_mode_supported = ice_synce_get_src_select_supported,
+	.get_source_prio = ice_synce_get_source_prio,
+	.set_source_prio = ice_synce_set_source_prio,
 };
 
 /**
