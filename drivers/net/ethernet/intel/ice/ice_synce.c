@@ -377,6 +377,28 @@ static int ice_synce_set_source_prio(struct dpll_device *dpll, int id, int prio)
 	return ret;
 }
 
+const char *ice_synce_get_source_name(struct dpll_device *dpll, int id)
+{
+	struct ice_pf *pf = dpll_priv(dpll);
+	u8 idx = (u8)id;
+
+	if (idx >= pf->synce.num_inputs)
+		return NULL;
+
+	return pf->synce.inputs[idx].name;
+}
+
+const char *ice_synce_get_output_name(struct dpll_device *dpll, int id)
+{
+	struct ice_pf *pf = dpll_priv(dpll);
+	u8 idx = (u8)id;
+
+	if (idx >= pf->synce.num_outputs)
+		return NULL;
+
+	return pf->synce.outputs[idx].name;
+}
+
 static struct dpll_device_ops ice_synce_dpll_ops = {
 	.get_status = ice_synce_get_status,
 	.get_lock_status = ice_synce_get_lock_status,
@@ -390,6 +412,8 @@ static struct dpll_device_ops ice_synce_dpll_ops = {
 	.get_source_select_mode_supported = ice_synce_get_src_select_supported,
 	.get_source_prio = ice_synce_get_source_prio,
 	.set_source_prio = ice_synce_set_source_prio,
+	.get_source_name = ice_synce_get_source_name,
+	.get_output_name = ice_synce_get_output_name,
 };
 
 /**
@@ -530,13 +554,14 @@ static void ice_synce_release_info(struct ice_pf *pf)
 static int ice_synce_init_pins(struct ice_hw *hw, bool input, int num_pins,
 			       struct ice_synce_pin *pins, u8 dpll_idx)
 {
-	int ret;
+	int ret = -EINVAL;
 	u8 i;
 
 	for (i = 0; i < num_pins; i++) {
 		pins[i].num_types =
 			ice_cgu_get_pin_num_types_supported(hw, i, input);
 		ice_synce_init_pin_types(hw, input, i, &pins[i]);
+		pins[i].name = ice_cgu_get_pin_name(hw, i, input);
 		if (input) {
 			ret = ice_aq_get_cgu_ref_prio(hw, dpll_idx, i,
 						      &pins[i].prio);
@@ -553,7 +578,7 @@ static int ice_synce_init_pins(struct ice_hw *hw, bool input, int num_pins,
 		}
 	}
 
-	return 0;
+	return ret;
 }
 
 /**

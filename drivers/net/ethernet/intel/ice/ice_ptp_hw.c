@@ -3504,6 +3504,32 @@ u32 ice_cgu_get_pin_types_supported(struct ice_hw *hw, u8 pin, bool input)
 }
 
 /**
+ * ice_cgu_get_pin_name
+ * @hw: pointer to the hw struct
+ * @pin: pin index
+ * @input: if request is done against input or output pin
+ *
+ * Return:
+ * * null terminated char array with name
+ * * NULL in case of failure
+ */
+const char *ice_cgu_get_pin_name(struct ice_hw *hw, u8 pin, bool input)
+{
+	const struct ice_cgu_pin_desc *t;
+	int t_size;
+
+	t = ice_cgu_get_pin_desc(hw, input, &t_size);
+
+	if (!t)
+		return NULL;
+
+	if (pin >= t_size)
+		return NULL;
+
+	return t[pin].name;
+}
+
+/**
  * ice_get_cgu_state - get the state of the DPLL
  * @hw: pointer to the hw struct
  * @dpll_idx: Index of internal DPLL unit

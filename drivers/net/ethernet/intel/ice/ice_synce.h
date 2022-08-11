@@ -21,6 +21,7 @@ struct ice_synce_pin {
 	u8 num_types;
 	u8 flags;
 	u8 prio;
+	const char *name;
 };
 
 /** ice_synce - store info required for SyncE and CGU DPLL control

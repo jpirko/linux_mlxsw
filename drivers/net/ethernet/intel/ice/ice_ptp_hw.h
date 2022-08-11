@@ -375,6 +375,7 @@ bool ice_is_clock_mux_present_e810t(struct ice_hw *hw);
 bool ice_is_cgu_present(struct ice_hw *hw);
 u8 ice_cgu_get_pin_num_types_supported(struct ice_hw *hw, u8 pin, bool input);
 u32 ice_cgu_get_pin_types_supported(struct ice_hw *hw, u8 pin, bool input);
+const char *ice_cgu_get_pin_name(struct ice_hw *hw, u8 pin, bool input);
 int ice_get_cgu_state(struct ice_hw *hw, u8 dpll_idx,
 		      enum ice_cgu_state last_dpll_state, u8 *pin,
 		      u8 *ref_state, u8 *eec_mode, s64 *phase_offset,
