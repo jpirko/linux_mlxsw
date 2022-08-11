@@ -31,12 +31,16 @@ static const struct nla_policy dpll_genl_set_source_policy[] = {
 	[DPLLA_DEVICE_ID]	= { .type = NLA_U32 },
 	[DPLLA_SOURCE_ID]	= { .type = NLA_U32 },
 	[DPLLA_SOURCE_TYPE]	= { .type = NLA_U32 },
+	[DPLLA_SOURCE_NAME]	= { .type = NLA_STRING,
+				    .len = DPLL_NAME_LENGTH },
 };
 
 static const struct nla_policy dpll_genl_set_output_policy[] = {
 	[DPLLA_DEVICE_ID]	= { .type = NLA_U32 },
 	[DPLLA_OUTPUT_ID]	= { .type = NLA_U32 },
 	[DPLLA_OUTPUT_TYPE]	= { .type = NLA_U32 },
+	[DPLLA_OUTPUT_NAME]	= { .type = NLA_STRING,
+				    .len = DPLL_NAME_LENGTH },
 };
 
 static const struct nla_policy dpll_genl_set_src_select_mode_policy[] = {
@@ -100,6 +104,7 @@ static int __dpll_cmd_dump_sources(struct dpll_device *dpll,
 {
 	int i, ret = 0, type, prio;
 	struct nlattr *src_attr;
+	const char *name;
 
 	for (i = 0; i < dpll->sources_count; i++) {
 		src_attr = nla_nest_start(msg, DPLLA_SOURCE);
@@ -132,6 +137,15 @@ static int __dpll_cmd_dump_sources(struct dpll_device *dpll,
 				break;
 			}
 		}
+		if (dpll->ops->get_source_name) {
+			name = dpll->ops->get_source_name(dpll, i);
+			if (name && nla_put_string(msg, DPLLA_SOURCE_NAME,
+						   name)) {
+				nla_nest_cancel(msg, src_attr);
+				ret = -EMSGSIZE;
+				break;
+			}
+		}
 		nla_nest_end(msg, src_attr);
 	}
 
@@ -143,6 +157,7 @@ static int __dpll_cmd_dump_outputs(struct dpll_device *dpll,
 {
 	struct nlattr *out_attr;
 	int i, ret = 0, type;
+	const char *name;
 
 	for (i = 0; i < dpll->outputs_count; i++) {
 		out_attr = nla_nest_start(msg, DPLLA_OUTPUT);
@@ -166,6 +181,15 @@ static int __dpll_cmd_dump_outputs(struct dpll_device *dpll,
 				}
 			}
 			ret = 0;
+		}
+		if (dpll->ops->get_output_name) {
+			name = dpll->ops->get_output_name(dpll, i);
+			if (name && nla_put_string(msg, DPLLA_OUTPUT_NAME,
+						   name)) {
+				nla_nest_cancel(msg, out_attr);
+				ret = -EMSGSIZE;
+				break;
+			}
 		}
 		nla_nest_end(msg, out_attr);
 	}

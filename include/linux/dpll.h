@@ -23,6 +23,8 @@ struct dpll_device_ops {
 	int (*set_output_type)(struct dpll_device *dpll, int id, int val);
 	int (*set_source_select_mode)(struct dpll_device *dpll, int mode);
 	int (*set_source_prio)(struct dpll_device *dpll, int id, int prio);
+	const char *(*get_source_name)(struct dpll_device *dpll, int id);
+	const char *(*get_output_name)(struct dpll_device *dpll, int id);
 };
 
 struct dpll_device *dpll_device_alloc(struct dpll_device_ops *ops, const char *name,
