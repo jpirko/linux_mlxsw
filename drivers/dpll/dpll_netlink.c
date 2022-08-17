@@ -225,6 +225,10 @@ static int __dpll_cmd_dump_status(struct dpll_device *dpll,
 		ret = ops->get_source_select_mode(dpll);
 		if (nla_put_u32(msg, DPLLA_DEVICE_SRC_SELECT_MODE, ret))
 			return -EMSGSIZE;
+	} else {
+		if (nla_put_u32(msg, DPLLA_DEVICE_SRC_SELECT_MODE,
+				DPLL_SRC_SELECT_FORCED))
+			return -EMSGSIZE;
 	}
 
 	if (ops->get_source_select_mode_supported) {
@@ -233,10 +237,13 @@ static int __dpll_cmd_dump_status(struct dpll_device *dpll,
 			ret = ops->get_source_select_mode_supported(dpll,
 								    type);
 			if (ret && nla_put_u32(msg, attr, type)) {
-				ret = -EMSGSIZE;
-				break;
+				return -EMSGSIZE;
 			}
 		}
+	} else {
+		if (nla_put_u32(msg, DPLLA_DEVICE_SRC_SELECT_MODE_SUPPORTED,
+				DPLL_SRC_SELECT_FORCED))
+			return -EMSGSIZE;
 	}
 
 	return 0;
