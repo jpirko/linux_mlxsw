@@ -491,6 +491,7 @@ static int dpll_pre_doit(const struct genl_ops *ops, struct sk_buff *skb,
 static const struct genl_ops dpll_genl_ops[] = {
 	{
 		.cmd	= DPLL_CMD_DEVICE_GET,
+		.flags  = GENL_UNS_ADMIN_PERM,
 		.start	= dpll_genl_cmd_start,
 		.dumpit	= dpll_cmd_device_dump,
 		.doit	= dpll_genl_cmd_device_get_id,
