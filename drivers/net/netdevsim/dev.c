@@ -1001,8 +1001,14 @@ static int nsim_dev_info_get(struct devlink *devlink,
 						  DEVLINK_INFO_VERSION_TYPE_COMPONENT);
 	if (err)
 		return err;
-	return devlink_info_version_running_put_ext(req, "fw.mgmt", "10.20.30",
-						    DEVLINK_INFO_VERSION_TYPE_COMPONENT);
+	err = devlink_info_version_running_put_ext(req, "fw.mgmt", "10.20.30",
+						   DEVLINK_INFO_VERSION_TYPE_COMPONENT);
+	if (err)
+		return err;
+	err = devlink_info_version_stored_put(req, "fw", "11.22.33");
+	if (err)
+		return err;
+	return devlink_info_version_running_put(req, "fw", "11.22.33");
 }
 
 #define NSIM_DEV_FLASH_SIZE 500000
