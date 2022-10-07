@@ -9278,6 +9278,46 @@ mlxsw_sp_netdevice_vrf_event(struct net_device *l3_dev, unsigned long event,
 	return err;
 }
 
+static int
+mlxsw_sp_port_vid_router_join_existing(struct mlxsw_sp_port *mlxsw_sp_port,
+				       u16 vid, struct net_device *dev,
+				       struct netlink_ext_ack *extack)
+{
+	struct mlxsw_sp_port_vlan *mlxsw_sp_port_vlan;
+
+	mlxsw_sp_port_vlan = mlxsw_sp_port_vlan_find_by_vid(mlxsw_sp_port,
+							    vid);
+	if (WARN_ON(!mlxsw_sp_port_vlan))
+		return -EINVAL;
+
+	return mlxsw_sp_port_vlan_router_join_existing(mlxsw_sp_port_vlan,
+						       dev, extack);
+}
+
+static int __mlxsw_sp_router_port_join_lag(struct mlxsw_sp_port *mlxsw_sp_port,
+					   struct net_device *lag_dev,
+					   struct netlink_ext_ack *extack)
+{
+	u16 default_vid = MLXSW_SP_DEFAULT_VID;
+
+	return mlxsw_sp_port_vid_router_join_existing(mlxsw_sp_port,
+						      default_vid, lag_dev,
+						      extack);
+}
+
+int mlxsw_sp_router_port_join_lag(struct mlxsw_sp_port *mlxsw_sp_port,
+				  struct net_device *lag_dev,
+				  struct netlink_ext_ack *extack)
+{
+	int err;
+
+	mutex_lock(&mlxsw_sp_port->mlxsw_sp->router->lock);
+	err = __mlxsw_sp_router_port_join_lag(mlxsw_sp_port, lag_dev, extack);
+	mutex_unlock(&mlxsw_sp_port->mlxsw_sp->router->lock);
+
+	return err;
+}
+
 static int mlxsw_sp_router_netdevice_event(struct notifier_block *nb,
 					   unsigned long event, void *ptr)
 {
