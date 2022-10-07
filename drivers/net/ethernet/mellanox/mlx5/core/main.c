@@ -76,6 +76,7 @@
 #include "sf/dev/dev.h"
 #include "sf/sf.h"
 #include "mlx5_irq.h"
+#include "lib/dpll.h"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) core driver");
@@ -910,6 +911,12 @@ static int mlx5_init_once(struct mlx5_core_dev *dev)
 
 	mlx5_init_reserved_gids(dev);
 
+	err = mlx5_dpll_init(dev);
+	if (err) {
+		mlx5_core_err(dev, "Failed to initialize DPLL\n");
+		goto err_events_cleanup;
+	}
+
 	mlx5_init_clock(dev);
 
 	dev->vxlan = mlx5_vxlan_create(dev);
@@ -1032,6 +1039,7 @@ static void mlx5_cleanup_once(struct mlx5_core_dev *dev)
 	mlx5_geneve_destroy(dev->geneve);
 	mlx5_vxlan_destroy(dev->vxlan);
 	mlx5_cleanup_clock(dev);
+	mlx5_dpll_cleanup(dev);
 	mlx5_cleanup_reserved_gids(dev);
 	mlx5_cq_debugfs_cleanup(dev);
 	mlx5_fw_reset_cleanup(dev);
@@ -2025,9 +2033,13 @@ static int __init init(void)
 	mlx5_core_verify_params();
 	mlx5_register_debugfs();
 
-	err = pci_register_driver(&mlx5_core_driver);
+	err = mlx5_dpll_ht_init();
 	if (err)
 		goto err_debug;
+
+	err = pci_register_driver(&mlx5_core_driver);
+	if (err)
+		goto err_dpll_ht;
 
 	err = mlx5_sf_driver_register();
 	if (err)
@@ -2043,6 +2055,8 @@ err_en:
 	mlx5_sf_driver_unregister();
 err_sf:
 	pci_unregister_driver(&mlx5_core_driver);
+err_dpll_ht:
+	mlx5_dpll_ht_cleanup();
 err_debug:
 	mlx5_unregister_debugfs();
 	return err;
@@ -2053,6 +2067,7 @@ static void __exit cleanup(void)
 	mlx5e_cleanup();
 	mlx5_sf_driver_unregister();
 	pci_unregister_driver(&mlx5_core_driver);
+	mlx5_dpll_ht_cleanup();
 	mlx5_unregister_debugfs();
 }
 
