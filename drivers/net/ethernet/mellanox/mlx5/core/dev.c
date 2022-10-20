@@ -273,6 +273,9 @@ int mlx5_adev_init(struct mlx5_core_dev *dev)
 	if (!priv->adev)
 		return -ENOMEM;
 
+	RAW_INIT_NOTIFIER_HEAD(&priv->adev_notifier);
+	mutex_init(&priv->adev_notifier_lock);
+
 	return 0;
 }
 
@@ -280,6 +283,7 @@ void mlx5_adev_cleanup(struct mlx5_core_dev *dev)
 {
 	struct mlx5_priv *priv = &dev->priv;
 
+	mutex_destroy(&priv->adev_notifier_lock);
 	kfree(priv->adev);
 }
 
@@ -293,6 +297,50 @@ static void adev_release(struct device *dev)
 	kfree(mlx5_adev);
 	priv->adev[idx] = NULL;
 }
+
+void __mlx5_adev_notifier_call(struct mlx5_core_dev *dev,
+			       enum mlx5_adev_event event, void *v)
+{
+	struct mlx5_priv *priv = &dev->priv;
+
+	raw_notifier_call_chain(&priv->adev_notifier, event, v);
+}
+EXPORT_SYMBOL(__mlx5_adev_notifier_call);
+
+void mlx5_adev_notifier_call(struct mlx5_core_dev *dev,
+			     enum mlx5_adev_event event, void *v)
+{
+	struct mlx5_priv *priv = &dev->priv;
+
+	mutex_lock(&priv->adev_notifier_lock);
+	__mlx5_adev_notifier_call(dev, event, v);
+	mutex_unlock(&priv->adev_notifier_lock);
+}
+EXPORT_SYMBOL(mlx5_adev_notifier_call);
+
+void mlx5_adev_notifier_register(struct mlx5_core_dev *dev,
+				 struct notifier_block *nb)
+{
+	struct mlx5_priv *priv = &dev->priv;
+
+	mutex_lock(&priv->adev_notifier_lock);
+	WARN_ON(raw_notifier_chain_register(&priv->adev_notifier, nb));
+	__mlx5_adev_notifier_call(dev, MLX5_ADEV_EVENT_NB_REGISTERED, NULL);
+	mutex_unlock(&priv->adev_notifier_lock);
+}
+EXPORT_SYMBOL(mlx5_adev_notifier_register);
+
+void mlx5_adev_notifier_unregister(struct mlx5_core_dev *dev,
+				   struct notifier_block *nb)
+{
+	struct mlx5_priv *priv = &dev->priv;
+
+	mutex_lock(&priv->adev_notifier_lock);
+	__mlx5_adev_notifier_call(dev, MLX5_ADEV_EVENT_NB_UNREGISTERED, NULL);
+	WARN_ON(raw_notifier_chain_unregister(&priv->adev_notifier, nb));
+	mutex_unlock(&priv->adev_notifier_lock);
+}
+EXPORT_SYMBOL(mlx5_adev_notifier_unregister);
 
 static struct mlx5_adev *add_adev(struct mlx5_core_dev *dev, int idx)
 {

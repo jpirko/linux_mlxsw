@@ -49,6 +49,8 @@
 #include <linux/notifier.h>
 #include <linux/refcount.h>
 #include <linux/auxiliary_bus.h>
+#include <linux/notifier.h>
+#include <linux/mutex.h>
 
 #include <linux/mlx5/device.h>
 #include <linux/mlx5/doorbell.h>
@@ -610,6 +612,8 @@ struct mlx5_priv {
 	spinlock_t              ctx_lock;
 	struct mlx5_adev       **adev;
 	int			adev_idx;
+	struct raw_notifier_head adev_notifier;
+	struct mutex            adev_notifier_lock;
 	int			sw_vhca_id;
 	struct mlx5_events      *events;
 
@@ -1140,6 +1144,40 @@ int mlx5_blocking_notifier_register(struct mlx5_core_dev *dev, struct notifier_b
 int mlx5_blocking_notifier_unregister(struct mlx5_core_dev *dev, struct notifier_block *nb);
 int mlx5_blocking_notifier_call_chain(struct mlx5_core_dev *dev, unsigned int event,
 				      void *data);
+
+enum mlx5_adev_event {
+	MLX5_ADEV_EVENT_NB_REGISTERED, /* v is NULL
+					* This event is generated
+					* after notifier block is
+					* registered in
+					* mlx5_adev_notifier_register()
+					*/
+	MLX5_ADEV_EVENT_NB_UNREGISTERED, /* v is NULL
+					  * This event is generated
+					  * before notifier block is
+					  * unregistered in
+					  * mlx5_adev_notifier_unregister()
+					  */
+	MLX5_ADEV_EVENT_NETDEV_ADDED, /* v is struct net_device *
+				       * This event takes place
+				       * before calling
+				       * netdev_register()
+				       */
+	MLX5_ADEV_EVENT_NETDEV_REMOVED, /* v is struct net_device *
+					 * This event takes place
+					 * after calling
+					 * netdev_unregister()
+					 */
+};
+
+void __mlx5_adev_notifier_call(struct mlx5_core_dev *dev,
+			       enum mlx5_adev_event event, void *v);
+void mlx5_adev_notifier_call(struct mlx5_core_dev *dev,
+			     enum mlx5_adev_event event, void *v);
+void mlx5_adev_notifier_register(struct mlx5_core_dev *dev,
+				 struct notifier_block *nb);
+void mlx5_adev_notifier_unregister(struct mlx5_core_dev *dev,
+				   struct notifier_block *nb);
 
 int mlx5_core_query_vendor_id(struct mlx5_core_dev *mdev, u32 *vendor_id);
 
