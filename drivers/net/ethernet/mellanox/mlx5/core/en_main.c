@@ -5516,6 +5516,36 @@ void mlx5e_set_rx_mode_work(struct work_struct *work)
 	return mlx5e_fs_set_rx_mode_work(priv->fs, priv->netdev);
 }
 
+static int mlx5e_adev_notifier_event(struct notifier_block *nb,
+				     unsigned long event, void *data)
+{
+	struct mlx5e_priv *priv = container_of(nb, struct mlx5e_priv, adev_nb);
+	struct mlx5_core_dev *mdev = priv->mdev;
+
+	switch (event) {
+	case MLX5_ADEV_EVENT_NB_REGISTERED:
+		/* Whenever an adev event handler is registered, propagate
+		 * "netdev added" event, so it the newly registered adev event
+		 * handler can process it.
+		 */
+		__mlx5_adev_notifier_call(mdev, MLX5_ADEV_EVENT_NETDEV_ADDED,
+					  priv->netdev);
+		break;
+	case MLX5_ADEV_EVENT_NB_UNREGISTERED:
+		/* Whenever an adev event handler is about to be unregistered,
+		 * propagate "netdev removed" event, so the adev event handler
+		 * to be unregistered and process it and do appropriate cleanup.
+		 */
+		__mlx5_adev_notifier_call(mdev, MLX5_ADEV_EVENT_NETDEV_REMOVED,
+					  priv->netdev);
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
+}
+
 /* mlx5e generic netdev management API (move to en_common.c) */
 int mlx5e_priv_init(struct mlx5e_priv *priv,
 		    const struct mlx5e_profile *profile,
@@ -5567,6 +5597,10 @@ int mlx5e_priv_init(struct mlx5e_priv *priv,
 	if (!priv->channel_stats)
 		goto err_free_tx_rates;
 
+	priv->adev_nb.notifier_call = mlx5e_adev_notifier_event;
+	mlx5_adev_notifier_register(mdev, &priv->adev_nb);
+	mlx5_adev_notifier_call(mdev, MLX5_ADEV_EVENT_NETDEV_ADDED, netdev);
+
 	return 0;
 
 err_free_tx_rates:
@@ -5589,6 +5623,10 @@ void mlx5e_priv_cleanup(struct mlx5e_priv *priv)
 	/* bail if change profile failed and also rollback failed */
 	if (!priv->mdev)
 		return;
+
+	mlx5_adev_notifier_call(priv->mdev, MLX5_ADEV_EVENT_NETDEV_REMOVED,
+				priv->netdev);
+	mlx5_adev_notifier_unregister(priv->mdev, &priv->adev_nb);
 
 	for (i = 0; i < priv->stats_nch; i++)
 		kvfree(priv->channel_stats[i]);
