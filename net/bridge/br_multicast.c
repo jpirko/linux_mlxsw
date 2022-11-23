@@ -49,6 +49,13 @@ static const struct rhashtable_params br_sg_port_rht_params = {
 	.automatic_shrinking = true,
 };
 
+static const struct rhashtable_params br_port_ngroups_tab_params = {
+	.head_offset = offsetof(struct net_bridge_port_ngroups, rhnode),
+	.key_offset = offsetof(struct net_bridge_port_ngroups, vid),
+	.key_len = sizeof_field(struct net_bridge_port_ngroups, vid),
+	.automatic_shrinking = true,
+};
+
 static void br_multicast_start_querier(struct net_bridge_mcast *brmctx,
 				       struct bridge_mcast_own_query *query);
 static void br_ip4_multicast_add_router(struct net_bridge_mcast *brmctx,
@@ -662,11 +669,71 @@ void br_multicast_del_group_src(struct net_bridge_group_src *src,
 	queue_work(system_long_wq, &br->mcast_gc_work);
 }
 
+static int br_port_ngroups_inc(struct net_bridge_port *port, u16 vid)
+{
+	struct net_bridge_port_ngroups *png;
+	int err;
+
+	png = rhashtable_lookup_fast(&port->ngroups_tab, &vid,
+				     br_port_ngroups_tab_params);
+	if (!png) {
+		printk(KERN_WARNING "alloc new port ngroups entry for port %s vid %d\n",
+		       port->dev->name, vid);
+		png = kzalloc(sizeof(*png), GFP_ATOMIC);
+		if (!png)
+			return -ENOMEM;
+		png->vid = vid;
+
+		// xxx "Note that rhashtable_insert_fast() can insert duplicates
+		// in the table, so it must be used with caution." Maybe this
+		// needs to use rhashtable_lookup_get_insert_fast().
+		err = rhashtable_insert_fast(&port->ngroups_tab, &png->rhnode,
+					     br_port_ngroups_tab_params);
+		if (err) {
+			kfree(png);
+			return err;
+		}
+	}
+
+	if (png->max && png->n == png->max)
+		/* Nothing to free, this cannot happen if the element was
+		 * allocated above.
+		 */
+		return -E2BIG;
+
+	png->n++;
+	printk(KERN_WARNING "ngroups for port %s vid %d inc to %d\n",
+	       port->dev->name, vid, png->n);
+	return 0;
+}
+
+static void br_port_ngroups_dec(struct net_bridge_port *port, u16 vid)
+{
+	struct net_bridge_port_ngroups *png;
+
+	png = rhashtable_lookup_fast(&port->ngroups_tab, &vid,
+				     br_port_ngroups_tab_params);
+	if (WARN_ON(!png))
+		return;
+
+	--png->n;
+	printk(KERN_WARNING "ngroups for port %s vid %d dec to %d\n",
+	       port->dev->name, vid, png->n);
+	if (!png->n && !png->max) {
+		rhashtable_remove_fast(&port->ngroups_tab, &png->rhnode,
+				       br_port_ngroups_tab_params);
+		kfree(png);
+		printk(KERN_WARNING "released port ngroups entry for port %s vid %d\n",
+		       port->dev->name, vid);
+	}
+}
+
 static void br_multicast_destroy_port_group(struct net_bridge_mcast_gc *gc)
 {
 	struct net_bridge_port_group *pg;
 
 	pg = container_of(gc, struct net_bridge_port_group, mcast_gc);
+	br_port_ngroups_dec(pg->key.port, pg->key.addr.vid);
 	WARN_ON(!hlist_unhashed(&pg->mglist));
 	WARN_ON(!hlist_empty(&pg->src_list));
 
@@ -1281,6 +1348,7 @@ struct net_bridge_port_group *br_multicast_new_port_group(
 			u8 rt_protocol)
 {
 	struct net_bridge_port_group *p;
+	int err;
 
 	p = kzalloc(sizeof(*p), GFP_ATOMIC);
 	if (unlikely(!p))
@@ -1312,6 +1380,12 @@ struct net_bridge_port_group *br_multicast_new_port_group(
 		memcpy(p->eth_addr, src, ETH_ALEN);
 	else
 		eth_broadcast_addr(p->eth_addr);
+
+	err = br_port_ngroups_inc(port, group->vid);
+	if (err) {
+		kfree(p);
+		return NULL;
+	}
 
 	return p;
 }
@@ -1879,7 +1953,15 @@ int br_multicast_add_port(struct net_bridge_port *port)
 	if (!port->mcast_stats)
 		return -ENOMEM;
 
+	err = rhashtable_init(&port->ngroups_tab, &br_port_ngroups_tab_params);
+	if (err)
+		goto free_pcpu_stats_out;
+
 	return 0;
+
+free_pcpu_stats_out:
+	free_percpu(port->mcast_stats);
+	return err;
 }
 
 void br_multicast_del_port(struct net_bridge_port *port)
@@ -1898,6 +1980,9 @@ void br_multicast_del_port(struct net_bridge_port *port)
 	br_multicast_gc(&deleted_head);
 	br_multicast_port_ctx_deinit(&port->multicast_ctx);
 	free_percpu(port->mcast_stats);
+	// xxx free the outstanding elements. Some of them will stay because
+	// there is a configured maximum.
+	rhashtable_destroy(&port->ngroups_tab);
 }
 
 static void br_multicast_enable(struct bridge_mcast_own_query *query)

@@ -415,6 +415,14 @@ struct net_bridge_port {
 	u16				backup_redirected_cnt;
 
 	struct bridge_stp_xstats	stp_xstats;
+	struct rhashtable		ngroups_tab;
+};
+
+struct net_bridge_port_ngroups {
+	struct rhash_head		rhnode;
+	u16				vid; /* key */
+	unsigned int			max;
+	unsigned int			n;
 };
 
 #define kobj_to_brport(obj)	container_of(obj, struct net_bridge_port, kobj)
