@@ -926,9 +926,10 @@ static int br_mdb_add_group(struct net_bridge *br, struct net_bridge_port *port,
 		flags |= MDB_PG_FLAGS_PERMANENT;
 
 	p = br_multicast_new_port_group(port, &group, *pp, flags, NULL,
-					filter_mode, RTPROT_STATIC);
+					filter_mode, RTPROT_STATIC, extack);
 	if (unlikely(!p)) {
-		NL_SET_ERR_MSG_MOD(extack, "Couldn't allocate new port group");
+		if (extack && !extack->_msg)
+			NL_SET_ERR_MSG_MOD(extack, "Couldn't allocate new port group");
 		return -ENOMEM;
 	}
 	rcu_assign_pointer(*pp, p);

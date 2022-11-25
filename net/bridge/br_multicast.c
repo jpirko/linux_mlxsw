@@ -669,37 +669,55 @@ void br_multicast_del_group_src(struct net_bridge_group_src *src,
 	queue_work(system_long_wq, &br->mcast_gc_work);
 }
 
-static int br_port_ngroups_inc(struct net_bridge_port *port, u16 vid)
+static struct net_bridge_port_ngroups *
+br_multicast_port_ngroups_get(struct net_bridge_port *port, u16 vid)
 {
 	struct net_bridge_port_ngroups *png;
 	int err;
 
 	png = rhashtable_lookup_fast(&port->ngroups_tab, &vid,
 				     br_port_ngroups_tab_params);
-	if (!png) {
-		printk(KERN_WARNING "alloc new port ngroups entry for port %s vid %d\n",
-		       port->dev->name, vid);
-		png = kzalloc(sizeof(*png), GFP_ATOMIC);
-		if (!png)
-			return -ENOMEM;
-		png->vid = vid;
+	if (png)
+		return png;
 
-		// xxx "Note that rhashtable_insert_fast() can insert duplicates
-		// in the table, so it must be used with caution." Maybe this
-		// needs to use rhashtable_lookup_get_insert_fast().
-		err = rhashtable_insert_fast(&port->ngroups_tab, &png->rhnode,
-					     br_port_ngroups_tab_params);
-		if (err) {
-			kfree(png);
-			return err;
-		}
+	printk(KERN_WARNING "alloc new port ngroups entry for port %s vid %d\n",
+	       port->dev->name, vid);
+	png = kzalloc(sizeof(*png), GFP_ATOMIC);
+	if (!png)
+		return ERR_PTR(-ENOMEM);
+
+	png->vid = vid;
+
+	// xxx "Note that rhashtable_insert_fast() can insert duplicates
+	// in the table, so it must be used with caution." Maybe this
+	// needs to use rhashtable_lookup_get_insert_fast().
+	err = rhashtable_insert_fast(&port->ngroups_tab, &png->rhnode,
+				     br_port_ngroups_tab_params);
+	if (err) {
+		kfree(png);
+		return ERR_PTR(err);
 	}
 
-	if (png->max && png->n == png->max)
+	return png;
+}
+
+static int br_multicast_port_ngroups_inc(struct net_bridge_port *port, u16 vid,
+					 struct netlink_ext_ack *extack)
+{
+	struct net_bridge_port_ngroups *png;
+
+	png = br_multicast_port_ngroups_get(port, vid);
+	if (IS_ERR(png))
+		return PTR_ERR(png);
+
+	if (png->max && png->n == png->max) {
+		NL_SET_ERR_MSG_MOD(extack, "Port is already a member in max_groups groups");
+
 		/* Nothing to free, this cannot happen if the element was
-		 * allocated above.
+		 * allocated in get.
 		 */
-		return -E2BIG;
+		return -EFBIG;
+	}
 
 	png->n++;
 	printk(KERN_WARNING "ngroups for port %s vid %d inc to %d\n",
@@ -707,7 +725,7 @@ static int br_port_ngroups_inc(struct net_bridge_port *port, u16 vid)
 	return 0;
 }
 
-static void br_port_ngroups_dec(struct net_bridge_port *port, u16 vid)
+static void br_multicast_port_ngroups_dec(struct net_bridge_port *port, u16 vid)
 {
 	struct net_bridge_port_ngroups *png;
 
@@ -728,12 +746,43 @@ static void br_port_ngroups_dec(struct net_bridge_port *port, u16 vid)
 	}
 }
 
+int br_multicast_port_ngroups_set_max(struct net_bridge_port *port,
+				      struct net_bridge_vlan *v, u32 max,
+				      struct netlink_ext_ack *extack)
+{
+	struct net_bridge_port_ngroups *png;
+	u16 vid = v->vid;
+	int err = 0;
+
+	spin_lock(&port->br->multicast_lock);
+
+	png = br_multicast_port_ngroups_get(port, vid);
+	if (IS_ERR(png)) {
+		err = PTR_ERR(png);
+		goto out;
+	}
+
+	if (max < png->n) {
+		NL_SET_ERR_MSG_MOD(extack, "Can't set max_groups lower than the current number of groups");
+		err = -EFBIG;
+		goto out;
+	}
+
+	printk(KERN_WARNING "ngroups for port %s vid %d set max %d\n",
+	       port->dev->name, vid, max);
+	png->max = max;
+
+out:
+	spin_unlock(&port->br->multicast_lock);
+	return err;
+}
+
 static void br_multicast_destroy_port_group(struct net_bridge_mcast_gc *gc)
 {
 	struct net_bridge_port_group *pg;
 
 	pg = container_of(gc, struct net_bridge_port_group, mcast_gc);
-	br_port_ngroups_dec(pg->key.port, pg->key.addr.vid);
+	br_multicast_port_ngroups_dec(pg->key.port, pg->key.addr.vid);
 	WARN_ON(!hlist_unhashed(&pg->mglist));
 	WARN_ON(!hlist_empty(&pg->src_list));
 
@@ -1345,10 +1394,15 @@ struct net_bridge_port_group *br_multicast_new_port_group(
 			unsigned char flags,
 			const unsigned char *src,
 			u8 filter_mode,
-			u8 rt_protocol)
+			u8 rt_protocol,
+			struct netlink_ext_ack *extack)
 {
 	struct net_bridge_port_group *p;
 	int err;
+
+	err = br_multicast_port_ngroups_inc(port, group->vid, extack);
+	if (err)
+		return NULL;
 
 	p = kzalloc(sizeof(*p), GFP_ATOMIC);
 	if (unlikely(!p))
@@ -1367,6 +1421,7 @@ struct net_bridge_port_group *br_multicast_new_port_group(
 	if (!br_multicast_is_star_g(group) &&
 	    rhashtable_lookup_insert_fast(&port->br->sg_port_tbl, &p->rhnode,
 					  br_sg_port_rht_params)) {
+		br_multicast_port_ngroups_dec(port, group->vid);
 		kfree(p);
 		return NULL;
 	}
@@ -1380,12 +1435,6 @@ struct net_bridge_port_group *br_multicast_new_port_group(
 		memcpy(p->eth_addr, src, ETH_ALEN);
 	else
 		eth_broadcast_addr(p->eth_addr);
-
-	err = br_port_ngroups_inc(port, group->vid);
-	if (err) {
-		kfree(p);
-		return NULL;
-	}
 
 	return p;
 }
@@ -1428,6 +1477,13 @@ __br_multicast_add_group(struct net_bridge_mcast *brmctx,
 			 bool igmpv2_mldv1,
 			 bool blocked)
 {
+	/*
+	int proto = group->proto == htons(ETH_P_IP) ? AF_INET :
+		    group->proto == htons(ETH_P_IPV6) ? AF_INET6 :
+		    -1;
+	struct sockaddr src_sa = { proto };
+	struct sockaddr dst_sa = { proto };
+	*/
 	struct net_bridge_port_group __rcu **pp;
 	struct net_bridge_port_group *p = NULL;
 	struct net_bridge_mdb_entry *mp;
@@ -1435,6 +1491,13 @@ __br_multicast_add_group(struct net_bridge_mcast *brmctx,
 
 	if (!br_multicast_ctx_should_use(brmctx, pmctx))
 		goto out;
+
+	/*
+	memcpy(src_sa.sa_data_min, &group->src, 14);
+	memcpy(dst_sa.sa_data_min, &group->dst, 14);
+	printk(KERN_WARNING "__br_multicast_add_group src %pISc dst %pISc\n",
+	       &src_sa, &dst_sa);
+	*/
 
 	mp = br_multicast_new_group(brmctx->br, group);
 	if (IS_ERR(mp))
@@ -1455,7 +1518,7 @@ __br_multicast_add_group(struct net_bridge_mcast *brmctx,
 	}
 
 	p = br_multicast_new_port_group(pmctx->port, group, *pp, 0, src,
-					filter_mode, RTPROT_KERNEL);
+					filter_mode, RTPROT_KERNEL, NULL);
 	if (unlikely(!p)) {
 		p = ERR_PTR(-ENOMEM);
 		goto out;
@@ -1964,6 +2027,26 @@ free_pcpu_stats_out:
 	return err;
 }
 
+static void br_port_ngroups_flush(struct net_bridge_port *port)
+{
+	struct net_bridge_port_ngroups *png;
+	struct rhashtable_iter iter;
+
+	rhashtable_walk_enter(&port->ngroups_tab, &iter);
+	rhashtable_walk_start(&iter);
+	while ((png = rhashtable_walk_next(&iter)) != NULL) {
+		if (IS_ERR(png))
+			continue;
+		printk(KERN_WARNING "flushing port %s vid %d max %d\n",
+		       port->dev->name, png->vid, png->max);
+		rhashtable_remove_fast(&port->ngroups_tab, &png->rhnode,
+				       br_port_ngroups_tab_params);
+		kfree(png);
+	}
+	rhashtable_walk_stop(&iter);
+	rhashtable_walk_exit(&iter);
+}
+
 void br_multicast_del_port(struct net_bridge_port *port)
 {
 	struct net_bridge *br = port->br;
@@ -1980,8 +2063,7 @@ void br_multicast_del_port(struct net_bridge_port *port)
 	br_multicast_gc(&deleted_head);
 	br_multicast_port_ctx_deinit(&port->multicast_ctx);
 	free_percpu(port->mcast_stats);
-	// xxx free the outstanding elements. Some of them will stay because
-	// there is a configured maximum.
+	br_port_ngroups_flush(port);
 	rhashtable_destroy(&port->ngroups_tab);
 }
 
