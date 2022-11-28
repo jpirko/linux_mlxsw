@@ -2215,8 +2215,24 @@ __mlxsw_core_bus_device_register(const struct mlxsw_bus_info *mlxsw_bus_info,
 		devl_unlock(devlink);
 		devlink_register(devlink);
 	}
+
+	if (mlxsw_driver->ports_init) {
+		if (!reload)
+			devl_lock(devlink);
+		err = mlxsw_driver->ports_init(mlxsw_core);
+		if (!reload)
+			devl_unlock(devlink);
+		if (err)
+			goto err_driver_ports_init;
+	}
+
 	return 0;
 
+err_driver_ports_init:
+	if (!reload) {
+		devlink_unregister(devlink);
+		devl_lock(devlink);
+	}
 err_driver_init:
 	mlxsw_env_fini(mlxsw_core->env);
 err_env_init:
@@ -2283,6 +2299,14 @@ void mlxsw_core_bus_device_unregister(struct mlxsw_core *mlxsw_core,
 				      bool reload)
 {
 	struct devlink *devlink = priv_to_devlink(mlxsw_core);
+
+	if (mlxsw_core->driver->ports_fini) {
+		if (!reload)
+			devl_lock(devlink);
+		mlxsw_core->driver->ports_fini(mlxsw_core);
+		if (!reload)
+			devl_unlock(devlink);
+	}
 
 	if (!reload) {
 		devlink_unregister(devlink);
