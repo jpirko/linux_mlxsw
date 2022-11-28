@@ -2018,17 +2018,22 @@ static int funeth_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (rc)
 		goto free_devlink;
 
+	fun_devlink_register(devlink);
+
 	rc = fun_get_res_count(fdev, FUN_ADMIN_OP_PORT);
-	if (rc > 0)
-		rc = fun_create_ports(ed, rc);
 	if (rc < 0)
-		goto disable_dev;
+		goto unregister_devlink;
+	if (rc > 0) {
+		rc = fun_create_ports(ed, rc);
+		if (rc < 0)
+			goto unregister_devlink;
+	}
 
 	fun_serv_restart(fdev);
-	fun_devlink_register(devlink);
 	return 0;
 
-disable_dev:
+unregister_devlink:
+	fun_devlink_unregister(devlink);
 	fun_dev_disable(fdev);
 free_devlink:
 	mutex_destroy(&ed->state_mutex);
@@ -2044,7 +2049,6 @@ static void funeth_remove(struct pci_dev *pdev)
 
 	ed = to_fun_ethdev(fdev);
 	devlink = priv_to_devlink(ed);
-	fun_devlink_unregister(devlink);
 
 #ifdef CONFIG_PCI_IOV
 	funeth_sriov_configure(pdev, 0);
@@ -2052,6 +2056,7 @@ static void funeth_remove(struct pci_dev *pdev)
 
 	fun_serv_stop(fdev);
 	fun_destroy_ports(ed);
+	fun_devlink_unregister(devlink);
 	fun_dev_disable(fdev);
 	mutex_destroy(&ed->state_mutex);
 

@@ -2522,6 +2522,8 @@ static int am65_cpsw_nuss_register_devlink(struct am65_cpsw_common *common)
 		}
 	}
 
+	devlink_register(common->devlink);
+
 	for (i = 1; i <= common->port_num; i++) {
 		port = am65_common_get_port(common, i);
 		dl_port = &port->devlink_port;
@@ -2542,7 +2544,6 @@ static int am65_cpsw_nuss_register_devlink(struct am65_cpsw_common *common)
 			goto dl_port_unreg;
 		}
 	}
-	devlink_register(common->devlink);
 	return ret;
 
 dl_port_unreg:
@@ -2552,6 +2553,7 @@ dl_port_unreg:
 
 		devlink_port_unregister(dl_port);
 	}
+	devlink_unregister(common->devlink);
 dl_unreg:
 	devlink_free(common->devlink);
 	return ret;
@@ -2563,14 +2565,13 @@ static void am65_cpsw_unregister_devlink(struct am65_cpsw_common *common)
 	struct am65_cpsw_port *port;
 	int i;
 
-	devlink_unregister(common->devlink);
-
 	for (i = 1; i <= common->port_num; i++) {
 		port = am65_common_get_port(common, i);
 		dl_port = &port->devlink_port;
 
 		devlink_port_unregister(dl_port);
 	}
+	devlink_unregister(common->devlink);
 
 	if (!AM65_CPSW_IS_CPSW2G(common) &&
 	    IS_ENABLED(CONFIG_TI_K3_AM65_CPSW_SWITCHDEV))

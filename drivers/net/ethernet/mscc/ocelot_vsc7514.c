@@ -562,10 +562,6 @@ static int mscc_ocelot_probe(struct platform_device *pdev)
 	if (err)
 		goto out_put_ports;
 
-	err = mscc_ocelot_init_ports(pdev, ports);
-	if (err)
-		goto out_ocelot_devlink_unregister;
-
 	if (ocelot->fdma)
 		ocelot_fdma_start(ocelot);
 
@@ -589,6 +585,10 @@ static int mscc_ocelot_probe(struct platform_device *pdev)
 	of_node_put(ports);
 	devlink_register(devlink);
 
+	err = mscc_ocelot_init_ports(pdev, ports);
+	if (err)
+		goto out_ocelot_devlink_unregister;
+
 	dev_info(&pdev->dev, "Ocelot switch probed\n");
 
 	return 0;
@@ -611,10 +611,10 @@ static int mscc_ocelot_remove(struct platform_device *pdev)
 
 	if (ocelot->fdma)
 		ocelot_fdma_deinit(ocelot);
+	mscc_ocelot_release_ports(ocelot);
 	devlink_unregister(ocelot->devlink);
 	ocelot_deinit_timestamp(ocelot);
 	ocelot_devlink_sb_unregister(ocelot);
-	mscc_ocelot_release_ports(ocelot);
 	mscc_ocelot_teardown_devlink_ports(ocelot);
 	ocelot_deinit(ocelot);
 	unregister_switchdev_blocking_notifier(&ocelot_switchdev_blocking_nb);

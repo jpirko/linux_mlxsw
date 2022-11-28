@@ -4919,11 +4919,13 @@ ice_probe(struct pci_dev *pdev, const struct pci_device_id __always_unused *ent)
 	pcie_print_link_status(pf->pdev);
 
 probe_done:
-	err = ice_register_netdev(pf);
-	if (err)
-		goto err_netdev_reg;
-
 	err = ice_devlink_register_params(pf);
+	if (err)
+		goto err_devlink_reg_param;
+
+	ice_devlink_register(pf);
+
+	err = ice_register_netdev(pf);
 	if (err)
 		goto err_netdev_reg;
 
@@ -4934,7 +4936,7 @@ probe_done:
 		if (pf->aux_idx < 0) {
 			dev_err(dev, "Failed to allocate device ID for AUX driver\n");
 			err = -ENOMEM;
-			goto err_devlink_reg_param;
+			goto err_ida_alloc;
 		}
 
 		err = ice_init_rdma(pf);
@@ -4947,15 +4949,16 @@ probe_done:
 		dev_warn(dev, "RDMA is not supported on this device\n");
 	}
 
-	ice_devlink_register(pf);
 	return 0;
 
 err_init_aux_unroll:
 	pf->adev = NULL;
 	ida_free(&ice_aux_ida, pf->aux_idx);
-err_devlink_reg_param:
-	ice_devlink_unregister_params(pf);
+err_ida_alloc:
 err_netdev_reg:
+	ice_devlink_unregister(pf);
+	ice_devlink_unregister_params(pf);
+err_devlink_reg_param:
 err_send_version_unroll:
 	ice_vsi_release_all(pf);
 err_alloc_sw_unroll:
@@ -5051,7 +5054,6 @@ static void ice_remove(struct pci_dev *pdev)
 	struct ice_pf *pf = pci_get_drvdata(pdev);
 	int i;
 
-	ice_devlink_unregister(pf);
 	for (i = 0; i < ICE_MAX_RESET_WAIT; i++) {
 		if (!ice_is_reset_in_progress(pf->state))
 			break;
@@ -5071,7 +5073,6 @@ static void ice_remove(struct pci_dev *pdev)
 	ice_unplug_aux_dev(pf);
 	if (pf->aux_idx >= 0)
 		ida_free(&ice_aux_ida, pf->aux_idx);
-	ice_devlink_unregister_params(pf);
 	set_bit(ICE_DOWN, pf->state);
 
 	ice_deinit_lag(pf);
@@ -5083,6 +5084,8 @@ static void ice_remove(struct pci_dev *pdev)
 		ice_remove_arfs(pf);
 	ice_setup_mc_magic_wake(pf);
 	ice_vsi_release_all(pf);
+	ice_devlink_unregister(pf);
+	ice_devlink_unregister_params(pf);
 	mutex_destroy(&(&pf->hw)->fdir_fltr_lock);
 	ice_set_wake(pf);
 	ice_free_irq_msix_misc(pf);

@@ -1285,8 +1285,15 @@ int bnxt_dl_register(struct bnxt *bp)
 	    bp->hwrm_spec_code > 0x10803)
 		bp->eswitch_mode = DEVLINK_ESWITCH_MODE_LEGACY;
 
+	if (BNXT_PF(bp)) {
+		rc = bnxt_dl_params_register(bp);
+		if (rc)
+			goto err_dl_free;
+	}
+
+	devlink_register(dl);
 	if (!BNXT_PF(bp))
-		goto out;
+		return 0;
 
 	attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
 	attrs.phys.port_number = bp->pf.port_id;
@@ -1296,20 +1303,16 @@ int bnxt_dl_register(struct bnxt *bp)
 	rc = devlink_port_register(dl, &bp->dl_port, bp->pf.port_id);
 	if (rc) {
 		netdev_err(bp->dev, "devlink_port_register failed\n");
-		goto err_dl_free;
+		goto err_dl_unreg;
 	}
 
-	rc = bnxt_dl_params_register(bp);
-	if (rc)
-		goto err_dl_port_unreg;
-
 	devlink_set_features(dl, DEVLINK_F_RELOAD);
-out:
-	devlink_register(dl);
 	return 0;
 
-err_dl_port_unreg:
-	devlink_port_unregister(&bp->dl_port);
+err_dl_unreg:
+	devlink_unregister(dl);
+	if (BNXT_PF(bp))
+		bnxt_dl_params_unregister(bp);
 err_dl_free:
 	devlink_free(dl);
 	return rc;
@@ -1319,10 +1322,10 @@ void bnxt_dl_unregister(struct bnxt *bp)
 {
 	struct devlink *dl = bp->dl;
 
-	devlink_unregister(dl);
-	if (BNXT_PF(bp)) {
-		bnxt_dl_params_unregister(bp);
+	if (BNXT_PF(bp))
 		devlink_port_unregister(&bp->dl_port);
-	}
+	devlink_unregister(dl);
+	if (BNXT_PF(bp))
+		bnxt_dl_params_unregister(bp);
 	devlink_free(dl);
 }

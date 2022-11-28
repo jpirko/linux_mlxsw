@@ -1421,14 +1421,16 @@ static int prestera_switch_init(struct prestera_switch *sw)
 	if (err)
 		goto err_lag_init;
 
+	prestera_devlink_register(sw);
+
 	err = prestera_create_ports(sw);
 	if (err)
 		goto err_ports_create;
 
-	prestera_devlink_register(sw);
 	return 0;
 
 err_ports_create:
+	prestera_devlink_unregister(sw);
 	prestera_lag_fini(sw);
 err_lag_init:
 	prestera_devlink_traps_unregister(sw);
@@ -1455,8 +1457,8 @@ err_router_init:
 
 static void prestera_switch_fini(struct prestera_switch *sw)
 {
-	prestera_devlink_unregister(sw);
 	prestera_destroy_ports(sw);
+	prestera_devlink_unregister(sw);
 	prestera_lag_fini(sw);
 	prestera_devlink_traps_unregister(sw);
 	prestera_span_fini(sw);

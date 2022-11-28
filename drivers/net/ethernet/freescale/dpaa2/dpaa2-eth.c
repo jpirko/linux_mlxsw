@@ -4954,6 +4954,8 @@ static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 	if (err)
 		goto err_dl_trap_register;
 
+	dpaa2_eth_dl_register(priv);
+
 	err = dpaa2_eth_dl_port_add(priv);
 	if (err)
 		goto err_dl_port_add;
@@ -4968,12 +4970,12 @@ static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 	dpaa2_dbg_add(priv);
 #endif
 
-	dpaa2_eth_dl_register(priv);
 	dev_info(dev, "Probed interface %s\n", net_dev->name);
 	return 0;
 
 err_netdev_reg:
 	dpaa2_eth_dl_port_del(priv);
+	dpaa2_eth_dl_unregister(priv);
 err_dl_port_add:
 	dpaa2_eth_dl_traps_unregister(priv);
 err_dl_trap_register:
@@ -5026,8 +5028,6 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 	net_dev = dev_get_drvdata(dev);
 	priv = netdev_priv(net_dev);
 
-	dpaa2_eth_dl_unregister(priv);
-
 #ifdef CONFIG_DEBUG_FS
 	dpaa2_dbg_remove(priv);
 #endif
@@ -5035,6 +5035,7 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 	unregister_netdev(net_dev);
 
 	dpaa2_eth_dl_port_del(priv);
+	dpaa2_eth_dl_unregister(priv);
 	dpaa2_eth_dl_traps_unregister(priv);
 	dpaa2_eth_dl_free(priv);
 
