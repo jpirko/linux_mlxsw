@@ -1392,16 +1392,10 @@ int mlx5_init_one(struct mlx5_core_dev *dev)
 	if (err)
 		goto err_devlink_reg;
 
-	err = mlx5_register_device(dev);
-	if (err)
-		goto err_register;
-
 	mutex_unlock(&dev->intf_state_mutex);
 	devl_unlock(devlink);
 	return 0;
 
-err_register:
-	mlx5_devlink_unregister(priv_to_devlink(dev));
 err_devlink_reg:
 	clear_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
 	mlx5_unload(dev);
@@ -1423,7 +1417,6 @@ void mlx5_uninit_one(struct mlx5_core_dev *dev)
 	devl_lock(devlink);
 	mutex_lock(&dev->intf_state_mutex);
 
-	mlx5_unregister_device(dev);
 	mlx5_devlink_unregister(priv_to_devlink(dev));
 
 	if (!test_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state)) {
@@ -1747,8 +1740,17 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	pci_save_state(pdev);
 	devlink_register(devlink);
+	err = mlx5_register_device(dev);
+	if (err) {
+		mlx5_core_err(dev, "mlx5_register_device failed with error code %d\n",
+			      err);
+		goto err_register_device;
+	}
+
 	return 0;
 
+err_register_device:
+	devlink_unregister(devlink);
 err_init_one:
 	mlx5_pci_close(dev);
 pci_init_err:
@@ -1771,6 +1773,7 @@ static void remove_one(struct pci_dev *pdev)
 	 */
 	mlx5_drain_fw_reset(dev);
 	set_bit(MLX5_BREAK_FW_WAIT, &dev->intf_state);
+	mlx5_unregister_device(dev);
 	devlink_unregister(devlink);
 	mlx5_sriov_disable(pdev);
 	mlx5_crdump_disable(dev);

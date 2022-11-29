@@ -444,11 +444,14 @@ int mlx5_register_device(struct mlx5_core_dev *dev)
 {
 	int ret;
 
-	devl_assert_locked(priv_to_devlink(dev));
+	devl_lock(priv_to_devlink(dev));
+	mutex_lock(&dev->intf_state_mutex);
 	mutex_lock(&mlx5_intf_mutex);
 	dev->priv.flags &= ~MLX5_PRIV_FLAGS_DISABLE_ALL_ADEV;
 	ret = mlx5_rescan_drivers_locked(dev);
 	mutex_unlock(&mlx5_intf_mutex);
+	mutex_unlock(&dev->intf_state_mutex);
+	devl_unlock(priv_to_devlink(dev));
 	if (ret)
 		mlx5_unregister_device(dev);
 
@@ -457,11 +460,14 @@ int mlx5_register_device(struct mlx5_core_dev *dev)
 
 void mlx5_unregister_device(struct mlx5_core_dev *dev)
 {
-	devl_assert_locked(priv_to_devlink(dev));
+	devl_lock(priv_to_devlink(dev));
+	mutex_lock(&dev->intf_state_mutex);
 	mutex_lock(&mlx5_intf_mutex);
 	dev->priv.flags = MLX5_PRIV_FLAGS_DISABLE_ALL_ADEV;
 	mlx5_rescan_drivers_locked(dev);
 	mutex_unlock(&mlx5_intf_mutex);
+	mutex_unlock(&dev->intf_state_mutex);
+	devl_unlock(priv_to_devlink(dev));
 }
 
 static int add_drivers(struct mlx5_core_dev *dev)

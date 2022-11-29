@@ -46,9 +46,17 @@ static int mlx5_sf_dev_probe(struct auxiliary_device *adev, const struct auxilia
 		mlx5_core_warn(mdev, "mlx5_init_one err=%d\n", err);
 		goto init_one_err;
 	}
+
 	devlink_register(devlink);
+
+	err = mlx5_register_device(mdev);
+	if (err)
+		goto register_device_err;
+
 	return 0;
 
+register_device_err:
+	devlink_unregister(devlink);
 init_one_err:
 	iounmap(mdev->iseg);
 remap_err:
@@ -63,6 +71,7 @@ static void mlx5_sf_dev_remove(struct auxiliary_device *adev)
 	struct mlx5_sf_dev *sf_dev = container_of(adev, struct mlx5_sf_dev, adev);
 	struct devlink *devlink = priv_to_devlink(sf_dev->mdev);
 
+	mlx5_unregister_device(sf_dev->mdev);
 	devlink_unregister(devlink);
 	mlx5_uninit_one(sf_dev->mdev);
 	iounmap(sf_dev->mdev->iseg);
