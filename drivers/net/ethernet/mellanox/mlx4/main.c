@@ -3730,14 +3730,13 @@ err_sriov:
 }
 
 static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
-			   struct mlx4_priv *priv)
+			   unsigned int *total_vfs,
+			   int *nvfs, struct mlx4_priv *priv)
 {
 	int err;
-	int nvfs[MLX4_MAX_PORTS + 1] = {0, 0, 0};
 	int prb_vf[MLX4_MAX_PORTS + 1] = {0, 0, 0};
 	const int param_map[MLX4_MAX_PORTS + 1][MLX4_MAX_PORTS + 1] = {
 		{2, 0, 0}, {0, 1, 2}, {0, 1, 2} };
-	unsigned total_vfs = 0;
 	unsigned int i;
 
 	pr_info(DRV_NAME ": Initializing %s\n", pci_name(pdev));
@@ -3752,8 +3751,8 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
 	 * per port, we must limit the number of VFs to 63 (since their are
 	 * 128 MACs)
 	 */
-	for (i = 0; i < ARRAY_SIZE(nvfs) && i < num_vfs_argc;
-	     total_vfs += nvfs[param_map[num_vfs_argc - 1][i]], i++) {
+	for (i = 0; i <= MLX4_MAX_PORTS && i < num_vfs_argc;
+	     *total_vfs += nvfs[param_map[num_vfs_argc - 1][i]], i++) {
 		nvfs[param_map[num_vfs_argc - 1][i]] = num_vfs[i];
 		if (nvfs[i] < 0) {
 			dev_err(&pdev->dev, "num_vfs module parameter cannot be negative\n");
@@ -3770,10 +3769,10 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
 			goto err_disable_pdev;
 		}
 	}
-	if (total_vfs > MLX4_MAX_NUM_VF) {
+	if (*total_vfs > MLX4_MAX_NUM_VF) {
 		dev_err(&pdev->dev,
 			"Requested more VF's (%d) than allowed by hw (%d)\n",
-			total_vfs, MLX4_MAX_NUM_VF);
+			*total_vfs, MLX4_MAX_NUM_VF);
 		err = -EINVAL;
 		goto err_disable_pdev;
 	}
@@ -3828,14 +3827,14 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
 		/* When acting as pf, we normally skip vfs unless explicitly
 		 * requested to probe them.
 		 */
-		if (total_vfs) {
+		if (*total_vfs) {
 			unsigned vfs_offset = 0;
 
-			for (i = 0; i < ARRAY_SIZE(nvfs) &&
+			for (i = 0; i <= MLX4_MAX_PORTS &&
 			     vfs_offset + nvfs[i] < extended_func_num(pdev);
 			     vfs_offset += nvfs[i], i++)
 				;
-			if (i == ARRAY_SIZE(nvfs)) {
+			if (i == MLX4_MAX_PORTS + 1) {
 				err = -ENODEV;
 				goto err_release_regions;
 			}
@@ -3857,14 +3856,7 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data,
 	if (err)
 		goto err_crdump;
 
-	err = mlx4_load_one(pdev, pci_dev_data, total_vfs, nvfs, priv, 0);
-	if (err)
-		goto err_catas;
-
 	return 0;
-
-err_catas:
-	mlx4_catas_end(&priv->dev);
 
 err_crdump:
 	mlx4_crdump_end(&priv->dev);
@@ -3994,6 +3986,8 @@ static const struct devlink_ops mlx4_devlink_ops = {
 
 static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
+	int nvfs[MLX4_MAX_PORTS + 1] = {0, 0, 0};
+	unsigned int total_vfs = 0;
 	struct devlink *devlink;
 	struct mlx4_priv *priv;
 	struct mlx4_dev *dev;
@@ -4024,9 +4018,9 @@ static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	ret = devlink_params_register(devlink, mlx4_devlink_params,
 				      ARRAY_SIZE(mlx4_devlink_params));
 	if (ret)
-		goto err_devlink_unregister;
+		goto err_persist_free;
 	mlx4_devlink_set_params_init_values(devlink);
-	ret =  __mlx4_init_one(pdev, id->driver_data, priv);
+	ret =  __mlx4_init_one(pdev, id->driver_data, &total_vfs, nvfs, priv);
 	if (ret)
 		goto err_params_unregister;
 
@@ -4034,12 +4028,21 @@ static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	devlink_set_features(devlink, DEVLINK_F_RELOAD);
 	devl_unlock(devlink);
 	devlink_register(devlink);
+	devl_lock(devlink);
+	ret = mlx4_load_one(pdev, priv->pci_dev_data, total_vfs, nvfs, priv, 0);
+	devl_unlock(devlink);
+	if (ret)
+		goto err_devlink_unregister;
+
 	return 0;
 
+err_devlink_unregister:
+	devlink_unregister(devlink);
+	devl_lock(devlink);
 err_params_unregister:
 	devlink_params_unregister(devlink, mlx4_devlink_params,
 				  ARRAY_SIZE(mlx4_devlink_params));
-err_devlink_unregister:
+err_persist_free:
 	kfree(dev->persist);
 err_devlink_free:
 	devl_unlock(devlink);
@@ -4146,6 +4149,16 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 	struct devlink *devlink = priv_to_devlink(priv);
 	int active_vfs = 0;
 
+	/* device marked to be under deletion running now without the lock
+	 * letting other tasks to be terminated
+	 */
+	devl_lock(devlink);
+	if (persist->interface_state & MLX4_INTERFACE_STATE_UP)
+		mlx4_unload_one(pdev);
+	else
+		mlx4_info(dev, "%s: interface is down\n", __func__);
+	devl_unlock(devlink);
+
 	devlink_unregister(devlink);
 
 	devl_lock(devlink);
@@ -4165,13 +4178,6 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 		}
 	}
 
-	/* device marked to be under deletion running now without the lock
-	 * letting other tasks to be terminated
-	 */
-	if (persist->interface_state & MLX4_INTERFACE_STATE_UP)
-		mlx4_unload_one(pdev);
-	else
-		mlx4_info(dev, "%s: interface is down\n", __func__);
 	mlx4_catas_end(dev);
 	mlx4_crdump_end(dev);
 	if (dev->flags & MLX4_FLAG_SRIOV && !active_vfs) {
