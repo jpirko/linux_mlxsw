@@ -949,6 +949,7 @@ static void nsim_dev_traps_exit(struct devlink *devlink)
 
 static int nsim_dev_reload_create(struct nsim_dev *nsim_dev,
 				  struct netlink_ext_ack *extack);
+static void nsim_dev_reload_ports_destroy(struct nsim_dev *nsim_dev);
 static void nsim_dev_reload_destroy(struct nsim_dev *nsim_dev);
 
 static int nsim_dev_reload_down(struct devlink *devlink, bool netns_change,
@@ -965,6 +966,7 @@ static int nsim_dev_reload_down(struct devlink *devlink, bool netns_change,
 		return -EOPNOTSUPP;
 	}
 
+	nsim_dev_reload_ports_destroy(nsim_dev);
 	nsim_dev_reload_destroy(nsim_dev);
 	return 0;
 }
@@ -1600,17 +1602,22 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev)
 	if (err)
 		goto err_psample_exit;
 
-	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
-	if (err)
-		goto err_hwstats_exit;
-
 	nsim_dev->esw_mode = DEVLINK_ESWITCH_MODE_LEGACY;
 	devlink_set_features(devlink, DEVLINK_F_RELOAD);
 	devl_unlock(devlink);
 	devlink_register(devlink);
+
+	devl_lock(devlink);
+	err = nsim_dev_port_add_all(nsim_dev, nsim_bus_dev->port_count);
+	devl_unlock(devlink);
+	if (err)
+		goto err_devlink_unregister;
+
 	return 0;
 
-err_hwstats_exit:
+err_devlink_unregister:
+	devlink_unregister(devlink);
+	devl_lock(devlink);
 	nsim_dev_hwstats_exit(nsim_dev);
 err_psample_exit:
 	nsim_dev_psample_exit(nsim_dev);
@@ -1640,6 +1647,15 @@ err_devlink_unlock:
 	return err;
 }
 
+static void nsim_dev_reload_ports_destroy(struct nsim_dev *nsim_dev)
+{
+	struct devlink *devlink = priv_to_devlink(nsim_dev);
+
+	if (devlink_is_reload_failed(devlink))
+		return;
+	nsim_dev_port_del_all(nsim_dev);
+}
+
 static void nsim_dev_reload_destroy(struct nsim_dev *nsim_dev)
 {
 	struct devlink *devlink = priv_to_devlink(nsim_dev);
@@ -1654,7 +1670,6 @@ static void nsim_dev_reload_destroy(struct nsim_dev *nsim_dev)
 			nsim_esw_legacy_enable(nsim_dev, NULL);
 	}
 
-	nsim_dev_port_del_all(nsim_dev);
 	nsim_dev_hwstats_exit(nsim_dev);
 	nsim_dev_psample_exit(nsim_dev);
 	nsim_dev_health_exit(nsim_dev);
@@ -1667,6 +1682,10 @@ void nsim_drv_remove(struct nsim_bus_dev *nsim_bus_dev)
 {
 	struct nsim_dev *nsim_dev = dev_get_drvdata(&nsim_bus_dev->dev);
 	struct devlink *devlink = priv_to_devlink(nsim_dev);
+
+	devl_lock(devlink);
+	nsim_dev_reload_ports_destroy(nsim_dev);
+	devl_unlock(devlink);
 
 	devlink_unregister(devlink);
 	devl_lock(devlink);
