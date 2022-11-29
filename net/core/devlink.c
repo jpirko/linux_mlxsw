@@ -10084,6 +10084,7 @@ int devl_port_register(struct devlink *devlink,
 {
 	int err;
 
+	ASSERT_DEVLINK_REGISTERED(devlink);
 	devl_assert_locked(devlink);
 
 	ASSERT_DEVLINK_PORT_NOT_REGISTERED(devlink_port);
@@ -10142,6 +10143,7 @@ EXPORT_SYMBOL_GPL(devlink_port_register);
  */
 void devl_port_unregister(struct devlink_port *devlink_port)
 {
+	ASSERT_DEVLINK_REGISTERED(devlink_port->devlink);
 	lockdep_assert_held(&devlink_port->devlink->lock);
 	WARN_ON(devlink_port->type != DEVLINK_PORT_TYPE_NOTSET);
 
