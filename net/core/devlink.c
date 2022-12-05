@@ -9849,18 +9849,13 @@ static void devlink_notify_register(struct devlink *devlink)
 	struct devlink_trap_group_item *group_item;
 	struct devlink_param_item *param_item;
 	struct devlink_trap_item *trap_item;
-	struct devlink_port *devlink_port;
 	struct devlink_linecard *linecard;
 	struct devlink_rate *rate_node;
 	struct devlink_region *region;
-	unsigned long port_index;
 
 	devlink_notify(devlink, DEVLINK_CMD_NEW);
 	list_for_each_entry(linecard, &devlink->linecard_list, list)
 		devlink_linecard_notify(linecard, DEVLINK_CMD_LINECARD_NEW);
-
-	xa_for_each(&devlink->ports, port_index, devlink_port)
-		devlink_port_notify(devlink_port, DEVLINK_CMD_PORT_NEW);
 
 	list_for_each_entry(policer_item, &devlink->trap_policer_list, list)
 		devlink_trap_policer_notify(devlink, policer_item,
@@ -9890,10 +9885,8 @@ static void devlink_notify_unregister(struct devlink *devlink)
 	struct devlink_trap_group_item *group_item;
 	struct devlink_param_item *param_item;
 	struct devlink_trap_item *trap_item;
-	struct devlink_port *devlink_port;
 	struct devlink_rate *rate_node;
 	struct devlink_region *region;
-	unsigned long port_index;
 
 	list_for_each_entry_reverse(param_item, &devlink->param_list, list)
 		devlink_param_notify(devlink, 0, param_item,
@@ -9916,8 +9909,6 @@ static void devlink_notify_unregister(struct devlink *devlink)
 		devlink_trap_policer_notify(devlink, policer_item,
 					    DEVLINK_CMD_TRAP_POLICER_DEL);
 
-	xa_for_each(&devlink->ports, port_index, devlink_port)
-		devlink_port_notify(devlink_port, DEVLINK_CMD_PORT_DEL);
 	devlink_notify(devlink, DEVLINK_CMD_DEL);
 }
 
