@@ -1459,6 +1459,137 @@ static int mlxsw_pci_sys_ready_wait(struct mlxsw_pci *mlxsw_pci,
 	return -EBUSY;
 }
 
+static int mlxsw_pci_link_active_wait(struct pci_dev *pdev)
+{
+	unsigned long end;
+	u16 lnksta;
+	int err;
+
+	end = jiffies + msecs_to_jiffies(MLXSW_PCI_TOGGLE_TIMEOUT_MSECS);
+	do {
+		msleep(MLXSW_PCI_TOGGLE_WAIT_MSECS);
+		err = pcie_capability_read_word(pdev, PCI_EXP_LNKSTA, &lnksta);
+		if (err)
+			return pcibios_err_to_errno(err);
+
+		if (lnksta & PCI_EXP_LNKSTA_DLLLA)
+			return 0;
+	} while (time_before(jiffies, end));
+
+	pci_err(pdev, "PCI link not ready (0x%04x) after %d ms\n", lnksta,
+		MLXSW_PCI_TOGGLE_TIMEOUT_MSECS);
+
+	return -ETIMEDOUT;
+}
+
+static int mlxsw_pci_link_active_check(struct pci_dev *pdev)
+{
+	u32 lnkcap;
+	int err;
+
+	err = pcie_capability_read_dword(pdev, PCI_EXP_LNKCAP, &lnkcap);
+	if (err)
+		goto out;
+
+	if (lnkcap & PCI_EXP_LNKCAP_DLLLARC)
+		return mlxsw_pci_link_active_wait(pdev);
+
+	/* In case the device does not support "Data Link Layer Link Active
+	 * Reporting", simply wait for a predefined time for the device to
+	 * become active.
+	 */
+	pci_dbg(pdev, "No PCI link reporting capability (0x%08x)\n", lnkcap);
+
+out:
+	/* Sleep before handling the rest of the flow and accessing to PCI. */
+	msleep(MLXSW_PCI_TOGGLE_TIMEOUT_MSECS);
+	return pcibios_err_to_errno(err);
+}
+
+static int mlxsw_pci_link_toggle(struct pci_dev *pdev)
+{
+	int err;
+
+	/* Disable the link. */
+	err = pcie_capability_set_word(pdev, PCI_EXP_LNKCTL, PCI_EXP_LNKCTL_LD);
+	if (err)
+		return pcibios_err_to_errno(err);
+
+	/* Sleep to give firmware enough time to start the reset. */
+	msleep(MLXSW_PCI_TOGGLE_WAIT_BEFORE_EN_MSECS);
+
+	/* Enable the link. */
+	err = pcie_capability_clear_word(pdev, PCI_EXP_LNKCTL,
+					 PCI_EXP_LNKCTL_LD);
+	if (err)
+		return pcibios_err_to_errno(err);
+
+	/* Wait for link active. */
+	return mlxsw_pci_link_active_check(pdev);
+}
+
+static int mlxsw_pci_device_id_read(struct pci_dev *pdev, u16 exp_dev_id)
+{
+	unsigned long end;
+	u16 dev_id;
+	int err;
+
+	end = jiffies + msecs_to_jiffies(MLXSW_PCI_TOGGLE_TIMEOUT_MSECS);
+	do {
+		msleep(MLXSW_PCI_TOGGLE_WAIT_MSECS);
+
+		/* Expect to get the correct PCI device ID as first indication
+		 * that the ASIC is available.
+		 */
+		err = pci_read_config_word(pdev, PCI_DEVICE_ID, &dev_id);
+		if (err)
+			return pcibios_err_to_errno(err);
+
+		if (dev_id == exp_dev_id)
+			return 0;
+	} while (time_before(jiffies, end));
+
+	pci_err(pdev, "PCI device ID is not as expected after %d ms\n",
+		MLXSW_PCI_TOGGLE_TIMEOUT_MSECS);
+
+	return -ETIMEDOUT;
+}
+
+static int mlxsw_pci_reset_at_pci_disable(struct mlxsw_pci *mlxsw_pci)
+{
+	struct pci_bus *bridge_bus = mlxsw_pci->pdev->bus;
+	struct pci_dev *bridge_pdev = bridge_bus->self;
+	struct pci_dev *pdev = mlxsw_pci->pdev;
+	char mrsr_pl[MLXSW_REG_MRSR_LEN];
+	u16 dev_id = pdev->device;
+	int err;
+
+	mlxsw_reg_mrsr_pack(mrsr_pl,
+			    MLXSW_REG_MRSR_COMMAND_RESET_AT_PCI_DISABLE);
+	err = mlxsw_reg_write(mlxsw_pci->core, MLXSW_REG(mrsr), mrsr_pl);
+	if (err)
+		return err;
+
+	/* Save the PCI configuration space so that we will be able to restore
+	 * it after the firmware was reset.
+	 */
+	pci_save_state(pdev);
+	pci_cfg_access_lock(pdev);
+
+	err = mlxsw_pci_link_toggle(bridge_pdev);
+	if (err) {
+		pci_err(bridge_pdev, "Failed to toggle PCI link\n");
+		goto restore;
+	}
+
+	err = mlxsw_pci_device_id_read(pdev, dev_id);
+
+restore:
+	pci_cfg_access_unlock(pdev);
+	pci_restore_state(pdev);
+	return err;
+}
+
 static int mlxsw_pci_reset_sw(struct mlxsw_pci *mlxsw_pci)
 {
 	char mrsr_pl[MLXSW_REG_MRSR_LEN];
@@ -1471,6 +1602,8 @@ static int
 mlxsw_pci_reset(struct mlxsw_pci *mlxsw_pci, const struct pci_device_id *id)
 {
 	struct pci_dev *pdev = mlxsw_pci->pdev;
+	char mcam_pl[MLXSW_REG_MCAM_LEN];
+	bool pci_reset_supported;
 	u32 sys_status;
 	int err;
 
@@ -1481,7 +1614,23 @@ mlxsw_pci_reset(struct mlxsw_pci *mlxsw_pci, const struct pci_device_id *id)
 		return err;
 	}
 
-	err = mlxsw_pci_reset_sw(mlxsw_pci);
+	mlxsw_reg_mcam_pack(mcam_pl,
+			    MLXSW_REG_MCAM_FEATURE_GROUP_ENHANCED_FEATURES);
+	err = mlxsw_reg_query(mlxsw_pci->core, MLXSW_REG(mcam), mcam_pl);
+	if (err)
+		return err;
+
+	mlxsw_reg_mcam_unpack(mcam_pl, MLXSW_REG_MCAM_PCI_RESET,
+			      &pci_reset_supported);
+
+	if (pci_reset_supported) {
+		pci_dbg(pdev, "Starting PCI reset flow\n");
+		err = mlxsw_pci_reset_at_pci_disable(mlxsw_pci);
+	} else {
+		pci_dbg(pdev, "Starting software reset flow\n");
+		err = mlxsw_pci_reset_sw(mlxsw_pci);
+	}
+
 	if (err)
 		return err;
 
