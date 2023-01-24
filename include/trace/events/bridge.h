@@ -122,6 +122,73 @@ TRACE_EVENT(br_fdb_update,
 		  __entry->flags)
 );
 
+TRACE_EVENT(br_mdb_full,
+
+	TP_PROTO(const struct net_device *dev,
+		 const struct br_ip *group),
+
+	TP_ARGS(dev, group),
+
+	TP_STRUCT__entry(
+		__string(dev, dev->name)
+		__field(int, af)
+		__field(u16, vid)
+		__array(__u8, src4, 4)
+		__array(__u8, src6, 16)
+		__array(__u8, grp4, 4)
+		__array(__u8, grp6, 16)
+		__array(__u8, grpmac, ETH_ALEN) /* For af == 0. */
+	),
+
+	TP_fast_assign(
+		__assign_str(dev, dev->name);
+		__entry->vid = group->vid;
+
+		if (!group->proto) {
+			__entry->af = 0;
+
+			memset(__entry->src4, 0, sizeof(__entry->src4));
+			memset(__entry->src6, 0, sizeof(__entry->src6));
+			memset(__entry->grp4, 0, sizeof(__entry->grp4));
+			memset(__entry->grp6, 0, sizeof(__entry->grp6));
+			memcpy(__entry->grpmac, group->dst.mac_addr, ETH_ALEN);
+		} else if (group->proto == htons(ETH_P_IP)) {
+			__be32 *p32;
+
+			__entry->af = AF_INET;
+
+			p32 = (__be32 *) __entry->src4;
+			*p32 = group->src.ip4;
+
+			p32 = (__be32 *) __entry->grp4;
+			*p32 = group->dst.ip4;
+
+			memset(__entry->src6, 0, sizeof(__entry->src6));
+			memset(__entry->grp6, 0, sizeof(__entry->grp6));
+			memset(__entry->grpmac, 0, ETH_ALEN);
+#if IS_ENABLED(CONFIG_IPV6)
+		} else {
+			struct in6_addr *in6;
+
+			__entry->af = AF_INET6;
+
+			in6 = (struct in6_addr *)__entry->src6;
+			*in6 = group->src.ip6;
+
+			in6 = (struct in6_addr *)__entry->grp6;
+			*in6 = group->dst.ip6;
+
+			memset(__entry->src4, 0, sizeof(__entry->src4));
+			memset(__entry->grp4, 0, sizeof(__entry->grp4));
+			memset(__entry->grpmac, 0, ETH_ALEN);
+#endif
+		}
+	),
+
+	TP_printk("dev %s af %u src %pI4/%pI6c grp %pI4/%pI6c/%pM vid %u",
+		  __get_str(dev), __entry->af, __entry->src4, __entry->src6,
+		  __entry->grp4, __entry->grp6, __entry->grpmac, __entry->vid)
+);
 
 #endif /* _TRACE_BRIDGE_H */
 
