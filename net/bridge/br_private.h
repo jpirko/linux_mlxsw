@@ -978,6 +978,19 @@ void br_multicast_uninit_stats(struct net_bridge *br);
 void br_multicast_get_stats(const struct net_bridge *br,
 			    const struct net_bridge_port *p,
 			    struct br_mcast_stats *dest);
+u32 br_multicast_port_ngroups_get(const struct net_bridge_port *port);
+int br_multicast_vlan_ngroups_get(struct net_bridge *br,
+				  const struct net_bridge_vlan *v,
+				  u32 *n);
+int br_multicast_port_ngroups_set_max(struct net_bridge_port *port,
+				      u32 max, struct netlink_ext_ack *extack);
+int br_multicast_vlan_ngroups_set_max(struct net_bridge *br,
+				      struct net_bridge_vlan *v, u32 max,
+				      struct netlink_ext_ack *extack);
+u32 br_multicast_port_ngroups_get_max(const struct net_bridge_port *port);
+int br_multicast_vlan_ngroups_get_max(struct net_bridge *br,
+				      const struct net_bridge_vlan *v,
+				      u32 *max);
 void br_mdb_init(void);
 void br_mdb_uninit(void);
 void br_multicast_host_join(const struct net_bridge_mcast *brmctx,
@@ -1761,7 +1774,8 @@ static inline u16 br_vlan_flags(const struct net_bridge_vlan *v, u16 pvid)
 #ifdef CONFIG_BRIDGE_VLAN_FILTERING
 bool br_vlan_opts_eq_range(const struct net_bridge_vlan *v_curr,
 			   const struct net_bridge_vlan *range_end);
-bool br_vlan_opts_fill(struct sk_buff *skb, const struct net_bridge_vlan *v);
+bool br_vlan_opts_fill(struct sk_buff *skb, const struct net_bridge_vlan *v,
+		       const struct net_bridge_port *p);
 size_t br_vlan_opts_nl_size(void);
 int br_vlan_process_options(const struct net_bridge *br,
 			    const struct net_bridge_port *p,

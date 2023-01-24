@@ -766,6 +766,102 @@ static void br_multicast_port_ngroups_dec(struct net_bridge_port *port, u16 vid)
 	br_multicast_port_ngroups_dec_one(&port->multicast_ctx);
 }
 
+static int
+br_multicast_pmctx_ngroups_set_max(struct net_bridge_mcast_port *pmctx,
+				   u32 max, struct netlink_ext_ack *extack)
+{
+	if (max && max < pmctx->mdb_n_entries) {
+		NL_SET_ERR_MSG_FMT_MOD(extack, "Can't set mcast_max_groups=%u, which is below mcast_n_groups=%u",
+				       max, pmctx->mdb_n_entries);
+		return -EINVAL;
+	}
+
+	pmctx->mdb_max_entries = max;
+	return 0;
+}
+
+u32 br_multicast_port_ngroups_get(const struct net_bridge_port *port)
+{
+	u32 n;
+
+	spin_lock_bh(&port->br->multicast_lock);
+	n = port->multicast_ctx.mdb_n_entries;
+	spin_unlock_bh(&port->br->multicast_lock);
+
+	return n;
+}
+
+int br_multicast_vlan_ngroups_get(struct net_bridge *br,
+				  const struct net_bridge_vlan *v,
+				  u32 *n)
+{
+	if (br_multicast_port_ctx_vlan_disabled(&v->port_mcast_ctx))
+		return -EINVAL;
+
+	spin_lock_bh(&br->multicast_lock);
+	*n = v->port_mcast_ctx.mdb_n_entries;
+	spin_unlock_bh(&br->multicast_lock);
+
+	return 0;
+}
+
+int br_multicast_port_ngroups_set_max(struct net_bridge_port *port, u32 max,
+				      struct netlink_ext_ack *extack)
+{
+	int err;
+
+	spin_lock_bh(&port->br->multicast_lock);
+	err = br_multicast_pmctx_ngroups_set_max(&port->multicast_ctx, max,
+						 extack);
+	spin_unlock_bh(&port->br->multicast_lock);
+
+	return err;
+}
+
+int br_multicast_vlan_ngroups_set_max(struct net_bridge *br,
+				      struct net_bridge_vlan *v, u32 max,
+				      struct netlink_ext_ack *extack)
+{
+	int err;
+
+	if (br_multicast_port_ctx_vlan_disabled(&v->port_mcast_ctx)) {
+		NL_SET_ERR_MSG_MOD(extack, "Multicast snooping disabled on this VLAN");
+		return -EINVAL;
+	}
+
+	spin_lock_bh(&br->multicast_lock);
+	err = br_multicast_pmctx_ngroups_set_max(&v->port_mcast_ctx, max,
+						 extack);
+	spin_unlock_bh(&br->multicast_lock);
+
+	return err;
+}
+
+u32 br_multicast_port_ngroups_get_max(const struct net_bridge_port *port)
+{
+	u32 max;
+
+	spin_lock_bh(&port->br->multicast_lock);
+	max = port->multicast_ctx.mdb_max_entries;
+	spin_unlock_bh(&port->br->multicast_lock);
+
+	return max;
+}
+
+int br_multicast_vlan_ngroups_get_max(struct net_bridge *br,
+				      const struct net_bridge_vlan *v,
+				      u32 *max)
+{
+	if (br_multicast_port_ctx_vlan_disabled(&v->port_mcast_ctx))
+		return -EINVAL;
+
+	spin_lock_bh(&br->multicast_lock);
+	*max = v->port_mcast_ctx.mdb_max_entries;
+	spin_unlock_bh(&br->multicast_lock);
+
+	return 0;
+}
+
 static void br_multicast_destroy_port_group(struct net_bridge_mcast_gc *gc)
 {
 	struct net_bridge_port_group *pg;
