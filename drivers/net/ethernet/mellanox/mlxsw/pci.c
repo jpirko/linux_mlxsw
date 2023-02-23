@@ -1463,25 +1463,12 @@ static int mlxsw_pci_sw_reset(struct mlxsw_pci *mlxsw_pci,
 			      const struct pci_device_id *id)
 {
 	struct pci_dev *pdev = mlxsw_pci->pdev;
-	char mrsr_pl[MLXSW_REG_MRSR_LEN];
 	u32 sys_status;
 	int err;
 
 	err = mlxsw_pci_sys_ready_wait(mlxsw_pci, id, &sys_status);
 	if (err) {
-		dev_err(&pdev->dev, "Failed to reach system ready status before reset. Status is 0x%x\n",
-			sys_status);
-		return err;
-	}
-
-	mlxsw_reg_mrsr_pack(mrsr_pl);
-	err = mlxsw_reg_write(mlxsw_pci->core, MLXSW_REG(mrsr), mrsr_pl);
-	if (err)
-		return err;
-
-	err = mlxsw_pci_sys_ready_wait(mlxsw_pci, id, &sys_status);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to reach system ready status after reset. Status is 0x%x\n",
+		dev_err(&pdev->dev, "Failed to reach system ready status after hardware reset. Status is 0x%x\n",
 			sys_status);
 		return err;
 	}
