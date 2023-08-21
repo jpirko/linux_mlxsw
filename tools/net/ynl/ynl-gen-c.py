@@ -433,6 +433,34 @@ class TypeBinary(Type):
                 f'memcpy({member}, {self.c_name}, {presence}_len);']
 
 
+class TypeBitfield32(Type):
+    def arg_member(self, ri):
+        return [f"const struct nla_bitfield32 *{self.c_name}"]
+
+    def struct_member(self, ri):
+        ri.cw.p(f"struct nla_bitfield32 {self.c_name};")
+
+    def _attr_typol(self):
+        return f'.type = YNL_PT_BITFIELD32, '
+
+    def _attr_policy(self, policy):
+        if not 'enum' in self.attr:
+            raise Exception('Enum required for bitfield32 attr')
+        enum = self.family.consts[self.attr['enum']]
+        mask = enum.get_mask(as_flags=True)
+        return f"NLA_POLICY_BITFIELD32({mask})"
+
+    def attr_put(self, ri, var):
+        line = f"mnl_attr_put(nlh, {self.enum_name}, sizeof(struct nla_bitfield32), &{var}->{self.c_name})"
+        self._attr_put_line(ri, var, line)
+
+    def _attr_get(self, ri, var):
+        return f"memcpy(&{var}->{self.c_name}, mnl_attr_get_payload(attr), sizeof(struct nla_bitfield32));", None, None
+
+    def _setter_lines(self, ri, member, presence):
+        return [f"memcpy(&{member}, {self.c_name}, sizeof(struct nla_bitfield32));"]
+
+
 class TypeNest(Type):
     def _complex_member_type(self, ri):
         return self.nested_struct_type
@@ -735,6 +763,8 @@ class AttrSet(SpecAttrSet):
             t = TypeString(self.family, self, elem, value)
         elif elem['type'] == 'binary':
             t = TypeBinary(self.family, self, elem, value)
+        elif elem['type'] == 'bitfield32':
+            t = TypeBitfield32(self.family, self, elem, value)
         elif elem['type'] == 'nest':
             t = TypeNest(self.family, self, elem, value)
         elif elem['type'] == 'array-nest':
@@ -2406,6 +2436,7 @@ def main():
         cw.p('#include <string.h>')
         if args.header:
             cw.p('#include <linux/types.h>')
+            cw.p('#include <linux/netlink.h>')
         else:
             cw.p(f'#include "{parsed.name}-user.h"')
             cw.p('#include "ynl.h"')

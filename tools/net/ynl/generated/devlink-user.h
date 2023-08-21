@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <linux/types.h>
+#include <linux/netlink.h>
 #include <linux/devlink.h>
 
 struct ynl_sock;

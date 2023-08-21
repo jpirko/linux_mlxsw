@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <linux/types.h>
+#include <linux/netlink.h>
 #include <linux/ethtool.h>
 
 struct ynl_sock;
