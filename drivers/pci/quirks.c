@@ -4202,6 +4202,31 @@ reset_complete:
 	return 0;
 }
 
+#define PCI_DEVICE_ID_MELLANOX_SPECTRUM		0xcb84
+#define PCI_DEVICE_ID_MELLANOX_SPECTRUM2	0xcf6c
+#define PCI_DEVICE_ID_MELLANOX_SPECTRUM3	0xcf70
+#define PCI_DEVICE_ID_MELLANOX_SPECTRUM4	0xcf80
+
+static int reset_mlx(struct pci_dev *pdev, bool probe)
+{
+	struct pci_dev *bridge = pdev->bus->self;
+
+	if (probe)
+		return 0;
+
+	/*
+	 * Disable the link on the Downstream port in order to trigger a hot
+	 * reset in the Downstream device. Wait for 500ms before enabling the
+	 * link so that the firmware on the device will have enough time to
+	 * transition the Upstream port to the Detect state.
+	 */
+	pcie_capability_set_word(bridge, PCI_EXP_LNKCTL, PCI_EXP_LNKCTL_LD);
+	msleep(500);
+	pcie_capability_clear_word(bridge, PCI_EXP_LNKCTL, PCI_EXP_LNKCTL_LD);
+
+	return pci_bridge_wait_for_secondary_bus(bridge, "link toggle");
+}
+
 static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82599_SFP_VF,
 		 reset_intel_82599_sfp_virtfn },
@@ -4217,6 +4242,10 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 		reset_chelsio_generic_dev },
 	{ PCI_VENDOR_ID_HUAWEI, PCI_DEVICE_ID_HINIC_VF,
 		reset_hinic_vf_dev },
+	{ PCI_VENDOR_ID_MELLANOX, PCI_DEVICE_ID_MELLANOX_SPECTRUM, reset_mlx },
+	{ PCI_VENDOR_ID_MELLANOX, PCI_DEVICE_ID_MELLANOX_SPECTRUM2, reset_mlx },
+	{ PCI_VENDOR_ID_MELLANOX, PCI_DEVICE_ID_MELLANOX_SPECTRUM3, reset_mlx },
+	{ PCI_VENDOR_ID_MELLANOX, PCI_DEVICE_ID_MELLANOX_SPECTRUM4, reset_mlx },
 	{ 0 }
 };
 
