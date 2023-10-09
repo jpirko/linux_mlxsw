@@ -85,7 +85,6 @@ static const struct nla_policy devlink_nl_policy[DEVLINK_ATTR_MAX + 1] = {
 int devlink_nl_put_nested_handle(struct sk_buff *msg, struct net *net,
 				 struct devlink *devlink, int attrtype)
 {
-	struct net *devl_net = devlink_net(devlink);
 	struct nlattr *nested_attr;
 
 	nested_attr = nla_nest_start(msg, attrtype);
@@ -93,8 +92,9 @@ int devlink_nl_put_nested_handle(struct sk_buff *msg, struct net *net,
 		return -EMSGSIZE;
 	if (devlink_nl_put_handle(msg, devlink))
 		goto nla_put_failure;
-	if (!net_eq(net, devl_net)) {
-		int id = peernet2id_alloc(net, devl_net, GFP_KERNEL);
+	if (!net_eq(net, devlink_net(devlink))) {
+		int id = peernet2id_alloc(net, devlink_net(devlink),
+					  GFP_KERNEL);
 
 		if (nla_put_s32(msg, DEVLINK_ATTR_NETNS_ID, id))
 			return -EMSGSIZE;
