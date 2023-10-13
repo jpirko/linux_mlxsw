@@ -18,6 +18,10 @@ netlink commands.
 
 Drivers are encouraged to use the devlink instance lock for their own needs.
 
+Drivers needs to be cautious when locking of devlink instance and
+taking RTNL at the same time. Devlink instance lock needs to be taken
+first, only after that RTNL lock could be taken.
+
 Nested instances
 ----------------
 
