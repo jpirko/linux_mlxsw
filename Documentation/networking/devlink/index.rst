@@ -18,6 +18,29 @@ netlink commands.
 
 Drivers are encouraged to use the devlink instance lock for their own needs.
 
+Nested instances
+----------------
+
+Some objects, like linecards or port function, could have another
+devlink instances created underneath. In that case, drivers should make
+sure to respect following rules:
+
+ - Lock ordering should be maintained. If driver needs to take instance
+   lock of both nested and parent instances need to be taken at the same
+   time, devlink instance lock of the nested instance should be always
+   taken within the lock of the parent instance.
+ - Driver should use object-specific helpers to setup the nested link:
+
+   - ``devl_nested_devlink_set()`` - called to setup devlink -> nested
+     devlink relationship (could be user for multiple nested instances.
+   - ``devl_port_fn_devlink_set()`` - called to setup port function ->
+     nested devlink relationship.
+   - ``devlink_linecard_nested_dl_set()`` - called to setup linecard ->
+     nested devlink relationship.
+
+The nested devlink info is exposed to the userspace over object-specific
+attributes of devlink netlink.
+
 Interface documentation
 -----------------------
 
