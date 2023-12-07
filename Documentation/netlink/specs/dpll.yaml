@@ -296,6 +296,14 @@ attribute-sets:
       -
         name: phase-offset
         type: s64
+      -
+        name: fractional-frequency-offset
+        type: sint
+        doc: |
+          The FFO (Fractional Frequency Offset) between the source pin and
+          current pin symbol rate:
+          (src_frequency-current_frequency)/src_frequency
+          Value is in PPM (parts per million).
   -
     name: pin-parent-device
     subset-of: pin
@@ -460,6 +468,7 @@ operations:
             - phase-adjust-min
             - phase-adjust-max
             - phase-adjust
+            - fractional-frequency-offset
 
       dump:
         pre: dpll-lock-dumpit
