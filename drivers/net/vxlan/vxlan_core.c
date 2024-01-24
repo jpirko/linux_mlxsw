@@ -1044,7 +1044,7 @@ static int vxlan_fdb_update_existing(struct vxlan_dev *vxlan,
 
 		if (rc < 0)
 			return rc;
-		notify |= rc;
+		notify = !!rc;
 	}
 
 	if (ndm_flags & NTF_USE)
