@@ -515,14 +515,24 @@ attribute-sets:
         name: param-type
         type: u8
         enum: param-type
-
-      # TODO: fill in the attributes in between
-
+      -
+        name: param-values-list
+        type: nest
+        nested-attributes: dl-param-values-list
+      -
+        name: param-value
+        type: nest
+        multi-attr: true
+        nested-attributes: dl-param-value
+      -
+        name: param-value-data
+        type: sub-message
+        sub-message: dl-param-value-data-msg
+        selector: param-type
       -
         name: param-value-cmode
         type: u8
         enum: param-cmode
-        value: 87
       -
         name: region-name
         type: string
@@ -1131,8 +1141,24 @@ attribute-sets:
         name: param-generic
       -
         name: param-type
+      -
+        name: param-values-list
 
-      # TODO: fill in the attribute param-value-list
+  -
+    name: dl-param-values-list
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value
+
+  -
+    name: dl-param-value
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+      -
+        name: param-value-cmode
 
   -
     name: dl-region-snapshots
@@ -1242,6 +1268,71 @@ attribute-sets:
       -
         name: flash
         type: flag
+
+  -
+    name: dl-param-value-data-u8-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+        type: u8
+
+  -
+    name: dl-param-value-data-u16-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+        type: u16
+
+  -
+    name: dl-param-value-data-u32-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+        type: u32
+
+  -
+    name: dl-param-value-data-string-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+        type: string
+
+  -
+    name: dl-param-value-data-flag-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: param-value-data
+        type: flag
+
+sub-messages:
+  -
+    name: dl-param-value-data-msg
+    formats:
+      -
+        value: u8
+        attribute-set: dl-param-value-data-u8-attrs
+        attribute-replace: true
+      -
+        value: u16
+        attribute-set: dl-param-value-data-u16-attrs
+        attribute-replace: true
+      -
+        value: u32
+        attribute-set: dl-param-value-data-u32-attrs
+        attribute-replace: true
+      -
+        value: string
+        attribute-set: dl-param-value-data-string-attrs
+        attribute-replace: true
+      -
+        value: flag
+        attribute-set: dl-param-value-data-flag-attrs
+        attribute-replace: true
 
 operations:
   enum-model: directional
@@ -1731,7 +1822,12 @@ operations:
             - dev-name
             - param-name
         reply: &param-get-reply
-          attributes: *param-id-attrs
+          attributes:
+            - bus-name
+            - dev-name
+            - param-name
+            - param-type
+            - param-values-list
       dump:
         request:
           attributes: *dev-id-attrs
