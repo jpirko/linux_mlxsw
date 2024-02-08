@@ -166,6 +166,22 @@ definitions:
         name: fw-activate
   -
     type: enum
+    name: param-type
+    entries:
+      -
+        name: u8
+        value: 1
+      -
+        name: u16
+      -
+        name: u32
+      -
+        name: string
+        value: 5
+      -
+        name: flag
+  -
+    type: enum
     name: param-cmode
     entries:
       -
@@ -498,6 +514,7 @@ attribute-sets:
       -
         name: param-type
         type: u8
+        enum: param-type
 
       # TODO: fill in the attributes in between
 
