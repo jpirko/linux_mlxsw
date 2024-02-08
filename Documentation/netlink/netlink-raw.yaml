@@ -280,8 +280,6 @@ properties:
               struct:
                 description: Name of the struct type used for the attribute.
                 type: string
-              # End genetlink-legacy
-              # Start netlink-raw
               sub-message:
                 description: |
                   Name of the sub-message definition to use for the attribute.
@@ -291,7 +289,7 @@ properties:
                   Name of the attribute to use for dynamic selection of sub-message
                   format specifier.
                 type: string
-              # End netlink-raw
+              # End genetlink-legacy
 
       # Make sure name-prefix does not appear in subsets (subsets inherit naming)
       dependencies:
@@ -314,7 +312,6 @@ properties:
             items:
               required: [ type ]
 
-  # Start netlink-raw
   sub-messages:
     description: Definition of sub message attributes
     type: array
@@ -349,7 +346,6 @@ properties:
                   Name of the attribute space from which to resolve attributes
                   in the sub message.
                 type: string
-  # End netlink-raw
 
   operations:
     description: Operations supported by the protocol.
