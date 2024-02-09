@@ -217,6 +217,8 @@ class SpecAttrSet(SpecElement):
             real_set = family.attr_sets[self.subset_of]
             for elem in self.yaml['attributes']:
                 attr = real_set[elem['name']]
+                if 'type' in elem and attr.type != elem['type']:
+                    attr = self.new_attr(elem, attr.value)
                 self.attrs[attr.name] = attr
                 self.attrs_by_val[attr.value] = attr
 
