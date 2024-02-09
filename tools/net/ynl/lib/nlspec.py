@@ -237,6 +237,9 @@ class SpecAttrSet(SpecElement):
     def items(self):
         return self.attrs.items()
 
+    def keys(self):
+        return self.attrs.keys()
+
 
 class SpecStructMember(SpecElement):
     """Struct member attribute
@@ -318,6 +321,8 @@ class SpecSubMessageFormat(SpecElement):
         value         attribute value to match against type selector
         fixed_header  string, name of fixed header, or None
         attr_set      string, name of attribute set, or None
+        attr_replace  bool, indicates replacement of parent attribute with
+                      attr_set decode, or None
     """
     def __init__(self, family, yaml):
         super().__init__(family, yaml)
@@ -325,6 +330,7 @@ class SpecSubMessageFormat(SpecElement):
         self.value = yaml.get('value')
         self.fixed_header = yaml.get('fixed-header')
         self.attr_set = yaml.get('attribute-set')
+        self.attr_replace = yaml.get('attribute-replace')
 
 
 class SpecOperation(SpecElement):

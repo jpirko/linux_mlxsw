@@ -346,6 +346,10 @@ properties:
                   Name of the attribute space from which to resolve attributes
                   in the sub message.
                 type: string
+              attribute-replace:
+                description: |
+                  Replace the parent nested attribute with attribute set
+                type: boolean
 
   operations:
     description: Operations supported by the protocol.

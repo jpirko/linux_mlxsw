@@ -381,3 +381,28 @@ alongside a sub-message selector and also in a top level ``attribute-set``, then
 the selector will be resolved using the value 'closest' to the selector. If the
 value is not present in the message at the same level as defined in the spec
 then this is an error.
+
+Some users, like devlink param, fill different attribute type according to
+selector attribute value. ``replace-attribute`` set to ``true`` indicates,
+that sub-message is not nested inside the attribute, but rather replacing
+the attribute. This allows to treat the attribute type differently according
+to the selector:
+
+.. code-block:: yaml
+
+  sub-messages:
+    -
+      name: dl-param-value-data-msg
+      formats:
+        -
+          value: u32
+          attribute-set: dl-param-value-data-u32-attrs
+          attribute-replace: true
+        -
+          value: string
+          attribute-set: dl-param-value-data-string-attrs
+          attribute-replace: true
+        -
+          value: bool
+          attribute-set: dl-param-value-data-bool-attrs
+          attribute-replace: true

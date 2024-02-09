@@ -513,11 +513,16 @@ class YnlFamily(SpecFamily):
                 attr_payload += self._encode_struct(msg_format.fixed_header, value)
             if msg_format.attr_set:
                 if msg_format.attr_set in self.attr_sets:
-                    nl_type |= Netlink.NLA_F_NESTED
-                    sub_attrs = SpaceAttrs(msg_format.attr_set, value, search_attrs)
-                    for subname, subvalue in value.items():
-                        attr_payload += self._add_attr(msg_format.attr_set,
-                                                       subname, subvalue, sub_attrs)
+                    if msg_format.attr_replace:
+                        first_attr_name = list(self.attr_sets[msg_format.attr_set].keys())[0]
+                        return self._add_attr(msg_format.attr_set, first_attr_name,
+                                              value, search_attrs)
+                    else:
+                        nl_type |= Netlink.NLA_F_NESTED
+                        sub_attrs = SpaceAttrs(msg_format.attr_set, value, search_attrs)
+                        for subname, subvalue in value.items():
+                            attr_payload += self._add_attr(msg_format.attr_set,
+                                                           subname, subvalue, sub_attrs)
                 else:
                     raise Exception(f"Unknown attribute-set '{msg_format.attr_set}'")
         else:
@@ -606,8 +611,17 @@ class YnlFamily(SpecFamily):
             offset = self._struct_size(msg_format.fixed_header)
         if msg_format.attr_set:
             if msg_format.attr_set in self.attr_sets:
-                subdict = self._decode(NlAttrs(attr.raw, offset), msg_format.attr_set)
+                if msg_format.attr_replace:
+                    attrs = [attr]
+                else:
+                    attrs = NlAttrs(attr.raw, offset);
+                subdict = self._decode(attrs, msg_format.attr_set)
                 decoded.update(subdict)
+                if msg_format.attr_replace:
+                    try:
+                        decoded = decoded[attr_spec.name]
+                    except KeyError:
+                        raise Exception(f"Attribute-set '{attr_space}' does not contain '{attr_spec.name}'")
             else:
                 raise Exception(f"Unknown attribute-set '{attr_space}' when decoding '{attr_spec.name}'")
         return decoded
