@@ -641,13 +641,14 @@ attribute-sets:
         name: fmsg-obj-value-type
         type: u8
         enum: fmsg-obj-value-type
-
-      # TODO: fill in the attributes in between
-
+      -
+        name: fmsg-obj-value-data
+        type: sub-message
+        sub-message: dl-fmsg-obj-value-data-msg
+        selector: fmsg-obj-value-type
       -
         name: health-reporter
         type: nest
-        value: 114
         nested-attributes: dl-health-reporter
       -
         name: health-reporter-name
@@ -1226,6 +1227,10 @@ attribute-sets:
         name: fmsg-nest-end
       -
         name: fmsg-obj-name
+      -
+        name: fmsg-obj-value-type
+      -
+        name: fmsg-obj-value-data
 
   -
     name: dl-health-reporter
@@ -1331,6 +1336,54 @@ attribute-sets:
         name: param-value-data
         type: flag
 
+  -
+    name: dl-fmsg-obj-value-data-u8-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: u8
+
+  -
+    name: dl-fmsg-obj-value-data-u32-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: u32
+
+  -
+    name: dl-fmsg-obj-value-data-u64-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: u64
+
+  -
+    name: dl-fmsg-obj-value-data-flag-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: flag
+
+  -
+    name: dl-fmsg-obj-value-data-string-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: string
+
+  -
+    name: dl-fmsg-obj-value-data-binary-attrs
+    subset-of: devlink
+    attributes:
+      -
+        name: fmsg-obj-value-data
+        type: binary
+
 sub-messages:
   -
     name: dl-param-value-data-msg
@@ -1354,6 +1407,34 @@ sub-messages:
       -
         value: flag
         attribute-set: dl-param-value-data-flag-attrs
+        attribute-replace: true
+
+  -
+    name: dl-fmsg-obj-value-data-msg
+    formats:
+      -
+        value: u8
+        attribute-set: dl-fmsg-obj-value-data-u8-attrs
+        attribute-replace: true
+      -
+        value: u32
+        attribute-set: dl-fmsg-obj-value-data-u32-attrs
+        attribute-replace: true
+      -
+        value: u64
+        attribute-set: dl-fmsg-obj-value-data-u64-attrs
+        attribute-replace: true
+      -
+        value: flag
+        attribute-set: dl-fmsg-obj-value-data-flag-attrs
+        attribute-replace: true
+      -
+        value: string
+        attribute-set: dl-fmsg-obj-value-data-string-attrs
+        attribute-replace: true
+      -
+        value: binary
+        attribute-set: dl-fmsg-obj-value-data-binary-attrs
         attribute-replace: true
 
 operations:
