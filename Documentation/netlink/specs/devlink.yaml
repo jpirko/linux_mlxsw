@@ -601,6 +601,7 @@ attribute-sets:
         name: fmsg
         type: nest
         nested-attributes: dl-fmsg
+        nested-list: true
       -
         name: fmsg-obj-nest-start
         type: flag
