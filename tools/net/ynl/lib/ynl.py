@@ -386,8 +386,12 @@ class SpaceAttrs:
     def lookup(self, name):
         for scope in self.scopes:
             if name in scope.spec:
-                if name in scope.values:
+                if isinstance(scope.values, dict) and name in scope.values:
                     return scope.values[name]
+                if isinstance(scope.values, list):
+                    for item in reversed(scope.values):
+                        if name in item:
+                            return item[name]
                 spec_name = scope.spec.yaml['name']
                 raise Exception(
                     f"No value for '{name}' in attribute space '{spec_name}'")
@@ -574,6 +578,10 @@ class YnlFamily(SpecFamily):
             return attr.as_bin()
 
     def _rsp_add(self, rsp, name, is_multi, decoded):
+        if isinstance(rsp, list):
+            rsp.append({name: decoded})
+            return
+
         if is_multi == None:
             if name in rsp and type(rsp[name]) is not list:
                 rsp[name] = [rsp[name]]
@@ -626,8 +634,8 @@ class YnlFamily(SpecFamily):
                 raise Exception(f"Unknown attribute-set '{attr_space}' when decoding '{attr_spec.name}'")
         return decoded
 
-    def _decode(self, attrs, space, outer_attrs = None):
-        rsp = dict()
+    def _decode(self, attrs, space, outer_attrs = None, to_list = False):
+        rsp = list() if to_list else dict()
         if space:
             attr_space = self.attr_sets[space]
             search_attrs = SpaceAttrs(attr_space, rsp, outer_attrs)
@@ -643,7 +651,9 @@ class YnlFamily(SpecFamily):
                 continue
 
             if attr_spec["type"] == 'nest':
-                subdict = self._decode(NlAttrs(attr.raw), attr_spec['nested-attributes'], search_attrs)
+                nested_list = attr_spec['nested-list'] if 'nested-list' in attr_spec else False
+                subdict = self._decode(NlAttrs(attr.raw), attr_spec['nested-attributes'],
+                                       search_attrs, to_list = nested_list)
                 decoded = subdict
             elif attr_spec["type"] == 'string':
                 decoded = attr.as_strz()

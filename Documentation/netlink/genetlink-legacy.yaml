@@ -220,6 +220,9 @@ properties:
               nested-attributes:
                 description: Name of the space (sub-space) used inside the attribute.
                 type: string
+              nested-list:
+                description: The nested attribute contains a list of attributes.
+                type: boolean
               enum:
                 description: Name of the enum type used for the attribute.
                 type: string
