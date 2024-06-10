@@ -61,11 +61,14 @@ void vp_modern_avq_done(struct virtqueue *vq)
 	unsigned long flags;
 	unsigned int len;
 
+	printk("vp_modern_avq_done\n");
 	spin_lock_irqsave(&admin_vq->lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
-		while ((cmd = virtqueue_get_buf(vq, &len)))
+		while ((cmd = virtqueue_get_buf(vq, &len))) {
+			printk("vp_modern_avq_done       gmid %llu, cmd %p, irq completion\n", cmd->group_member_id, cmd);
 			complete(&cmd->completion);
+		}
 	} while (!virtqueue_enable_cb(vq));
 	spin_unlock_irqrestore(&admin_vq->lock, flags);
 }
@@ -92,6 +95,7 @@ static int virtqueue_exec_admin_cmd(struct virtio_pci_admin_vq *admin_vq,
 
 	init_completion(&cmd->completion);
 
+	printk("virtqueue_exec_admin_cmd gmid %llu, cmd %p\n", cmd->group_member_id, cmd);
 again:
 	if (virtqueue_is_broken(vq))
 		return -EIO;
@@ -110,12 +114,38 @@ again:
 		goto unlock_err;
 	spin_unlock_irqrestore(&admin_vq->lock, flags);
 
-	wait_for_completion(&cmd->completion);
+	ret = wait_for_completion_timeout(&cmd->completion, msecs_to_jiffies(15000));
+	if (!ret) {
+		struct virtio_admin_cmd *cmd2;
+		unsigned int len;
+		unsigned long now = jiffies;
 
+		printk("virtqueue_exec_admin_cmd gmid %llu, cmd %p, DEVICE IS MOST PROBABLY STUCK, wait_for_completion_timeout! after 15 seconds, polling\n", cmd->group_member_id, cmd);
+		spin_lock_irqsave(&admin_vq->lock, flags);
+again2:
+		while (!(cmd2 = virtqueue_get_buf(vq, &len)) &&
+		       !virtqueue_is_broken(vq)) {
+			spin_unlock_irqrestore(&admin_vq->lock, flags);
+			if (jiffies_to_msecs(jiffies - now) > 20000) {
+				printk("virtqueue_exec_admin_cmd gmid %llu, cmd %p, polling timed out after 20 seconds! Assuming completion will never come\n", cmd->group_member_id, cmd);
+				return 0;
+			}
+			cpu_relax();
+			spin_lock_irqsave(&admin_vq->lock, flags);
+		}
+		if (cmd2 && cmd2 != cmd) {
+			complete(&cmd2->completion);
+			goto again2;
+		}
+		spin_unlock_irqrestore(&admin_vq->lock, flags);
+	}
+
+	printk("virtqueue_exec_admin_cmd gmid %llu, cmd %p, done ok\n", cmd->group_member_id, cmd);
 	return cmd->ret;
 
 unlock_err:
 	spin_unlock_irqrestore(&admin_vq->lock, flags);
+	printk("virtqueue_exec_admin_cmd gmid %llu, cmd %p, done err\n", cmd->group_member_id, cmd);
 	return -EIO;
 }
 
@@ -146,6 +176,7 @@ int vp_modern_admin_cmd_exec(struct virtio_device *vdev,
 	va_hdr->opcode = cmd->opcode;
 	va_hdr->group_type = cmd->group_type;
 	va_hdr->group_member_id = cmd->group_member_id;
+	printk("vp_modern_admin_cmd_exec gmid %llu, cmd %p va_hdr %p, va_hdr->group_member_id %llu\n", cmd->group_member_id, cmd, va_hdr, va_hdr->group_member_id);
 
 	/* Add header */
 	sg_init_one(&hdr, va_hdr, sizeof(*va_hdr));
@@ -170,6 +201,7 @@ int vp_modern_admin_cmd_exec(struct virtio_device *vdev,
 	ret = virtqueue_exec_admin_cmd(&vp_dev->admin_vq,
 				       le16_to_cpu(cmd->opcode),
 				       sgs, out_num, in_num, cmd);
+	printk("vp_modern_admin_cmd_exec after virtqueue_exec_admin_cmd call gmid %llu, cmd %p, va_hdr %p, va_hdr->group_member_id %llu\n", cmd->group_member_id, cmd, va_hdr, va_hdr->group_member_id);
 	if (ret) {
 		dev_err(&vdev->dev,
 			"Failed to execute command on admin vq: %d\n.", ret);
@@ -226,6 +258,7 @@ static void virtio_pci_admin_cmd_list_init(struct virtio_device *virtio_dev)
 	vp_dev->admin_vq.supported_cmds = le64_to_cpu(*data);
 end:
 	kfree(data);
+	printk("virtio_pci_admin_cmd_list_init end cmd %p\n", &cmd);
 }
 
 static void vp_modern_avq_activate(struct virtio_device *vdev)

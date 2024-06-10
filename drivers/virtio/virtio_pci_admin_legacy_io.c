@@ -64,6 +64,7 @@ static int virtio_pci_admin_legacy_io_write(struct pci_dev *pdev, u16 opcode,
 	ret = vp_modern_admin_cmd_exec(virtio_dev, &cmd);
 
 	kfree(data);
+	printk("virtio_pci_admin_legacy_io_write end cmd %p\n", &cmd);
 	return ret;
 }
 
@@ -139,6 +140,7 @@ static int virtio_pci_admin_legacy_io_read(struct pci_dev *pdev, u16 opcode,
 	ret = vp_modern_admin_cmd_exec(virtio_dev, &cmd);
 
 	kfree(data);
+	printk("virtio_pci_admin_legacy_io_read end cmd %p\n", &cmd);
 	return ret;
 }
 
@@ -239,6 +241,7 @@ int virtio_pci_admin_legacy_io_notify_info(struct pci_dev *pdev,
 	}
 
 	kfree(result);
+	printk("virtio_pci_admin_legacy_io_notify_info end cmd %p\n", &cmd);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(virtio_pci_admin_legacy_io_notify_info);
