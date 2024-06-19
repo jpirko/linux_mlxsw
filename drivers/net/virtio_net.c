@@ -2350,16 +2350,18 @@ static void virtnet_poll_cleantx(struct receive_queue *rq)
 static void virtnet_rx_dim_update(struct virtnet_info *vi, struct receive_queue *rq)
 {
 	struct dim_sample cur_sample = {};
+	unsigned int start;
 
 	if (!rq->packets_in_napi)
 		return;
 
-	u64_stats_update_begin(&rq->stats.syncp);
-	dim_update_sample(rq->calls,
-			  u64_stats_read(&rq->stats.packets),
-			  u64_stats_read(&rq->stats.bytes),
-			  &cur_sample);
-	u64_stats_update_end(&rq->stats.syncp);
+	do {
+		start = u64_stats_fetch_begin(&rq->stats.syncp);
+		dim_update_sample(rq->calls,
+				u64_stats_read(&rq->stats.packets),
+				u64_stats_read(&rq->stats.bytes),
+				&cur_sample);
+	} while (u64_stats_fetch_retry(&rq->stats.syncp, start));
 
 	net_dim(&rq->dim, cur_sample);
 	rq->packets_in_napi = 0;
