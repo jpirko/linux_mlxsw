@@ -777,7 +777,7 @@ static int virtio_fs_setup_vqs(struct virtio_device *vdev,
 		vqs_info[i].name = fs->vqs[i].name;
 	}
 
-	ret = virtio_find_vqs_info(vdev, fs->nvqs, vqs, vqs_info, NULL);
+	ret = virtio_find_vqs(vdev, fs->nvqs, vqs, vqs_info, NULL);
 	if (ret < 0)
 		goto out;
 
