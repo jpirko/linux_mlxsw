@@ -30,6 +30,9 @@ struct virtqueue_info {
 	const char *name;
 	vq_callback_t *callback;
 	bool ctx;
+	bool slow_path; /* Vector for this virtqueue may be shared with
+			 * config vector.
+			 */
 };
 
 /**

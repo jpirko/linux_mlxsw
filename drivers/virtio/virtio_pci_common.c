@@ -392,8 +392,12 @@ static int vp_find_vqs_msix(struct virtio_device *vdev, unsigned int nvqs,
 		nvectors = 1;
 		for (i = 0; i < nvqs; ++i) {
 			vqi = &vqs_info[i];
-			if (vqi->name && vqi->callback)
-				++nvectors;
+			if (!vqi->name || !vqi->callback)
+				continue;
+			if (vqi->slow_path &&
+			    vector_policy != VP_VQ_VECTOR_POLICY_EACH)
+				continue;
+			++nvectors;
 		}
 		if (avq_num && vector_policy == VP_VQ_VECTOR_POLICY_EACH)
 			++nvectors;
@@ -415,9 +419,9 @@ static int vp_find_vqs_msix(struct virtio_device *vdev, unsigned int nvqs,
 			continue;
 		}
 		vqs[i] = vp_find_one_vq_msix(vdev, queue_idx++, vqi->callback,
-					     vqi->name, vqi->ctx, false,
-					     &allocated_vectors, vector_policy,
-					     &vp_dev->vqs[i]);
+					     vqi->name, vqi->ctx,
+					     vqi->slow_path, &allocated_vectors,
+					     vector_policy, &vp_dev->vqs[i]);
 		if (IS_ERR(vqs[i])) {
 			err = PTR_ERR(vqs[i]);
 			goto error_find;
