@@ -2944,29 +2944,17 @@ void mlxsw_core_skb_receive(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 {
 	struct mlxsw_rx_listener_item *rxl_item;
 	const struct mlxsw_rx_listener *rxl;
-	u16 local_port;
 	bool found = false;
 
-	if (rx_info->is_lag) {
-		/* Upper layer does not care if the skb came from LAG or not,
-		 * so just get the local_port for the lag port and push it up.
-		 */
-		local_port = mlxsw_core_lag_mapping_get(mlxsw_core,
-							rx_info->u.lag_id,
-							rx_info->lag_port_index);
-	} else {
-		local_port = rx_info->u.sys_port;
-	}
-
 	if ((rx_info->trap_id >= MLXSW_TRAP_ID_MAX) ||
-	    (local_port >= mlxsw_core->max_ports))
+	    (rx_info->local_port >= mlxsw_core->max_ports))
 		goto drop;
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(rxl_item, &mlxsw_core->rx_listener_list, list) {
 		rxl = &rxl_item->rxl;
 		if ((rxl->local_port == MLXSW_PORT_DONT_CARE ||
-		     rxl->local_port == local_port) &&
+		     rxl->local_port == rx_info->local_port) &&
 		    rxl->trap_id == rx_info->trap_id &&
 		    rxl->mirror_reason == rx_info->mirror_reason) {
 			if (rxl_item->enabled)
@@ -2979,7 +2967,7 @@ void mlxsw_core_skb_receive(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 		goto drop;
 	}
 
-	rxl->func(skb, local_port, rxl_item->priv);
+	rxl->func(skb, rx_info->local_port, rxl_item->priv);
 	rcu_read_unlock();
 	return;
 
