@@ -40,8 +40,8 @@ enum mlxsw_cmd_mbox_config_profile_lag_mode
 mlxsw_core_lag_mode(struct mlxsw_core *mlxsw_core);
 enum mlxsw_cmd_mbox_config_profile_flood_mode
 mlxsw_core_flood_mode(struct mlxsw_core *mlxsw_core);
-void mlxsw_core_xdp_port_init(struct mlxsw_core *mlxsw_core, u16 local_port,
-			      struct net_device *netdev);
+int mlxsw_core_xdp_port_init(struct mlxsw_core *mlxsw_core, u16 local_port,
+			     struct net_device *netdev);
 void mlxsw_core_xdp_port_fini(struct mlxsw_core *mlxsw_core, u16 local_port);
 
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core);
@@ -497,8 +497,8 @@ struct mlxsw_bus {
 	u32 (*read_frc_l)(void *bus_priv);
 	u32 (*read_utc_sec)(void *bus_priv);
 	u32 (*read_utc_nsec)(void *bus_priv);
-	void (*xdp_port_init)(void *bus_priv, u16 local_port,
-			      struct net_device *netdev);
+	int (*xdp_port_init)(void *bus_priv, u16 local_port,
+			     struct net_device *netdev);
 	void (*xdp_port_fini)(void *bus_priv, u16 local_port);
 	enum mlxsw_cmd_mbox_config_profile_lag_mode (*lag_mode)(void *bus_priv);
 	enum mlxsw_cmd_mbox_config_profile_flood_mode (*flood_mode)(void *priv);
