@@ -137,6 +137,7 @@ struct mlxsw_pci {
 	bool skip_reset;
 	struct net_device *napi_dev_tx;
 	struct net_device *napi_dev_rx;
+	unsigned int max_ports;
 };
 
 static int mlxsw_pci_napi_devs_init(struct mlxsw_pci *mlxsw_pci)
@@ -169,6 +170,20 @@ static void mlxsw_pci_napi_devs_fini(struct mlxsw_pci *mlxsw_pci)
 {
 	free_netdev(mlxsw_pci->napi_dev_rx);
 	free_netdev(mlxsw_pci->napi_dev_tx);
+}
+
+static int mlxsw_pci_max_ports_set(struct mlxsw_pci *mlxsw_pci)
+{
+	struct mlxsw_core *mlxsw_core = mlxsw_pci->core;
+	unsigned int max_ports;
+
+	if (!MLXSW_CORE_RES_VALID(mlxsw_core, MAX_SYSTEM_PORT))
+		return -EINVAL;
+
+	/* Switch ports are numbered from 1 to queried value */
+	max_ports = MLXSW_CORE_RES_GET(mlxsw_core, MAX_SYSTEM_PORT) + 1;
+	mlxsw_pci->max_ports = max_ports;
+	return 0;
 }
 
 static char *__mlxsw_pci_queue_elem_get(struct mlxsw_pci_queue *q,
@@ -2045,6 +2060,10 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_napi_devs_init;
 
+	err = mlxsw_pci_max_ports_set(mlxsw_pci);
+	if (err)
+		goto err_max_ports_set;
+
 	err = mlxsw_pci_aqs_init(mlxsw_pci, mbox);
 	if (err)
 		goto err_aqs_init;
@@ -2062,6 +2081,7 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 err_request_eq_irq:
 	mlxsw_pci_aqs_fini(mlxsw_pci);
 err_aqs_init:
+err_max_ports_set:
 	mlxsw_pci_napi_devs_fini(mlxsw_pci);
 err_napi_devs_init:
 err_requery_resources:
