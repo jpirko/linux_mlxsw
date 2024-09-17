@@ -2948,9 +2948,6 @@ void mlxsw_core_skb_receive(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 	bool found = false;
 
 	if (rx_info->is_lag) {
-		dev_dbg_ratelimited(mlxsw_core->bus_info->dev, "%s: lag_id = %d, lag_port_index = 0x%x\n",
-				    __func__, rx_info->u.lag_id,
-				    rx_info->trap_id);
 		/* Upper layer does not care if the skb came from LAG or not,
 		 * so just get the local_port for the lag port and push it up.
 		 */
@@ -2960,9 +2957,6 @@ void mlxsw_core_skb_receive(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 	} else {
 		local_port = rx_info->u.sys_port;
 	}
-
-	dev_dbg_ratelimited(mlxsw_core->bus_info->dev, "%s: local_port = %d, trap_id = 0x%x\n",
-			    __func__, local_port, rx_info->trap_id);
 
 	if ((rx_info->trap_id >= MLXSW_TRAP_ID_MAX) ||
 	    (local_port >= mlxsw_core->max_ports))
