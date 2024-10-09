@@ -192,6 +192,8 @@ extern int ndo_dflt_fdb_add(struct ndmsg *ndm,
 			    const unsigned char *addr,
 			    u16 vid,
 			    u16 flags);
+extern void rtnl_fdb_notify(struct net_device *dev, const u8 *addr, u16 vid,
+			    int type, u16 ndm_state);
 extern int ndo_dflt_fdb_del(struct ndmsg *ndm,
 			    struct nlattr *tb[],
 			    struct net_device *dev,
