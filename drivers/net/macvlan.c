@@ -1069,6 +1069,9 @@ static int macvlan_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
 	else if (is_multicast_ether_addr(addr))
 		err = dev_mc_del(dev, addr);
 
+	if (!err)
+		rtnl_fdb_notify(dev, addr, vid, RTM_DELNEIGH, ndm->ndm_state);
+
 	return err;
 }
 
