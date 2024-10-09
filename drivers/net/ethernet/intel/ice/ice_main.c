@@ -6154,6 +6154,9 @@ ice_fdb_add(struct ndmsg *ndm, struct nlattr __always_unused *tb[],
 	if (err == -EEXIST && !(flags & NLM_F_EXCL))
 		err = 0;
 
+	if (!err)
+		rtnl_fdb_notify(dev, addr, vid, RTM_NEWNEIGH, ndm->ndm_state);
+
 	return err;
 }
 
