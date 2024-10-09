@@ -4271,7 +4271,7 @@ void rtmsg_ifinfo_newnet(int type, struct net_device *dev, unsigned int change,
 
 static int nlmsg_populate_fdb_fill(struct sk_buff *skb,
 				   struct net_device *dev,
-				   u8 *addr, u16 vid, u32 pid, u32 seq,
+				   const u8 *addr, u16 vid, u32 pid, u32 seq,
 				   int type, unsigned int flags,
 				   int nlflags, u16 ndm_state)
 {
@@ -4313,8 +4313,8 @@ static inline size_t rtnl_fdb_nlmsg_size(const struct net_device *dev)
 	       0;
 }
 
-static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, u16 vid, int type,
-			    u16 ndm_state)
+void rtnl_fdb_notify(struct net_device *dev, const u8 *addr, u16 vid, int type,
+		     u16 ndm_state)
 {
 	struct net *net = dev_net(dev);
 	struct sk_buff *skb;
@@ -4336,6 +4336,7 @@ static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, u16 vid, int type,
 errout:
 	rtnl_set_sk_err(net, RTNLGRP_NEIGH, err);
 }
+EXPORT_SYMBOL_GPL(rtnl_fdb_notify);
 
 /*
  * ndo_dflt_fdb_add - default netdevice operation to add an FDB entry
