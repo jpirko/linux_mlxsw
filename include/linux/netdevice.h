@@ -1247,6 +1247,9 @@ struct netdev_net_notifier {
  *		      const unsigned char *addr, u16 vid, u16 flags,
  *		      struct netlink_ext_ack *extack);
  *	Adds an FDB entry to dev for addr.
+ *	Callee is responsible for sending appropriate notification. The helper
+ *	rtnl_fdb_notify() can be invoked to send a generic notification in case
+ *	the driver does not need to customize the notification.
  * int (*ndo_fdb_del)(struct ndmsg *ndm, struct nlattr *tb[],
  *		      struct net_device *dev,
  *		      const unsigned char *addr, u16 vid)

@@ -409,7 +409,7 @@ static int qlcnic_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 	}
 
 	if (ether_addr_equal(addr, adapter->mac_addr))
-		return err;
+		goto out;
 
 	if (is_unicast_ether_addr(addr)) {
 		if (netdev_uc_count(netdev) < adapter->ahw->max_uc_count)
@@ -421,6 +421,10 @@ static int qlcnic_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 	} else {
 		err = -EINVAL;
 	}
+
+out:
+	if (!err)
+		rtnl_fdb_notify(dev, addr, vid, RTM_NEWNEIGH, ndm->ndm_state);
 
 	return err;
 }
