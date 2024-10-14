@@ -352,7 +352,7 @@ next:
  * devl_register - Register devlink instance
  * @devlink: devlink
  */
-int devl_register(struct devlink *devlink)
+void devl_register(struct devlink *devlink)
 {
 	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
 	devl_assert_locked(devlink);
@@ -360,8 +360,6 @@ int devl_register(struct devlink *devlink)
 	xa_set_mark(&devlinks, devlink->index, DEVLINK_REGISTERED);
 	devlink_notify_register(devlink);
 	devlink_rel_nested_in_notify(devlink);
-
-	return 0;
 }
 EXPORT_SYMBOL_GPL(devl_register);
 

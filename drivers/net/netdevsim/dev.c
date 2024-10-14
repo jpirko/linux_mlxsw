@@ -1553,9 +1553,7 @@ int nsim_drv_probe(struct nsim_bus_dev *nsim_bus_dev)
 		goto err_devlink_unlock;
 	}
 
-	err = devl_register(devlink);
-	if (err)
-		goto err_vfc_free;
+	devl_register(devlink);
 
 	err = nsim_dev_resources_register(devlink);
 	if (err)
@@ -1632,7 +1630,6 @@ err_resource_unregister:
 	devl_resources_unregister(devlink);
 err_dl_unregister:
 	devl_unregister(devlink);
-err_vfc_free:
 	kfree(nsim_dev->vfconfigs);
 err_devlink_unlock:
 	devl_unlock(devlink);
