@@ -346,13 +346,15 @@ void devlink_put(struct devlink *devlink)
 	queue_rcu_work(system_wq, &devlink->rwork);
 }
 
-struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp)
+static struct devlink *__devlinks_xa_find_get(struct net *net,
+					      unsigned long *indexp,
+					      xa_mark_t filter)
 {
 	struct devlink *devlink = NULL;
 
 	rcu_read_lock();
 retry:
-	devlink = xa_find(&devlinks, indexp, ULONG_MAX, DEVLINK_REGISTERED);
+	devlink = xa_find(&devlinks, indexp, ULONG_MAX, filter);
 	if (!devlink)
 		goto unlock;
 
@@ -369,6 +371,11 @@ unlock:
 next:
 	(*indexp)++;
 	goto retry;
+}
+
+struct devlink *devlinks_xa_find_registered_get(struct net *net, unsigned long *indexp)
+{
+	return __devlinks_xa_find_get(net, indexp, DEVLINK_REGISTERED);
 }
 
 /**
