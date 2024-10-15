@@ -422,11 +422,6 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 	if (!devlink)
 		return NULL;
 
-	ret = xa_alloc_cyclic(&devlinks, &devlink->index, devlink, xa_limit_31b,
-			      &last_id, GFP_KERNEL);
-	if (ret < 0)
-		goto err_xa_alloc;
-
 	devlink->dev = get_device(dev);
 	devlink->ops = ops;
 	xa_init_flags(&devlink->ports, XA_FLAGS_ALLOC);
@@ -450,9 +445,17 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 	lockdep_set_class(&devlink->lock, &devlink->lock_key);
 	refcount_set(&devlink->refcount, 1);
 
+	ret = xa_alloc_cyclic(&devlinks, &devlink->index, devlink, xa_limit_31b,
+			      &last_id, GFP_KERNEL);
+	if (ret < 0)
+		goto err_xa_alloc;
+
 	return devlink;
 
 err_xa_alloc:
+	mutex_destroy(&devlink->lock);
+	lockdep_unregister_key(&devlink->lock_key);
+	put_device(devlink->dev);
 	kvfree(devlink);
 	return NULL;
 }
