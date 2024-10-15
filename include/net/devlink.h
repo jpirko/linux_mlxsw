@@ -1548,6 +1548,9 @@ struct net *devlink_net(const struct devlink *devlink);
 struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 				 size_t priv_size, struct net *net,
 				 struct device *dev);
+
+
+
 static inline struct devlink *devlink_alloc(const struct devlink_ops *ops,
 					    size_t priv_size,
 					    struct device *dev)
@@ -1560,6 +1563,24 @@ void devl_unregister(struct devlink *devlink);
 void devlink_register(struct devlink *devlink);
 void devlink_unregister(struct devlink *devlink);
 void devlink_free(struct devlink *devlink);
+
+struct devlink_shared_inst;
+
+struct devlink *__devlink_shared_alloc(const struct devlink_ops *ops,
+				       size_t priv_size, struct net *net,
+				       struct module *module, u64 per_module_id,
+				       void *inst_priv,
+				       struct devlink_shared_inst **p_inst);
+void devlink_shared_free(struct devlink *devlink,
+			 struct devlink_shared_inst *inst);
+void *devl_shared_first_inst_priv(struct devlink *devlink);
+
+#define devlink_alloc_shared(ops, priv_size, net, per_module_id)		\
+	__devlink_alloc_shared(ops, priv_size, net, THIS_MODULE, per_module_id)
+
+bool devl_shared_should_init(struct devlink *devlink,
+			     struct devlink_shared_inst *inst);
+bool devl_shared_should_fini(struct devlink *devlink);
 
 /**
  * struct devlink_port_ops - Port operations

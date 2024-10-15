@@ -152,8 +152,6 @@ int devlink_rel_nested_in_add(u32 *rel_index, u32 devlink_index,
 {
 	struct devlink_rel *rel = devlink_rel_alloc();
 
-	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
-
 	if (IS_ERR(rel))
 		return PTR_ERR(rel);
 
@@ -313,6 +311,11 @@ static void devlink_release(struct work_struct *work)
 
 	mutex_destroy(&devlink->lock);
 	lockdep_unregister_key(&devlink->lock_key);
+	if (devlink->sh) {
+		kfree(devlink->sh->per_module_id_str);
+		kfree(devlink->sh->module_name);
+		kfree(devlink->sh);
+	}
 	put_device(devlink->dev);
 	kvfree(devlink);
 }
@@ -378,6 +381,11 @@ struct devlink *devlinks_xa_find_registered_get(struct net *net, unsigned long *
 	return __devlinks_xa_find_get(net, indexp, DEVLINK_REGISTERED);
 }
 
+struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp)
+{
+	return __devlinks_xa_find_get(net, indexp, XA_MAX_MARKS);
+}
+
 /**
  * devl_register - Register devlink instance
  * @devlink: devlink
@@ -424,27 +432,15 @@ void devlink_unregister(struct devlink *devlink)
 }
 EXPORT_SYMBOL_GPL(devlink_unregister);
 
-/**
- *	devlink_alloc_ns - Allocate new devlink instance resources
- *	in specific namespace
- *
- *	@ops: ops
- *	@priv_size: size of user private data
- *	@net: net namespace
- *	@dev: parent device
- *
- *	Allocate new devlink instance resources, including devlink index
- *	and name.
- */
-struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
-				 size_t priv_size, struct net *net,
-				 struct device *dev)
+static struct devlink *__devlink_alloc_ns(const struct devlink_ops *ops,
+					  size_t priv_size, struct net *net,
+					  struct device *dev)
 {
 	struct devlink *devlink;
 	static u32 last_id;
 	int ret;
 
-	WARN_ON(!ops || !dev);
+	WARN_ON(!ops);
 	if (!devlink_reload_actions_valid(ops))
 		return NULL;
 
@@ -453,6 +449,7 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 		return NULL;
 
 	devlink->dev = get_device(dev);
+
 	devlink->ops = ops;
 	xa_init_flags(&devlink->ports, XA_FLAGS_ALLOC);
 	xa_init_flags(&devlink->params, XA_FLAGS_ALLOC);
@@ -489,6 +486,26 @@ err_xa_alloc:
 	kvfree(devlink);
 	return NULL;
 }
+
+/**
+ *	devlink_alloc_ns - Allocate new devlink instance resources
+ *	in specific namespace
+ *
+ *	@ops: ops
+ *	@priv_size: size of user private data
+ *	@net: net namespace
+ *	@dev: parent device
+ *
+ *	Allocate new devlink instance resources, including devlink index
+ *	and name.
+ */
+struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
+				 size_t priv_size, struct net *net,
+				 struct device *dev)
+{
+	WARN_ON(!dev);
+	return __devlink_alloc_ns(ops, priv_size, net, dev);
+}
 EXPORT_SYMBOL_GPL(devlink_alloc_ns);
 
 /**
@@ -501,6 +518,163 @@ void devlink_free(struct devlink *devlink)
 	devlink_put(devlink);
 }
 EXPORT_SYMBOL_GPL(devlink_free);
+
+struct devlink_shared_inst {
+	struct list_head list;
+	void *priv;
+};
+
+/**
+ * devlink_shared_shared - Allocate new shared devlink instance resources
+ * @ops: ops
+ * @priv_size: size of user private data
+ * @net: net namespace
+ * @module: module owner
+ * @per_module_id: uniqueue id within the module
+ * @inst_priv: private pointer of calling instance
+ *
+ * Allocate new devlink instance resources, including devlink index
+ * and name. If instance already exists, just take a reference.
+ */
+struct devlink *__devlink_shared_alloc(const struct devlink_ops *ops,
+				       size_t priv_size, struct net *net,
+				       struct module *module, u64 per_module_id,
+				       void *inst_priv,
+				       struct devlink_shared_inst **p_inst)
+{
+	char per_module_id_str[sizeof(u64) * 2 + 1];
+	struct devlink_shared_inst *inst;
+	struct devlink_shared *sh;
+	struct devlink *devlink;
+	unsigned long index;
+
+	if (WARN_ON(!module))
+		return NULL;
+
+	inst = kmalloc(sizeof(*inst), GFP_KERNEL);
+	if (!inst)
+		return NULL;
+	inst->priv = inst_priv;
+
+	sprintf(per_module_id_str, "%016llx", per_module_id);
+	devlinks_xa_for_each_get(net, index, devlink) {
+		sh = devlink->sh;
+		if (sh &&
+		    !strcmp(sh->module_name, module_name(module)) &&
+		    !strcmp(sh->per_module_id_str, per_module_id_str)) {
+			/* Reference was taken. */
+			goto list_inst;
+		}
+		devlink_put(devlink);
+	}
+
+	sh = kmalloc(sizeof(*sh), GFP_KERNEL);
+	if (!sh)
+		goto err_sh_alloc;
+	INIT_LIST_HEAD(&sh->inst_list);
+	sh->module_name = kstrdup(module_name(module), GFP_KERNEL);
+	if (!sh->module_name)
+		goto err_module_name_alloc;
+	sh->per_module_id_str = kstrdup(per_module_id_str, GFP_KERNEL);
+	if (!sh->per_module_id_str)
+		goto err_per_module_id_str_alloc;
+
+	devlink = __devlink_alloc_ns(ops, priv_size, net, NULL);
+	if (!devlink)
+		goto err_devlink_alloc;
+	devlink->sh = sh;
+
+list_inst:
+	devl_lock(devlink);
+	list_add_tail(&sh->inst_list, &inst->list);
+	devl_unlock(devlink);
+	*p_inst = inst;
+	return devlink;
+
+err_devlink_alloc:
+	kfree(sh->per_module_id_str);
+err_per_module_id_str_alloc:
+	kfree(sh->module_name);
+err_module_name_alloc:
+	kfree(sh);
+err_sh_alloc:
+	kfree(inst);
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(__devlink_shared_alloc);
+
+/**
+ * devlink_shared_free - Free shared devlink instance resources
+ *
+ * @devlink: devlink
+ */
+void devlink_shared_free(struct devlink *devlink,
+			 struct devlink_shared_inst *inst)
+{
+	devl_lock(devlink);
+	list_del(&inst->list);
+	devl_unlock(devlink);
+
+	devlink_put(devlink);
+}
+EXPORT_SYMBOL_GPL(devlink_shared_free);
+
+static struct devlink_shared_inst *
+devl_shared_first_inst(struct devlink *devlink)
+{
+	struct devlink_shared_inst *inst;
+
+	if (!WARN_ON(devlink->sh))
+		return NULL;
+	inst = list_first_entry_or_null(&devlink->sh->inst_list,
+					struct devlink_shared_inst, list);
+	WARN_ON(!inst);
+	return inst;
+}
+
+/**
+ * devl_shared_inst_priv - Get priv pointer of nested instance
+ * @devlink: devlink
+ *
+ * Returns priv pointer of one of the nested instances sharing
+ * this devlink. Callee should not care which, all should be
+ * equal from the callee perspective. If not, something is wrong.
+ */
+void *devl_shared_first_inst_priv(struct devlink *devlink)
+{
+	return devl_shared_first_inst(devlink)->priv;
+}
+EXPORT_SYMBOL_GPL(devl_shared_first_inst_priv);
+
+/**
+ * devl_shared_should_init - Should do shared devlink initialization
+ * @devlink: devlink
+ * @inst: nested instance pointer
+ *
+ * Returns true in case the caller should do initialization of
+ * shared devlink instance objects.
+ */
+bool devl_shared_should_init(struct devlink *devlink,
+			     struct devlink_shared_inst *inst)
+{
+	devl_assert_locked(devlink);
+	return inst == devl_shared_first_inst(devlink);
+}
+EXPORT_SYMBOL_GPL(devl_shared_should_init);
+
+/**
+ * devl_shared_should_fini - Should do shared devlink cleanup
+ * @devlink: devlink
+ *
+ * Returns true in case the caller should do cleanup of
+ * shared devlink instance objects.
+ */
+bool devl_shared_should_fini(struct devlink *devlink)
+{
+	devl_assert_locked(devlink);
+	return list_is_singular(&devlink->sh->inst_list);
+}
+EXPORT_SYMBOL_GPL(devl_shared_should_fini);
 
 static void __net_exit devlink_pernet_pre_exit(struct net *net)
 {
