@@ -319,8 +319,31 @@ static void devlink_release(struct work_struct *work)
 
 void devlink_put(struct devlink *devlink)
 {
-	if (refcount_dec_and_test(&devlink->refcount))
-		queue_rcu_work(system_wq, &devlink->rwork);
+	if (!refcount_dec_and_test(&devlink->refcount))
+		return;
+
+	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
+
+	WARN_ON(!list_empty(&devlink->trap_policer_list));
+	WARN_ON(!list_empty(&devlink->trap_group_list));
+	WARN_ON(!list_empty(&devlink->trap_list));
+	WARN_ON(!list_empty(&devlink->reporter_list));
+	WARN_ON(!list_empty(&devlink->region_list));
+	WARN_ON(!list_empty(&devlink->resource_list));
+	WARN_ON(!list_empty(&devlink->dpipe_table_list));
+	WARN_ON(!list_empty(&devlink->sb_list));
+	WARN_ON(!list_empty(&devlink->rate_list));
+	WARN_ON(!list_empty(&devlink->linecard_list));
+	WARN_ON(!xa_empty(&devlink->ports));
+
+	xa_destroy(&devlink->nested_rels);
+	xa_destroy(&devlink->snapshot_ids);
+	xa_destroy(&devlink->params);
+	xa_destroy(&devlink->ports);
+
+	xa_erase(&devlinks, devlink->index);
+
+	queue_rcu_work(system_wq, &devlink->rwork);
 }
 
 struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp)
@@ -468,27 +491,6 @@ EXPORT_SYMBOL_GPL(devlink_alloc_ns);
  */
 void devlink_free(struct devlink *devlink)
 {
-	ASSERT_DEVLINK_NOT_REGISTERED(devlink);
-
-	WARN_ON(!list_empty(&devlink->trap_policer_list));
-	WARN_ON(!list_empty(&devlink->trap_group_list));
-	WARN_ON(!list_empty(&devlink->trap_list));
-	WARN_ON(!list_empty(&devlink->reporter_list));
-	WARN_ON(!list_empty(&devlink->region_list));
-	WARN_ON(!list_empty(&devlink->resource_list));
-	WARN_ON(!list_empty(&devlink->dpipe_table_list));
-	WARN_ON(!list_empty(&devlink->sb_list));
-	WARN_ON(!list_empty(&devlink->rate_list));
-	WARN_ON(!list_empty(&devlink->linecard_list));
-	WARN_ON(!xa_empty(&devlink->ports));
-
-	xa_destroy(&devlink->nested_rels);
-	xa_destroy(&devlink->snapshot_ids);
-	xa_destroy(&devlink->params);
-	xa_destroy(&devlink->ports);
-
-	xa_erase(&devlinks, devlink->index);
-
 	devlink_put(devlink);
 }
 EXPORT_SYMBOL_GPL(devlink_free);
