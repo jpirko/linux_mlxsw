@@ -49,6 +49,10 @@ struct devlink {
 	struct xarray snapshot_ids;
 	struct devlink_dev_stats stats;
 	struct device *dev;
+	struct module *module;
+	u64 per_module_id;
+	char *module_name;
+	char *per_module_id_str;
 	possible_net_t _net;
 	/* Serializes access to devlink instance specific objects such as
 	 * port, sb, dpipe, resource, params, region, traps and more.
@@ -60,6 +64,10 @@ struct devlink {
 	struct rcu_work rwork;
 	struct devlink_rel *rel;
 	struct xarray nested_rels;
+	/* Number of instances sharing this devlink. Use devl_inc_shared()
+	 * and devl_dec_shared() to change this value.
+	 */
+	unsigned int shared_count;
 	char priv[] __aligned(NETDEV_ALIGN);
 };
 
@@ -91,8 +99,13 @@ extern struct genl_family devlink_nl_family;
 	     (devlink = devlinks_xa_find_registered_get(net, &index));	\
 	     index++)
 
+#define devlinks_xa_for_each_get(net, index, devlink)	\
+	for (index = 0; (devlink = devlinks_xa_find_get(net, &index)); index++)
+
 struct devlink *devlinks_xa_find_registered_get(struct net *net,
 						unsigned long *indexp);
+
+struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp);
 
 static inline bool __devl_is_registered(struct devlink *devlink)
 {
@@ -176,12 +189,22 @@ devlink_dump_state(struct netlink_callback *cb)
 
 static inline const char *devlink_bus_name(struct devlink *devlink)
 {
-	return devlink->dev->bus->name;
+	if (devlink->dev)
+		return devlink->dev->bus->name;
+	if (devlink->module_name)
+		return devlink->module_name;
+	WARN_ON(1);
+	return NULL;
 }
 
 static inline const char *devlink_dev_name(struct devlink *devlink)
 {
-	return dev_name(devlink->dev);
+	if (devlink->dev)
+		return dev_name(devlink->dev);
+	if (devlink->per_module_id_str)
+		return devlink->per_module_id_str;
+	WARN_ON(1);
+	return NULL;
 }
 
 static inline bool devlink_match(struct devlink *devlink,

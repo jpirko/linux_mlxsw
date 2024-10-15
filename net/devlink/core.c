@@ -313,6 +313,8 @@ static void devlink_release(struct work_struct *work)
 
 	mutex_destroy(&devlink->lock);
 	lockdep_unregister_key(&devlink->lock_key);
+	kfree(devlink->per_module_id_str);
+	kfree(devlink->module_name);
 	put_device(devlink->dev);
 	kvfree(devlink);
 }
@@ -378,6 +380,11 @@ struct devlink *devlinks_xa_find_registered_get(struct net *net, unsigned long *
 	return __devlinks_xa_find_get(net, indexp, DEVLINK_REGISTERED);
 }
 
+struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp)
+{
+	return __devlinks_xa_find_get(net, indexp, XA_MAX_MARKS);
+}
+
 /**
  * devl_register - Register devlink instance
  * @devlink: devlink
@@ -424,27 +431,17 @@ void devlink_unregister(struct devlink *devlink)
 }
 EXPORT_SYMBOL_GPL(devlink_unregister);
 
-/**
- *	devlink_alloc_ns - Allocate new devlink instance resources
- *	in specific namespace
- *
- *	@ops: ops
- *	@priv_size: size of user private data
- *	@net: net namespace
- *	@dev: parent device
- *
- *	Allocate new devlink instance resources, including devlink index
- *	and name.
- */
-struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
-				 size_t priv_size, struct net *net,
-				 struct device *dev)
+static struct devlink *__devlink_alloc_ns(const struct devlink_ops *ops,
+					  size_t priv_size, struct net *net,
+					  struct device *dev,
+					  struct module *module,
+					  u64 per_module_id)
 {
 	struct devlink *devlink;
 	static u32 last_id;
 	int ret;
 
-	WARN_ON(!ops || !dev);
+	WARN_ON(!ops);
 	if (!devlink_reload_actions_valid(ops))
 		return NULL;
 
@@ -453,6 +450,18 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 		return NULL;
 
 	devlink->dev = get_device(dev);
+	__module_get(module);
+	devlink->module = module;
+	devlink->per_module_id = per_module_id;
+	if (module) {
+		devlink->module_name = kstrdup(module_name(module), GFP_KERNEL);
+		if (!devlink->module_name)
+			goto err_module_name_alloc;
+		devlink->per_module_id_str = kmalloc(sizeof(u64) * 2 + 1, GFP_KERNEL);
+		if (!devlink->per_module_id_str)
+			goto err_per_module_id_str_alloc;
+		sprintf(devlink->per_module_id_str, "%016llx", per_module_id);
+	}
 	devlink->ops = ops;
 	xa_init_flags(&devlink->ports, XA_FLAGS_ALLOC);
 	xa_init_flags(&devlink->params, XA_FLAGS_ALLOC);
@@ -483,13 +492,100 @@ struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 	return devlink;
 
 err_xa_alloc:
+	kfree(devlink->per_module_id_str);
+err_per_module_id_str_alloc:
+	kfree(devlink->module_name);
+err_module_name_alloc:
 	mutex_destroy(&devlink->lock);
 	lockdep_unregister_key(&devlink->lock_key);
+	module_put(devlink->module);
 	put_device(devlink->dev);
 	kvfree(devlink);
 	return NULL;
 }
+
+/**
+ *	devlink_alloc_ns - Allocate new devlink instance resources
+ *	in specific namespace
+ *
+ *	@ops: ops
+ *	@priv_size: size of user private data
+ *	@net: net namespace
+ *	@dev: parent device
+ *
+ *	Allocate new devlink instance resources, including devlink index
+ *	and name.
+ */
+struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
+				 size_t priv_size, struct net *net,
+				 struct device *dev)
+{
+	WARN_ON(!dev);
+	return __devlink_alloc_ns(ops, priv_size, net, dev, NULL, 0);
+}
 EXPORT_SYMBOL_GPL(devlink_alloc_ns);
+
+/**
+ * devlink_alloc_shared - Allocate new shared devlink instance resources
+ * @ops: ops
+ * @priv_size: size of user private data
+ * @net: net namespace
+ * @module: module owner
+ * @per_module_id: uniqueue id within the module
+ *
+ * Allocate new devlink instance resources, including devlink index
+ * and name. If instance already exists, just take a reference.
+ */
+struct devlink *__devlink_alloc_shared(const struct devlink_ops *ops,
+				       size_t priv_size, struct net *net,
+				       struct module *module, u64 per_module_id)
+{
+	struct devlink *devlink;
+	unsigned long index;
+
+	if (WARN_ON(!module))
+		return NULL;
+	devlinks_xa_for_each_get(net, index, devlink) {
+		if (devlink->module == module &&
+		    devlink->per_module_id == per_module_id)
+			/* Reference was taken, return. */
+			return devlink;
+		devlink_put(devlink);
+	}
+	return __devlink_alloc_ns(ops, priv_size, net, NULL, module, per_module_id);
+}
+EXPORT_SYMBOL_GPL(__devlink_alloc_shared);
+
+/**
+ * devl_shared_inc - Increase count of instances sharing this one
+ * @devlink: devlink
+ *
+ * Increase count of instances sharing this devlink.
+ *
+ * Returns true in case this is the first instance to share this.
+ */
+bool devl_shared_inc(struct devlink *devlink)
+{
+	devl_assert_locked(devlink);
+	return devlink->shared_count++ == 0;
+}
+EXPORT_SYMBOL_GPL(devl_shared_inc);
+
+/**
+ * devl_shared_dec - Decrease count of instances sharing this one
+ * @devlink: devlink
+ *
+ * Decrease count of instances sharing this devlink.
+ *
+ * Returns true in case this is the last instance sharing this.
+ */
+bool devl_shared_dec(struct devlink *devlink)
+{
+	devl_assert_locked(devlink);
+	WARN_ON(!devlink->shared_count);
+	return --devlink->shared_count == 0;
+}
+EXPORT_SYMBOL_GPL(devl_shared_dec);
 
 /**
  *	devlink_free - Free devlink instance resources

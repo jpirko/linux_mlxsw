@@ -1534,6 +1534,16 @@ struct net *devlink_net(const struct devlink *devlink);
 struct devlink *devlink_alloc_ns(const struct devlink_ops *ops,
 				 size_t priv_size, struct net *net,
 				 struct device *dev);
+struct devlink *__devlink_alloc_shared(const struct devlink_ops *ops,
+				       size_t priv_size, struct net *net,
+				       struct module *module, u64 per_module_id);
+bool devl_shared_inc(struct devlink *devlink);
+bool devl_shared_dec(struct devlink *devlink);
+
+#define devlink_alloc_shared(ops, priv_size, net, per_module_id)		\
+	__devlink_alloc_shared(ops, priv_size, net, THIS_MODULE, per_module_id)
+
+
 static inline struct devlink *devlink_alloc(const struct devlink_ops *ops,
 					    size_t priv_size,
 					    struct device *dev)
