@@ -87,9 +87,12 @@ extern struct genl_family devlink_nl_family;
  * in loop body in order to release the reference.
  */
 #define devlinks_xa_for_each_registered_get(net, index, devlink)	\
-	for (index = 0; (devlink = devlinks_xa_find_get(net, &index)); index++)
+	for (index = 0;							\
+	     (devlink = devlinks_xa_find_registered_get(net, &index));	\
+	     index++)
 
-struct devlink *devlinks_xa_find_get(struct net *net, unsigned long *indexp);
+struct devlink *devlinks_xa_find_registered_get(struct net *net,
+						unsigned long *indexp);
 
 static inline bool __devl_is_registered(struct devlink *devlink)
 {

@@ -318,8 +318,8 @@ static int devlink_nl_inst_iter_dumpit(struct sk_buff *msg,
 	struct devlink *devlink;
 	int err = 0;
 
-	while ((devlink = devlinks_xa_find_get(sock_net(msg->sk),
-					       &state->instance))) {
+	while ((devlink = devlinks_xa_find_registered_get(sock_net(msg->sk),
+							  &state->instance))) {
 		devl_lock(devlink);
 
 		if (devl_is_registered(devlink))
