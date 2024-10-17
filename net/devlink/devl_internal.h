@@ -184,6 +184,14 @@ static inline const char *devlink_dev_name(struct devlink *devlink)
 	return dev_name(devlink->dev);
 }
 
+static inline bool devlink_match(struct devlink *devlink,
+				 const char *busname,
+				 const char *devname)
+{
+	return strcmp(devlink_bus_name(devlink), busname) == 0 &&
+	       strcmp(devlink_dev_name(devlink), devname) == 0;
+}
+
 static inline int
 devlink_nl_put_handle(struct sk_buff *msg, struct devlink *devlink)
 {
