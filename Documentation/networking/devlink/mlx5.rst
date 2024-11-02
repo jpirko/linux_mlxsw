@@ -45,6 +45,11 @@ Parameters
      - The range is between 1 and a device-specific max.
      - Applies to each physical function (PF) independently, if the device
        supports it. Otherwise, it applies symmetrically to all PFs.
+   * - ``keep_link_up``
+     - permanent
+     - Boolean
+     - When set, the NIC keeps the link up as long as the host is not in standby
+       mode, even when the driver is not loaded.
 
 Note: permanent parameters such as ``enable_sriov`` and ``total_vfs`` require FW reset to take effect
 

@@ -9,6 +9,8 @@
 
 int mlx5_nv_param_register_dl_params(struct devlink *devlink);
 void mlx5_nv_param_unregister_dl_params(struct devlink *devlink);
+int mlx5_nv_port_param_register(struct mlx5_core_dev *dev, struct devlink_port *port);
+void mlx5_nv_port_param_unregister(struct mlx5_core_dev *dev, struct devlink_port *port);
 
 #endif
 

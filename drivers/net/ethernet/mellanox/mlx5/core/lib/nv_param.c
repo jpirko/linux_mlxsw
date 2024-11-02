@@ -3,11 +3,14 @@
 
 #include "nv_param.h"
 #include "mlx5_core.h"
+#include "en.h"
 
 enum {
 	MLX5_CLASS_0_CTRL_ID_NV_GLOBAL_PCI_CONF               = 0x80,
 	MLX5_CLASS_0_CTRL_ID_NV_GLOBAL_PCI_CAP                = 0x81,
 	MLX5_CLASS_0_CTRL_ID_NV_SW_OFFLOAD_CONFIG             = 0x10a,
+
+	MLX5_CLASS_1_CTRL_ID_NV_KEEP_LINK_UP                  = 0x190,
 
 	MLX5_CLASS_3_CTRL_ID_NV_PF_PCI_CONF                   = 0x80,
 };
@@ -15,6 +18,12 @@ enum {
 struct mlx5_ifc_configuration_item_type_class_global_bits {
 	u8         type_class[0x8];
 	u8         parameter_index[0x18];
+};
+
+struct mlx5_ifc_configuration_item_type_class_physical_port_bits {
+	u8    type_class[0x8];
+	u8    port[0x8];
+	u8    parameter_index[0x10];
 };
 
 struct mlx5_ifc_configuration_item_type_class_per_host_pf_bits {
@@ -29,6 +38,9 @@ union mlx5_ifc_config_item_type_auto_bits {
 				configuration_item_type_class_global;
 	struct mlx5_ifc_configuration_item_type_class_per_host_pf_bits
 				configuration_item_type_class_per_host_pf;
+	struct mlx5_ifc_configuration_item_type_class_physical_port_bits
+				configuration_item_type_class_physical_port;
+
 	u8 reserved_at_0[0x20];
 };
 
@@ -121,6 +133,16 @@ struct mlx5_ifc_nv_sw_offload_conf_bits {
 	u8         lro_log_timeout2[0x4];
 	u8         lro_log_timeout1[0x4];
 	u8         lro_log_timeout0[0x4];
+};
+
+struct mlx5_ifc_nv_keep_link_up_bits {
+	u8    reserved_at_0[0x1a];
+	u8    auto_power_save_link_down[0x1];
+	u8    do_not_clear_port_stats[0x1];
+	u8    keep_link_up_on_standby[0x1];
+	u8    keep_link_up_on_boot[0x1];
+	u8    keep_ib_link_up[0x1];
+	u8    keep_eth_link_up[0x1];
 };
 
 #define MNVDA_HDR_SZ \
@@ -552,4 +574,111 @@ void mlx5_nv_param_unregister_dl_params(struct devlink *devlink)
 
 	devl_params_unregister(devlink, mlx5_nv_param_devlink_params,
 			       ARRAY_SIZE(mlx5_nv_param_devlink_params));
+}
+
+/* mlx5e devlink port params */
+
+static int
+mlx5_nv_param_read_keep_link_up(struct mlx5_core_dev *dev, void *mnvda, size_t len)
+{
+	MLX5_SET_CONFIG_ITEM_TYPE(physical_port, mnvda, type_class, 1);
+	MLX5_SET_CONFIG_ITEM_TYPE(physical_port, mnvda, parameter_index,
+				  MLX5_CLASS_1_CTRL_ID_NV_KEEP_LINK_UP);
+	MLX5_SET_CONFIG_ITEM_TYPE(physical_port, mnvda, port, mlx5_get_dev_index(dev) + 1);
+	MLX5_SET_CONFIG_HDR_LEN(mnvda, nv_keep_link_up);
+
+	return mlx5_nv_param_read(dev, mnvda, len);
+}
+
+static int
+mlx5_nv_port_param_keep_link_up_get(struct devlink *devlink, u32 id,
+				    struct devlink_param_gset_ctx *ctx)
+{
+	struct mlx5e_dev *edev = devlink_priv(devlink);
+	struct mlx5_core_dev *dev = edev->priv->mdev;
+	u32 mnvda[MLX5_ST_SZ_DW(mnvda_reg)] = {};
+	void *data;
+	int err;
+
+	err = mlx5_nv_param_read_keep_link_up(dev, mnvda, sizeof(mnvda));
+	if (err)
+		return err;
+
+	data = MLX5_ADDR_OF(mnvda_reg, mnvda, configuration_item_data);
+	if (MLX5_CAP_GEN(dev, port_type) == MLX5_CAP_PORT_TYPE_ETH)
+		ctx->val.vbool = !!MLX5_GET(nv_keep_link_up, data, keep_eth_link_up);
+	else if (MLX5_CAP_GEN(dev, port_type) == MLX5_CAP_PORT_TYPE_IB)
+		ctx->val.vbool = !!MLX5_GET(nv_keep_link_up, data, keep_ib_link_up);
+	else
+		ctx->val.vbool = false;
+
+	return 0;
+}
+
+static int
+mlx5_nv_port_param_keep_link_up_set(struct devlink *devlink, u32 id,
+				    struct devlink_param_gset_ctx *ctx,
+				    struct netlink_ext_ack *extack)
+{
+	struct mlx5e_dev *edev = devlink_priv(devlink);
+	struct mlx5_core_dev *dev = edev->priv->mdev;
+	u32 mnvda[MLX5_ST_SZ_DW(mnvda_reg)] = {};
+	void *data;
+	int err;
+
+	err = mlx5_nv_param_read_keep_link_up(dev, mnvda, sizeof(mnvda));
+	if (err)
+		return err;
+
+	data = MLX5_ADDR_OF(mnvda_reg, mnvda, configuration_item_data);
+
+	if (MLX5_CAP_GEN(dev, port_type) == MLX5_CAP_PORT_TYPE_ETH)
+		MLX5_SET(nv_keep_link_up, data, keep_eth_link_up, ctx->val.vbool);
+	else if (MLX5_CAP_GEN(dev, port_type) == MLX5_CAP_PORT_TYPE_IB)
+		MLX5_SET(nv_keep_link_up, data, keep_ib_link_up, ctx->val.vbool);
+	else
+		return -EOPNOTSUPP;
+
+	return mlx5_nv_param_write(dev, mnvda,  sizeof(mnvda));
+}
+
+static int
+mlx5_nv_port_param_keep_link_up_validate(struct devlink *devlink, u32 id,
+					 union devlink_param_value val,
+					 struct netlink_ext_ack *extack)
+{
+	struct mlx5e_dev *edev = devlink_priv(devlink);
+	struct mlx5_core_dev *dev = edev->priv->mdev;
+
+	if (MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_ETH &&
+	    MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_IB) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Not supported on this device link type");
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static const struct devlink_param mlx5_nv_param_devlink_port_params[] = {
+	DEVLINK_PARAM_GENERIC(KEEP_LINK_UP, BIT(DEVLINK_PARAM_CMODE_PERMANENT),
+			      mlx5_nv_port_param_keep_link_up_get,
+			      mlx5_nv_port_param_keep_link_up_set,
+			      mlx5_nv_port_param_keep_link_up_validate),
+};
+
+int mlx5_nv_port_param_register(struct mlx5_core_dev *dev, struct devlink_port *port)
+{
+	if (!mlx5_core_is_pf(dev))
+		return 0;
+	return devlink_port_params_register(port, mlx5_nv_param_devlink_port_params,
+					    ARRAY_SIZE(mlx5_nv_param_devlink_port_params));
+}
+
+void mlx5_nv_port_param_unregister(struct mlx5_core_dev *dev, struct devlink_port *port)
+{
+	if (!mlx5_core_is_pf(dev))
+		return;
+	devlink_port_params_unregister(port, mlx5_nv_param_devlink_port_params,
+				       ARRAY_SIZE(mlx5_nv_param_devlink_port_params));
 }

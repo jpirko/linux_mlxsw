@@ -3,6 +3,7 @@
 
 #include "en/devlink.h"
 #include "eswitch.h"
+#include "lib/nv_param.h"
 
 static const struct devlink_ops mlx5e_devlink_ops = {
 };
@@ -54,6 +55,7 @@ int mlx5e_devlink_port_register(struct mlx5e_dev *mlx5e_dev,
 	struct devlink_port_attrs attrs = {};
 	struct netdev_phys_item_id ppid = {};
 	unsigned int dl_port_index;
+	int err;
 
 	if (mlx5_core_is_pf(mdev)) {
 		attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
@@ -72,11 +74,19 @@ int mlx5e_devlink_port_register(struct mlx5e_dev *mlx5e_dev,
 
 	devlink_port_attrs_set(&mlx5e_dev->dl_port, &attrs);
 
-	return devlink_port_register(devlink, &mlx5e_dev->dl_port,
-				     dl_port_index);
+	err = devlink_port_register(devlink, &mlx5e_dev->dl_port,
+				    dl_port_index);
+	if (err)
+		return err;
+
+	err = mlx5_nv_port_param_register(mdev, &mlx5e_dev->dl_port);
+	if (err)
+		mlx5_core_warn(mdev, "Failed to register eth port params\n");
+	return 0;
 }
 
-void mlx5e_devlink_port_unregister(struct mlx5e_dev *mlx5e_dev)
+void mlx5e_devlink_port_unregister(struct mlx5e_dev *mlx5e_dev, struct mlx5_core_dev *mdev)
 {
+	mlx5_nv_port_param_unregister(mdev, &mlx5e_dev->dl_port);
 	devlink_port_unregister(&mlx5e_dev->dl_port);
 }
