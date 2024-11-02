@@ -117,6 +117,15 @@ parameters.
      - driverinit
      - Control the size (in packets) of the hairpin queues.
 
+   * - ``cqe_compress_type``
+     - string
+     - permanent
+     - Configure which algorithm should be used by the NIC in order to decide
+       rate of CQE compression dependeng on PCIe bus conditions.
+
+       * ``balanced`` : Merges fewer CQEs, resulting in a moderate compression ratio but maintaining a balance between bandwidth savings and performance
+       * ``aggressive`` : Merges more CQEs into a single entry, achieving a higher compression rate and maximizing performance, particularly under high traffic loads
+
 The ``mlx5`` driver supports reloading via ``DEVLINK_CMD_RELOAD``
 
 Info versions
