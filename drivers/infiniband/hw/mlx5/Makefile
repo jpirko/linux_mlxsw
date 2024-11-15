@@ -7,6 +7,7 @@ mlx5_ib-y := ah.o \
 	     counters.o \
 	     cq.o \
 	     data_direct.o \
+	     devlink.o \
 	     dm.o \
 	     doorbell.o \
 	     gsi.o \

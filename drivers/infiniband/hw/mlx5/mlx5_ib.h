@@ -1202,6 +1202,12 @@ struct mlx5_ib_dev {
 	const char *sub_dev_name;
 };
 
+struct mlx5r_dev {
+	struct mlx5_ib_dev *dev;
+	struct devlink_port dl_port;
+	enum rdma_link_layer ll;
+};
+
 static inline struct mlx5_ib_cq *to_mibcq(struct mlx5_core_cq *mcq)
 {
 	return container_of(mcq, struct mlx5_ib_cq, mcq);

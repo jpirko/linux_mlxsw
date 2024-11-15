@@ -34,6 +34,7 @@
 #include "mlx5_ib.h"
 #include "ib_rep.h"
 #include "cmd.h"
+#include "devlink.h"
 #include "devx.h"
 #include "dm.h"
 #include "fs.h"
@@ -4813,29 +4814,43 @@ static int mlx5r_probe(struct auxiliary_device *adev,
 	struct mlx5_core_dev *mdev = idev->mdev;
 	const struct mlx5_ib_profile *profile;
 	int port_type_cap, num_ports, ret;
+	struct mlx5r_dev *mlx5r_dev;
 	enum rdma_link_layer ll;
 	struct mlx5_ib_dev *dev;
 
 	port_type_cap = MLX5_CAP_GEN(mdev, port_type);
 	ll = mlx5_port_type_cap_to_rdma_ll(port_type_cap);
 
+	mlx5r_dev = mlx5r_create_devlink(&adev->dev, mdev, ll);
+	if (IS_ERR(mlx5r_dev))
+		return PTR_ERR(mlx5r_dev);
+	auxiliary_set_drvdata(adev, mlx5r_dev);
+
+	ret = mlx5r_devlink_port_register(mlx5r_dev, mdev);
+	if (ret)
+		goto err_devlink_destroy;
+
 	num_ports = max(MLX5_CAP_GEN(mdev, num_ports),
 			MLX5_CAP_GEN(mdev, num_vhca_ports));
 	dev = ib_alloc_device(mlx5_ib_dev, ib_dev);
-	if (!dev)
-		return -ENOMEM;
+	if (!dev) {
+		ret = -ENOMEM;
+		goto err_devlink_port_unregister;
+	}
+	mlx5r_dev->dev = dev;
+	mlx5r_devlink_port_ib_link(mlx5r_dev);
 
 	if (ll == IB_LINK_LAYER_INFINIBAND) {
 		ret = mlx5_ib_get_plane_num(mdev, &dev->num_plane);
 		if (ret)
-			goto fail;
+			goto err_devlink_port_ib_unlink;
 	}
 
 	dev->port = kcalloc(num_ports, sizeof(*dev->port),
 			     GFP_KERNEL);
 	if (!dev->port) {
 		ret = -ENOMEM;
-		goto fail;
+		goto err_devlink_port_ib_unlink;
 	}
 
 	dev->mdev = mdev;
@@ -4849,24 +4864,34 @@ static int mlx5r_probe(struct auxiliary_device *adev,
 
 	ret = __mlx5_ib_add(dev, profile);
 	if (ret)
-		goto fail_ib_add;
+		goto err_port_free;
 
-	auxiliary_set_drvdata(adev, dev);
 	return 0;
 
-fail_ib_add:
+err_port_free:
 	kfree(dev->port);
-fail:
+err_devlink_port_ib_unlink:
+	mlx5r_devlink_port_ib_unlink(mlx5r_dev);
 	ib_dealloc_device(&dev->ib_dev);
+err_devlink_port_unregister:
+	mlx5r_devlink_port_unregister(mlx5r_dev);
+err_devlink_destroy:
+	mlx5r_destroy_devlink(mlx5r_dev);
 	return ret;
 }
 
 static void mlx5r_remove(struct auxiliary_device *adev)
 {
+	struct mlx5r_dev *mlx5r_dev;
 	struct mlx5_ib_dev *dev;
 
-	dev = auxiliary_get_drvdata(adev);
+	mlx5r_dev = auxiliary_get_drvdata(adev);
+	dev = mlx5r_dev->dev;
+
+	mlx5r_devlink_port_ib_unlink(mlx5r_dev);
 	__mlx5_ib_remove(dev, dev->profile, MLX5_IB_STAGE_MAX);
+	mlx5r_devlink_port_unregister(mlx5r_dev);
+	mlx5r_destroy_devlink(mlx5r_dev);
 }
 
 static const struct auxiliary_device_id mlx5r_mp_id_table[] = {
