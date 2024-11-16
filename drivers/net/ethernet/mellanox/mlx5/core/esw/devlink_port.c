@@ -171,7 +171,7 @@ int mlx5_esw_offloads_devlink_port_register(struct mlx5_eswitch *esw, struct mlx
 		ops = NULL;
 
 	devlink = priv_to_devlink(dev);
-	dl_port_index = mlx5_esw_vport_to_devlink_port_index(dev, vport_num);
+	dl_port_index = mlx5_vport_to_devlink_port_index(dev, vport_num);
 	err = devl_port_register_with_ops(devlink, &dl_port->dl_port, dl_port_index, ops);
 	if (err)
 		return err;

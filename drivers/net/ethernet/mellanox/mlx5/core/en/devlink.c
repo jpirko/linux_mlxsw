@@ -63,11 +63,11 @@ int mlx5e_devlink_port_register(struct mlx5e_dev *mlx5e_dev,
 			memcpy(attrs.switch_id.id, ppid.id, ppid.id_len);
 			attrs.switch_id.id_len = ppid.id_len;
 		}
-		dl_port_index = mlx5_esw_vport_to_devlink_port_index(mdev,
-								     MLX5_VPORT_UPLINK);
+		dl_port_index = mlx5_vport_to_devlink_port_index(mdev,
+								 MLX5_VPORT_UPLINK);
 	} else {
 		attrs.flavour = DEVLINK_PORT_FLAVOUR_VIRTUAL;
-		dl_port_index = mlx5_esw_vport_to_devlink_port_index(mdev, 0);
+		dl_port_index = mlx5_vport_to_devlink_port_index(mdev, 0);
 	}
 
 	devlink_port_attrs_set(&mlx5e_dev->dl_port, &attrs);

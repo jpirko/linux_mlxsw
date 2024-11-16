@@ -80,7 +80,7 @@ mlx5_sf_alloc(struct mlx5_sf_table *table, struct mlx5_eswitch *esw,
 	}
 	sf->id = id_err;
 	hw_fn_id = mlx5_sf_sw_to_hw_id(table->dev, controller, sf->id);
-	dl_port_index = mlx5_esw_vport_to_devlink_port_index(table->dev, hw_fn_id);
+	dl_port_index = mlx5_vport_to_devlink_port_index(table->dev, hw_fn_id);
 	sf->port_index = dl_port_index;
 	sf->hw_fn_id = hw_fn_id;
 	sf->hw_state = MLX5_VHCA_STATE_ALLOCATED;

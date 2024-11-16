@@ -651,19 +651,6 @@ static inline bool mlx5_eswitch_is_funcs_handler(const struct mlx5_core_dev *dev
 	return mlx5_core_is_ecpf_esw_manager(dev);
 }
 
-static inline unsigned int
-mlx5_esw_vport_to_devlink_port_index(const struct mlx5_core_dev *dev,
-				     u16 vport_num)
-{
-	return (MLX5_CAP_GEN(dev, vhca_id) << 16) | vport_num;
-}
-
-static inline u16
-mlx5_esw_devlink_port_index_to_vport_num(unsigned int dl_port_index)
-{
-	return dl_port_index & 0xffff;
-}
-
 static inline bool mlx5_esw_is_fdb_created(struct mlx5_eswitch *esw)
 {
 	return esw->fdb_table.flags & MLX5_ESW_FDB_CREATED;

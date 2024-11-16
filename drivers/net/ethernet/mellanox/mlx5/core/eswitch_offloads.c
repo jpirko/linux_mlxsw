@@ -4462,7 +4462,7 @@ int mlx5_devlink_port_fn_ipsec_crypto_set(struct devlink_port *port, bool enable
 	if (IS_ERR(esw))
 		return PTR_ERR(esw);
 
-	vport_num = mlx5_esw_devlink_port_index_to_vport_num(port->index);
+	vport_num = mlx5_devlink_port_index_to_vport_num(port->index);
 	err = mlx5_esw_ipsec_vf_crypto_offload_supported(esw->dev, vport_num);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack,
@@ -4546,7 +4546,7 @@ int mlx5_devlink_port_fn_ipsec_packet_set(struct devlink_port *port,
 	if (IS_ERR(esw))
 		return PTR_ERR(esw);
 
-	vport_num = mlx5_esw_devlink_port_index_to_vport_num(port->index);
+	vport_num = mlx5_devlink_port_index_to_vport_num(port->index);
 	err = mlx5_esw_ipsec_vf_packet_offload_supported(esw->dev, vport_num);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack,
