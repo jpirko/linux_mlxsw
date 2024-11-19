@@ -202,6 +202,29 @@ definitions:
         name: exception
       -
         name: control
+  -
+    type: enum
+    name: dyn_attr_type
+    entries:
+      -
+        name: u8
+        value: 1
+      -
+        name: u16
+      -
+        name: u32
+      -
+        name: u64
+      -
+        name: string
+      -
+        name: flag
+      -
+        name: nul_string
+        value: 10
+      -
+        name: binary
+  -
 
 attribute-sets:
   -
