@@ -433,28 +433,23 @@ mlxsw_pci_rx_pkt_info_init(const struct mlxsw_pci *pci,
 	return 0;
 }
 
-static struct sk_buff *mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
-					       struct page *pages[],
-					       u16 byte_count)
+static struct sk_buff *
+mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
+			const struct mlxsw_pci_rx_pkt_info *rx_pkt_info)
 {
 	struct mlxsw_pci_queue *cq = q->u.rdq.cq;
 	unsigned int linear_data_size;
 	struct page_pool *page_pool;
 	struct sk_buff *skb;
-	int page_index = 0;
-	bool linear_only;
 	void *data;
+	int i;
 
-	linear_only = byte_count + MLXSW_PCI_RX_BUF_SW_OVERHEAD <= PAGE_SIZE;
-	linear_data_size = linear_only ? byte_count :
-					 PAGE_SIZE -
-					 MLXSW_PCI_RX_BUF_SW_OVERHEAD;
-
+	linear_data_size = rx_pkt_info->sg_entries_size[0];
 	page_pool = cq->u.cq.page_pool;
-	page_pool_dma_sync_for_cpu(page_pool, pages[page_index],
+	page_pool_dma_sync_for_cpu(page_pool, rx_pkt_info->pages[0],
 				   MLXSW_PCI_SKB_HEADROOM, linear_data_size);
 
-	data = page_address(pages[page_index]);
+	data = page_address(rx_pkt_info->pages[0]);
 	net_prefetch(data);
 
 	skb = napi_build_skb(data, PAGE_SIZE);
@@ -464,23 +459,18 @@ static struct sk_buff *mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 	skb_reserve(skb, MLXSW_PCI_SKB_HEADROOM);
 	skb_put(skb, linear_data_size);
 
-	if (linear_only)
+	if (rx_pkt_info->num_sg_entries == 1)
 		return skb;
 
-	byte_count -= linear_data_size;
-	page_index++;
-
-	while (byte_count > 0) {
+	for (i = 1; i < rx_pkt_info->num_sg_entries; i++) {
 		unsigned int frag_size;
 		struct page *page;
 
-		page = pages[page_index];
-		frag_size = min(byte_count, PAGE_SIZE);
+		page = rx_pkt_info->pages[i];
+		frag_size = rx_pkt_info->sg_entries_size[i];
 		page_pool_dma_sync_for_cpu(page_pool, page, 0, frag_size);
 		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
 				page, 0, frag_size, PAGE_SIZE);
-		byte_count -= frag_size;
-		page_index++;
 	}
 
 	return skb;
@@ -511,24 +501,6 @@ static void mlxsw_pci_rdq_page_free(struct mlxsw_pci_queue *q,
 
 	page_pool_put_page(cq->u.cq.page_pool, elem_info->pages[index], -1,
 			   false);
-}
-
-static int
-mlxsw_pci_elem_info_pages_ref_store(const struct mlxsw_pci_queue *q,
-				    const struct mlxsw_pci_queue_elem_info *el,
-				    u16 byte_count, struct page *pages[],
-				    u8 *p_num_sg_entries)
-{
-	u8 num_sg_entries;
-	int i;
-
-	num_sg_entries = mlxsw_pci_num_sg_entries_get(byte_count);
-
-	for (i = 0; i < num_sg_entries; i++)
-		pages[i] = el->pages[i];
-
-	*p_num_sg_entries = num_sg_entries;
-	return 0;
 }
 
 static int
@@ -780,11 +752,9 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 {
 	struct mlxsw_pci_rx_pkt_info rx_pkt_info = {};
 	struct pci_dev *pdev = mlxsw_pci->pdev;
-	struct page *pages[MLXSW_PCI_WQE_SG_ENTRIES];
 	struct mlxsw_pci_queue_elem_info *elem_info;
 	struct mlxsw_rx_info rx_info = {};
 	struct sk_buff *skb;
-	u8 num_sg_entries;
 	u16 byte_count;
 	int err;
 
@@ -814,19 +784,16 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	if (err)
 		goto out;
 
-	err = mlxsw_pci_elem_info_pages_ref_store(q, elem_info, byte_count,
-						  pages, &num_sg_entries);
+	err = mlxsw_pci_rdq_pages_alloc(q, elem_info,
+					rx_pkt_info.num_sg_entries);
 	if (err)
 		goto out;
 
-	err = mlxsw_pci_rdq_pages_alloc(q, elem_info, num_sg_entries);
-	if (err)
-		goto out;
-
-	skb = mlxsw_pci_rdq_build_skb(q, pages, byte_count);
+	skb = mlxsw_pci_rdq_build_skb(q, &rx_pkt_info);
 	if (IS_ERR(skb)) {
 		dev_err_ratelimited(&pdev->dev, "Failed to build skb for RDQ\n");
-		mlxsw_pci_rdq_pages_recycle(q, pages, num_sg_entries);
+		mlxsw_pci_rdq_pages_recycle(q, rx_pkt_info.pages,
+					    rx_pkt_info.num_sg_entries);
 		goto out;
 	}
 
