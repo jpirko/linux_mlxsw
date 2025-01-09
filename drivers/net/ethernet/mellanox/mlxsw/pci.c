@@ -494,7 +494,8 @@ mlxsw_pci_sync_for_cpu(const struct mlxsw_pci_queue *q,
 
 static struct sk_buff *
 mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
-			const struct mlxsw_pci_rx_pkt_info *rx_pkt_info)
+			const struct mlxsw_pci_rx_pkt_info *rx_pkt_info,
+			struct net_device *netdev)
 {
 	unsigned int linear_data_size;
 	struct sk_buff *skb;
@@ -513,7 +514,7 @@ mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 	skb_put(skb, linear_data_size);
 
 	if (rx_pkt_info->num_sg_entries == 1)
-		return skb;
+		goto out;
 
 	for (i = 1; i < rx_pkt_info->num_sg_entries; i++) {
 		unsigned int frag_size;
@@ -524,6 +525,10 @@ mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
 				page, 0, frag_size, PAGE_SIZE);
 	}
+
+out:
+	if (netdev)
+		skb->protocol = eth_type_trans(skb, netdev);
 
 	return skb;
 }
@@ -814,6 +819,7 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	struct pci_dev *pdev = mlxsw_pci->pdev;
 	struct mlxsw_pci_queue_elem_info *elem_info;
 	struct mlxsw_rx_info rx_info = {};
+	struct mlxsw_pci_port *pci_port;
 	struct sk_buff *skb;
 	u16 byte_count;
 	int err;
@@ -851,7 +857,8 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	if (err)
 		goto out;
 
-	skb = mlxsw_pci_rdq_build_skb(q, &rx_pkt_info);
+	pci_port = &mlxsw_pci->pci_ports[rx_info.local_port];
+	skb = mlxsw_pci_rdq_build_skb(q, &rx_pkt_info, pci_port->netdev);
 	if (IS_ERR(skb)) {
 		dev_err_ratelimited(&pdev->dev, "Failed to build skb for RDQ\n");
 		mlxsw_pci_rdq_pages_recycle(q, rx_pkt_info.pages,

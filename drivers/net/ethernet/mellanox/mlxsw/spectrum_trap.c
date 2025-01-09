@@ -72,15 +72,11 @@ static int mlxsw_sp_rx_listener(struct mlxsw_sp *mlxsw_sp, struct sk_buff *skb,
 		return -EINVAL;
 	}
 
-	skb->dev = mlxsw_sp_port->dev;
-
 	pcpu_stats = this_cpu_ptr(mlxsw_sp_port->pcpu_stats);
 	u64_stats_update_begin(&pcpu_stats->syncp);
 	pcpu_stats->rx_packets++;
-	pcpu_stats->rx_bytes += skb->len;
+	pcpu_stats->rx_bytes += skb->len + ETH_HLEN;
 	u64_stats_update_end(&pcpu_stats->syncp);
-
-	skb->protocol = eth_type_trans(skb, skb->dev);
 
 	return 0;
 }

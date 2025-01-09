@@ -2311,15 +2311,12 @@ void mlxsw_sp_rx_listener_no_mark_func(struct sk_buff *skb,
 		return;
 	}
 
-	skb->dev = mlxsw_sp_port->dev;
-
 	pcpu_stats = this_cpu_ptr(mlxsw_sp_port->pcpu_stats);
 	u64_stats_update_begin(&pcpu_stats->syncp);
 	pcpu_stats->rx_packets++;
-	pcpu_stats->rx_bytes += skb->len;
+	pcpu_stats->rx_bytes += skb->len + ETH_HLEN;
 	u64_stats_update_end(&pcpu_stats->syncp);
 
-	skb->protocol = eth_type_trans(skb, skb->dev);
 	napi_gro_receive(mlxsw_skb_cb(skb)->rx_md_info.napi, skb);
 }
 
