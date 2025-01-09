@@ -219,6 +219,19 @@ mlxsw_core_flood_mode(struct mlxsw_core *mlxsw_core)
 }
 EXPORT_SYMBOL(mlxsw_core_flood_mode);
 
+void mlxsw_core_bus_port_init(struct mlxsw_core *mlxsw_core, u16 local_port,
+			      struct net_device *netdev)
+{
+	mlxsw_core->bus->port_init(mlxsw_core->bus_priv, local_port, netdev);
+}
+EXPORT_SYMBOL(mlxsw_core_bus_port_init);
+
+void mlxsw_core_bus_port_fini(struct mlxsw_core *mlxsw_core, u16 local_port)
+{
+	mlxsw_core->bus->port_fini(mlxsw_core->bus_priv, local_port);
+}
+EXPORT_SYMBOL(mlxsw_core_bus_port_fini);
+
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core)
 {
 	return mlxsw_core->driver_priv;

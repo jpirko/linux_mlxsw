@@ -2436,6 +2436,25 @@ mlxsw_pci_flood_mode(void *bus_priv)
 	return mlxsw_pci->flood_mode;
 }
 
+static void mlxsw_pci_port_init(void *bus_priv, u16 local_port,
+				struct net_device *netdev)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	struct mlxsw_pci_port *pci_port;
+
+	pci_port = &mlxsw_pci->pci_ports[local_port];
+	pci_port->netdev = netdev;
+}
+
+static void mlxsw_pci_port_fini(void *bus_priv, u16 local_port)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	struct mlxsw_pci_port *pci_port;
+
+	pci_port = &mlxsw_pci->pci_ports[local_port];
+	pci_port->netdev = NULL;
+}
+
 static const struct mlxsw_bus mlxsw_pci_bus = {
 	.kind			= "pci",
 	.init			= mlxsw_pci_init,
@@ -2447,6 +2466,8 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.read_frc_l		= mlxsw_pci_read_frc_l,
 	.read_utc_sec		= mlxsw_pci_read_utc_sec,
 	.read_utc_nsec		= mlxsw_pci_read_utc_nsec,
+	.port_init		= mlxsw_pci_port_init,
+	.port_fini		= mlxsw_pci_port_fini,
 	.lag_mode		= mlxsw_pci_lag_mode,
 	.flood_mode		= mlxsw_pci_flood_mode,
 	.features		= MLXSW_BUS_F_TXRX | MLXSW_BUS_F_RESET,
