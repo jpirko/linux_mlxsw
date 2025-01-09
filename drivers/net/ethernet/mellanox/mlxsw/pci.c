@@ -23,6 +23,7 @@
 #include "port.h"
 #include "resources.h"
 #include "txheader.h"
+#include "pci_xdp.h"
 
 #define mlxsw_pci_write32(mlxsw_pci, reg, val) \
 	iowrite32be(val, (mlxsw_pci)->hw_addr + (MLXSW_PCI_ ## reg))
@@ -808,6 +809,43 @@ static void mlxsw_pci_cqe_rdq_md_init(struct sk_buff *skb, const char *cqe)
 	mlxsw_pci_cqe_rdq_md_tx_port_init(skb, cqe);
 }
 
+/* Returns true if XDP handled the packet, and false if networking stack should
+ * handle it.
+ */
+static bool
+mlxsw_pci_xdp_handle(struct mlxsw_pci *mlxsw_pci, struct mlxsw_pci_queue *q,
+		     struct xdp_buff *xdp_buff,
+		     struct mlxsw_pci_rx_pkt_info *rx_pkt_info,
+		     u16 local_port)
+{
+	struct skb_shared_info *skb_shared_info;
+	enum mlxsw_xdp_status xdp_status;
+	struct mlxsw_pci_port *pci_port;
+	struct bpf_prog *prog;
+	int err;
+
+	pci_port = &mlxsw_pci->pci_ports[local_port];
+	prog = rcu_dereference_bh(pci_port->xdp_prog);
+	if (!prog)
+		return false;
+
+	err = mlxsw_xdp_buff_init(xdp_buff, rx_pkt_info, &q->u.rdq.xdp_rxq);
+	if (err)
+		return false;
+
+	xdp_status = mlxsw_xdp_run(xdp_buff, prog, pci_port->netdev);
+	switch (xdp_status) {
+	case MLXSW_XDP_STATUS_DROP:
+	case MLXSW_XDP_STATUS_FAIL:
+		skb_shared_info = xdp_get_shared_info_from_buff(xdp_buff);
+		mlxsw_pci_rdq_pages_recycle(q, rx_pkt_info->pages,
+					    skb_shared_info->nr_frags + 1);
+		return true;
+	}
+
+	return true;
+}
+
 static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 				     struct napi_struct *napi,
 				     struct mlxsw_pci_queue *q,
@@ -819,6 +857,7 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	struct mlxsw_pci_queue_elem_info *elem_info;
 	struct mlxsw_rx_info rx_info = {};
 	struct mlxsw_pci_port *pci_port;
+	struct xdp_buff xdp_buff = {};
 	struct sk_buff *skb;
 	u16 byte_count;
 	int err;
@@ -857,6 +896,10 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	err = mlxsw_pci_rdq_pages_alloc(q, elem_info,
 					rx_pkt_info.num_sg_entries);
 	if (err)
+		goto out;
+
+	if (mlxsw_pci_xdp_handle(mlxsw_pci, q, &xdp_buff, &rx_pkt_info,
+				 rx_info.local_port))
 		goto out;
 
 	pci_port = &mlxsw_pci->pci_ports[rx_info.local_port];
