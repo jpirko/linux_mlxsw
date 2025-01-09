@@ -232,6 +232,15 @@ void mlxsw_core_bus_port_fini(struct mlxsw_core *mlxsw_core, u16 local_port)
 }
 EXPORT_SYMBOL(mlxsw_core_bus_port_fini);
 
+void
+mlxsw_core_bus_port_xdp_prog_set(struct mlxsw_core *mlxsw_core, u16 local_port,
+				 struct bpf_prog *xdp_prog)
+{
+	mlxsw_core->bus->port_xdp_prog_set(mlxsw_core->bus_priv, local_port,
+					   xdp_prog);
+}
+EXPORT_SYMBOL(mlxsw_core_bus_port_xdp_prog_set);
+
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core)
 {
 	return mlxsw_core->driver_priv;

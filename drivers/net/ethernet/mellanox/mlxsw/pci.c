@@ -106,6 +106,7 @@ struct mlxsw_pci_queue_type_group {
 
 struct mlxsw_pci_port {
 	struct net_device *netdev;
+	struct bpf_prog __rcu *xdp_prog;
 };
 
 struct mlxsw_pci {
@@ -2476,6 +2477,25 @@ static void mlxsw_pci_port_fini(void *bus_priv, u16 local_port)
 	pci_port->netdev = NULL;
 }
 
+static void mlxsw_pci_port_xdp_prog_set(void *bus_priv, u16 local_port,
+					struct bpf_prog *xdp_prog)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	struct mlxsw_pci_port *pci_port;
+	struct bpf_prog *old_prog;
+
+	pci_port = &mlxsw_pci->pci_ports[local_port];
+
+	old_prog = rtnl_dereference(pci_port->xdp_prog);
+	rcu_assign_pointer(pci_port->xdp_prog, xdp_prog);
+
+	if (old_prog)
+		bpf_prog_put(old_prog);
+
+	if (xdp_prog)
+		bpf_prog_inc(xdp_prog);
+}
+
 static const struct mlxsw_bus mlxsw_pci_bus = {
 	.kind			= "pci",
 	.init			= mlxsw_pci_init,
@@ -2489,6 +2509,7 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.read_utc_nsec		= mlxsw_pci_read_utc_nsec,
 	.port_init		= mlxsw_pci_port_init,
 	.port_fini		= mlxsw_pci_port_fini,
+	.port_xdp_prog_set	= mlxsw_pci_port_xdp_prog_set,
 	.lag_mode		= mlxsw_pci_lag_mode,
 	.flood_mode		= mlxsw_pci_flood_mode,
 	.features		= MLXSW_BUS_F_TXRX | MLXSW_BUS_F_RESET,
