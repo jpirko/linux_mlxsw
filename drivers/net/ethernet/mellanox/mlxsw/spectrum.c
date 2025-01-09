@@ -1512,6 +1512,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 	mlxsw_core_port_netdev_link(mlxsw_sp->core, local_port,
 				    mlxsw_sp_port, dev);
 	mlxsw_sp_port->dev = dev;
+	mlxsw_core_bus_port_init(mlxsw_sp->core, local_port, dev);
 	mlxsw_sp_port->mlxsw_sp = mlxsw_sp;
 	mlxsw_sp_port->local_port = local_port;
 	mlxsw_sp_port->pvid = MLXSW_SP_DEFAULT_VID;
@@ -1729,6 +1730,7 @@ err_port_system_port_mapping_set:
 err_dev_addr_init:
 	free_percpu(mlxsw_sp_port->pcpu_stats);
 err_alloc_stats:
+	mlxsw_core_bus_port_fini(mlxsw_sp->core, local_port);
 	free_netdev(dev);
 err_alloc_etherdev:
 	mlxsw_core_port_fini(mlxsw_sp->core, local_port);
@@ -1764,6 +1766,7 @@ static void mlxsw_sp_port_remove(struct mlxsw_sp *mlxsw_sp, u16 local_port)
 	mlxsw_sp_port_buffers_fini(mlxsw_sp_port);
 	free_percpu(mlxsw_sp_port->pcpu_stats);
 	WARN_ON_ONCE(!list_empty(&mlxsw_sp_port->vlans_list));
+	mlxsw_core_bus_port_fini(mlxsw_sp->core, local_port);
 	free_netdev(mlxsw_sp_port->dev);
 	mlxsw_core_port_fini(mlxsw_sp->core, local_port);
 	mlxsw_sp_port_swid_set(mlxsw_sp, local_port,
