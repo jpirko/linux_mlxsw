@@ -13,6 +13,9 @@
 
 #define MLXSW_PCI_WQE_SG_ENTRIES	3
 
+#define MLXSW_PCI_RX_BUF_HEADROOM (max(NET_SKB_PAD, XDP_PACKET_HEADROOM) + \
+				   NET_IP_ALIGN)
+
 #if IS_ENABLED(CONFIG_MLXSW_PCI)
 
 int mlxsw_pci_driver_register(struct pci_driver *pci_driver);

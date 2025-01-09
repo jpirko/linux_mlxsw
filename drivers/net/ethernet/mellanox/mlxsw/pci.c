@@ -379,9 +379,6 @@ static void mlxsw_pci_sdq_fini(struct mlxsw_pci *mlxsw_pci,
 	mlxsw_cmd_hw2sw_sdq(mlxsw_pci->core, q->num);
 }
 
-#define MLXSW_PCI_RX_BUF_HEADROOM (max(NET_SKB_PAD, XDP_PACKET_HEADROOM) + \
-				   NET_IP_ALIGN)
-
 #define MLXSW_PCI_RX_BUF_SW_OVERHEAD		\
 		(MLXSW_PCI_RX_BUF_HEADROOM +	\
 		SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
