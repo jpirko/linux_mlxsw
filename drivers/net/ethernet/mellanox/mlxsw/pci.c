@@ -761,6 +761,18 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	if (mlxsw_pci_cqe_crc_get(cqe_v, cqe))
 		byte_count -= ETH_FCS_LEN;
 
+	if (mlxsw_pci_cqe_lag_get(cqe_v, cqe)) {
+		u16 lag_id, lag_port_index;
+
+		lag_id = mlxsw_pci_cqe_lag_id_get(cqe_v, cqe);
+		lag_port_index = mlxsw_pci_cqe_lag_subport_get(cqe_v, cqe);
+		rx_info.local_port = mlxsw_core_lag_mapping_get(mlxsw_pci->core,
+								lag_id,
+								lag_port_index);
+	} else {
+		rx_info.local_port = mlxsw_pci_cqe_system_port_get(cqe);
+	}
+
 	err = mlxsw_pci_elem_info_pages_ref_store(q, elem_info, byte_count,
 						  pages, &num_sg_entries);
 	if (err)
@@ -778,16 +790,6 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	}
 
 	skb_mark_for_recycle(skb);
-
-	if (mlxsw_pci_cqe_lag_get(cqe_v, cqe)) {
-		rx_info.is_lag = true;
-		rx_info.u.lag_id = mlxsw_pci_cqe_lag_id_get(cqe_v, cqe);
-		rx_info.lag_port_index =
-			mlxsw_pci_cqe_lag_subport_get(cqe_v, cqe);
-	} else {
-		rx_info.is_lag = false;
-		rx_info.u.sys_port = mlxsw_pci_cqe_system_port_get(cqe);
-	}
 
 	rx_info.trap_id = mlxsw_pci_cqe_trap_id_get(cqe);
 

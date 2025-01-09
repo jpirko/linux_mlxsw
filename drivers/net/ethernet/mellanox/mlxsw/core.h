@@ -242,12 +242,7 @@ int mlxsw_reg_write(struct mlxsw_core *mlxsw_core,
 		    const struct mlxsw_reg_info *reg, char *payload);
 
 struct mlxsw_rx_info {
-	bool is_lag;
-	union {
-		u16 sys_port;
-		u16 lag_id;
-	} u;
-	u16 lag_port_index;
+	u16 local_port;
 	u8 mirror_reason;
 	int trap_id;
 };
