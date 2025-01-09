@@ -14,6 +14,7 @@
 #include <linux/log2.h>
 #include <linux/string.h>
 #include <net/page_pool/helpers.h>
+#include <net/xdp.h>
 
 #include "pci_hw.h"
 #include "pci.h"
@@ -93,6 +94,7 @@ struct mlxsw_pci_queue {
 		} eq;
 		struct {
 			struct mlxsw_pci_queue *cq;
+			struct xdp_rxq_info xdp_rxq;
 		} rdq;
 	} u;
 };
@@ -624,6 +626,11 @@ static int mlxsw_pci_rdq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 	cq->u.cq.dq = q;
 	q->u.rdq.cq = cq;
 
+	err = __xdp_rxq_info_reg(&q->u.rdq.xdp_rxq, mlxsw_pci->napi_dev_rx, 0,
+				 cq->u.cq.napi.napi_id, PAGE_SIZE);
+	if (err)
+		goto err_xdp_rxq_info_reg;
+
 	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, q);
 
 	for (i = 0; i < q->count; i++) {
@@ -633,7 +640,7 @@ static int mlxsw_pci_rdq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 		for (j = 0; j < mlxsw_pci->num_sg_entries; j++) {
 			err = mlxsw_pci_rdq_page_alloc(q, elem_info, j);
 			if (err)
-				goto rollback;
+				goto err_rdq_page_alloc;
 		}
 		/* Everything is set up, ring doorbell to pass elem to HW */
 		q->producer_counter++;
@@ -642,13 +649,15 @@ static int mlxsw_pci_rdq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 
 	return 0;
 
-rollback:
+err_rdq_page_alloc:
 	for (i--; i >= 0; i--) {
 		elem_info = mlxsw_pci_queue_elem_info_get(q, i);
 		for (j--; j >= 0; j--)
 			mlxsw_pci_rdq_page_free(q, elem_info, j);
 		j = mlxsw_pci->num_sg_entries;
 	}
+	xdp_rxq_info_unreg(&q->u.rdq.xdp_rxq);
+err_xdp_rxq_info_reg:
 	q->u.rdq.cq = NULL;
 	cq->u.cq.dq = NULL;
 	mlxsw_cmd_hw2sw_rdq(mlxsw_pci->core, q->num);
@@ -663,6 +672,7 @@ static void mlxsw_pci_rdq_fini(struct mlxsw_pci *mlxsw_pci,
 	int i, j;
 
 	mlxsw_cmd_hw2sw_rdq(mlxsw_pci->core, q->num);
+	xdp_rxq_info_unreg(&q->u.rdq.xdp_rxq);
 	for (i = 0; i < q->count; i++) {
 		elem_info = mlxsw_pci_queue_elem_info_get(q, i);
 		for (j = 0; j < mlxsw_pci->num_sg_entries; j++)
