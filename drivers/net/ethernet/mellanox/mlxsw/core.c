@@ -2959,8 +2959,7 @@ void mlxsw_core_skb_receive(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 	const struct mlxsw_rx_listener *rxl;
 	bool found = false;
 
-	if ((rx_info->trap_id >= MLXSW_TRAP_ID_MAX) ||
-	    (rx_info->local_port >= mlxsw_core->max_ports))
+	if (rx_info->trap_id >= MLXSW_TRAP_ID_MAX)
 		goto drop;
 
 	rcu_read_lock();

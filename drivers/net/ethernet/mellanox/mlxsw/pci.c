@@ -845,6 +845,9 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 		rx_info.local_port = mlxsw_pci_cqe_system_port_get(cqe);
 	}
 
+	if (rx_info.local_port >= mlxsw_pci->max_ports)
+		goto out;
+
 	err = mlxsw_pci_rx_pkt_info_init(q->pci, elem_info, byte_count,
 					 &rx_pkt_info);
 	if (err)
