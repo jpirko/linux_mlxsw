@@ -102,6 +102,10 @@ struct mlxsw_pci_queue_type_group {
 	u8 count; /* number of queues in group */
 };
 
+struct mlxsw_pci_port {
+	struct net_device *netdev;
+};
+
 struct mlxsw_pci {
 	struct pci_dev *pdev;
 	u8 __iomem *hw_addr;
@@ -138,6 +142,7 @@ struct mlxsw_pci {
 	struct net_device *napi_dev_tx;
 	struct net_device *napi_dev_rx;
 	unsigned int max_ports;
+	struct mlxsw_pci_port *pci_ports;
 };
 
 static int mlxsw_pci_napi_devs_init(struct mlxsw_pci *mlxsw_pci)
@@ -184,6 +189,24 @@ static int mlxsw_pci_max_ports_set(struct mlxsw_pci *mlxsw_pci)
 	max_ports = MLXSW_CORE_RES_GET(mlxsw_core, MAX_SYSTEM_PORT) + 1;
 	mlxsw_pci->max_ports = max_ports;
 	return 0;
+}
+
+static int mlxsw_pci_ports_init(struct mlxsw_pci *mlxsw_pci)
+{
+	struct mlxsw_pci_port *pci_ports;
+
+	pci_ports = kcalloc(mlxsw_pci->max_ports,
+			    sizeof(struct mlxsw_pci_port), GFP_KERNEL);
+	if (!pci_ports)
+		return -ENOMEM;
+
+	mlxsw_pci->pci_ports = pci_ports;
+	return 0;
+}
+
+static void mlxsw_pci_ports_fini(struct mlxsw_pci *mlxsw_pci)
+{
+	kfree(mlxsw_pci->pci_ports);
 }
 
 static char *__mlxsw_pci_queue_elem_get(struct mlxsw_pci_queue *q,
@@ -2088,6 +2111,10 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_max_ports_set;
 
+	err = mlxsw_pci_ports_init(mlxsw_pci);
+	if (err)
+		goto err_ports_init;
+
 	err = mlxsw_pci_aqs_init(mlxsw_pci, mbox);
 	if (err)
 		goto err_aqs_init;
@@ -2105,6 +2132,8 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 err_request_eq_irq:
 	mlxsw_pci_aqs_fini(mlxsw_pci);
 err_aqs_init:
+	mlxsw_pci_ports_fini(mlxsw_pci);
+err_ports_init:
 err_max_ports_set:
 	mlxsw_pci_napi_devs_fini(mlxsw_pci);
 err_napi_devs_init:
@@ -2135,6 +2164,7 @@ static void mlxsw_pci_fini(void *bus_priv)
 
 	free_irq(pci_irq_vector(mlxsw_pci->pdev, 0), mlxsw_pci);
 	mlxsw_pci_aqs_fini(mlxsw_pci);
+	mlxsw_pci_ports_fini(mlxsw_pci);
 	mlxsw_pci_napi_devs_fini(mlxsw_pci);
 	mlxsw_pci_fw_area_fini(mlxsw_pci);
 	mlxsw_pci_free_irq_vectors(mlxsw_pci);
