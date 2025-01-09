@@ -11,10 +11,18 @@
 #define PCI_DEVICE_ID_MELLANOX_SPECTRUM3	0xcf70
 #define PCI_DEVICE_ID_MELLANOX_SPECTRUM4	0xcf80
 
+#define MLXSW_PCI_WQE_SG_ENTRIES	3
+
 #if IS_ENABLED(CONFIG_MLXSW_PCI)
 
 int mlxsw_pci_driver_register(struct pci_driver *pci_driver);
 void mlxsw_pci_driver_unregister(struct pci_driver *pci_driver);
+
+struct mlxsw_pci_rx_pkt_info {
+	struct page *pages[MLXSW_PCI_WQE_SG_ENTRIES];
+	unsigned int sg_entries_size[MLXSW_PCI_WQE_SG_ENTRIES];
+	u8 num_sg_entries;
+};
 
 #else
 

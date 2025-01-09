@@ -390,6 +390,49 @@ static void mlxsw_pci_wqe_frag_unmap(struct mlxsw_pci *mlxsw_pci, char *wqe,
 	dma_unmap_single(&pdev->dev, mapaddr, frag_len, direction);
 }
 
+static u8 mlxsw_pci_num_sg_entries_get(u16 byte_count)
+{
+	return DIV_ROUND_UP(byte_count + MLXSW_PCI_RX_BUF_SW_OVERHEAD,
+			    PAGE_SIZE);
+}
+
+static int
+mlxsw_pci_rx_pkt_info_init(const struct mlxsw_pci *pci,
+			   const struct mlxsw_pci_queue_elem_info *elem_info,
+			   u16 byte_count,
+			   struct mlxsw_pci_rx_pkt_info *rx_pkt_info)
+{
+	unsigned int linear_data_size;
+	u8 num_sg_entries;
+	bool linear_only;
+	int i;
+
+	num_sg_entries = mlxsw_pci_num_sg_entries_get(byte_count);
+	if (WARN_ON_ONCE(num_sg_entries > pci->num_sg_entries))
+		return -EINVAL;
+
+	rx_pkt_info->num_sg_entries = num_sg_entries;
+
+	linear_only = byte_count + MLXSW_PCI_RX_BUF_SW_OVERHEAD <= PAGE_SIZE;
+	linear_data_size = linear_only ? byte_count :
+					 PAGE_SIZE -
+					 MLXSW_PCI_RX_BUF_SW_OVERHEAD;
+
+	for (i = 0; i < num_sg_entries; i++) {
+		unsigned int sg_entry_size;
+
+		sg_entry_size = i ? min(byte_count, PAGE_SIZE) :
+				    linear_data_size;
+
+		rx_pkt_info->sg_entries_size[i] = sg_entry_size;
+		rx_pkt_info->pages[i] = elem_info->pages[i];
+
+		byte_count -= sg_entry_size;
+	}
+
+	return 0;
+}
+
 static struct sk_buff *mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 					       struct page *pages[],
 					       u16 byte_count)
@@ -470,12 +513,6 @@ static void mlxsw_pci_rdq_page_free(struct mlxsw_pci_queue *q,
 			   false);
 }
 
-static u8 mlxsw_pci_num_sg_entries_get(u16 byte_count)
-{
-	return DIV_ROUND_UP(byte_count + MLXSW_PCI_RX_BUF_SW_OVERHEAD,
-			    PAGE_SIZE);
-}
-
 static int
 mlxsw_pci_elem_info_pages_ref_store(const struct mlxsw_pci_queue *q,
 				    const struct mlxsw_pci_queue_elem_info *el,
@@ -486,8 +523,6 @@ mlxsw_pci_elem_info_pages_ref_store(const struct mlxsw_pci_queue *q,
 	int i;
 
 	num_sg_entries = mlxsw_pci_num_sg_entries_get(byte_count);
-	if (WARN_ON_ONCE(num_sg_entries > q->pci->num_sg_entries))
-		return -EINVAL;
 
 	for (i = 0; i < num_sg_entries; i++)
 		pages[i] = el->pages[i];
@@ -743,6 +778,7 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 				     u16 consumer_counter_limit,
 				     enum mlxsw_pci_cqe_v cqe_v, char *cqe)
 {
+	struct mlxsw_pci_rx_pkt_info rx_pkt_info = {};
 	struct pci_dev *pdev = mlxsw_pci->pdev;
 	struct page *pages[MLXSW_PCI_WQE_SG_ENTRIES];
 	struct mlxsw_pci_queue_elem_info *elem_info;
@@ -772,6 +808,11 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 	} else {
 		rx_info.local_port = mlxsw_pci_cqe_system_port_get(cqe);
 	}
+
+	err = mlxsw_pci_rx_pkt_info_init(q->pci, elem_info, byte_count,
+					 &rx_pkt_info);
+	if (err)
+		goto out;
 
 	err = mlxsw_pci_elem_info_pages_ref_store(q, elem_info, byte_count,
 						  pages, &num_sg_entries);
