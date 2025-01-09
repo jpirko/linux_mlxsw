@@ -433,21 +433,33 @@ mlxsw_pci_rx_pkt_info_init(const struct mlxsw_pci *pci,
 	return 0;
 }
 
+static void
+mlxsw_pci_sync_for_cpu(const struct mlxsw_pci_queue *q,
+		       const struct mlxsw_pci_rx_pkt_info *rx_pkt_info)
+{
+	struct mlxsw_pci_queue *cq = q->u.rdq.cq;
+	struct page_pool *page_pool;
+	int i;
+
+	page_pool = cq->u.cq.page_pool;
+
+	for (i = 0; i < rx_pkt_info->num_sg_entries; i++) {
+		u32 offset = i ? 0 : MLXSW_PCI_SKB_HEADROOM;
+
+		page_pool_dma_sync_for_cpu(page_pool, rx_pkt_info->pages[i],
+					   offset,
+					   rx_pkt_info->sg_entries_size[i]);
+	}
+}
+
 static struct sk_buff *
 mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 			const struct mlxsw_pci_rx_pkt_info *rx_pkt_info)
 {
-	struct mlxsw_pci_queue *cq = q->u.rdq.cq;
 	unsigned int linear_data_size;
-	struct page_pool *page_pool;
 	struct sk_buff *skb;
 	void *data;
 	int i;
-
-	linear_data_size = rx_pkt_info->sg_entries_size[0];
-	page_pool = cq->u.cq.page_pool;
-	page_pool_dma_sync_for_cpu(page_pool, rx_pkt_info->pages[0],
-				   MLXSW_PCI_SKB_HEADROOM, linear_data_size);
 
 	data = page_address(rx_pkt_info->pages[0]);
 	net_prefetch(data);
@@ -457,6 +469,7 @@ mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 		return ERR_PTR(-ENOMEM);
 
 	skb_reserve(skb, MLXSW_PCI_SKB_HEADROOM);
+	linear_data_size = rx_pkt_info->sg_entries_size[0];
 	skb_put(skb, linear_data_size);
 
 	if (rx_pkt_info->num_sg_entries == 1)
@@ -468,7 +481,6 @@ mlxsw_pci_rdq_build_skb(struct mlxsw_pci_queue *q,
 
 		page = rx_pkt_info->pages[i];
 		frag_size = rx_pkt_info->sg_entries_size[i];
-		page_pool_dma_sync_for_cpu(page_pool, page, 0, frag_size);
 		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
 				page, 0, frag_size, PAGE_SIZE);
 	}
@@ -783,6 +795,8 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 					 &rx_pkt_info);
 	if (err)
 		goto out;
+
+	mlxsw_pci_sync_for_cpu(q, &rx_pkt_info);
 
 	err = mlxsw_pci_rdq_pages_alloc(q, elem_info,
 					rx_pkt_info.num_sg_entries);
