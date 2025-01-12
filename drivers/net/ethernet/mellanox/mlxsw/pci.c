@@ -738,21 +738,16 @@ static void mlxsw_pci_skb_cb_ts_set(struct mlxsw_pci *mlxsw_pci,
 		mlxsw_pci_cqe2_time_stamp_nsec_get(cqe);
 }
 
-static void mlxsw_pci_cqe_sdq_handle(struct mlxsw_pci *mlxsw_pci,
-				     struct mlxsw_pci_queue *q,
-				     u16 consumer_counter_limit,
-				     enum mlxsw_pci_cqe_v cqe_v,
-				     char *cqe, int budget)
+static void
+mlxsw_pci_cqe_sdq_skb_handle(struct mlxsw_pci *mlxsw_pci,
+			     struct mlxsw_pci_queue_elem_info *elem_info,
+			     enum mlxsw_pci_cqe_v cqe_v, char *cqe, int budget)
 {
-	struct pci_dev *pdev = mlxsw_pci->pdev;
-	struct mlxsw_pci_queue_elem_info *elem_info;
 	struct mlxsw_tx_info tx_info;
-	char *wqe;
 	struct sk_buff *skb;
+	char *wqe;
 	int i;
 
-	spin_lock(&q->lock);
-	elem_info = mlxsw_pci_queue_elem_info_consumer_get(q);
 	tx_info = mlxsw_skb_cb(elem_info->sdq.skb)->tx_info;
 	skb = elem_info->sdq.skb;
 	wqe = elem_info->elem;
@@ -770,6 +765,27 @@ static void mlxsw_pci_cqe_sdq_handle(struct mlxsw_pci *mlxsw_pci,
 	if (skb)
 		napi_consume_skb(skb, budget);
 	elem_info->sdq.skb = NULL;
+}
+
+static void mlxsw_pci_cqe_sdq_handle(struct mlxsw_pci *mlxsw_pci,
+				     struct mlxsw_pci_queue *q,
+				     u16 consumer_counter_limit,
+				     enum mlxsw_pci_cqe_v cqe_v,
+				     char *cqe, int budget)
+{
+	struct mlxsw_pci_queue_elem_info *elem_info;
+	struct pci_dev *pdev = mlxsw_pci->pdev;
+
+	spin_lock(&q->lock);
+	elem_info = mlxsw_pci_queue_elem_info_consumer_get(q);
+
+	if (q->num != MLXSW_PCI_SDQ_RESERVED_INDEX_XDP) {
+		mlxsw_pci_cqe_sdq_skb_handle(mlxsw_pci, elem_info, cqe_v, cqe,
+					     budget);
+	} else {
+		xdp_return_frame(elem_info->sdq.xdpf);
+		elem_info->sdq.xdpf = NULL;
+	}
 
 	if (q->consumer_counter++ != consumer_counter_limit)
 		dev_dbg_ratelimited(&pdev->dev, "Consumer counter does not match limit in SDQ\n");
@@ -1060,6 +1076,10 @@ static int mlxsw_pci_napi_poll_cq_tx(struct napi_struct *napi, int budget)
 	struct mlxsw_pci *mlxsw_pci = q->pci;
 	int work_done = 0;
 	char *cqe;
+
+	/* If the budget is 0, driver cannot call any XDP APIs. */
+	if (!budget && q->num == MLXSW_PCI_SDQ_RESERVED_INDEX_XDP)
+		return 0;
 
 	while ((cqe = mlxsw_pci_cq_sw_cqe_get(q))) {
 		u16 wqe_counter = mlxsw_pci_cqe_wqe_counter_get(cqe);
