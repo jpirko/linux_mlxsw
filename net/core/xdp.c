@@ -622,6 +622,7 @@ EXPORT_SYMBOL_GPL(xdp_warn);
 /**
  * xdp_build_skb_from_buff - create an skb from &xdp_buff
  * @xdp: &xdp_buff to convert to an skb
+ * @dev: Rx netdevice
  *
  * Perform common operations to create a new skb to pass up the stack from
  * &xdp_buff: allocate an skb head from the NAPI percpu cache, initialize
@@ -630,7 +631,8 @@ EXPORT_SYMBOL_GPL(xdp_warn);
  *
  * Return: new &sk_buff on success, %NULL on error.
  */
-struct sk_buff *xdp_build_skb_from_buff(const struct xdp_buff *xdp)
+struct sk_buff *xdp_build_skb_from_buff(const struct xdp_buff *xdp,
+					struct net_device *dev)
 {
 	const struct xdp_rxq_info *rxq = xdp->rxq;
 	const struct skb_shared_info *sinfo;
@@ -667,7 +669,7 @@ struct sk_buff *xdp_build_skb_from_buff(const struct xdp_buff *xdp)
 					  tsize, xdp_buff_get_skb_flags(xdp));
 	}
 
-	skb->protocol = eth_type_trans(skb, rxq->dev);
+	skb->protocol = eth_type_trans(skb, dev);
 
 	return skb;
 }
