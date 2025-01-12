@@ -1170,7 +1170,7 @@ static int mlxsw_pci_cq_page_pool_init(struct mlxsw_pci_queue *q,
 	pp_params.nid = dev_to_node(&mlxsw_pci->pdev->dev);
 	pp_params.dev = &mlxsw_pci->pdev->dev;
 	pp_params.napi = &q->u.cq.napi;
-	pp_params.dma_dir = DMA_FROM_DEVICE;
+	pp_params.dma_dir = DMA_BIDIRECTIONAL;
 	pp_params.max_len = PAGE_SIZE;
 
 	page_pool = page_pool_create(&pp_params);
