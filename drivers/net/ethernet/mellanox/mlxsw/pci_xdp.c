@@ -64,6 +64,8 @@ mlxsw_xdp_run(struct xdp_buff *xdp_buff, struct bpf_prog *prog,
 		break;
 	case XDP_DROP:
 		return MLXSW_XDP_STATUS_DROP;
+	case XDP_PASS:
+		return MLXSW_XDP_STATUS_PASS;
 	default:
 		bpf_warn_invalid_xdp_action(netdev, prog, act);
 	}

@@ -844,6 +844,8 @@ mlxsw_pci_xdp_handle(struct mlxsw_pci *mlxsw_pci, struct mlxsw_pci_queue *q,
 
 	xdp_status = mlxsw_xdp_run(xdp_buff, prog, pci_port->netdev);
 	switch (xdp_status) {
+	case MLXSW_XDP_STATUS_PASS:
+		return false;
 	case MLXSW_XDP_STATUS_DROP:
 	case MLXSW_XDP_STATUS_FAIL:
 		skb_shared_info = xdp_get_shared_info_from_buff(xdp_buff);

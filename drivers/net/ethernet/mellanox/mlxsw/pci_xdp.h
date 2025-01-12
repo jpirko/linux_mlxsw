@@ -5,6 +5,7 @@
 #define _PCI_XDP_H
 
 enum mlxsw_xdp_status {
+	MLXSW_XDP_STATUS_PASS,
 	MLXSW_XDP_STATUS_DROP,
 	MLXSW_XDP_STATUS_FAIL,
 };
