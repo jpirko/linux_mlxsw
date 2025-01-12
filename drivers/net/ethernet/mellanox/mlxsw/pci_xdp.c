@@ -6,6 +6,7 @@
 #include <linux/types.h>
 #include <net/xdp.h>
 
+#include "core.h"
 #include "pci.h"
 #include "pci_xdp.h"
 
@@ -52,9 +53,40 @@ int mlxsw_xdp_buff_init(struct xdp_buff *xdp_buff,
 	return mlxsw_xdp_frags_init(xdp_buff, rx_pkt_info);
 }
 
+static enum mlxsw_xdp_status
+mlxsw_xdp_tx(struct mlxsw_pci *mlxsw_pci, struct xdp_buff *xdp_buff,
+	     struct bpf_prog *prog, struct net_device *netdev, u16 local_port)
+{
+	const struct mlxsw_txhdr_info txhdr_info = {
+		.tx_info.local_port = local_port,
+		.tx_info.is_emad = false,
+	};
+	struct xdp_frame *xdpf;
+	int err;
+
+	xdpf = xdp_convert_buff_to_frame(xdp_buff);
+	if (!xdpf)
+		goto err_convert_buff_to_frame;
+
+	if (unlikely(xdpf->len < ETH_ZLEN))
+		goto err_xdpf_too_small;
+
+	err = mlxsw_pci_xdp_frame_transmit(mlxsw_pci, xdpf, &txhdr_info);
+	if (err)
+		goto err_xdp_frame_transmit;
+
+	return MLXSW_XDP_STATUS_TX;
+
+err_xdp_frame_transmit:
+err_xdpf_too_small:
+err_convert_buff_to_frame:
+	trace_xdp_exception(netdev, prog, XDP_TX);
+	return MLXSW_XDP_STATUS_FAIL;
+}
+
 enum mlxsw_xdp_status
-mlxsw_xdp_run(struct xdp_buff *xdp_buff, struct bpf_prog *prog,
-	      struct net_device *netdev)
+mlxsw_xdp_run(struct mlxsw_pci *mlxsw_pci, struct xdp_buff *xdp_buff,
+	      struct bpf_prog *prog, struct net_device *netdev, u16 local_port)
 {
 	u32 act;
 
@@ -66,6 +98,9 @@ mlxsw_xdp_run(struct xdp_buff *xdp_buff, struct bpf_prog *prog,
 		return MLXSW_XDP_STATUS_DROP;
 	case XDP_PASS:
 		return MLXSW_XDP_STATUS_PASS;
+	case XDP_TX:
+		return mlxsw_xdp_tx(mlxsw_pci, xdp_buff, prog, netdev,
+				    local_port);
 	default:
 		bpf_warn_invalid_xdp_action(netdev, prog, act);
 	}
