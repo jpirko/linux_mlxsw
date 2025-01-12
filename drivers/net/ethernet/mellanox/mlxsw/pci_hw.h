@@ -46,8 +46,15 @@
 #define MLXSW_PCI_EQS_COUNT	1
 #define MLXSW_PCI_EQ_COMP_NUM	1
 
-#define MLXSW_PCI_SDQS_MIN	2 /* EMAD and control traffic */
-#define MLXSW_PCI_SDQ_EMAD_INDEX	0
+enum {
+	MLXSW_PCI_SDQ_RESERVED_INDEX_EMAD = 0,
+	MLXSW_PCI_SDQ_RESERVED_INDEX_XDP,
+	MLXSW_PCI_SDQ_RESERVED_INDEX_MAX,
+};
+
+/* At least 1 SDQ is required for control traffic. */
+#define MLXSW_PCI_SDQS_MIN (MLXSW_PCI_SDQ_RESERVED_INDEX_MAX + 1)
+
 #define MLXSW_PCI_SDQ_EMAD_TC	0
 #define MLXSW_PCI_SDQ_CTL_TC	3
 

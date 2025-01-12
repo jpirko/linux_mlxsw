@@ -350,10 +350,14 @@ static int mlxsw_pci_sdq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 
 	q->producer_counter = 0;
 	q->consumer_counter = 0;
-	tclass = q->num == MLXSW_PCI_SDQ_EMAD_INDEX ? MLXSW_PCI_SDQ_EMAD_TC :
-						      MLXSW_PCI_SDQ_CTL_TC;
-	lp = q->num == MLXSW_PCI_SDQ_EMAD_INDEX ? MLXSW_CMD_MBOX_SW2HW_DQ_SDQ_LP_IGNORE_WQE :
-						  MLXSW_CMD_MBOX_SW2HW_DQ_SDQ_LP_WQE;
+
+	if (q->num == MLXSW_PCI_SDQ_RESERVED_INDEX_EMAD) {
+		tclass = MLXSW_PCI_SDQ_EMAD_TC;
+		lp = MLXSW_CMD_MBOX_SW2HW_DQ_SDQ_LP_IGNORE_WQE;
+	} else {
+		tclass = MLXSW_PCI_SDQ_CTL_TC;
+		lp = MLXSW_CMD_MBOX_SW2HW_DQ_SDQ_LP_WQE;
+	}
 
 	/* Set CQ of same number of this SDQ. */
 	cq_num = q->num;
@@ -2287,14 +2291,17 @@ static struct mlxsw_pci_queue *
 mlxsw_pci_sdq_pick(struct mlxsw_pci *mlxsw_pci,
 		   const struct mlxsw_tx_info *tx_info)
 {
-	u8 ctl_sdq_count = mlxsw_pci->num_sdqs - 1;
+	u8 ctl_sdq_count;
 	u8 sdqn;
 
+	ctl_sdq_count = mlxsw_pci->num_sdqs - MLXSW_PCI_SDQ_RESERVED_INDEX_MAX;
+
 	if (tx_info->is_emad) {
-		sdqn = MLXSW_PCI_SDQ_EMAD_INDEX;
+		sdqn = MLXSW_PCI_SDQ_RESERVED_INDEX_EMAD;
 	} else {
-		BUILD_BUG_ON(MLXSW_PCI_SDQ_EMAD_INDEX != 0);
-		sdqn = 1 + (tx_info->local_port % ctl_sdq_count);
+		BUILD_BUG_ON(MLXSW_PCI_SDQ_RESERVED_INDEX_EMAD != 0);
+		sdqn = MLXSW_PCI_SDQ_RESERVED_INDEX_MAX +
+		       (tx_info->local_port % ctl_sdq_count);
 	}
 
 	return mlxsw_pci_sdq_get(mlxsw_pci, sdqn);
