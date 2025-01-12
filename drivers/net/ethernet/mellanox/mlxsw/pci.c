@@ -68,7 +68,10 @@ struct mlxsw_pci_queue_elem_info {
 	struct page *pages[MLXSW_PCI_WQE_SG_ENTRIES];
 	char *elem; /* pointer to actual dma mapped element mem chunk */
 	struct {
-		struct sk_buff *skb;
+		union {
+			struct sk_buff *skb;
+			struct xdp_frame *xdpf;
+		};
 	} sdq;
 };
 
