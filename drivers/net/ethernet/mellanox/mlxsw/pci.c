@@ -2274,16 +2274,11 @@ static void mlxsw_pci_fini(void *bus_priv)
 	mlxsw_pci_free_irq_vectors(mlxsw_pci);
 }
 
-static int mlxsw_pci_txhdr_construct(struct sk_buff *skb,
-				     const struct mlxsw_txhdr_info *txhdr_info)
+static void mlxsw_pci_txhdr_construct(char *txhdr,
+				      const struct mlxsw_txhdr_info *txhdr_info)
 {
 	const struct mlxsw_tx_info tx_info = txhdr_info->tx_info;
-	char *txhdr;
 
-	if (skb_cow_head(skb, MLXSW_TXHDR_LEN))
-		return -ENOMEM;
-
-	txhdr = skb_push(skb, MLXSW_TXHDR_LEN);
 	memset(txhdr, 0, MLXSW_TXHDR_LEN);
 
 	mlxsw_tx_hdr_version_set(txhdr, MLXSW_TXHDR_VERSION_1);
@@ -2303,8 +2298,6 @@ static int mlxsw_pci_txhdr_construct(struct sk_buff *skb,
 		mlxsw_tx_hdr_port_mid_set(txhdr, tx_info.local_port);
 		mlxsw_tx_hdr_type_set(txhdr, MLXSW_TXHDR_TYPE_CONTROL);
 	}
-
-	return 0;
 }
 
 static struct mlxsw_pci_queue *
@@ -2361,13 +2354,16 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 	struct mlxsw_pci *mlxsw_pci = bus_priv;
 	struct mlxsw_pci_queue *q;
 	struct mlxsw_pci_queue_elem_info *elem_info;
+	char *txhdr;
 	char *wqe;
 	int i;
 	int err;
 
-	err = mlxsw_pci_txhdr_construct(skb, txhdr_info);
-	if (err)
-		return err;
+	if (skb_cow_head(skb, MLXSW_TXHDR_LEN))
+		return -ENOMEM;
+
+	txhdr = skb_push(skb, MLXSW_TXHDR_LEN);
+	mlxsw_pci_txhdr_construct(txhdr, txhdr_info);
 
 	if (skb_shinfo(skb)->nr_frags > MLXSW_PCI_WQE_SG_ENTRIES - 1) {
 		err = skb_linearize(skb);
