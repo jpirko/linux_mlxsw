@@ -530,6 +530,7 @@ out:
 	if (netdev)
 		skb->protocol = eth_type_trans(skb, netdev);
 
+	skb_mark_for_recycle(skb);
 	return skb;
 }
 
@@ -911,15 +912,19 @@ static void mlxsw_pci_cqe_rdq_handle(struct mlxsw_pci *mlxsw_pci,
 		goto out;
 
 	pci_port = &mlxsw_pci->pci_ports[rx_info.local_port];
-	skb = mlxsw_pci_rdq_build_skb(q, &rx_pkt_info, pci_port->netdev);
+
+	if (xdp_buff.data)
+		skb = xdp_build_skb_from_buff(&xdp_buff, pci_port->netdev);
+	else
+		skb = mlxsw_pci_rdq_build_skb(q, &rx_pkt_info,
+					      pci_port->netdev);
+
 	if (IS_ERR(skb)) {
 		dev_err_ratelimited(&pdev->dev, "Failed to build skb for RDQ\n");
 		mlxsw_pci_rdq_pages_recycle(q, rx_pkt_info.pages,
 					    rx_pkt_info.num_sg_entries);
 		goto out;
 	}
-
-	skb_mark_for_recycle(skb);
 
 	rx_info.trap_id = mlxsw_pci_cqe_trap_id_get(cqe);
 
