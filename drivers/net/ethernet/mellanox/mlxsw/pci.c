@@ -408,6 +408,22 @@ mlxsw_pci_wqe_rx_frag_set(struct mlxsw_pci *mlxsw_pci, struct page *page,
 	mlxsw_pci_wqe_byte_count_set(wqe, index, frag_len);
 }
 
+static void
+mlxsw_pci_wqe_xdp_frag_set(struct mlxsw_pci *mlxsw_pci, struct page *page,
+			   char *wqe, int index, size_t frag_len, size_t offset)
+{
+	struct pci_dev *pdev = mlxsw_pci->pdev;
+	dma_addr_t mapaddr;
+
+	mapaddr = page_pool_get_dma_addr(page) + offset;
+
+	dma_sync_single_for_device(&pdev->dev, mapaddr, frag_len,
+				   DMA_BIDIRECTIONAL);
+
+	mlxsw_pci_wqe_address_set(wqe, index, mapaddr);
+	mlxsw_pci_wqe_byte_count_set(wqe, index, frag_len);
+}
+
 static int mlxsw_pci_wqe_frag_map(struct mlxsw_pci *mlxsw_pci, char *wqe,
 				  int index, char *frag_data, size_t frag_len,
 				  int direction)
@@ -2346,6 +2362,74 @@ mlxsw_pci_tx_elem_info_get(struct mlxsw_pci_queue *q)
 	mlxsw_pci_wqe_type_set(wqe, MLXSW_PCI_WQE_TYPE_ETHERNET);
 
 	return elem_info;
+}
+
+int mlxsw_pci_xdp_frame_transmit(struct mlxsw_pci *mlxsw_pci,
+				 struct xdp_frame *xdpf,
+				 const struct mlxsw_txhdr_info *txhdr_info)
+{
+	struct mlxsw_pci_queue_elem_info *elem_info;
+	struct pci_dev *pdev = mlxsw_pci->pdev;
+	struct skb_shared_info *sinfo;
+	struct mlxsw_pci_queue *q;
+	int err = 0, i;
+	char *wqe;
+
+	if (xdpf->headroom < MLXSW_TXHDR_LEN) {
+		dev_err_ratelimited(&pdev->dev,
+				    "Failed to transmit XDP frame, not enough headroom for Tx header\n");
+		return -EINVAL;
+	}
+
+	sinfo = xdp_get_shared_info_from_frame(xdpf);
+	if (unlikely(sinfo->nr_frags > MLXSW_PCI_WQE_SG_ENTRIES - 1)) {
+		dev_err_ratelimited(&pdev->dev,
+				    "Failed to transmit XDP frame, %d fragments are not supported\n",
+				    sinfo->nr_frags);
+		return -EINVAL;
+	}
+
+	xdpf->data -= MLXSW_TXHDR_LEN;
+	xdpf->headroom -= MLXSW_TXHDR_LEN;
+	xdpf->len += MLXSW_TXHDR_LEN;
+
+	mlxsw_pci_txhdr_construct(xdpf->data, txhdr_info);
+
+	q = mlxsw_pci_sdq_get(mlxsw_pci, MLXSW_PCI_SDQ_RESERVED_INDEX_XDP);
+	spin_lock(&q->lock);
+
+	elem_info = mlxsw_pci_tx_elem_info_get(q);
+	if (!elem_info) {
+		err = -EAGAIN;
+		goto unlock;
+	}
+
+	elem_info->sdq.xdpf = xdpf;
+
+	wqe = elem_info->elem;
+	mlxsw_pci_wqe_xdp_frag_set(mlxsw_pci, virt_to_page(xdpf->data),
+				   wqe, 0, xdpf->len,
+				   xdpf->data - (void *)xdpf);
+
+	for (i = 0; i < sinfo->nr_frags; i++) {
+		const skb_frag_t *frag = &sinfo->frags[i];
+		struct page *page = skb_frag_page(frag);
+
+		mlxsw_pci_wqe_xdp_frag_set(mlxsw_pci, page, wqe, i + 1,
+					   skb_frag_size(frag), 0);
+	}
+
+	/* Set unused sq entries byte count to zero. */
+	for (i++; i < MLXSW_PCI_WQE_SG_ENTRIES; i++)
+		mlxsw_pci_wqe_byte_count_set(wqe, i, 0);
+
+	/* Everything is set up, ring producer doorbell to get HW going */
+	q->producer_counter++;
+	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, q);
+
+unlock:
+	spin_unlock(&q->lock);
+	return err;
 }
 
 static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,

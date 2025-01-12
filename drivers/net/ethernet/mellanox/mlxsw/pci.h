@@ -18,6 +18,12 @@
 
 #if IS_ENABLED(CONFIG_MLXSW_PCI)
 
+struct mlxsw_pci;
+struct mlxsw_txhdr_info;
+int mlxsw_pci_xdp_frame_transmit(struct mlxsw_pci *mlxsw_pci,
+				 struct xdp_frame *xdpf,
+				 const struct mlxsw_txhdr_info *txhdr_info);
+
 int mlxsw_pci_driver_register(struct pci_driver *pci_driver);
 void mlxsw_pci_driver_unregister(struct pci_driver *pci_driver);
 
