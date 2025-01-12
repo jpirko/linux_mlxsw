@@ -29,6 +29,7 @@
 #include <net/pkt_cls.h>
 #include <net/netevent.h>
 #include <net/addrconf.h>
+#include <net/xdp.h>
 #include <linux/ptp_classify.h>
 
 #include "spectrum.h"
@@ -1486,6 +1487,7 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 	u32 lanes = port_mapping->width;
 	u8 split_port_subnumber;
 	struct net_device *dev;
+	xdp_features_t val;
 	u8 port_number;
 	u8 slot_index;
 	bool splittable;
@@ -1712,6 +1714,9 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 			mlxsw_sp_port->local_port);
 		goto err_port_overheat_init_val_set;
 	}
+
+	val = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_RX_SG;
+	xdp_set_features_flag(dev, val);
 
 	err = register_netdev(dev);
 	if (err) {
