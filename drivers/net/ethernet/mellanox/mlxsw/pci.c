@@ -2336,6 +2336,25 @@ static bool mlxsw_pci_skb_transmit_busy(void *bus_priv,
 	return !mlxsw_pci_queue_elem_info_producer_get(q);
 }
 
+static struct mlxsw_pci_queue_elem_info *
+mlxsw_pci_tx_elem_info_get(struct mlxsw_pci_queue *q)
+{
+	struct mlxsw_pci_queue_elem_info *elem_info;
+	char *wqe;
+
+	elem_info = mlxsw_pci_queue_elem_info_producer_get(q);
+	if (!elem_info)
+		/* queue is full */
+		return NULL;
+
+	wqe = elem_info->elem;
+	mlxsw_pci_wqe_c_set(wqe, 1); /* always report completion */
+	mlxsw_pci_wqe_lp_set(wqe, 0);
+	mlxsw_pci_wqe_type_set(wqe, MLXSW_PCI_WQE_TYPE_ETHERNET);
+
+	return elem_info;
+}
+
 static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 				  const struct mlxsw_txhdr_info *txhdr_info)
 {
@@ -2358,9 +2377,9 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 
 	q = mlxsw_pci_sdq_pick(mlxsw_pci, &txhdr_info->tx_info);
 	spin_lock_bh(&q->lock);
-	elem_info = mlxsw_pci_queue_elem_info_producer_get(q);
+
+	elem_info = mlxsw_pci_tx_elem_info_get(q);
 	if (!elem_info) {
-		/* queue is full */
 		err = -EAGAIN;
 		goto unlock;
 	}
@@ -2368,10 +2387,6 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 	elem_info->sdq.skb = skb;
 
 	wqe = elem_info->elem;
-	mlxsw_pci_wqe_c_set(wqe, 1); /* always report completion */
-	mlxsw_pci_wqe_lp_set(wqe, 0);
-	mlxsw_pci_wqe_type_set(wqe, MLXSW_PCI_WQE_TYPE_ETHERNET);
-
 	err = mlxsw_pci_wqe_frag_map(mlxsw_pci, wqe, 0, skb->data,
 				     skb_headlen(skb), DMA_TO_DEVICE);
 	if (err)
