@@ -636,6 +636,11 @@ static int mlxsw_pci_rdq_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 	if (err)
 		goto err_xdp_rxq_info_reg;
 
+	err = xdp_rxq_info_reg_mem_model(&q->u.rdq.xdp_rxq, MEM_TYPE_PAGE_POOL,
+					 cq->u.cq.page_pool);
+	if (err)
+		goto err_xdp_reg_mem_model;
+
 	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, q);
 
 	for (i = 0; i < q->count; i++) {
@@ -661,6 +666,8 @@ err_rdq_page_alloc:
 			mlxsw_pci_rdq_page_free(q, elem_info, j);
 		j = mlxsw_pci->num_sg_entries;
 	}
+	xdp_rxq_info_unreg_mem_model(&q->u.rdq.xdp_rxq);
+err_xdp_reg_mem_model:
 	xdp_rxq_info_unreg(&q->u.rdq.xdp_rxq);
 err_xdp_rxq_info_reg:
 	q->u.rdq.cq = NULL;
@@ -677,6 +684,7 @@ static void mlxsw_pci_rdq_fini(struct mlxsw_pci *mlxsw_pci,
 	int i, j;
 
 	mlxsw_cmd_hw2sw_rdq(mlxsw_pci->core, q->num);
+	xdp_rxq_info_unreg_mem_model(&q->u.rdq.xdp_rxq);
 	xdp_rxq_info_unreg(&q->u.rdq.xdp_rxq);
 	for (i = 0; i < q->count; i++) {
 		elem_info = mlxsw_pci_queue_elem_info_get(q, i);
