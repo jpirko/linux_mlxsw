@@ -71,7 +71,8 @@ mlxsw_xdp_tx(struct mlxsw_pci *mlxsw_pci, struct xdp_buff *xdp_buff,
 	if (unlikely(xdpf->len < ETH_ZLEN))
 		goto err_xdpf_too_small;
 
-	err = mlxsw_pci_xdp_frame_transmit(mlxsw_pci, xdpf, &txhdr_info);
+	err = __mlxsw_pci_xdp_frame_transmit(mlxsw_pci, xdpf, &txhdr_info,
+					     false);
 	if (err)
 		goto err_xdp_frame_transmit;
 
