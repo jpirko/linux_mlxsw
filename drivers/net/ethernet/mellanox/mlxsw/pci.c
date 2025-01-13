@@ -1043,8 +1043,9 @@ static bool mlxsw_pci_cq_cqe_to_handle(struct mlxsw_pci_queue *q)
 	return !mlxsw_pci_elem_hw_owned(q, owner_bit);
 }
 
-static void mlxsw_pci_xdp_sdq_doorbell_ring(struct mlxsw_pci *mlxsw_pci)
+static void mlxsw_pci_xdp_sdq_doorbell_ring(void *bus_priv)
 {
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
 	struct mlxsw_pci_queue *q;
 
 	q = mlxsw_pci_sdq_get(mlxsw_pci, MLXSW_PCI_SDQ_RESERVED_INDEX_XDP);
@@ -2791,6 +2792,7 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.skb_transmit_busy	= mlxsw_pci_skb_transmit_busy,
 	.skb_transmit		= mlxsw_pci_skb_transmit,
 	.xdp_frame_transmit	= mlxsw_pci_xdp_frame_transmit,
+	.xdp_tx_doorbell_ring	= mlxsw_pci_xdp_sdq_doorbell_ring,
 	.cmd_exec		= mlxsw_pci_cmd_exec,
 	.read_frc_h		= mlxsw_pci_read_frc_h,
 	.read_frc_l		= mlxsw_pci_read_frc_l,

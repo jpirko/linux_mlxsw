@@ -2367,6 +2367,12 @@ int mlxsw_core_xdp_frame_transmit(struct mlxsw_core *mlxsw_core,
 }
 EXPORT_SYMBOL(mlxsw_core_xdp_frame_transmit);
 
+void mlxsw_core_xdp_tx_doorbell_ring(struct mlxsw_core *mlxsw_core)
+{
+	mlxsw_core->bus->xdp_tx_doorbell_ring(mlxsw_core->bus_priv);
+}
+EXPORT_SYMBOL(mlxsw_core_xdp_tx_doorbell_ring);
+
 void mlxsw_core_ptp_transmitted(struct mlxsw_core *mlxsw_core,
 				struct sk_buff *skb, u16 local_port)
 {

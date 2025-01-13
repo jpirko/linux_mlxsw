@@ -111,6 +111,7 @@ int mlxsw_core_skb_transmit(struct mlxsw_core *mlxsw_core, struct sk_buff *skb,
 int mlxsw_core_xdp_frame_transmit(struct mlxsw_core *mlxsw_core,
 				  struct xdp_frame *xdpf,
 				  const struct mlxsw_txhdr_info *txhdr_info);
+void mlxsw_core_xdp_tx_doorbell_ring(struct mlxsw_core *mlxsw_core);
 void mlxsw_core_ptp_transmitted(struct mlxsw_core *mlxsw_core,
 				struct sk_buff *skb, u16 local_port);
 
@@ -497,6 +498,7 @@ struct mlxsw_bus {
 			    const struct mlxsw_txhdr_info *txhdr_info);
 	int (*xdp_frame_transmit)(void *bus_priv, struct xdp_frame *xdpf,
 				  const struct mlxsw_txhdr_info *txhdr_info);
+	void (*xdp_tx_doorbell_ring)(void *bus_priv);
 	int (*cmd_exec)(void *bus_priv, u16 opcode, u8 opcode_mod,
 			u32 in_mod, bool out_mbox_direct,
 			char *in_mbox, size_t in_mbox_size,
