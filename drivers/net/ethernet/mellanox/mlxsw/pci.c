@@ -906,6 +906,9 @@ mlxsw_pci_xdp_handle(struct mlxsw_pci *mlxsw_pci, struct mlxsw_pci_queue *q,
 	case MLXSW_XDP_STATUS_TX:
 		q->u.rdq.xdp_complete_flags |= BIT(MLXSW_XDP_STATUS_TX);
 		return true;
+	case MLXSW_XDP_STATUS_REDIRECT:
+		q->u.rdq.xdp_complete_flags |= BIT(MLXSW_XDP_STATUS_REDIRECT);
+		return true;
 	case MLXSW_XDP_STATUS_DROP:
 	case MLXSW_XDP_STATUS_FAIL:
 		skb_shared_info = xdp_get_shared_info_from_buff(xdp_buff);
@@ -1062,6 +1065,9 @@ static void mlxsw_pci_xdp_rx_complete(struct mlxsw_pci *mlxsw_pci,
 
 	if (q->u.rdq.xdp_complete_flags & BIT(MLXSW_XDP_STATUS_TX))
 		mlxsw_pci_xdp_sdq_doorbell_ring(mlxsw_pci);
+
+	if (q->u.rdq.xdp_complete_flags & BIT(MLXSW_XDP_STATUS_REDIRECT))
+		xdp_do_flush();
 
 	q->u.rdq.xdp_complete_flags = 0;
 }

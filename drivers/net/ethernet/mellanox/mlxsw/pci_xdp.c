@@ -85,6 +85,21 @@ err_convert_buff_to_frame:
 	return MLXSW_XDP_STATUS_FAIL;
 }
 
+static enum mlxsw_xdp_status
+mlxsw_xdp_redirect(struct xdp_buff *xdp_buff, struct bpf_prog *prog,
+		   struct net_device *netdev)
+{
+	int err;
+
+	err = xdp_do_redirect(netdev, xdp_buff, prog);
+	if (err) {
+		trace_xdp_exception(netdev, prog, XDP_REDIRECT);
+		return MLXSW_XDP_STATUS_FAIL;
+	}
+
+	return MLXSW_XDP_STATUS_REDIRECT;
+}
+
 enum mlxsw_xdp_status
 mlxsw_xdp_run(struct mlxsw_pci *mlxsw_pci, struct xdp_buff *xdp_buff,
 	      struct bpf_prog *prog, struct net_device *netdev, u16 local_port)
@@ -102,6 +117,8 @@ mlxsw_xdp_run(struct mlxsw_pci *mlxsw_pci, struct xdp_buff *xdp_buff,
 	case XDP_TX:
 		return mlxsw_xdp_tx(mlxsw_pci, xdp_buff, prog, netdev,
 				    local_port);
+	case XDP_REDIRECT:
+		return mlxsw_xdp_redirect(xdp_buff, prog, netdev);
 	default:
 		bpf_warn_invalid_xdp_action(netdev, prog, act);
 	}

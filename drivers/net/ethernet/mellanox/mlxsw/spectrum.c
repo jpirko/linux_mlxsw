@@ -1209,6 +1209,35 @@ static int mlxsw_sp_port_xdp(struct net_device *dev, struct netdev_bpf *xdp)
 	}
 }
 
+static int mlxsw_sp_port_xdp_xmit(struct net_device *dev, int n,
+				  struct xdp_frame **frames, u32 flags)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	const struct mlxsw_txhdr_info txhdr_info = {
+		.tx_info.local_port = mlxsw_sp_port->local_port,
+		.tx_info.is_emad = false,
+	};
+	int i, nxmit = 0;
+
+	for (i = 0; i < n; i++) {
+		struct xdp_frame *xdpf = frames[i];
+		int err;
+
+		err = mlxsw_core_xdp_frame_transmit(mlxsw_sp->core, xdpf,
+						    &txhdr_info);
+		if (err)
+			break;
+
+		nxmit++;
+	}
+
+	if (unlikely(flags & XDP_XMIT_FLUSH))
+		mlxsw_core_xdp_tx_doorbell_ring(mlxsw_sp->core);
+
+	return nxmit;
+}
+
 static const struct net_device_ops mlxsw_sp_port_netdev_ops = {
 	.ndo_open		= mlxsw_sp_port_open,
 	.ndo_stop		= mlxsw_sp_port_stop,
@@ -1226,6 +1255,7 @@ static const struct net_device_ops mlxsw_sp_port_netdev_ops = {
 	.ndo_hwtstamp_get	= mlxsw_sp_port_hwtstamp_get,
 	.ndo_hwtstamp_set	= mlxsw_sp_port_hwtstamp_set,
 	.ndo_bpf		= mlxsw_sp_port_xdp,
+	.ndo_xdp_xmit		= mlxsw_sp_port_xdp_xmit,
 };
 
 static int
@@ -1715,7 +1745,9 @@ static int mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u16 local_port,
 		goto err_port_overheat_init_val_set;
 	}
 
-	val = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_RX_SG;
+	val = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT |
+	      NETDEV_XDP_ACT_RX_SG | NETDEV_XDP_ACT_NDO_XMIT |
+	      NETDEV_XDP_ACT_NDO_XMIT_SG;
 	xdp_set_features_flag(dev, val);
 
 	err = register_netdev(dev);
