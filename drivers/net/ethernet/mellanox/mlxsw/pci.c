@@ -2604,6 +2604,16 @@ unlock:
 	return err;
 }
 
+static int
+mlxsw_pci_xdp_frame_transmit(void *bus_priv, struct xdp_frame *xdpf,
+			     const struct mlxsw_txhdr_info *txhdr_info)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+
+	return __mlxsw_pci_xdp_frame_transmit(mlxsw_pci, xdpf, txhdr_info,
+					      true);
+}
+
 static int mlxsw_pci_cmd_exec(void *bus_priv, u16 opcode, u8 opcode_mod,
 			      u32 in_mod, bool out_mbox_direct,
 			      char *in_mbox, size_t in_mbox_size,
@@ -2780,6 +2790,7 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.fini			= mlxsw_pci_fini,
 	.skb_transmit_busy	= mlxsw_pci_skb_transmit_busy,
 	.skb_transmit		= mlxsw_pci_skb_transmit,
+	.xdp_frame_transmit	= mlxsw_pci_xdp_frame_transmit,
 	.cmd_exec		= mlxsw_pci_cmd_exec,
 	.read_frc_h		= mlxsw_pci_read_frc_h,
 	.read_frc_l		= mlxsw_pci_read_frc_l,
