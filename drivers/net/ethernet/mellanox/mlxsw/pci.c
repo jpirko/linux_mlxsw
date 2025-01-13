@@ -99,6 +99,7 @@ struct mlxsw_pci_queue {
 		struct {
 			struct mlxsw_pci_queue *cq;
 			struct xdp_rxq_info xdp_rxq;
+			u8 xdp_complete_flags;
 		} rdq;
 	} u;
 };
@@ -887,6 +888,7 @@ mlxsw_pci_xdp_handle(struct mlxsw_pci *mlxsw_pci, struct mlxsw_pci_queue *q,
 	case MLXSW_XDP_STATUS_PASS:
 		return false;
 	case MLXSW_XDP_STATUS_TX:
+		q->u.rdq.xdp_complete_flags |= BIT(MLXSW_XDP_STATUS_TX);
 		return true;
 	case MLXSW_XDP_STATUS_DROP:
 	case MLXSW_XDP_STATUS_FAIL:
@@ -1025,6 +1027,28 @@ static bool mlxsw_pci_cq_cqe_to_handle(struct mlxsw_pci_queue *q)
 	return !mlxsw_pci_elem_hw_owned(q, owner_bit);
 }
 
+static void mlxsw_pci_xdp_sdq_doorbell_ring(struct mlxsw_pci *mlxsw_pci)
+{
+	struct mlxsw_pci_queue *q;
+
+	q = mlxsw_pci_sdq_get(mlxsw_pci, MLXSW_PCI_SDQ_RESERVED_INDEX_XDP);
+	spin_lock(&q->lock);
+	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, q);
+	spin_unlock(&q->lock);
+}
+
+static void mlxsw_pci_xdp_rx_complete(struct mlxsw_pci *mlxsw_pci,
+				      struct mlxsw_pci_queue *q)
+{
+	if (likely(!q->u.rdq.xdp_complete_flags))
+		return;
+
+	if (q->u.rdq.xdp_complete_flags & BIT(MLXSW_XDP_STATUS_TX))
+		mlxsw_pci_xdp_sdq_doorbell_ring(mlxsw_pci);
+
+	q->u.rdq.xdp_complete_flags = 0;
+}
+
 static int mlxsw_pci_napi_poll_cq_rx(struct napi_struct *napi, int budget)
 {
 	struct mlxsw_pci_queue *q = container_of(napi, struct mlxsw_pci_queue,
@@ -1060,6 +1084,7 @@ static int mlxsw_pci_napi_poll_cq_rx(struct napi_struct *napi, int budget)
 			break;
 	}
 
+	mlxsw_pci_xdp_rx_complete(mlxsw_pci, rdq);
 	mlxsw_pci_queue_doorbell_consumer_ring(mlxsw_pci, q);
 	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, rdq);
 
@@ -2426,9 +2451,10 @@ int mlxsw_pci_xdp_frame_transmit(struct mlxsw_pci *mlxsw_pci,
 	for (i++; i < MLXSW_PCI_WQE_SG_ENTRIES; i++)
 		mlxsw_pci_wqe_byte_count_set(wqe, i, 0);
 
-	/* Everything is set up, ring producer doorbell to get HW going */
+	/* Increase the counter, ringing the doorbell will be done later for
+	 * several frames.
+	 */
 	q->producer_counter++;
-	mlxsw_pci_queue_doorbell_producer_ring(mlxsw_pci, q);
 
 unlock:
 	spin_unlock(&q->lock);
