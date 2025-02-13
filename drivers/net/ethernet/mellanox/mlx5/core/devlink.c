@@ -79,6 +79,21 @@ static int mlx5_devlink_serial_numbers_put(struct mlx5_core_dev *dev,
 			goto end;
 	}
 
+	start = pci_vpd_find_ro_info_keyword(vpd_data, vpd_size, "VU", &kw_len);
+	if (start >= 0) {
+		str = kstrndup(vpd_data + start, kw_len, GFP_KERNEL);
+		if (!str) {
+			err = -ENOMEM;
+			goto end;
+		}
+		end = strchrnul(str, ' ');
+		*end = '\0';
+		err = devlink_info_function_uid_put(req, str);
+		kfree(str);
+		if (err)
+			goto end;
+	}
+
 end:
 	kfree(vpd_data);
 	return err;
