@@ -763,6 +763,15 @@ int devlink_info_board_serial_number_put(struct devlink_info_req *req,
 }
 EXPORT_SYMBOL_GPL(devlink_info_board_serial_number_put);
 
+int devlink_info_function_uid_put(struct devlink_info_req *req,
+				  const char *fuid)
+{
+	if (!req->msg)
+		return 0;
+	return nla_put_string(req->msg, DEVLINK_ATTR_INFO_FUNCTION_UID, fuid);
+}
+EXPORT_SYMBOL_GPL(devlink_info_function_uid_put);
+
 static int devlink_info_version_put(struct devlink_info_req *req, int attr,
 				    const char *version_name,
 				    const char *version_value,

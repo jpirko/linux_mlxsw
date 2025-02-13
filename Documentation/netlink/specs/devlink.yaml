@@ -844,6 +844,9 @@ attribute-sets:
       -
         name: region-direct
         type: flag
+      -
+        name: info-function-uid
+        type: string
 
   -
     name: dl-dev-stats
@@ -1893,6 +1896,7 @@ operations:
             - info-version-running
             - info-version-stored
             - info-board-serial-number
+            - info-function-uid
       dump:
         reply: *info-get-reply
 

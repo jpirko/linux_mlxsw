@@ -50,6 +50,26 @@ versions is generally discouraged - here, and via any other Linux API.
        This is usually the serial number of the board, often available in
        PCI *Vital Product Data*.
 
+   * - ``function.uid``
+     - Function uniqueue identifier.
+
+       A physical device may consists of several PCI physical functions.
+       Each of this PCI function's ``serial_number`` is same because they are
+       part of single board. From this serial number, PCI function cannot be
+       uniquely referenced in a system.
+
+       Expanding this in slightly more complex system of multi-host
+       ``board.serial_number`` is not even now unique across two hosts.
+
+       Further expanding this for DPU based board, a DPU board has PCI
+       functions on the external host as well as DPU internal host.
+       Such DPU side PCI physical functions also have the same
+       ``serial_number``.
+
+       The function unique identifier uniquely identifies a function
+       across one or multiple hosts, also has unique identifier
+       with/without DPU based NICs.
+
    * - ``fixed``
      - Group for hardware identifiers, and versions of components
        which are not field-updatable.
