@@ -1846,6 +1846,8 @@ int devlink_info_serial_number_put(struct devlink_info_req *req,
 				   const char *sn);
 int devlink_info_board_serial_number_put(struct devlink_info_req *req,
 					 const char *bsn);
+int devlink_info_function_uid_put(struct devlink_info_req *req,
+				  const char *fuid);
 
 enum devlink_info_version_type {
 	DEVLINK_INFO_VERSION_TYPE_NONE,
