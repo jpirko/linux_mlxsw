@@ -595,7 +595,7 @@ mlx5_nv_port_param_keep_link_up_get(struct devlink *devlink, u32 id,
 				    struct devlink_param_gset_ctx *ctx)
 {
 	struct mlx5e_dev *edev = devlink_priv(devlink);
-	struct mlx5_core_dev *dev = edev->priv->mdev;
+	struct mlx5_core_dev *dev = edev->mdev;
 	u32 mnvda[MLX5_ST_SZ_DW(mnvda_reg)] = {};
 	void *data;
 	int err;
@@ -621,7 +621,7 @@ mlx5_nv_port_param_keep_link_up_set(struct devlink *devlink, u32 id,
 				    struct netlink_ext_ack *extack)
 {
 	struct mlx5e_dev *edev = devlink_priv(devlink);
-	struct mlx5_core_dev *dev = edev->priv->mdev;
+	struct mlx5_core_dev *dev = edev->mdev;
 	u32 mnvda[MLX5_ST_SZ_DW(mnvda_reg)] = {};
 	void *data;
 	int err;
@@ -648,7 +648,7 @@ mlx5_nv_port_param_keep_link_up_validate(struct devlink *devlink, u32 id,
 					 struct netlink_ext_ack *extack)
 {
 	struct mlx5e_dev *edev = devlink_priv(devlink);
-	struct mlx5_core_dev *dev = edev->priv->mdev;
+	struct mlx5_core_dev *dev = edev->mdev;
 
 	if (MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_ETH &&
 	    MLX5_CAP_GEN(dev, port_type) != MLX5_CAP_PORT_TYPE_IB) {

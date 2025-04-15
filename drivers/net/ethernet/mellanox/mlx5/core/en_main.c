@@ -6431,6 +6431,7 @@ static int _mlx5e_probe(struct auxiliary_device *adev)
 	if (IS_ERR(mlx5e_dev))
 		return PTR_ERR(mlx5e_dev);
 	auxiliary_set_drvdata(adev, mlx5e_dev);
+        mlx5e_dev->mdev = mdev;
 
 	err = mlx5e_devlink_port_register(mlx5e_dev, mdev);
 	if (err) {

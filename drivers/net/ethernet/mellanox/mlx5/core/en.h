@@ -945,6 +945,7 @@ struct mlx5e_priv {
 
 struct mlx5e_dev {
 	struct mlx5e_priv *priv;
+	struct mlx5_core_dev *mdev;
 	struct devlink_port dl_port;
 };
 
