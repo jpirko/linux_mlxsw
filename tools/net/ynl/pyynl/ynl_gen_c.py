@@ -1345,16 +1345,18 @@ class CodeWriter:
     def nl(self):
         self._nl = True
 
-    def block_start(self, line=''):
+    def block_start(self, line='', noind=False):
         if line:
             line = line + ' '
         self.p(line + '{')
-        self._ind += 1
+        if not noind:
+            self._ind += 1
 
-    def block_end(self, line=''):
+    def block_end(self, line='', noind=False):
         if line and line[0] not in {';', ','}:
             line = ' ' + line
-        self._ind -= 1
+        if not noind:
+            self._ind -= 1
         self._nl = False
         if not line:
             # Delay printing closing bracket in case "else" comes next
