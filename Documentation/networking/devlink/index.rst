@@ -68,6 +68,7 @@ general.
    devlink-trap
    devlink-linecard
    devlink-eswitch-attr
+   devlink-shared
 
 Driver-specific documentation
 -----------------------------
