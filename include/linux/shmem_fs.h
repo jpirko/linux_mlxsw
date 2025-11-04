@@ -158,6 +158,19 @@ int shmem_get_folio(struct inode *inode, pgoff_t index, loff_t write_end,
 		struct folio **foliop, enum sgp_type sgp);
 struct folio *shmem_read_folio_gfp(struct address_space *mapping,
 		pgoff_t index, gfp_t gfp);
+#ifdef CONFIG_ARCH_HAS_MEM_ENCRYPT
+int shmem_decrypt_folio(struct inode *inode, struct folio *folio);
+int shmem_encrypt_folio(struct inode *inode, struct folio *folio);
+#else
+static inline int shmem_decrypt_folio(struct inode *inode, struct folio *folio)
+{
+	return 0;
+}
+static inline int shmem_encrypt_folio(struct inode *inode, struct folio *folio)
+{
+	return 0;
+}
+#endif
 
 static inline struct folio *shmem_read_folio(struct address_space *mapping,
 		pgoff_t index)

@@ -12,6 +12,8 @@
 #define MFD_NOEXEC_SEAL		0x0008U
 /* executable */
 #define MFD_EXEC		0x0010U
+/* pages should be decrypted (shared) for confidential computing */
+#define MFD_DECRYPTED		0x0020U
 
 /*
  * Huge page size encoding when MFD_HUGETLB is specified, and a huge page

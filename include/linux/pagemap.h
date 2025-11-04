@@ -213,6 +213,7 @@ enum mapping_flags {
 	AS_WRITEBACK_MAY_DEADLOCK_ON_RECLAIM = 9,
 	AS_KERNEL_FILE = 10,	/* mapping for a fake kernel file that shouldn't
 				   account usage to user cgroups */
+	AS_DECRYPTED = 11,	/* pages should be decrypted (shared) for confidential computing */
 	/* Bits 16-25 are used for FOLIO_ORDER */
 	AS_FOLIO_ORDER_BITS = 5,
 	AS_FOLIO_ORDER_MIN = 16,
@@ -295,6 +296,16 @@ static inline int mapping_use_writeback_tags(const struct address_space *mapping
 static inline bool mapping_release_always(const struct address_space *mapping)
 {
 	return test_bit(AS_RELEASE_ALWAYS, &mapping->flags);
+}
+
+static inline void mapping_set_decrypted(struct address_space *mapping)
+{
+	set_bit(AS_DECRYPTED, &mapping->flags);
+}
+
+static inline bool mapping_decrypted(const struct address_space *mapping)
+{
+	return mapping && test_bit(AS_DECRYPTED, &mapping->flags);
 }
 
 static inline void mapping_set_release_always(struct address_space *mapping)

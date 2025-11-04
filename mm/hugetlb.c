@@ -54,6 +54,7 @@
 #include "hugetlb_vmemmap.h"
 #include "hugetlb_cma.h"
 #include <linux/page-isolation.h>
+#include <linux/shmem_fs.h>
 
 int hugetlb_max_hstate __read_mostly;
 unsigned int default_hstate_idx;
@@ -6531,6 +6532,8 @@ static vm_fault_t hugetlb_no_page(struct address_space *mapping,
 				ret = VM_FAULT_SIGBUS;
 				goto out;
 			}
+			/* Decrypt folio if inode requires decrypted pages */
+			shmem_decrypt_folio(mapping->host, folio);
 		} else {
 			new_anon_folio = true;
 			folio_lock(folio);

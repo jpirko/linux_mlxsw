@@ -77,6 +77,7 @@ static struct vfsmount *shm_mnt __ro_after_init;
 #include <linux/syscalls.h>
 #include <linux/fcntl.h>
 #include <uapi/linux/memfd.h>
+#include <linux/set_memory.h>
 #include <linux/rmap.h>
 #include <linux/uuid.h>
 #include <linux/quotaops.h>
@@ -1999,6 +2000,10 @@ allocated:
 
 	shmem_recalc_inode(inode, pages, 0);
 	folio_add_lru(folio);
+
+	/* Decrypt folio if inode requires decrypted pages */
+	shmem_decrypt_folio(inode, folio);
+
 	return folio;
 
 unlock:
@@ -2432,6 +2437,9 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	folio_mark_dirty(folio);
 	swap_free_nr(swap, nr_pages);
 	put_swap_device(si);
+
+	/* Decrypt folio if inode requires decrypted pages */
+	shmem_decrypt_folio(inode, folio);
 
 	*foliop = folio;
 	return 0;
@@ -5215,6 +5223,89 @@ static void __init shmem_destroy_inodecache(void)
 	kmem_cache_destroy(shmem_inode_cachep);
 }
 
+/**
+ * shmem_decrypt_folio - Decrypt a folio if the inode requires it
+ * @inode: The inode associated with the folio
+ * @folio: The folio to decrypt
+ *
+ * This function decrypts the folio if the inode has the decrypted flag set.
+ * It should be called after a folio is allocated and added to the page cache.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int shmem_decrypt_folio(struct inode *inode, struct folio *folio)
+{
+	unsigned long addr;
+	int nr_pages;
+	int err;
+
+	if (!IS_ENABLED(CONFIG_ARCH_HAS_MEM_ENCRYPT))
+		return 0;
+
+	if (!mapping_decrypted(inode->i_mapping))
+		return 0;
+
+	nr_pages = folio_nr_pages(folio);
+	addr = (unsigned long)folio_address(folio);
+	if (!addr)
+		return 0;
+
+	err = set_memory_decrypted(addr, nr_pages);
+	if (err)
+		pr_warn_ratelimited("failed to decrypt folio at %p for inode %lu, error %d\n",
+				    folio_address(folio), inode->i_ino, err);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(shmem_decrypt_folio);
+
+/**
+ * shmem_encrypt_folio - Encrypt a folio if it was decrypted
+ * @inode: The inode associated with the folio
+ * @folio: The folio to encrypt
+ *
+ * This function encrypts the folio if the inode has the decrypted flag set.
+ * It should be called when a folio is being released or removed from cache.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int shmem_encrypt_folio(struct inode *inode, struct folio *folio)
+{
+	unsigned long addr;
+	int nr_pages;
+	int err;
+
+	if (!IS_ENABLED(CONFIG_ARCH_HAS_MEM_ENCRYPT))
+		return 0;
+
+	if (!mapping_decrypted(inode->i_mapping))
+		return 0;
+
+	nr_pages = folio_nr_pages(folio);
+	addr = (unsigned long)folio_address(folio);
+	if (!addr)
+		return 0;
+
+	err = set_memory_encrypted(addr, nr_pages);
+	if (err)
+		pr_warn_ratelimited("failed to encrypt folio at %p for inode %lu, error %d\n",
+				    folio_address(folio), inode->i_ino, err);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(shmem_encrypt_folio);
+
+static void shmem_free_folio(struct folio *folio)
+{
+	struct address_space *mapping = folio->mapping;
+	struct inode *inode = mapping ? mapping->host : NULL;
+
+	if (!inode)
+		return;
+
+	shmem_encrypt_folio(inode, folio);
+}
+
 /* Keep the page in page cache instead of truncating it */
 static int shmem_error_remove_folio(struct address_space *mapping,
 				   struct folio *folio)
@@ -5232,6 +5323,7 @@ static const struct address_space_operations shmem_aops = {
 	.migrate_folio	= migrate_folio,
 #endif
 	.error_remove_folio = shmem_error_remove_folio,
+	.free_folio	= shmem_free_folio,
 };
 
 static const struct file_operations shmem_file_operations = {

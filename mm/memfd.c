@@ -313,7 +313,7 @@ long memfd_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 #define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
 #define MFD_NAME_MAX_LEN (NAME_MAX - MFD_NAME_PREFIX_LEN)
 
-#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | MFD_NOEXEC_SEAL | MFD_EXEC)
+#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | MFD_NOEXEC_SEAL | MFD_EXEC | MFD_DECRYPTED)
 
 static int check_sysctl_memfd_noexec(unsigned int *flags)
 {
@@ -462,6 +462,9 @@ static struct file *alloc_file(const char *name, unsigned int flags)
 		if (file_seals)
 			*file_seals &= ~F_SEAL_SEAL;
 	}
+
+	if (flags & MFD_DECRYPTED)
+		mapping_set_decrypted(file->f_mapping);
 
 	return file;
 }

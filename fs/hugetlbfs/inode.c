@@ -38,6 +38,7 @@
 
 #include <linux/uaccess.h>
 #include <linux/sched/mm.h>
+#include <linux/shmem_fs.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/hugetlbfs.h>
@@ -1084,6 +1085,17 @@ static int hugetlbfs_error_remove_folio(struct address_space *mapping,
 	return 0;
 }
 
+static void hugetlbfs_free_folio(struct folio *folio)
+{
+	struct address_space *mapping = folio->mapping;
+	struct inode *inode = mapping ? mapping->host : NULL;
+
+	if (!inode)
+		return;
+
+	shmem_encrypt_folio(inode, folio);
+}
+
 /*
  * Display the mount options in /proc/mounts.
  */
@@ -1228,6 +1240,7 @@ static const struct address_space_operations hugetlbfs_aops = {
 	.dirty_folio	= noop_dirty_folio,
 	.migrate_folio  = hugetlbfs_migrate_folio,
 	.error_remove_folio	= hugetlbfs_error_remove_folio,
+	.free_folio	= hugetlbfs_free_folio,
 };
 
 
