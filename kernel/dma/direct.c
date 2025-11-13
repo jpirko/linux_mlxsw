@@ -14,6 +14,7 @@
 #include <linux/set_memory.h>
 #include <linux/slab.h>
 #include <linux/pci-p2pdma.h>
+#include <linux/pagemap.h>
 #include "direct.h"
 
 /*
@@ -618,6 +619,38 @@ size_t dma_direct_max_mapping_size(struct device *dev)
 	    (dma_addressing_limited(dev) || is_swiotlb_force_bounce(dev)))
 		return swiotlb_max_mapping_size(dev);
 	return SIZE_MAX;
+}
+
+/**
+ * dma_direct_phys_is_decrypted - Check if physical memory is decrypted
+ * @phys: Physical address to check
+ *
+ * This function checks if the memory at the given physical address is
+ * decrypted by examining the page mapping flags. Memory is considered
+ * decrypted if it belongs to an address_space marked with AS_DECRYPTED
+ * (e.g., memfd_create with MFD_DECRYPTED flag).
+ *
+ * Return: true if memory is decrypted, false otherwise
+ */
+bool dma_direct_phys_is_decrypted(phys_addr_t phys)
+{
+	struct page *page;
+	struct folio *folio;
+	struct address_space *mapping;
+
+	/* Convert physical address to page */
+	page = pfn_to_page(PFN_DOWN(phys));
+	if (!page)
+		return false;
+
+	/* Convert page to folio and get mapping */
+	folio = page_folio(page);
+	mapping = folio_mapping(folio);
+	if (!mapping)
+		return false;
+
+	/* Check if mapping is marked as decrypted */
+	return mapping_decrypted(mapping);
 }
 
 bool dma_direct_need_sync(struct device *dev, dma_addr_t dma_addr)

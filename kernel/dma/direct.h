@@ -10,6 +10,8 @@
 #include <linux/dma-direct.h>
 #include <linux/memremap.h>
 
+bool dma_direct_phys_is_decrypted(phys_addr_t phys);
+
 int dma_direct_get_sgtable(struct device *dev, struct sg_table *sgt,
 		void *cpu_addr, dma_addr_t dma_addr, size_t size,
 		unsigned long attrs);
@@ -86,7 +88,15 @@ static inline dma_addr_t dma_direct_map_phys(struct device *dev,
 {
 	dma_addr_t dma_addr;
 
-	if (is_swiotlb_force_bounce(dev)) {
+	/*
+	 * Automatically detect decrypted memory by checking page mapping flags.
+	 * This allows RDMA and other drivers to work with decrypted memory
+	 * (e.g., memfd with MFD_DECRYPTED flag) without explicit API changes.
+	 * If memory is decrypted, skip swiotlb bounce buffering even when
+	 * force_bounce is enabled (e.g., in CoCo VMs).
+	 */
+	if (is_swiotlb_force_bounce(dev) &&
+	    !dma_direct_phys_is_decrypted(phys)) {
 		if (attrs & DMA_ATTR_MMIO)
 			goto err_overflow;
 
