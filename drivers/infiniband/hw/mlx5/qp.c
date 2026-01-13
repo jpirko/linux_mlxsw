@@ -938,6 +938,14 @@ static int adjust_bfregn(struct mlx5_ib_dev *dev,
 				bfregn % MLX5_NON_FP_BFREGS_PER_UAR;
 }
 
+static unsigned int mlx5_qp_buf_slot(struct mlx5_ib_qp *qp)
+{
+	if (qp->type == IB_QPT_RAW_PACKET ||
+	    qp->flags & IB_QP_CREATE_SOURCE_QPN)
+		return UVERBS_BUF_QP_RQ_BUF;
+	return UVERBS_BUF_QP_BUF;
+}
+
 static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			   struct mlx5_ib_qp *qp, struct ib_udata *udata,
 			   struct ib_qp_init_attr *attr, u32 **in,
@@ -998,14 +1006,26 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	if (err)
 		goto err_bfreg;
 
-	if (ucmd->buf_addr && ubuffer->buf_size) {
-		ubuffer->buf_addr = ucmd->buf_addr;
-		ubuffer->umem = ib_umem_get(&dev->ib_dev, ubuffer->buf_addr,
-					    ubuffer->buf_size, 0);
+	ubuffer->umem = NULL;
+	if (ubuffer->buf_size) {
+		ubuffer->umem = ib_umem_list_load(qp->ibqp.umem_list, mlx5_qp_buf_slot(qp),
+						  ubuffer->buf_size);
 		if (IS_ERR(ubuffer->umem)) {
 			err = PTR_ERR(ubuffer->umem);
 			goto err_bfreg;
+		} else if (!ubuffer->umem && ucmd->buf_addr) {
+			ubuffer->buf_addr = ucmd->buf_addr;
+			ubuffer->umem = ib_umem_get(&dev->ib_dev, ubuffer->buf_addr,
+						    ubuffer->buf_size, 0);
+			if (IS_ERR(ubuffer->umem)) {
+				err = PTR_ERR(ubuffer->umem);
+				goto err_bfreg;
+			}
+			ib_umem_list_replace(qp->ibqp.umem_list, mlx5_qp_buf_slot(qp),
+					     ubuffer->umem);
 		}
+	}
+	if (ubuffer->umem) {
 		page_size = mlx5_umem_find_best_quantized_pgoff(
 			ubuffer->umem, qpc, log_page_size,
 			MLX5_ADAPTER_PAGE_SHIFT, page_offset, 64,
@@ -1015,8 +1035,6 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			goto err_umem;
 		}
 		ncont = ib_umem_num_dma_blocks(ubuffer->umem, page_size);
-	} else {
-		ubuffer->umem = NULL;
 	}
 
 	*inlen = MLX5_ST_SZ_BYTES(create_qp_in) +
@@ -1056,7 +1074,8 @@ err_free:
 	kvfree(*in);
 
 err_umem:
-	ib_umem_release(ubuffer->umem);
+	ib_umem_release_non_listed(qp->ibqp.umem_list, mlx5_qp_buf_slot(qp),
+				   ubuffer->umem);
 
 err_bfreg:
 	if (bfregn != MLX5_IB_INVALID_BFREG)
@@ -1073,7 +1092,8 @@ static void destroy_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 	if (udata) {
 		/* User QP */
 		mlx5_ib_db_unmap_user(context, &qp->db);
-		ib_umem_release(base->ubuffer.umem);
+		ib_umem_release_non_listed(qp->ibqp.umem_list, mlx5_qp_buf_slot(qp),
+					   base->ubuffer.umem);
 
 		/*
 		 * Free only the BFREGs which are handled by the kernel.
@@ -1334,7 +1354,8 @@ static int get_qp_ts_format(struct mlx5_ib_dev *dev, struct mlx5_ib_cq *send_cq,
 static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 				   struct ib_udata *udata,
 				   struct mlx5_ib_sq *sq, void *qpin,
-				   struct ib_pd *pd, struct mlx5_ib_cq *cq)
+				   struct ib_pd *pd, struct mlx5_ib_cq *cq,
+				   struct ib_umem_list *umem_list)
 {
 	struct mlx5_ib_ubuffer *ubuffer = &sq->ubuffer;
 	__be64 *pas;
@@ -1352,10 +1373,11 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	if (ts_format < 0)
 		return ts_format;
 
-	sq->ubuffer.umem = ib_umem_get(&dev->ib_dev, ubuffer->buf_addr,
-				       ubuffer->buf_size, 0);
-	if (IS_ERR(sq->ubuffer.umem))
-		return PTR_ERR(sq->ubuffer.umem);
+	ubuffer->umem = ib_umem_list_load_or_get(umem_list, UVERBS_BUF_QP_SQ_BUF,
+						 &dev->ib_dev, ubuffer->buf_addr,
+						 ubuffer->buf_size, 0);
+	if (IS_ERR(ubuffer->umem))
+		return PTR_ERR(ubuffer->umem);
 	page_size = mlx5_umem_find_best_quantized_pgoff(
 		ubuffer->umem, wq, log_wq_pg_sz, MLX5_ADAPTER_PAGE_SHIFT,
 		page_offset, 64, &page_offset_quantized);
@@ -1412,18 +1434,21 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	return 0;
 
 err_umem:
-	ib_umem_release(sq->ubuffer.umem);
+	ib_umem_release_non_listed(umem_list, UVERBS_BUF_QP_SQ_BUF,
+				   sq->ubuffer.umem);
 	sq->ubuffer.umem = NULL;
 
 	return err;
 }
 
 static void destroy_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
-				     struct mlx5_ib_sq *sq)
+				     struct mlx5_ib_sq *sq,
+				     struct ib_umem_list *umem_list)
 {
 	destroy_flow_rule_vport_sq(sq);
 	mlx5_core_destroy_sq_tracked(dev, &sq->base.mqp);
-	ib_umem_release(sq->ubuffer.umem);
+	ib_umem_release_non_listed(umem_list, UVERBS_BUF_QP_SQ_BUF,
+				   sq->ubuffer.umem);
 }
 
 static int create_raw_packet_qp_rq(struct mlx5_ib_dev *dev,
@@ -1567,7 +1592,8 @@ static int create_raw_packet_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 				u32 *in, size_t inlen, struct ib_pd *pd,
 				struct ib_udata *udata,
 				struct mlx5_ib_create_qp_resp *resp,
-				struct ib_qp_init_attr *init_attr)
+				struct ib_qp_init_attr *init_attr,
+				struct ib_umem_list *umem_list)
 {
 	struct mlx5_ib_raw_packet_qp *raw_packet_qp = &qp->raw_packet_qp;
 	struct mlx5_ib_sq *sq = &raw_packet_qp->sq;
@@ -1587,7 +1613,8 @@ static int create_raw_packet_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 			return err;
 
 		err = create_raw_packet_qp_sq(dev, udata, sq, in, pd,
-					      to_mcq(init_attr->send_cq));
+					      to_mcq(init_attr->send_cq),
+					      umem_list);
 		if (err)
 			goto err_destroy_tis;
 
@@ -1651,7 +1678,7 @@ err_destroy_rq:
 err_destroy_sq:
 	if (!qp->sq.wqe_cnt)
 		return err;
-	destroy_raw_packet_qp_sq(dev, sq);
+	destroy_raw_packet_qp_sq(dev, sq, umem_list);
 err_destroy_tis:
 	destroy_raw_packet_qp_tis(dev, sq, pd);
 
@@ -1671,7 +1698,7 @@ static void destroy_raw_packet_qp(struct mlx5_ib_dev *dev,
 	}
 
 	if (qp->sq.wqe_cnt) {
-		destroy_raw_packet_qp_sq(dev, sq);
+		destroy_raw_packet_qp_sq(dev, sq, qp->ibqp.umem_list);
 		destroy_raw_packet_qp_tis(dev, sq, qp->ibqp.pd);
 	}
 }
@@ -2393,7 +2420,8 @@ static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		qp->raw_packet_qp.sq.ubuffer.buf_addr = ucmd->sq_buf_addr;
 		raw_packet_qp_copy_info(qp, &qp->raw_packet_qp);
 		err = create_raw_packet_qp(dev, qp, in, inlen, pd, udata,
-					   &params->resp, init_attr);
+					   &params->resp, init_attr,
+					   qp->ibqp.umem_list);
 	} else
 		err = mlx5_qpc_create_qp(dev, &base->mqp, in, inlen, out);
 
