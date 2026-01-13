@@ -1266,6 +1266,7 @@ static struct ib_qp *create_xrc_qp_user(struct ib_qp *qp,
 
 static struct ib_qp *create_qp(struct ib_device *dev, struct ib_pd *pd,
 			       struct ib_qp_init_attr *attr,
+			       struct ib_umem_list *umem_list,
 			       struct ib_udata *udata,
 			       struct ib_uqp_object *uobj, const char *caller)
 {
@@ -1292,6 +1293,7 @@ static struct ib_qp *create_qp(struct ib_device *dev, struct ib_pd *pd,
 	qp->registered_event_handler = attr->event_handler;
 	qp->port = attr->port_num;
 	qp->qp_context = attr->qp_context;
+	qp->umem_list = umem_list;
 
 	spin_lock_init(&qp->mr_lock);
 	INIT_LIST_HEAD(&qp->rdma_mrs);
@@ -1326,6 +1328,7 @@ err_security:
 	qp->device->ops.destroy_qp(qp, udata ? &dummy : NULL);
 err_create:
 	rdma_restrack_put(&qp->res);
+	ib_umem_list_release(qp->umem_list);
 	kfree(qp);
 	return ERR_PTR(ret);
 
@@ -1339,21 +1342,23 @@ err_create:
  * @attr: A list of initial attributes required to create the
  *   QP.  If QP creation succeeds, then the attributes are updated to
  *   the actual capabilities of the created QP.
+ * @umem_list: pre-mapped dma-buf umem list, or NULL
  * @udata: User data
  * @uobj: uverbs obect
  * @caller: caller's build-time module name
  */
 struct ib_qp *ib_create_qp_user(struct ib_device *dev, struct ib_pd *pd,
 				struct ib_qp_init_attr *attr,
+				struct ib_umem_list *umem_list,
 				struct ib_udata *udata,
 				struct ib_uqp_object *uobj, const char *caller)
 {
 	struct ib_qp *qp, *xrc_qp;
 
 	if (attr->qp_type == IB_QPT_XRC_TGT)
-		qp = create_qp(dev, pd, attr, NULL, NULL, caller);
+		qp = create_qp(dev, pd, attr, umem_list, NULL, NULL, caller);
 	else
-		qp = create_qp(dev, pd, attr, udata, uobj, NULL);
+		qp = create_qp(dev, pd, attr, umem_list, udata, uobj, NULL);
 	if (attr->qp_type != IB_QPT_XRC_TGT || IS_ERR(qp))
 		return qp;
 
@@ -1415,9 +1420,15 @@ struct ib_qp *ib_create_qp_kernel(struct ib_pd *pd,
 	if (qp_init_attr->cap.max_rdma_ctxs)
 		rdma_rw_init_qp(device, qp_init_attr);
 
-	qp = create_qp(device, pd, qp_init_attr, NULL, NULL, caller);
+	qp = create_qp(device, pd, qp_init_attr, NULL, NULL, NULL, caller);
 	if (IS_ERR(qp))
 		return qp;
+
+	/*
+	 * We are in kernel verbs flow and drivers are not allowed
+	 * to set umem_list pointer, it needs to stay NULL.
+	 */
+	WARN_ON_ONCE(qp->umem_list);
 
 	ib_qp_usecnt_inc(qp);
 
@@ -2147,6 +2158,7 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 {
 	const struct ib_gid_attr *alt_path_sgid_attr = qp->alt_path_sgid_attr;
 	const struct ib_gid_attr *av_sgid_attr = qp->av_sgid_attr;
+	struct ib_umem_list *umem_list = qp->umem_list;
 	struct ib_qp_security *sec;
 	int ret;
 
@@ -2184,6 +2196,7 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 
 	rdma_restrack_del(&qp->res);
 	kfree(qp);
+	ib_umem_list_release(umem_list);
 	return ret;
 }
 EXPORT_SYMBOL(ib_destroy_qp_user);

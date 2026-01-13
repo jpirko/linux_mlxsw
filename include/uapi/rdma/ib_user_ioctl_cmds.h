@@ -165,6 +165,15 @@ enum uverbs_attrs_create_qp_cmd_attr_ids {
 	UVERBS_ATTR_CREATE_QP_EVENT_FD,
 	UVERBS_ATTR_CREATE_QP_RESP_CAP,
 	UVERBS_ATTR_CREATE_QP_RESP_QP_NUM,
+	UVERBS_ATTR_CREATE_QP_BUFFERS,
+};
+
+enum uverbs_buf_qp_slots {
+	UVERBS_BUF_QP_BUF,
+	UVERBS_BUF_QP_RQ_BUF,
+	UVERBS_BUF_QP_SQ_BUF,
+	__UVERBS_BUF_QP_MAX,
+	UVERBS_BUF_QP_MAX = __UVERBS_BUF_QP_MAX - 1,
 };
 
 enum uverbs_attrs_destroy_qp_cmd_attr_ids {

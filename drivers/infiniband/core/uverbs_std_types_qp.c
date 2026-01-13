@@ -4,6 +4,7 @@
  */
 
 #include <rdma/uverbs_std_types.h>
+#include <rdma/ib_umem.h>
 #include "rdma_core.h"
 #include "uverbs.h"
 #include "core_priv.h"
@@ -96,6 +97,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 	struct ib_xrcd *xrcd = NULL;
 	struct ib_uobject *xrcd_uobj = NULL;
 	struct ib_device *device;
+	struct ib_umem_list *umem_list;
 	u64 user_handle;
 	int ret;
 
@@ -248,13 +250,25 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 	set_caps(&attr, &cap, true);
 	mutex_init(&obj->mcast_lock);
 
-	qp = ib_create_qp_user(device, pd, &attr, &attrs->driver_udata, obj,
-			       KBUILD_MODNAME);
+	umem_list = ib_umem_list_create(device, attrs,
+				       UVERBS_ATTR_CREATE_QP_BUFFERS,
+				       UVERBS_BUF_QP_MAX);
+	if (IS_ERR(umem_list)) {
+		ret = PTR_ERR(umem_list);
+		goto err_put;
+	}
+
+	qp = ib_create_qp_user(device, pd, &attr, umem_list,
+			       &attrs->driver_udata, obj, KBUILD_MODNAME);
 	if (IS_ERR(qp)) {
 		ret = PTR_ERR(qp);
 		goto err_put;
 	}
 	ib_qp_usecnt_inc(qp);
+
+	ret = ib_umem_list_check_consumed(umem_list);
+	if (ret)
+		goto err_destroy_qp;
 
 	if (attr.qp_type == IB_QPT_XRC_TGT) {
 		obj->uxrcd = container_of(xrcd_uobj, struct ib_uxrcd_object,
@@ -277,6 +291,9 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 			     sizeof(qp->qp_num));
 
 	return ret;
+
+err_destroy_qp:
+	ib_destroy_qp_user(qp, &attrs->driver_udata);
 err_put:
 	if (obj->uevent.event_file)
 		uverbs_uobject_put(&obj->uevent.event_file->uobj);
@@ -340,6 +357,7 @@ DECLARE_UVERBS_NAMED_METHOD(
 	UVERBS_ATTR_PTR_OUT(UVERBS_ATTR_CREATE_QP_RESP_QP_NUM,
 			   UVERBS_ATTR_TYPE(u32),
 			   UA_MANDATORY),
+	UVERBS_ATTR_BUFFERS(UVERBS_ATTR_CREATE_QP_BUFFERS),
 	UVERBS_ATTR_UHW());
 
 static int UVERBS_HANDLER(UVERBS_METHOD_QP_DESTROY)(

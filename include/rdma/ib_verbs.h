@@ -1524,6 +1524,7 @@ enum ib_mr_rereg_flags {
 };
 
 struct ib_umem;
+struct ib_umem_list;
 
 enum rdma_remove_reason {
 	/*
@@ -1944,6 +1945,8 @@ struct ib_qp {
 
 	/* The counter the qp is bind to */
 	struct rdma_counter    *counter;
+
+	struct ib_umem_list    *umem_list;
 };
 
 struct ib_dm {
