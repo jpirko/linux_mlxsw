@@ -122,6 +122,7 @@ enum uverbs_attrs_create_cq_cmd_attr_ids {
 
 enum uverbs_buf_cq_slots {
 	UVERBS_BUF_CQ_BUF,
+	UVERBS_BUF_CQ_DBR,
 	__UVERBS_BUF_CQ_MAX,
 	UVERBS_BUF_CQ_MAX = __UVERBS_BUF_CQ_MAX - 1,
 };
