@@ -759,7 +759,9 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 	if (!page_size)
 		return -EINVAL;
 
-	err = mlx5_ib_db_map_user(context, ucmd.db_addr, &cq->db);
+	err = mlx5_ib_db_map_user(context, ucmd.db_addr,
+				  cq->ibcq.umem_list, UVERBS_BUF_CQ_DBR,
+				  sizeof(__be32) * 2, &cq->db);
 	if (err)
 		return err;
 
