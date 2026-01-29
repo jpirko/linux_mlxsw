@@ -1062,7 +1062,9 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		resp->bfreg_index = MLX5_IB_INVALID_BFREG;
 	qp->bfregn = bfregn;
 
-	err = mlx5_ib_db_map_user(context, ucmd->db_addr, NULL, 0, 0, &qp->db);
+	err = mlx5_ib_db_map_user(context, ucmd->db_addr,
+				  qp->ibqp.umem_list, UVERBS_BUF_QP_DBR_BUF,
+				  sizeof(__be32) * 2, &qp->db);
 	if (err) {
 		mlx5_ib_dbg(dev, "map failed\n");
 		goto err_free;
