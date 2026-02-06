@@ -831,6 +831,32 @@ struct dma_buf *dma_buf_get(int fd)
 EXPORT_SYMBOL_NS_GPL(dma_buf_get, "DMA_BUF");
 
 /**
+ * dma_buf_get_from_vma - returns the struct dma_buf associated with a VMA
+ * @vma:	[in]	vma that may be backed by a dma_buf mmap
+ *
+ * On success, returns the struct dma_buf associated with the VMA; uses
+ * file's refcounting done by get_file to increase refcount. Returns ERR_PTR
+ * otherwise. The caller must release the reference with dma_buf_put().
+ */
+struct dma_buf *dma_buf_get_from_vma(struct vm_area_struct *vma)
+{
+	if (WARN_ON(!vma))
+		return ERR_PTR(-EINVAL);
+
+	mmap_assert_locked(vma->vm_mm);
+
+	if (!vma->vm_file)
+		return ERR_PTR(-EINVAL);
+
+	if (!is_dma_buf_file(vma->vm_file))
+		return ERR_PTR(-EINVAL);
+
+	get_file(vma->vm_file);
+	return vma->vm_file->private_data;
+}
+EXPORT_SYMBOL_NS_GPL(dma_buf_get_from_vma, "DMA_BUF");
+
+/**
  * dma_buf_put - decreases refcount of the buffer
  * @dmabuf:	[in]	buffer to reduce refcount of
  *
