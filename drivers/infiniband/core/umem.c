@@ -189,9 +189,6 @@ static struct ib_umem *__ib_umem_get_va(struct ib_device *device,
 	int pinned, ret;
 	unsigned int gup_flags = FOLL_LONGTERM;
 
-	if (device->cc_dma_bounce)
-		return ERR_PTR(-EOPNOTSUPP);
-
 	/*
 	 * If the combination of the addr and size requested for this memory
 	 * region causes an integer overflow, return error.
@@ -285,10 +282,36 @@ umem_kfree:
 }
 
 static struct ib_umem *
+__ib_umem_get_dmabuf_va(struct ib_device *device, unsigned long addr,
+			size_t size, int access)
+{
+	struct ib_umem_dmabuf *umem_dmabuf;
+	int ret;
+
+	if (access & IB_ACCESS_ON_DEMAND)
+		return ERR_PTR(-EOPNOTSUPP);
+
+	umem_dmabuf = ib_umem_dmabuf_get_pinned_from_buf(device, addr, size,
+							 access);
+	if (IS_ERR(umem_dmabuf))
+		return ERR_CAST(umem_dmabuf);
+
+	ret = ib_umem_account(&umem_dmabuf->umem,
+			      ib_umem_num_pages(&umem_dmabuf->umem));
+	if (ret) {
+		ib_umem_dmabuf_release(umem_dmabuf);
+		return ERR_PTR(ret);
+	}
+	return &umem_dmabuf->umem;
+}
+
+static struct ib_umem *
 ib_umem_get_desc(struct ib_device *device,
 		 const struct ib_uverbs_buffer_desc *desc, int access)
 {
 	struct ib_umem_dmabuf *umem_dmabuf;
+	struct ib_umem *umem;
+	int ret = 0;
 
 	if (desc->reserved[0] || desc->reserved[1])
 		return ERR_PTR(-EINVAL);
@@ -302,8 +325,21 @@ ib_umem_get_desc(struct ib_device *device,
 			return ERR_CAST(umem_dmabuf);
 		return &umem_dmabuf->umem;
 	case IB_UVERBS_BUFFER_TYPE_VA:
-		return __ib_umem_get_va(device, desc->addr, desc->length,
-					access);
+		if (!device->cc_dma_bounce) {
+			umem = __ib_umem_get_va(device, desc->addr,
+						desc->length, access);
+			if (!IS_ERR(umem))
+				return umem;
+			ret = PTR_ERR(umem);
+		}
+		/*
+		 * The VMA may be backed by a dma-buf. Try the dma-buf pinning path.
+		 */
+		umem = __ib_umem_get_dmabuf_va(device, desc->addr, desc->length,
+					       access);
+		if (IS_ERR(umem) && ret)
+			return ERR_PTR(ret);
+		return umem;
 	default:
 		return ERR_PTR(-EINVAL);
 	}
@@ -495,8 +531,11 @@ void ib_umem_release(struct ib_umem *umem)
 {
 	if (IS_ERR_OR_NULL(umem))
 		return;
-	if (umem->is_dmabuf)
+	if (umem->is_dmabuf) {
+		if (umem->owning_mm)
+			ib_umem_unaccount(umem, ib_umem_num_pages(umem));
 		return ib_umem_dmabuf_release(to_ib_umem_dmabuf(umem));
+	}
 	if (umem->is_odp)
 		return ib_umem_odp_release(to_ib_umem_odp(umem));
 
