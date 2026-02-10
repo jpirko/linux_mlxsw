@@ -47,6 +47,31 @@
 
 #define RESCHED_LOOP_CNT_THRESHOLD 0x1000
 
+static int ib_umem_account(struct ib_umem *umem, unsigned long npages)
+{
+	unsigned long lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+	unsigned long new_pinned;
+	struct mm_struct *mm;
+
+	umem->owning_mm = mm = current->mm;
+	mmgrab(mm);
+	new_pinned = atomic64_add_return(npages, &mm->pinned_vm);
+	if (new_pinned > lock_limit && !capable(CAP_IPC_LOCK)) {
+		atomic64_sub(npages, &mm->pinned_vm);
+		mmdrop(mm);
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static void ib_umem_unaccount(struct ib_umem *umem, unsigned long npages)
+{
+	struct mm_struct *mm = umem->owning_mm;
+
+	atomic64_sub(npages, &mm->pinned_vm);
+	mmdrop(mm);
+}
+
 static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int dirty)
 {
 	bool make_dirty = umem->writable && dirty;
@@ -159,10 +184,7 @@ static struct ib_umem *__ib_umem_get_va(struct ib_device *device,
 {
 	struct ib_umem *umem;
 	struct page **page_list;
-	unsigned long lock_limit;
-	unsigned long new_pinned;
 	unsigned long cur_base;
-	struct mm_struct *mm;
 	unsigned long npages;
 	int pinned, ret;
 	unsigned int gup_flags = FOLL_LONGTERM;
@@ -196,12 +218,9 @@ static struct ib_umem *__ib_umem_get_va(struct ib_device *device,
 	 */
 	umem->iova = addr;
 	umem->writable   = ib_access_writable(access);
-	umem->owning_mm = mm = current->mm;
 	umem->dma_attrs = DMA_ATTR_REQUIRE_COHERENT;
 	if (access & IB_ACCESS_RELAXED_ORDERING)
 		umem->dma_attrs |= DMA_ATTR_WEAK_ORDERING;
-
-	mmgrab(mm);
 
 	page_list = (struct page **) __get_free_page(GFP_KERNEL);
 	if (!page_list) {
@@ -215,14 +234,9 @@ static struct ib_umem *__ib_umem_get_va(struct ib_device *device,
 		goto out;
 	}
 
-	lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
-
-	new_pinned = atomic64_add_return(npages, &mm->pinned_vm);
-	if (new_pinned > lock_limit && !capable(CAP_IPC_LOCK)) {
-		atomic64_sub(npages, &mm->pinned_vm);
-		ret = -ENOMEM;
+	ret = ib_umem_account(umem, npages);
+	if (ret)
 		goto out;
-	}
 
 	cur_base = addr & PAGE_MASK;
 
@@ -261,14 +275,12 @@ static struct ib_umem *__ib_umem_get_va(struct ib_device *device,
 
 umem_release:
 	__ib_umem_release(device, umem, 0);
-	atomic64_sub(ib_umem_num_pages(umem), &mm->pinned_vm);
+	ib_umem_unaccount(umem, ib_umem_num_pages(umem));
 out:
 	free_page((unsigned long) page_list);
 umem_kfree:
-	if (ret) {
-		mmdrop(umem->owning_mm);
+	if (ret)
 		kfree(umem);
-	}
 	return ret ? ERR_PTR(ret) : umem;
 }
 
@@ -490,8 +502,7 @@ void ib_umem_release(struct ib_umem *umem)
 
 	__ib_umem_release(umem->ibdev, umem, 1);
 
-	atomic64_sub(ib_umem_num_pages(umem), &umem->owning_mm->pinned_vm);
-	mmdrop(umem->owning_mm);
+	ib_umem_unaccount(umem, ib_umem_num_pages(umem));
 	kfree(umem);
 }
 EXPORT_SYMBOL(ib_umem_release);
