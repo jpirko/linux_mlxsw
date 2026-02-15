@@ -174,6 +174,9 @@ struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
 	int pinned, ret;
 	unsigned int gup_flags = FOLL_LONGTERM;
 
+	if (device->cc_dma_bounce)
+		return ERR_PTR(-EOPNOTSUPP);
+
 	/*
 	 * If the combination of the addr and size requested for this memory
 	 * region causes an integer overflow, return error.
