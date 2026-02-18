@@ -178,16 +178,9 @@ unsigned long ib_umem_find_best_pgsz(struct ib_umem *umem,
 }
 EXPORT_SYMBOL(ib_umem_find_best_pgsz);
 
-/**
- * ib_umem_get - Pin and DMA map userspace memory.
- *
- * @device: IB device to connect UMEM
- * @addr: userspace virtual address to start at
- * @size: length of region to pin
- * @access: IB_ACCESS_xxx flags for memory being pinned
- */
-struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
-			    size_t size, int access)
+static struct ib_umem *__ib_umem_get(struct ib_device *device,
+				     unsigned long addr, size_t size,
+				     int access)
 {
 	struct ib_umem *umem;
 	struct page **page_list;
@@ -196,9 +189,6 @@ struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
 	unsigned long npages;
 	int pinned, ret;
 	unsigned int gup_flags = FOLL_LONGTERM;
-
-	if (device->cc_dma_bounce)
-		return ERR_PTR(-EOPNOTSUPP);
 
 	/*
 	 * If the combination of the addr and size requested for this memory
@@ -210,9 +200,6 @@ struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
 
 	if (!can_do_mlock())
 		return ERR_PTR(-EPERM);
-
-	if (access & IB_ACCESS_ON_DEMAND)
-		return ERR_PTR(-EOPNOTSUPP);
 
 	umem = kzalloc(sizeof(*umem), GFP_KERNEL);
 	if (!umem)
@@ -291,6 +278,50 @@ umem_kfree:
 		kfree(umem);
 	return ret ? ERR_PTR(ret) : umem;
 }
+/**
+ * ib_umem_get - Pin and DMA map userspace memory.
+ *
+ * @device: IB device to connect UMEM
+ * @addr: userspace virtual address to start at
+ * @size: length of region to pin
+ * @access: IB_ACCESS_xxx flags for memory being pinned
+ */
+struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
+			    size_t size, int access)
+{
+	struct ib_umem_dmabuf *umem_dmabuf;
+	struct ib_umem *umem;
+	int ret = 0;
+
+	if (access & IB_ACCESS_ON_DEMAND)
+		return ERR_PTR(-EOPNOTSUPP);
+
+	if (!device->cc_dma_bounce) {
+		umem = __ib_umem_get(device, addr, size, access);
+		if (!IS_ERR(umem))
+			return umem;
+		ret = PTR_ERR(umem);
+	}
+
+	/*
+	 * The VMA may be backed by a dma-buf. Try the dma-buf pinning path.
+	 */
+	umem_dmabuf = ib_umem_dmabuf_get_pinned_from_buf(device, addr,
+							 size, access);
+	if (IS_ERR(umem_dmabuf)) {
+		if (ret)
+			return ERR_PTR(ret);
+		return ERR_CAST(umem_dmabuf);
+	}
+
+	ret = ib_umem_account(&umem_dmabuf->umem,
+			       ib_umem_num_pages(&umem_dmabuf->umem));
+	if (ret) {
+		ib_umem_dmabuf_release(umem_dmabuf);
+		return ERR_PTR(ret);
+	}
+	return &umem_dmabuf->umem;
+}
 EXPORT_SYMBOL(ib_umem_get);
 
 /**
@@ -301,8 +332,11 @@ void ib_umem_release(struct ib_umem *umem)
 {
 	if (!umem)
 		return;
-	if (umem->is_dmabuf)
+	if (umem->is_dmabuf) {
+		if (umem->owning_mm)
+			ib_umem_unaccount(umem, ib_umem_num_pages(umem));
 		return ib_umem_dmabuf_release(to_ib_umem_dmabuf(umem));
+	}
 	if (umem->is_odp)
 		return ib_umem_odp_release(to_ib_umem_odp(umem));
 
