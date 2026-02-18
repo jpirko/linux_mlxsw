@@ -6,7 +6,9 @@
 #include <linux/dma-buf.h>
 #include <linux/dma-resv.h>
 #include <linux/dma-mapping.h>
+#include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/sched/mm.h>
 
 #include "uverbs.h"
 
@@ -114,36 +116,29 @@ void ib_umem_dmabuf_unmap_pages(struct ib_umem_dmabuf *umem_dmabuf)
 EXPORT_SYMBOL(ib_umem_dmabuf_unmap_pages);
 
 static struct ib_umem_dmabuf *
-ib_umem_dmabuf_get_with_dma_device(struct ib_device *device,
-				   struct device *dma_device,
-				   unsigned long offset, size_t size,
-				   int fd, int access,
-				   const struct dma_buf_attach_ops *ops)
+__ib_umem_dmabuf_get_with_dma_device(struct ib_device *device,
+				     struct device *dma_device,
+				     unsigned long offset, size_t size,
+				     struct dma_buf *dmabuf, int access,
+				     const struct dma_buf_attach_ops *ops)
 {
-	struct dma_buf *dmabuf;
 	struct ib_umem_dmabuf *umem_dmabuf;
 	struct ib_umem *umem;
 	unsigned long end;
-	struct ib_umem_dmabuf *ret = ERR_PTR(-EINVAL);
+	struct ib_umem_dmabuf *ret;
 
 	if (check_add_overflow(offset, (unsigned long)size, &end))
-		return ret;
+		return ERR_PTR(-EINVAL);
 
 	if (unlikely(!ops || !ops->move_notify))
-		return ret;
-
-	dmabuf = dma_buf_get(fd);
-	if (IS_ERR(dmabuf))
-		return ERR_CAST(dmabuf);
+		return ERR_PTR(-EINVAL);
 
 	if (dmabuf->size < end)
-		goto out_release_dmabuf;
+		return ERR_PTR(-EINVAL);
 
 	umem_dmabuf = kzalloc(sizeof(*umem_dmabuf), GFP_KERNEL);
-	if (!umem_dmabuf) {
-		ret = ERR_PTR(-ENOMEM);
-		goto out_release_dmabuf;
-	}
+	if (!umem_dmabuf)
+		return ERR_PTR(-ENOMEM);
 
 	umem = &umem_dmabuf->umem;
 	umem->ibdev = device;
@@ -152,8 +147,10 @@ ib_umem_dmabuf_get_with_dma_device(struct ib_device *device,
 	umem->writable = ib_access_writable(access);
 	umem->is_dmabuf = 1;
 
-	if (!ib_umem_num_pages(umem))
+	if (!ib_umem_num_pages(umem)) {
+		ret = ERR_PTR(-EINVAL);
 		goto out_free_umem;
+	}
 
 	umem_dmabuf->attach = dma_buf_dynamic_attach(
 					dmabuf,
@@ -168,10 +165,17 @@ ib_umem_dmabuf_get_with_dma_device(struct ib_device *device,
 
 out_free_umem:
 	kfree(umem_dmabuf);
-
-out_release_dmabuf:
-	dma_buf_put(dmabuf);
 	return ret;
+}
+
+static void __ib_umem_dmabuf_release(struct ib_umem_dmabuf *umem_dmabuf)
+{
+	struct dma_buf *dmabuf = umem_dmabuf->attach->dmabuf;
+
+	ib_umem_dmabuf_revoke(umem_dmabuf);
+
+	dma_buf_detach(dmabuf, umem_dmabuf->attach);
+	kfree(umem_dmabuf);
 }
 
 struct ib_umem_dmabuf *ib_umem_dmabuf_get(struct ib_device *device,
@@ -179,8 +183,24 @@ struct ib_umem_dmabuf *ib_umem_dmabuf_get(struct ib_device *device,
 					  int fd, int access,
 					  const struct dma_buf_attach_ops *ops)
 {
-	return ib_umem_dmabuf_get_with_dma_device(device, device->dma_device,
-						  offset, size, fd, access, ops);
+	struct dma_buf *dmabuf;
+	struct ib_umem_dmabuf *umem_dmabuf;
+
+	dmabuf = dma_buf_get(fd);
+	if (IS_ERR(dmabuf))
+		return ERR_CAST(dmabuf);
+
+	umem_dmabuf = __ib_umem_dmabuf_get_with_dma_device(device,
+							   device->dma_device,
+							   offset, size, dmabuf,
+							   access, ops);
+	if (IS_ERR(umem_dmabuf))
+		goto err_put_dmabuf;
+	return umem_dmabuf;
+
+err_put_dmabuf:
+	dma_buf_put(dmabuf);
+	return umem_dmabuf;
 }
 EXPORT_SYMBOL(ib_umem_dmabuf_get);
 
@@ -198,18 +218,19 @@ static struct dma_buf_attach_ops ib_umem_dmabuf_attach_pinned_ops = {
 	.move_notify = ib_umem_dmabuf_unsupported_move_notify,
 };
 
-struct ib_umem_dmabuf *
-ib_umem_dmabuf_get_pinned_with_dma_device(struct ib_device *device,
-					  struct device *dma_device,
-					  unsigned long offset, size_t size,
-					  int fd, int access)
+static struct ib_umem_dmabuf *
+__ib_umem_dmabuf_get_pinned_with_dma_device(struct ib_device *device,
+					    struct device *dma_device,
+					    unsigned long offset, size_t size,
+					    struct dma_buf *dmabuf, int access)
 {
 	struct ib_umem_dmabuf *umem_dmabuf;
 	int err;
 
-	umem_dmabuf = ib_umem_dmabuf_get_with_dma_device(device, dma_device, offset,
-							 size, fd, access,
-							 &ib_umem_dmabuf_attach_pinned_ops);
+	umem_dmabuf = __ib_umem_dmabuf_get_with_dma_device(device, dma_device,
+							   offset, size, dmabuf,
+							   access,
+							   &ib_umem_dmabuf_attach_pinned_ops);
 	if (IS_ERR(umem_dmabuf))
 		return umem_dmabuf;
 
@@ -221,17 +242,39 @@ ib_umem_dmabuf_get_pinned_with_dma_device(struct ib_device *device,
 
 	err = ib_umem_dmabuf_map_pages(umem_dmabuf);
 	if (err)
-		goto err_unpin;
+		goto err_release;
 	dma_resv_unlock(umem_dmabuf->attach->dmabuf->resv);
 
 	return umem_dmabuf;
 
-err_unpin:
-	dma_buf_unpin(umem_dmabuf->attach);
 err_release:
 	dma_resv_unlock(umem_dmabuf->attach->dmabuf->resv);
-	ib_umem_release(&umem_dmabuf->umem);
+	__ib_umem_dmabuf_release(umem_dmabuf);
 	return ERR_PTR(err);
+}
+
+struct ib_umem_dmabuf *
+ib_umem_dmabuf_get_pinned_with_dma_device(struct ib_device *device,
+					  struct device *dma_device,
+					  unsigned long offset, size_t size,
+					  int fd, int access)
+{
+	struct ib_umem_dmabuf *umem_dmabuf;
+	struct dma_buf *dmabuf;
+
+	dmabuf = dma_buf_get(fd);
+	if (IS_ERR(dmabuf))
+		return ERR_CAST(dmabuf);
+
+	umem_dmabuf = __ib_umem_dmabuf_get_pinned_with_dma_device(device,
+								  dma_device,
+								  offset, size,
+								  dmabuf,
+								  access);
+	if (IS_ERR(umem_dmabuf))
+		dma_buf_put(dmabuf);
+
+	return umem_dmabuf;
 }
 EXPORT_SYMBOL(ib_umem_dmabuf_get_pinned_with_dma_device);
 
@@ -244,6 +287,51 @@ struct ib_umem_dmabuf *ib_umem_dmabuf_get_pinned(struct ib_device *device,
 							 offset, size, fd, access);
 }
 EXPORT_SYMBOL(ib_umem_dmabuf_get_pinned);
+
+struct ib_umem_dmabuf *
+ib_umem_dmabuf_get_pinned_from_buf(struct ib_device *device,
+				   unsigned long addr, size_t size,
+				   int access)
+{
+	struct vm_area_struct *vma;
+	struct ib_umem_dmabuf *umem_dmabuf;
+	struct dma_buf *dmabuf;
+	unsigned long offset;
+	unsigned long end;
+
+	if (check_add_overflow(addr, (unsigned long)size, &end))
+		return ERR_PTR(-EINVAL);
+
+	mmap_read_lock(current->mm);
+	vma = vma_lookup(current->mm, addr);
+	if (!vma || end > vma->vm_end || !(vma->vm_flags & VM_SHARED)) {
+		mmap_read_unlock(current->mm);
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (ib_access_writable(access) && !(vma->vm_flags & VM_WRITE)) {
+		mmap_read_unlock(current->mm);
+		return ERR_PTR(-EPERM);
+	}
+
+	offset = (vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
+
+	dmabuf = dma_buf_get_from_vma(vma);
+	mmap_read_unlock(current->mm);
+	if (IS_ERR(dmabuf))
+		return ERR_CAST(dmabuf);
+
+	umem_dmabuf = __ib_umem_dmabuf_get_pinned_with_dma_device(device,
+								  device->dma_device,
+								  offset, size,
+								  dmabuf,
+								  access);
+	if (IS_ERR(umem_dmabuf))
+		dma_buf_put(dmabuf);
+
+	return umem_dmabuf;
+}
+EXPORT_SYMBOL(ib_umem_dmabuf_get_pinned_from_buf);
 
 void ib_umem_dmabuf_revoke(struct ib_umem_dmabuf *umem_dmabuf)
 {
@@ -267,9 +355,6 @@ void ib_umem_dmabuf_release(struct ib_umem_dmabuf *umem_dmabuf)
 {
 	struct dma_buf *dmabuf = umem_dmabuf->attach->dmabuf;
 
-	ib_umem_dmabuf_revoke(umem_dmabuf);
-
-	dma_buf_detach(dmabuf, umem_dmabuf->attach);
+	__ib_umem_dmabuf_release(umem_dmabuf);
 	dma_buf_put(dmabuf);
-	kfree(umem_dmabuf);
 }
