@@ -6,7 +6,9 @@
 #include <linux/dma-buf.h>
 #include <linux/dma-resv.h>
 #include <linux/dma-mapping.h>
+#include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/sched/mm.h>
 
 #include "uverbs.h"
 
@@ -285,6 +287,51 @@ struct ib_umem_dmabuf *ib_umem_dmabuf_get_pinned(struct ib_device *device,
 							 offset, size, fd, access);
 }
 EXPORT_SYMBOL(ib_umem_dmabuf_get_pinned);
+
+struct ib_umem_dmabuf *
+ib_umem_dmabuf_get_pinned_from_buf(struct ib_device *device,
+				   unsigned long addr, size_t size,
+				   int access)
+{
+	struct vm_area_struct *vma;
+	struct ib_umem_dmabuf *umem_dmabuf;
+	struct dma_buf *dmabuf;
+	unsigned long offset;
+	unsigned long end;
+
+	if (check_add_overflow(addr, (unsigned long)size, &end))
+		return ERR_PTR(-EINVAL);
+
+	mmap_read_lock(current->mm);
+	vma = vma_lookup(current->mm, addr);
+	if (!vma || end > vma->vm_end || !(vma->vm_flags & VM_SHARED)) {
+		mmap_read_unlock(current->mm);
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (ib_access_writable(access) && !(vma->vm_flags & VM_WRITE)) {
+		mmap_read_unlock(current->mm);
+		return ERR_PTR(-EPERM);
+	}
+
+	offset = (vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
+
+	dmabuf = dma_buf_get_from_vma(vma);
+	mmap_read_unlock(current->mm);
+	if (IS_ERR(dmabuf))
+		return ERR_CAST(dmabuf);
+
+	umem_dmabuf = __ib_umem_dmabuf_get_pinned_with_dma_device(device,
+								  device->dma_device,
+								  offset, size,
+								  dmabuf,
+								  access);
+	if (IS_ERR(umem_dmabuf))
+		dma_buf_put(dmabuf);
+
+	return umem_dmabuf;
+}
+EXPORT_SYMBOL(ib_umem_dmabuf_get_pinned_from_buf);
 
 void ib_umem_dmabuf_revoke(struct ib_umem_dmabuf *umem_dmabuf)
 {
