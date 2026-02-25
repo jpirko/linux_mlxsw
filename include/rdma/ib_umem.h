@@ -11,6 +11,7 @@
 
 struct ib_device;
 struct dma_buf_attach_ops;
+struct uverbs_attr_bundle;
 
 struct ib_umem {
 	struct ib_device       *ibdev;
@@ -80,6 +81,42 @@ struct ib_umem *ib_umem_get(struct ib_device *device, unsigned long addr,
 void ib_umem_release(struct ib_umem *umem);
 int ib_umem_copy_from(void *dst, struct ib_umem *umem, size_t offset,
 		      size_t length);
+
+struct ib_uverbs_buffer_desc;
+
+struct ib_umem *ib_umem_from_buffer_desc(struct ib_device *device,
+					 const struct ib_uverbs_buffer_desc *desc);
+
+/**
+ * struct ib_umem_list - collection of pre-mapped umems
+ *
+ * Created from a per-command buffers attribute. Each entry is indexed
+ * by a per-command buffer slot enum (e.g., IB_UMEM_CQ_BUF for CQ CREATE).
+ * Drivers use ib_umem_list_load() to retrieve a specific umem by index.
+ */
+struct ib_umem_list;
+
+struct ib_umem_list *ib_umem_list_create(struct ib_device *device,
+					 const struct uverbs_attr_bundle *attrs,
+					 u16 attr_id,
+					 unsigned int slot_max);
+void ib_umem_list_release(struct ib_umem_list *list);
+int ib_umem_list_check_consumed(const struct ib_umem_list *list);
+void ib_umem_list_insert(struct ib_umem_list *list, unsigned int index,
+			 struct ib_umem *umem);
+
+struct ib_umem *ib_umem_list_load(struct ib_umem_list *list,
+				  unsigned int index, size_t size);
+struct ib_umem *ib_umem_list_load_or_get(struct ib_umem_list *list,
+					 unsigned int index,
+					 struct ib_device *device,
+					 unsigned long addr, size_t size,
+					 int access);
+void ib_umem_list_replace(struct ib_umem_list *list, unsigned int index,
+			  struct ib_umem *umem);
+void ib_umem_release_non_listed(struct ib_umem_list *list, unsigned int index,
+				struct ib_umem *umem);
+
 unsigned long ib_umem_find_best_pgsz(struct ib_umem *umem,
 				     unsigned long pgsz_bitmap,
 				     unsigned long virt);
@@ -229,6 +266,29 @@ static inline void ib_umem_dmabuf_release(struct ib_umem_dmabuf *umem_dmabuf) { 
 static inline void ib_umem_dmabuf_revoke_lock(struct ib_umem_dmabuf *umem_dmabuf) {}
 static inline void ib_umem_dmabuf_revoke_unlock(struct ib_umem_dmabuf *umem_dmabuf) {}
 static inline void ib_umem_dmabuf_revoke(struct ib_umem_dmabuf *umem_dmabuf) {}
+
+struct ib_umem_list;
+
+static inline void ib_umem_list_release(struct ib_umem_list *list) { }
+static inline struct ib_umem *ib_umem_list_load(struct ib_umem_list *list,
+						unsigned int index,
+						size_t size)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline struct ib_umem *
+ib_umem_list_load_or_get(struct ib_umem_list *list, unsigned int index,
+			 struct ib_device *device, unsigned long addr,
+			 size_t size, int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline void ib_umem_list_replace(struct ib_umem_list *list,
+					unsigned int index,
+					struct ib_umem *umem) { }
+static inline void ib_umem_release_non_listed(struct ib_umem_list *list,
+					      unsigned int index,
+					      struct ib_umem *umem) { }
 
 #endif /* CONFIG_INFINIBAND_USER_MEM */
 #endif /* IB_UMEM_H */

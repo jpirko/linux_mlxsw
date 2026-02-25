@@ -273,4 +273,31 @@ struct ib_uverbs_gid_entry {
 	__u32 netdev_ifindex; /* It is 0 if there is no netdev associated with it */
 };
 
+enum ib_uverbs_buffer_type {
+	IB_UVERBS_BUFFER_TYPE_DMABUF,
+	IB_UVERBS_BUFFER_TYPE_VA,
+};
+
+/*
+ * Describes a single buffer backed by dma-buf or user virtual address.
+ * Passed as an array via a per-command buffers attribute. Each command that
+ * accepts this attribute defines its own per-command buffer slot enum.
+ * The index field selects the buffer slot this descriptor maps to.
+ *
+ * @fd: dma-buf file descriptor (valid for IB_UVERBS_BUFFER_TYPE_DMABUF)
+ * @type: buffer type from enum ib_uverbs_buffer_type
+ * @index: per-command buffer slot index
+ * @reserved: must be zero
+ * @addr: offset within dma-buf, or user virtual address for VA
+ * @length: buffer length in bytes
+ */
+struct ib_uverbs_buffer_desc {
+	__s32 fd;
+	__u32 type;
+	__u32 index;
+	__u32 reserved;
+	__aligned_u64 addr;
+	__aligned_u64 length;
+};
+
 #endif

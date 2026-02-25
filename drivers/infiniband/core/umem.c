@@ -37,6 +37,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/sched/signal.h>
 #include <linux/sched/mm.h>
+#include <linux/err.h>
 #include <linux/export.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
@@ -332,3 +333,260 @@ int ib_umem_copy_from(void *dst, struct ib_umem *umem, size_t offset,
 		return 0;
 }
 EXPORT_SYMBOL(ib_umem_copy_from);
+
+struct ib_umem_list {
+	unsigned int count; /* Total slots in the list. */
+	unsigned long provided; /* Bitmask of slots provided by the user. */
+	unsigned long loaded; /* Bitmask of slots loaded by the driver. */
+	struct ib_umem *umems[] __counted_by(count);
+};
+
+/**
+ * ib_umem_from_buffer_desc - Create a umem from a buffer descriptor
+ * @device: IB device
+ * @desc: buffer descriptor describing a dma-buf or user VA region
+ *
+ * Return: umem pointer, or ERR_PTR on failure.
+ */
+struct ib_umem *ib_umem_from_buffer_desc(struct ib_device *device,
+					 const struct ib_uverbs_buffer_desc *desc)
+{
+	struct ib_umem_dmabuf *umem_dmabuf;
+
+	if (desc->reserved)
+		return ERR_PTR(-EINVAL);
+
+	switch (desc->type) {
+	case IB_UVERBS_BUFFER_TYPE_DMABUF:
+		umem_dmabuf = ib_umem_dmabuf_get_pinned(device, desc->addr,
+							desc->length, desc->fd,
+							IB_ACCESS_LOCAL_WRITE);
+		if (IS_ERR(umem_dmabuf))
+			return ERR_CAST(umem_dmabuf);
+		return &umem_dmabuf->umem;
+	case IB_UVERBS_BUFFER_TYPE_VA:
+		return ib_umem_get(device, desc->addr, desc->length,
+				   IB_ACCESS_LOCAL_WRITE);
+	default:
+		return ERR_PTR(-EINVAL);
+	}
+}
+EXPORT_SYMBOL(ib_umem_from_buffer_desc);
+
+/**
+ * ib_umem_list_create - Create a umem list from a buffers attribute
+ * @device: IB device
+ * @attrs: uverbs attribute bundle
+ * @attr_id: per-command attribute ID carrying the buffer descriptors
+ * @slot_max: highest buffer slot index (count = slot_max + 1)
+ *
+ * Return: umem list, or ERR_PTR on failure.
+ */
+struct ib_umem_list *ib_umem_list_create(struct ib_device *device,
+					 const struct uverbs_attr_bundle *attrs,
+					 u16 attr_id,
+					 unsigned int slot_max)
+{
+	const struct ib_uverbs_buffer_desc *descs;
+	struct ib_umem_list *list;
+	struct ib_umem *umem;
+	unsigned int count;
+	int num_descs;
+	int err;
+	int i;
+
+	if (WARN_ON_ONCE(slot_max >= BITS_PER_LONG))
+		return ERR_PTR(-EINVAL);
+	count = slot_max + 1;
+
+	num_descs = uverbs_attr_ptr_get_array_size(attrs, attr_id,
+						   sizeof(*descs));
+	if (num_descs == -ENOENT) {
+		num_descs = 0;
+		descs = NULL;
+	} else if (num_descs < 0) {
+		return ERR_PTR(num_descs);
+	} else if (num_descs > count) {
+		return ERR_PTR(-EINVAL);
+	} else {
+		descs = uverbs_attr_get_alloced_ptr(attrs, attr_id);
+		if (IS_ERR(descs))
+			return ERR_CAST(descs);
+	}
+
+	list = kzalloc(struct_size(list, umems, count), GFP_KERNEL);
+	if (!list)
+		return ERR_PTR(-ENOMEM);
+	list->count = count;
+
+	for (i = 0; i < num_descs; i++) {
+		unsigned int idx = descs[i].index;
+
+		if (idx >= count || (list->provided & BIT(idx))) {
+			err = -EINVAL;
+			goto err_release;
+		}
+
+		umem = ib_umem_from_buffer_desc(device, &descs[i]);
+		if (IS_ERR(umem)) {
+			err = PTR_ERR(umem);
+			goto err_release;
+		}
+		list->umems[idx] = umem;
+		list->provided |= BIT(idx);
+	}
+
+	return list;
+
+err_release:
+	ib_umem_list_release(list);
+	return ERR_PTR(err);
+}
+EXPORT_SYMBOL(ib_umem_list_create);
+
+/**
+ * ib_umem_list_release - Release all umems in the list and free it
+ * @list: umem list
+ */
+void ib_umem_list_release(struct ib_umem_list *list)
+{
+	int i;
+
+	if (!list)
+		return;
+	for (i = 0; i < list->count; i++)
+		ib_umem_release(list->umems[i]);
+	kfree(list);
+}
+EXPORT_SYMBOL(ib_umem_list_release);
+
+/**
+ * ib_umem_list_check_consumed - Verify all provided umems were loaded
+ * @list: umem list
+ *
+ * Return: 0 if all provided slots were loaded, -EINVAL otherwise.
+ */
+int ib_umem_list_check_consumed(const struct ib_umem_list *list)
+{
+	return (list->provided & ~list->loaded) == 0 ? 0 : -EINVAL;
+}
+EXPORT_SYMBOL(ib_umem_list_check_consumed);
+
+/**
+ * ib_umem_list_insert - Insert a umem into the list at a given index
+ * @list: umem list
+ * @index: per-command buffer slot index
+ * @umem: umem pointer to store
+ *
+ * Stores @umem at @index (replacing any existing). For use from create_cq
+ * when the buffer comes from legacy ATTRs rather than the buffer list.
+ */
+void ib_umem_list_insert(struct ib_umem_list *list, unsigned int index,
+			 struct ib_umem *umem)
+{
+	ib_umem_list_replace(list, index, umem);
+	if (umem)
+		list->provided |= BIT(index);
+}
+EXPORT_SYMBOL(ib_umem_list_insert);
+
+/**
+ * ib_umem_list_load - Load a umem from the list by index
+ * @list: umem list (may be NULL)
+ * @index: per-command buffer slot index
+ * @size: minimum required umem length
+ *
+ * Return: umem pointer, or NULL if the slot is empty or
+ * the slot is out of bounds, or ERR_PTR(-EINVAL) if the umem is too small.
+ */
+struct ib_umem *ib_umem_list_load(struct ib_umem_list *list,
+				 unsigned int index, size_t size)
+{
+	struct ib_umem *umem;
+
+	if (!list || index >= list->count)
+		return NULL;
+	umem = list->umems[index];
+	if (!umem)
+		return NULL;
+	if (umem->length < size)
+		return ERR_PTR(-EINVAL);
+	list->loaded |= BIT(index);
+	return umem;
+}
+EXPORT_SYMBOL(ib_umem_list_load);
+
+/**
+ * ib_umem_list_load_or_get - Umem from list or pin user memory
+ * @list: umem list (may be NULL)
+ * @index: per-command buffer slot index
+ * @device: IB device for ib_umem_get when the list slot is empty
+ * @addr: user virtual address for ib_umem_get
+ * @size: length for ib_umem_get
+ * @access: access flags for ib_umem_get
+ *
+ * If @list has a umem at @index, returns it like ib_umem_list_load() (and
+ * marks the slot loaded). Otherwise calls ib_umem_get() with the given
+ * @access flags and on success stores the result at @index when
+ * @list is non-NULL.
+ *
+ * Return: valid umem pointer, or ERR_PTR.
+ */
+struct ib_umem *ib_umem_list_load_or_get(struct ib_umem_list *list,
+					 unsigned int index,
+					 struct ib_device *device,
+					 unsigned long addr, size_t size,
+					 int access)
+{
+	struct ib_umem *umem;
+
+	umem = ib_umem_list_load(list, index, size);
+	if (IS_ERR(umem) || umem)
+		return umem;
+	umem = ib_umem_get(device, addr, size, access);
+	if (IS_ERR(umem))
+		return umem;
+	if (list && index < list->count)
+		list->umems[index] = umem;
+	return umem;
+}
+EXPORT_SYMBOL(ib_umem_list_load_or_get);
+
+/**
+ * ib_umem_list_replace - Replace umem at index, releasing the previous one
+ * @list: umem list (may be NULL)
+ * @index: per-command buffer slot index
+ * @umem: new umem pointer (may be NULL to clear the slot)
+ *
+ * Stores @umem at @index. If a different umem was already stored there, it is
+ * released. Used for CQ resize and similar.
+ */
+void ib_umem_list_replace(struct ib_umem_list *list, unsigned int index,
+			  struct ib_umem *umem)
+{
+	struct ib_umem *old;
+
+	if (!list || index >= list->count)
+		return;
+	old = list->umems[index];
+	list->umems[index] = umem;
+	if (old && old != umem)
+		ib_umem_release(old);
+}
+EXPORT_SYMBOL(ib_umem_list_replace);
+
+/**
+ * ib_umem_release_non_listed - Release a umem that is not stored in the list
+ * @list: umem list
+ * @index: per-command buffer slot index
+ * @umem: umem pointer to release
+ *
+ * Releases @umem if it is not stored in @list.
+ */
+void ib_umem_release_non_listed(struct ib_umem_list *list, unsigned int index,
+				struct ib_umem *umem)
+{
+	if (!list || index >= list->count || list->umems[index] != umem)
+		ib_umem_release(umem);
+}
+EXPORT_SYMBOL(ib_umem_release_non_listed);

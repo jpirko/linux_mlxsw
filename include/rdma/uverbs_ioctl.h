@@ -590,6 +590,21 @@ struct uapi_definition {
 			    UA_OPTIONAL,                                       \
 			    .is_udata = 1)
 
+/*
+ * Optional array of struct ib_uverbs_buffer_desc describing memory regions
+ * backed by dma-buf or user virtual address. Can be added to any method
+ * that needs external buffer support. The attribute ID is per-command
+ * (e.g. UVERBS_ATTR_CREATE_CQ_BUFFERS, UVERBS_ATTR_CREATE_QP_BUFFERS).
+ * Each entry carries an index field selecting the per-command buffer slot.
+ * Use ib_umem_list_create() to map them and ib_umem_list_load() to access.
+ */
+#define UVERBS_ATTR_BUFFERS(_attr_id)                                          \
+	UVERBS_ATTR_PTR_IN(_attr_id,                                          \
+			   UVERBS_ATTR_MIN_SIZE(                               \
+				sizeof(struct ib_uverbs_buffer_desc)),         \
+			   UA_OPTIONAL,                                        \
+			   UA_ALLOC_AND_COPY)
+
 /* =================================================
  *              Parsing infrastructure
  * =================================================
