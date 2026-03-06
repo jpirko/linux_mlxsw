@@ -1740,6 +1740,8 @@ struct ib_cq {
 	unsigned int comp_vector;
 	struct ib_umem *umem;
 
+	struct ib_umem_list    *umem_list;
+
 	/*
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */

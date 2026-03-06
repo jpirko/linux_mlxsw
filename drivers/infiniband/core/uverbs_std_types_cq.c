@@ -126,6 +126,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	struct ib_device *ib_dev = attrs->context->device;
 	struct ib_cq_init_attr attr = {};
 	struct ib_uobject *ev_file_uobj;
+	struct ib_umem_list *umem_list;
 	struct ib_umem *umem = NULL;
 	struct ib_cq *cq;
 	u64 user_handle;
@@ -175,17 +176,26 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	INIT_LIST_HEAD(&obj->comp_list);
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 
+	umem_list = ib_umem_list_create(ib_dev, attrs,
+				       UVERBS_ATTR_CREATE_CQ_BUFFERS,
+				       UVERBS_BUF_CQ_MAX);
+	if (IS_ERR(umem_list)) {
+		ret = PTR_ERR(umem_list);
+		goto err_event_file;
+	}
+
 	umem = uverbs_create_cq_get_umem(ib_dev, attrs);
 	if (IS_ERR(umem)) {
 		ret = PTR_ERR(umem);
-		goto err_event_file;
+		goto err_umem_list;
 	}
+	if (umem)
+		ib_umem_list_insert(umem_list, UVERBS_BUF_CQ_BUF, umem);
 
 	cq = rdma_zalloc_drv_obj(ib_dev, ib_cq);
 	if (!cq) {
 		ret = -ENOMEM;
-		ib_umem_release(umem);
-		goto err_event_file;
+		goto err_umem_list;
 	}
 
 	cq->device        = ib_dev;
@@ -198,6 +208,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	 * CQ creation based on their internal udata.
 	 */
 	cq->umem = umem;
+	cq->umem_list     = umem_list;
 	atomic_set(&cq->usecnt, 0);
 
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
@@ -223,9 +234,11 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	return ret;
 
 err_free:
-	ib_umem_release(cq->umem);
+	ib_umem_release_non_listed(umem_list, UVERBS_BUF_CQ_BUF, cq->umem);
 	rdma_restrack_put(&cq->res);
 	kfree(cq);
+err_umem_list:
+	ib_umem_list_release(umem_list);
 err_event_file:
 	if (obj->uevent.event_file)
 		uverbs_uobject_put(&obj->uevent.event_file->uobj);
@@ -273,6 +286,7 @@ DECLARE_UVERBS_NAMED_METHOD(
 	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_CQ_BUFFER_OFFSET,
 			   UVERBS_ATTR_TYPE(u64),
 			   UA_OPTIONAL),
+	UVERBS_ATTR_BUFFERS(UVERBS_ATTR_CREATE_CQ_BUFFERS),
 	UVERBS_ATTR_UHW());
 
 static int UVERBS_HANDLER(UVERBS_METHOD_CQ_DESTROY)(

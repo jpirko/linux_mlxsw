@@ -117,6 +117,13 @@ enum uverbs_attrs_create_cq_cmd_attr_ids {
 	UVERBS_ATTR_CREATE_CQ_BUFFER_LENGTH,
 	UVERBS_ATTR_CREATE_CQ_BUFFER_FD,
 	UVERBS_ATTR_CREATE_CQ_BUFFER_OFFSET,
+	UVERBS_ATTR_CREATE_CQ_BUFFERS,
+};
+
+enum uverbs_buf_cq_slots {
+	UVERBS_BUF_CQ_BUF,
+	__UVERBS_BUF_CQ_MAX,
+	UVERBS_BUF_CQ_MAX = __UVERBS_BUF_CQ_MAX - 1,
 };
 
 enum uverbs_attrs_destroy_cq_cmd_attr_ids {

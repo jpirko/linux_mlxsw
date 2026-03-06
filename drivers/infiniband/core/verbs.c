@@ -50,6 +50,7 @@
 #include <rdma/ib_cache.h>
 #include <rdma/ib_addr.h>
 #include <rdma/ib_umem.h>
+#include <rdma/ib_user_ioctl_cmds.h>
 #include <rdma/rw.h>
 #include <rdma/lag.h>
 
@@ -2223,9 +2224,9 @@ struct ib_cq *__ib_create_cq(struct ib_device *device,
 	}
 	/*
 	 * We are in kernel verbs flow and drivers are not allowed
-	 * to set umem pointer, it needs to stay NULL.
+	 * to set umem or umem_list pointers, they need to stay NULL.
 	 */
-	WARN_ON_ONCE(cq->umem);
+	WARN_ON_ONCE(cq->umem || cq->umem_list);
 
 	rdma_restrack_add(&cq->res);
 	return cq;
@@ -2245,6 +2246,7 @@ EXPORT_SYMBOL(rdma_set_cq_moderation);
 
 int ib_destroy_cq_user(struct ib_cq *cq, struct ib_udata *udata)
 {
+	struct ib_umem_list *umem_list = cq->umem_list;
 	int ret;
 
 	if (WARN_ON_ONCE(cq->shared))
@@ -2257,9 +2259,10 @@ int ib_destroy_cq_user(struct ib_cq *cq, struct ib_udata *udata)
 	if (ret)
 		return ret;
 
-	ib_umem_release(cq->umem);
+	ib_umem_release_non_listed(umem_list, UVERBS_BUF_CQ_BUF, cq->umem);
 	rdma_restrack_del(&cq->res);
 	kfree(cq);
+	ib_umem_list_release(umem_list);
 	return ret;
 }
 EXPORT_SYMBOL(ib_destroy_cq_user);

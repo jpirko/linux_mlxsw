@@ -42,6 +42,7 @@
 
 #include <rdma/uverbs_types.h>
 #include <rdma/uverbs_std_types.h>
+#include <rdma/ib_umem.h>
 #include <rdma/ib_ucaps.h>
 #include "rdma_core.h"
 
@@ -1011,6 +1012,7 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 {
 	struct ib_ucq_object           *obj;
 	struct ib_uverbs_completion_event_file    *ev_file = NULL;
+	struct ib_umem_list	       *umem_list;
 	struct ib_cq                   *cq;
 	int                             ret;
 	struct ib_uverbs_ex_create_cq_resp resp = {};
@@ -1044,16 +1046,25 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	attr.comp_vector = cmd->comp_vector;
 	attr.flags = cmd->flags;
 
+	umem_list = ib_umem_list_create(ib_dev, attrs,
+				       UVERBS_ATTR_CREATE_CQ_BUFFERS,
+				       UVERBS_BUF_CQ_MAX);
+	if (IS_ERR(umem_list)) {
+		ret = PTR_ERR(umem_list);
+		goto err_file;
+	}
+
 	cq = rdma_zalloc_drv_obj(ib_dev, ib_cq);
 	if (!cq) {
 		ret = -ENOMEM;
-		goto err_file;
+		goto err_list_release;
 	}
 	cq->device        = ib_dev;
 	cq->uobject       = obj;
 	cq->comp_handler  = ib_uverbs_comp_handler;
 	cq->event_handler = ib_uverbs_cq_event_handler;
 	cq->cq_context    = ev_file ? &ev_file->ev_queue : NULL;
+	cq->umem_list     = umem_list;
 	atomic_set(&cq->usecnt, 0);
 
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
@@ -1079,9 +1090,11 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	return uverbs_response(attrs, &resp, sizeof(resp));
 
 err_free:
-	ib_umem_release(cq->umem);
+	ib_umem_release_non_listed(umem_list, UVERBS_BUF_CQ_BUF, cq->umem);
 	rdma_restrack_put(&cq->res);
 	kfree(cq);
+err_list_release:
+	ib_umem_list_release(umem_list);
 err_file:
 	if (ev_file)
 		ib_uverbs_release_ucq(ev_file, obj);
