@@ -3379,6 +3379,7 @@ int bnxt_re_create_user_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *att
 	struct bnxt_re_cq_req req;
 	int rc;
 	u32 active_cqs, entries;
+	struct ib_umem *umem;
 
 	if (attr->flags)
 		return -EOPNOTSUPP;
@@ -3402,15 +3403,14 @@ int bnxt_re_create_user_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *att
 		entries = bnxt_re_init_depth(attr->cqe + 1,
 					     dev_attr->max_cq_wqes + 1, uctx);
 
-	if (!ibcq->umem) {
-		ibcq->umem = ib_umem_get(&rdev->ibdev, req.cq_va,
-					 entries * sizeof(struct cq_base),
-					 IB_ACCESS_LOCAL_WRITE);
-		if (IS_ERR(ibcq->umem))
-			return PTR_ERR(ibcq->umem);
-	}
+	umem = ib_umem_list_load_or_get(ibcq->umem_list, UVERBS_BUF_CQ_BUF,
+					&rdev->ibdev, req.cq_va,
+					entries * sizeof(struct cq_base),
+					IB_ACCESS_LOCAL_WRITE);
+	if (IS_ERR(umem))
+		return PTR_ERR(umem);
 
-	rc = bnxt_re_setup_sginfo(rdev, ibcq->umem, &cq->qplib_cq.sg_info);
+	rc = bnxt_re_setup_sginfo(rdev, umem, &cq->qplib_cq.sg_info);
 	if (rc)
 		return rc;
 
@@ -3516,8 +3516,10 @@ static void bnxt_re_resize_cq_complete(struct bnxt_re_cq *cq)
 
 	cq->qplib_cq.max_wqe = cq->resize_cqe;
 	if (cq->resize_umem) {
-		ib_umem_release(cq->ib_cq.umem);
+		ib_umem_list_replace(cq->ib_cq.umem_list, UVERBS_BUF_CQ_BUF,
+				     cq->resize_umem);
 		cq->ib_cq.umem = cq->resize_umem;
+		cq->qplib_cq.sg_info.umem = cq->resize_umem;
 		cq->resize_umem = NULL;
 		cq->resize_cqe = 0;
 	}
@@ -4113,7 +4115,7 @@ int bnxt_re_poll_cq(struct ib_cq *ib_cq, int num_entries, struct ib_wc *wc)
 	/* User CQ; the only processing we do is to
 	 * complete any pending CQ resize operation.
 	 */
-	if (cq->ib_cq.umem) {
+	if (ib_cq->uobject) {
 		if (cq->resize_umem)
 			bnxt_re_resize_cq_complete(cq);
 		return 0;
