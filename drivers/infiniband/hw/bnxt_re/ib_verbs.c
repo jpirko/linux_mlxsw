@@ -3518,7 +3518,6 @@ static void bnxt_re_resize_cq_complete(struct bnxt_re_cq *cq)
 	if (cq->resize_umem) {
 		ib_umem_list_replace(cq->ib_cq.umem_list, UVERBS_BUF_CQ_BUF,
 				     cq->resize_umem);
-		cq->ib_cq.umem = cq->resize_umem;
 		cq->qplib_cq.sg_info.umem = cq->resize_umem;
 		cq->resize_umem = NULL;
 		cq->resize_cqe = 0;

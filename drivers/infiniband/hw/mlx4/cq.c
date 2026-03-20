@@ -482,7 +482,6 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, unsigned int entries,
 		cq->ibcq.cqe = cq->resize_buf->cqe;
 		ib_umem_list_replace(ibcq->umem_list, UVERBS_BUF_CQ_BUF,
 				     cq->resize_umem);
-		cq->ibcq.umem     = cq->resize_umem;
 
 		kfree(cq->resize_buf);
 		cq->resize_buf = NULL;

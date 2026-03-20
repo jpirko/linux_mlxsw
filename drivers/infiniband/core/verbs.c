@@ -2224,9 +2224,9 @@ struct ib_cq *__ib_create_cq(struct ib_device *device,
 	}
 	/*
 	 * We are in kernel verbs flow and drivers are not allowed
-	 * to set umem or umem_list pointers, they need to stay NULL.
+	 * to set umem_list pointer, it needs to stay NULL.
 	 */
-	WARN_ON_ONCE(cq->umem || cq->umem_list);
+	WARN_ON_ONCE(cq->umem_list);
 
 	rdma_restrack_add(&cq->res);
 	return cq;
@@ -2259,7 +2259,6 @@ int ib_destroy_cq_user(struct ib_cq *cq, struct ib_udata *udata)
 	if (ret)
 		return ret;
 
-	ib_umem_release_non_listed(umem_list, UVERBS_BUF_CQ_BUF, cq->umem);
 	rdma_restrack_del(&cq->res);
 	kfree(cq);
 	ib_umem_list_release(umem_list);

@@ -1432,7 +1432,6 @@ int mlx5_ib_resize_cq(struct ib_cq *ibcq, unsigned int entries,
 		cq->ibcq.cqe = entries - 1;
 		ib_umem_list_replace(cq->ibcq.umem_list, UVERBS_BUF_CQ_BUF,
 				     cq->resize_umem);
-		cq->ibcq.umem = cq->resize_umem;
 		cq->resize_umem = NULL;
 	} else {
 		struct mlx5_ib_cq_buf tbuf;
