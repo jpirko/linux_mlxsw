@@ -216,6 +216,10 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	if (ret)
 		goto err_free;
 
+	ret = ib_umem_list_check_consumed(umem_list);
+	if (ret)
+		goto err_destroy_cq;
+
 	obj->uevent.uobject.object = cq;
 	obj->uevent.uobject.user_handle = user_handle;
 	rdma_restrack_add(&cq->res);
@@ -225,6 +229,8 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 			     sizeof(cq->cqe));
 	return ret;
 
+err_destroy_cq:
+	ib_dev->ops.destroy_cq(cq, &attrs->driver_udata);
 err_free:
 	rdma_restrack_put(&cq->res);
 	kfree(cq);
