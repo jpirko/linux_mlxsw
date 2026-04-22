@@ -736,7 +736,7 @@ void uverbs_finalize_uobj_create(const struct uverbs_attr_bundle *attrs_bundle,
  * @elem_size: The size of the element in the array
  */
 static inline int
-uverbs_attr_ptr_get_array_size(struct uverbs_attr_bundle *attrs, u16 idx,
+uverbs_attr_ptr_get_array_size(const struct uverbs_attr_bundle *attrs, u16 idx,
 			       size_t elem_size)
 {
 	int size = uverbs_attr_get_len(attrs, idx);
