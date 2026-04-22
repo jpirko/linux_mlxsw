@@ -61,20 +61,16 @@ static int uverbs_free_cq(struct ib_uobject *uobject,
 static struct ib_umem *uverbs_create_cq_get_umem(struct ib_device *ib_dev,
 						  struct uverbs_attr_bundle *attrs)
 {
-	struct ib_umem_dmabuf *umem_dmabuf;
-	u64 buffer_length;
-	u64 buffer_offset;
-	u64 buffer_va;
-	int buffer_fd;
+	struct ib_uverbs_buffer_desc desc = {};
 	int ret;
 
 	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_CQ_BUFFER_VA)) {
-		ret = uverbs_copy_from(&buffer_va, attrs,
+		ret = uverbs_copy_from(&desc.addr, attrs,
 				       UVERBS_ATTR_CREATE_CQ_BUFFER_VA);
 		if (ret)
 			return ERR_PTR(ret);
 
-		ret = uverbs_copy_from(&buffer_length, attrs,
+		ret = uverbs_copy_from(&desc.length, attrs,
 				       UVERBS_ATTR_CREATE_CQ_BUFFER_LENGTH);
 		if (ret)
 			return ERR_PTR(ret);
@@ -84,22 +80,22 @@ static struct ib_umem *uverbs_create_cq_get_umem(struct ib_device *ib_dev,
 		    !ib_dev->ops.create_user_cq)
 			return ERR_PTR(-EINVAL);
 
-		return ib_umem_get(ib_dev, buffer_va, buffer_length,
-				   IB_ACCESS_LOCAL_WRITE);
+		desc.type = IB_UVERBS_BUFFER_TYPE_VA;
+		return ib_umem_from_buffer_desc(ib_dev, &desc);
 	}
 
 	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_CQ_BUFFER_FD)) {
-		ret = uverbs_get_raw_fd(&buffer_fd, attrs,
+		ret = uverbs_get_raw_fd(&desc.fd, attrs,
 					UVERBS_ATTR_CREATE_CQ_BUFFER_FD);
 		if (ret)
 			return ERR_PTR(ret);
 
-		ret = uverbs_copy_from(&buffer_offset, attrs,
+		ret = uverbs_copy_from(&desc.addr, attrs,
 				       UVERBS_ATTR_CREATE_CQ_BUFFER_OFFSET);
 		if (ret)
 			return ERR_PTR(ret);
 
-		ret = uverbs_copy_from(&buffer_length, attrs,
+		ret = uverbs_copy_from(&desc.length, attrs,
 				       UVERBS_ATTR_CREATE_CQ_BUFFER_LENGTH);
 		if (ret)
 			return ERR_PTR(ret);
@@ -108,12 +104,8 @@ static struct ib_umem *uverbs_create_cq_get_umem(struct ib_device *ib_dev,
 		    !ib_dev->ops.create_user_cq)
 			return ERR_PTR(-EINVAL);
 
-		umem_dmabuf = ib_umem_dmabuf_get_pinned(ib_dev, buffer_offset,
-							buffer_length, buffer_fd,
-							IB_ACCESS_LOCAL_WRITE);
-		if (IS_ERR(umem_dmabuf))
-			return ERR_CAST(umem_dmabuf);
-		return &umem_dmabuf->umem;
+		desc.type = IB_UVERBS_BUFFER_TYPE_DMABUF;
+		return ib_umem_from_buffer_desc(ib_dev, &desc);
 	}
 
 	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_CQ_BUFFER_OFFSET) ||
