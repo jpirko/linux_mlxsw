@@ -648,6 +648,9 @@ struct uverbs_attr_bundle {
 		struct ib_ucontext *context;
 		struct ib_uobject *uobject;
 		DECLARE_BITMAP(attr_present, UVERBS_API_ATTR_BKEY_LEN);
+#if IS_ENABLED(CONFIG_DEBUG_KERNEL)
+		DECLARE_BITMAP(attr_consumed, UVERBS_API_ATTR_BKEY_LEN);
+#endif
 	);
 	struct uverbs_attr attrs[];
 };
@@ -683,16 +686,20 @@ struct ib_device *rdma_udata_to_dev(struct ib_udata *udata);
 
 #define IS_UVERBS_COPY_ERR(_ret)		((_ret) && (_ret) != -ENOENT)
 
-static inline const struct uverbs_attr *uverbs_attr_get(const struct uverbs_attr_bundle *attrs_bundle,
+static inline const struct uverbs_attr *uverbs_attr_get(struct uverbs_attr_bundle *attrs_bundle,
 							u16 idx)
 {
 	if (!uverbs_attr_is_valid(attrs_bundle, idx))
 		return ERR_PTR(-ENOENT);
 
+#if IS_ENABLED(CONFIG_DEBUG_KERNEL)
+	__set_bit(uapi_bkey_attr(uapi_key_attr(idx)),
+		  attrs_bundle->attr_consumed);
+#endif
 	return &attrs_bundle->attrs[uapi_bkey_attr(uapi_key_attr(idx))];
 }
 
-static inline int uverbs_attr_get_enum_id(const struct uverbs_attr_bundle *attrs_bundle,
+static inline int uverbs_attr_get_enum_id(struct uverbs_attr_bundle *attrs_bundle,
 					  u16 idx)
 {
 	const struct uverbs_attr *attr = uverbs_attr_get(attrs_bundle, idx);
@@ -703,7 +710,7 @@ static inline int uverbs_attr_get_enum_id(const struct uverbs_attr_bundle *attrs
 	return attr->ptr_attr.enum_id;
 }
 
-static inline void *uverbs_attr_get_obj(const struct uverbs_attr_bundle *attrs_bundle,
+static inline void *uverbs_attr_get_obj(struct uverbs_attr_bundle *attrs_bundle,
 					u16 idx)
 {
 	const struct uverbs_attr *attr;
@@ -715,7 +722,7 @@ static inline void *uverbs_attr_get_obj(const struct uverbs_attr_bundle *attrs_b
 	return attr->obj_attr.uobject->object;
 }
 
-static inline struct ib_uobject *uverbs_attr_get_uobject(const struct uverbs_attr_bundle *attrs_bundle,
+static inline struct ib_uobject *uverbs_attr_get_uobject(struct uverbs_attr_bundle *attrs_bundle,
 							 u16 idx)
 {
 	const struct uverbs_attr *attr = uverbs_attr_get(attrs_bundle, idx);
@@ -727,7 +734,7 @@ static inline struct ib_uobject *uverbs_attr_get_uobject(const struct uverbs_att
 }
 
 static inline int
-uverbs_attr_get_len(const struct uverbs_attr_bundle *attrs_bundle, u16 idx)
+uverbs_attr_get_len(struct uverbs_attr_bundle *attrs_bundle, u16 idx)
 {
 	const struct uverbs_attr *attr = uverbs_attr_get(attrs_bundle, idx);
 
@@ -771,7 +778,7 @@ uverbs_attr_ptr_get_array_size(struct uverbs_attr_bundle *attrs, u16 idx,
  * Return: The array length or 0 if no attribute was provided.
  */
 static inline int uverbs_attr_get_uobjs_arr(
-	const struct uverbs_attr_bundle *attrs_bundle, u16 attr_idx,
+	struct uverbs_attr_bundle *attrs_bundle, u16 attr_idx,
 	struct ib_uobject ***arr)
 {
 	const struct uverbs_attr *attr =
@@ -793,7 +800,7 @@ static inline bool uverbs_attr_ptr_is_inline(const struct uverbs_attr *attr)
 }
 
 static inline void *uverbs_attr_get_alloced_ptr(
-	const struct uverbs_attr_bundle *attrs_bundle, u16 idx)
+	struct uverbs_attr_bundle *attrs_bundle, u16 idx)
 {
 	const struct uverbs_attr *attr = uverbs_attr_get(attrs_bundle, idx);
 
@@ -805,7 +812,7 @@ static inline void *uverbs_attr_get_alloced_ptr(
 }
 
 static inline int _uverbs_copy_from(void *to,
-				    const struct uverbs_attr_bundle *attrs_bundle,
+				    struct uverbs_attr_bundle *attrs_bundle,
 				    size_t idx,
 				    size_t size)
 {
@@ -832,7 +839,7 @@ static inline int _uverbs_copy_from(void *to,
 }
 
 static inline int _uverbs_copy_from_or_zero(void *to,
-					    const struct uverbs_attr_bundle *attrs_bundle,
+					    struct uverbs_attr_bundle *attrs_bundle,
 					    size_t idx,
 					    size_t size)
 {
@@ -869,11 +876,11 @@ ib_uverbs_get_ucontext(const struct uverbs_attr_bundle *attrs)
 }
 
 #if IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS)
-int uverbs_get_flags64(u64 *to, const struct uverbs_attr_bundle *attrs_bundle,
+int uverbs_get_flags64(u64 *to, struct uverbs_attr_bundle *attrs_bundle,
 		       size_t idx, u64 allowed_bits);
-int uverbs_get_flags32(u32 *to, const struct uverbs_attr_bundle *attrs_bundle,
+int uverbs_get_flags32(u32 *to, struct uverbs_attr_bundle *attrs_bundle,
 		       size_t idx, u64 allowed_bits);
-int uverbs_copy_to(const struct uverbs_attr_bundle *attrs_bundle, size_t idx,
+int uverbs_copy_to(struct uverbs_attr_bundle *attrs_bundle, size_t idx,
 		   const void *from, size_t size);
 __malloc void *_uverbs_alloc(struct uverbs_attr_bundle *bundle, size_t size,
 			     gfp_t flags);
@@ -902,7 +909,7 @@ static inline __malloc void *uverbs_kcalloc(struct uverbs_attr_bundle *bundle,
 
 static inline int
 _uverbs_get_const_signed(s64 *to,
-			 const struct uverbs_attr_bundle *attrs_bundle,
+			 struct uverbs_attr_bundle *attrs_bundle,
 			 size_t idx, s64 lower_bound, u64 upper_bound,
 			 s64 *def_val)
 {
@@ -925,7 +932,7 @@ _uverbs_get_const_signed(s64 *to,
 
 static inline int
 _uverbs_get_const_unsigned(u64 *to,
-			   const struct uverbs_attr_bundle *attrs_bundle,
+			   struct uverbs_attr_bundle *attrs_bundle,
 			   size_t idx, u64 upper_bound, u64 *def_val)
 {
 	const struct uverbs_attr *attr;
@@ -944,7 +951,8 @@ _uverbs_get_const_unsigned(u64 *to,
 
 	return 0;
 }
-int uverbs_copy_to_struct_or_zero(const struct uverbs_attr_bundle *bundle,
+
+int uverbs_copy_to_struct_or_zero(struct uverbs_attr_bundle *bundle,
 				  size_t idx, const void *from, size_t size);
 
 int _ib_copy_validate_udata_in(struct ib_udata *udata, void *req,
@@ -952,18 +960,18 @@ int _ib_copy_validate_udata_in(struct ib_udata *udata, void *req,
 int _ib_respond_udata(struct ib_udata *udata, const void *src, size_t len);
 #else
 static inline int
-uverbs_get_flags64(u64 *to, const struct uverbs_attr_bundle *attrs_bundle,
+uverbs_get_flags64(u64 *to, struct uverbs_attr_bundle *attrs_bundle,
 		   size_t idx, u64 allowed_bits)
 {
 	return -EINVAL;
 }
 static inline int
-uverbs_get_flags32(u32 *to, const struct uverbs_attr_bundle *attrs_bundle,
+uverbs_get_flags32(u32 *to, struct uverbs_attr_bundle *attrs_bundle,
 		   size_t idx, u64 allowed_bits)
 {
 	return -EINVAL;
 }
-static inline int uverbs_copy_to(const struct uverbs_attr_bundle *attrs_bundle,
+static inline int uverbs_copy_to(struct uverbs_attr_bundle *attrs_bundle,
 				 size_t idx, const void *from, size_t size)
 {
 	return -EINVAL;
@@ -979,21 +987,21 @@ static inline __malloc void *uverbs_zalloc(struct uverbs_attr_bundle *bundle,
 	return ERR_PTR(-EINVAL);
 }
 static inline int
-_uverbs_get_const(s64 *to, const struct uverbs_attr_bundle *attrs_bundle,
+_uverbs_get_const(s64 *to, struct uverbs_attr_bundle *attrs_bundle,
 		  size_t idx, s64 lower_bound, u64 upper_bound,
 		  s64 *def_val)
 {
 	return -EINVAL;
 }
 static inline int
-uverbs_copy_to_struct_or_zero(const struct uverbs_attr_bundle *bundle,
+uverbs_copy_to_struct_or_zero(struct uverbs_attr_bundle *bundle,
 			      size_t idx, const void *from, size_t size)
 {
 	return -EINVAL;
 }
 static inline int
 _uverbs_get_const_signed(s64 *to,
-			 const struct uverbs_attr_bundle *attrs_bundle,
+			 struct uverbs_attr_bundle *attrs_bundle,
 			 size_t idx, s64 lower_bound, u64 upper_bound,
 			 s64 *def_val)
 {
@@ -1001,7 +1009,7 @@ _uverbs_get_const_signed(s64 *to,
 }
 static inline int
 _uverbs_get_const_unsigned(u64 *to,
-			   const struct uverbs_attr_bundle *attrs_bundle,
+			   struct uverbs_attr_bundle *attrs_bundle,
 			   size_t idx, u64 upper_bound, u64 *def_val)
 {
 	return -EINVAL;
@@ -1078,7 +1086,7 @@ static inline int _ib_respond_udata(struct ib_udata *udata, const void *src,
 						    _default))
 
 static inline int
-uverbs_get_raw_fd(int *to, const struct uverbs_attr_bundle *attrs_bundle,
+uverbs_get_raw_fd(int *to, struct uverbs_attr_bundle *attrs_bundle,
 		  size_t idx)
 {
 	return uverbs_get_const_signed(to, attrs_bundle, idx);
