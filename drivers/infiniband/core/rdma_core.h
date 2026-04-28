@@ -67,7 +67,7 @@ void uverbs_finalize_object(struct ib_uobject *uobj,
 			    enum uverbs_obj_access access, bool hw_obj_valid,
 			    bool commit, struct uverbs_attr_bundle *attrs);
 
-int uverbs_output_written(const struct uverbs_attr_bundle *bundle, size_t idx);
+int uverbs_output_written(struct uverbs_attr_bundle *bundle, size_t idx);
 
 void setup_ufile_idr_uobject(struct ib_uverbs_file *ufile);
 void release_ufile_idr_uobject(struct ib_uverbs_file *ufile);
