@@ -428,6 +428,54 @@ static int uverbs_create_cq_get_buffer_desc(struct uverbs_attr_bundle *attrs,
 }
 
 /**
+ * ib_umem_get_cq_buf - Pin a CQ buffer umem from per-command attributes.
+ * @device:  IB device.
+ * @udata:   uverbs udata bundle (may be NULL).
+ * @size:    minimum required CQ buffer length.
+ * @access:  IB access flags.
+ *
+ * Resolves the CQ buffer from the new UMEM attribute or the legacy
+ * CQ buffer attributes. There is no UHW VA fallback, so the caller
+ * must arrange its own backing (typically an in-kernel allocation)
+ * when no source is available.
+ *
+ * Return: caller-owned umem on success; NULL when no source supplied
+ * a buffer; ERR_PTR(...) on error.
+ */
+struct ib_umem *ib_umem_get_cq_buf(struct ib_device *device,
+				   struct ib_udata *udata, size_t size,
+				   int access)
+{
+	return ib_umem_get(device, udata, UVERBS_ATTR_CREATE_CQ_BUF_UMEM,
+			   uverbs_create_cq_get_buffer_desc, false, 0,
+			   size, access);
+}
+EXPORT_SYMBOL(ib_umem_get_cq_buf);
+
+/**
+ * ib_umem_get_cq_buf_or_va - Pin a CQ buffer umem with UHW VA fallback.
+ * @device:  IB device.
+ * @udata:   uverbs udata bundle (may be NULL).
+ * @addr:    UHW user VA used when no per-command attribute matched.
+ * @size:    minimum required CQ buffer length.
+ * @access:  IB access flags.
+ *
+ * Like ib_umem_get_cq_buf(), but pins @addr/@size when neither the
+ * UMEM attribute nor the legacy CQ buffer attributes are supplied.
+ *
+ * Return: caller-owned umem on success, ERR_PTR(...) on error.
+ */
+struct ib_umem *ib_umem_get_cq_buf_or_va(struct ib_device *device,
+					 struct ib_udata *udata, u64 addr,
+					 size_t size, int access)
+{
+	return ib_umem_get(device, udata, UVERBS_ATTR_CREATE_CQ_BUF_UMEM,
+			   uverbs_create_cq_get_buffer_desc, true, addr,
+			   size, access);
+}
+EXPORT_SYMBOL(ib_umem_get_cq_buf_or_va);
+
+/**
  * ib_umem_get_cq_tmp - Temporary CQ buffer umem getter.
  * @device: IB device.
  * @attrs:  uverbs attribute bundle.

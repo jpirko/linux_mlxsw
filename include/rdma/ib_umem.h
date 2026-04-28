@@ -92,6 +92,12 @@ struct ib_umem *ib_umem_get(struct ib_device *device, struct ib_udata *udata,
 			    u16 attr_id,
 			    ib_umem_buf_desc_filler_t legacy_filler,
 			    bool va_fallback, u64 addr, size_t size, int access);
+struct ib_umem *ib_umem_get_cq_buf(struct ib_device *device,
+				   struct ib_udata *udata, size_t size,
+				   int access);
+struct ib_umem *ib_umem_get_cq_buf_or_va(struct ib_device *device,
+					 struct ib_udata *udata, u64 addr,
+					 size_t size, int access);
 struct ib_umem *ib_umem_get_cq_tmp(struct ib_device *device,
 				   struct uverbs_attr_bundle *attrs);
 
@@ -205,6 +211,19 @@ static inline struct ib_umem *
 ib_umem_get(struct ib_device *device, struct ib_udata *udata, u16 attr_id,
 	    ib_umem_buf_desc_filler_t legacy_filler, bool va_fallback, u64 addr,
 	    size_t size, int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline struct ib_umem *ib_umem_get_cq_buf(struct ib_device *device,
+						 struct ib_udata *udata,
+						 size_t size, int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline struct ib_umem *ib_umem_get_cq_buf_or_va(struct ib_device *device,
+						       struct ib_udata *udata,
+						       u64 addr, size_t size,
+						       int access)
 {
 	return ERR_PTR(-EOPNOTSUPP);
 }
