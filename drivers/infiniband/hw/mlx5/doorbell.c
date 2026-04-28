@@ -45,20 +45,56 @@ struct mlx5_ib_user_db_page {
 	struct mm_struct	*mm;
 };
 
-int mlx5_ib_db_map_user(struct mlx5_ib_ucontext *context, unsigned long virt,
-			struct mlx5_db *db)
+int mlx5_ib_db_map_user(struct mlx5_ib_ucontext *context,
+			struct ib_udata *udata, u16 attr_id,
+			unsigned long virt, struct mlx5_db *db)
 {
-	struct mlx5_ib_user_db_page *page;
+	struct mlx5_ib_user_db_page *page = NULL;
+	unsigned long dma_offset;
 	int err = 0;
 
+	if (udata) {
+		struct ib_umem *umem;
+
+		umem = ib_umem_get_attr(context->ibucontext.device, udata,
+					attr_id, sizeof(__be32) * 2, 0);
+		if (IS_ERR(umem))
+			return PTR_ERR(umem);
+		if (umem) {
+			/*
+			 * The 8-byte DBR is programmed to the device as one
+			 * DMA address, so it must stay within a single page.
+			 * An 8-byte range that crosses a page boundary may
+			 * be split across two non-contiguous DMA mappings.
+			 */
+			if (ib_umem_offset(umem) >
+			    PAGE_SIZE - sizeof(__be32) * 2) {
+				ib_umem_release(umem);
+				return -EINVAL;
+			}
+			page = kzalloc_obj(*page);
+			if (!page) {
+				ib_umem_release(umem);
+				return -ENOMEM;
+			}
+			page->umem = umem;
+			dma_offset = ib_umem_offset(umem);
+		}
+	}
+
 	mutex_lock(&context->db_page_mutex);
+
+	if (page)
+		goto add_page;
+
+	dma_offset = virt & ~PAGE_MASK;
 
 	list_for_each_entry(page, &context->db_page_list, list)
 		if ((current->mm == page->mm) &&
 		    (page->user_virt == (virt & PAGE_MASK)))
 			goto found;
 
-	page = kmalloc_obj(*page);
+	page = kzalloc_obj(*page);
 	if (!page) {
 		err = -ENOMEM;
 		goto out;
@@ -76,11 +112,11 @@ int mlx5_ib_db_map_user(struct mlx5_ib_ucontext *context, unsigned long virt,
 	mmgrab(current->mm);
 	page->mm = current->mm;
 
+add_page:
 	list_add(&page->list, &context->db_page_list);
 
 found:
-	db->dma = sg_dma_address(page->umem->sgt_append.sgt.sgl) +
-		  (virt & ~PAGE_MASK);
+	db->dma = sg_dma_address(page->umem->sgt_append.sgt.sgl) + dma_offset;
 	db->u.user_page = page;
 	++page->refcnt;
 
@@ -96,7 +132,8 @@ void mlx5_ib_db_unmap_user(struct mlx5_ib_ucontext *context, struct mlx5_db *db)
 
 	if (!--db->u.user_page->refcnt) {
 		list_del(&db->u.user_page->list);
-		mmdrop(db->u.user_page->mm);
+		if (db->u.user_page->mm)
+			mmdrop(db->u.user_page->mm);
 		ib_umem_release(db->u.user_page->umem);
 		kfree(db->u.user_page);
 	}
