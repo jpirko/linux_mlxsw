@@ -73,10 +73,44 @@ static inline size_t ib_umem_num_pages(struct ib_umem *umem)
 {
 	return ib_umem_num_dma_blocks(umem, PAGE_SIZE);
 }
+
+struct ib_udata;
+struct ib_uverbs_buffer_desc;
+struct uverbs_attr_bundle;
+
+/*
+ * Per-command legacy buffer-desc filler.
+ * Returns 0 on success (desc filled), -ENODATA if no legacy attrs apply,
+ * negative errno on validation failure.
+ */
+typedef int (*ib_umem_buf_desc_filler_t)(struct uverbs_attr_bundle *attrs,
+					 struct ib_uverbs_buffer_desc *desc);
+
 #ifdef CONFIG_INFINIBAND_USER_MEM
 
+struct ib_umem *ib_umem_get(struct ib_device *device, struct ib_udata *udata,
+			    u16 attr_id,
+			    ib_umem_buf_desc_filler_t legacy_filler,
+			    bool va_fallback, u64 addr, size_t size, int access);
 struct ib_umem *ib_umem_get_va(struct ib_device *device, unsigned long addr,
 			       size_t size, int access);
+
+static inline struct ib_umem *
+ib_umem_get_attr(struct ib_device *device, struct ib_udata *udata,
+		 u16 attr_id, size_t size, int access)
+{
+	return ib_umem_get(device, udata, attr_id, NULL,
+			   false, 0, size, access);
+}
+
+static inline struct ib_umem *
+ib_umem_get_attr_or_va(struct ib_device *device, struct ib_udata *udata,
+		       u16 attr_id, u64 addr, size_t size, int access)
+{
+	return ib_umem_get(device, udata, attr_id, NULL,
+			   true, addr, size, access);
+}
+
 void ib_umem_release(struct ib_umem *umem);
 int ib_umem_copy_from(void *dst, struct ib_umem *umem, size_t offset,
 		      size_t length);
@@ -160,9 +194,30 @@ void ib_umem_dmabuf_revoke(struct ib_umem_dmabuf *umem_dmabuf);
 
 #include <linux/err.h>
 
+static inline struct ib_umem *
+ib_umem_get(struct ib_device *device, struct ib_udata *udata, u16 attr_id,
+	    ib_umem_buf_desc_filler_t legacy_filler, bool va_fallback, u64 addr,
+	    size_t size, int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
 static inline struct ib_umem *ib_umem_get_va(struct ib_device *device,
 					     unsigned long addr, size_t size,
 					     int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline struct ib_umem *ib_umem_get_attr(struct ib_device *device,
+					       struct ib_udata *udata,
+					       u16 attr_id, size_t size,
+					       int access)
+{
+	return ERR_PTR(-EOPNOTSUPP);
+}
+static inline struct ib_umem *ib_umem_get_attr_or_va(struct ib_device *device,
+						     struct ib_udata *udata,
+						     u16 attr_id, u64 addr,
+						     size_t size, int access)
 {
 	return ERR_PTR(-EOPNOTSUPP);
 }

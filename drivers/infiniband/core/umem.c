@@ -269,6 +269,111 @@ umem_kfree:
 	return ret ? ERR_PTR(ret) : umem;
 }
 
+static struct ib_umem *
+ib_umem_get_desc(struct ib_device *device,
+		 const struct ib_uverbs_buffer_desc *desc, int access)
+{
+	struct ib_umem_dmabuf *umem_dmabuf;
+
+	if (desc->reserved[0] || desc->reserved[1])
+		return ERR_PTR(-EINVAL);
+
+	switch (desc->type) {
+	case IB_UVERBS_BUFFER_TYPE_DMABUF:
+		umem_dmabuf = ib_umem_dmabuf_get_pinned(device, desc->addr,
+							desc->length, desc->fd,
+							access);
+		if (IS_ERR(umem_dmabuf))
+			return ERR_CAST(umem_dmabuf);
+		return &umem_dmabuf->umem;
+	case IB_UVERBS_BUFFER_TYPE_VA:
+		return __ib_umem_get_va(device, desc->addr, desc->length,
+					access);
+	default:
+		return ERR_PTR(-EINVAL);
+	}
+}
+
+/**
+ * ib_umem_get - Canonical on-demand umem getter.
+ * @device:        IB device.
+ * @udata:         uverbs udata bundle (may be NULL).
+ * @attr_id:       per-command UMEM attribute id; consulted if @udata is set.
+ * @legacy_filler: optional command-specific legacy attr filler.
+ *                 invoked if @udata is set.
+ * @va_fallback:   if true, build a VA-typed desc with @addr.
+ * @addr:          user VA, used if @va_fallback is true.
+ * @size:          driver-required minimum length.
+ * @access:        IB access flags forwarded to ib_umem_get_desc().
+ *
+ * Return: valid umem on success, ERR_PTR(...) on error, NULL
+ * if no source produced a buffer (only possible when @va_fallback is false).
+ */
+struct ib_umem *ib_umem_get(struct ib_device *device, struct ib_udata *udata,
+			    u16 attr_id,
+			    ib_umem_buf_desc_filler_t legacy_filler,
+			    bool va_fallback, u64 addr, size_t size, int access)
+{
+	struct uverbs_attr_bundle *attrs = NULL;
+	struct ib_uverbs_buffer_desc desc = {};
+	bool have_desc = false;
+	struct ib_umem *umem;
+	int ret;
+
+	if (udata)
+		attrs = container_of(udata, struct uverbs_attr_bundle,
+				     driver_udata);
+
+	if (attrs) {
+		ret = uverbs_copy_from(&desc, attrs, attr_id);
+		if (!ret)
+			have_desc = true;
+		else if (ret != -ENOENT)
+			return ERR_PTR(ret);
+	}
+
+	if (attrs && legacy_filler) {
+		struct ib_uverbs_buffer_desc legacy_desc = {};
+
+		ret = legacy_filler(attrs, &legacy_desc);
+		if (!ret) {
+			if (have_desc) {
+				ibdev_err(device,
+					  "UMEM attr (id=%u) and legacy attrs are mutually exclusive\n",
+					  attr_id);
+				return ERR_PTR(-EINVAL);
+			}
+			memcpy(&desc, &legacy_desc, sizeof(desc));
+			have_desc = true;
+		} else if (ret != -ENODATA) {
+			return ERR_PTR(ret);
+		}
+	}
+
+	if (have_desc)
+		goto have_desc;
+
+	if (!va_fallback)
+		return NULL;
+
+	desc = (struct ib_uverbs_buffer_desc){
+		.type	= IB_UVERBS_BUFFER_TYPE_VA,
+		.addr	= addr,
+		.length	= size,
+	};
+
+have_desc:
+	umem = ib_umem_get_desc(device, &desc, access);
+	if (IS_ERR(umem))
+		return umem;
+	if (umem->length < size) {
+		ib_umem_release(umem);
+		return ERR_PTR(-EINVAL);
+	}
+	return umem;
+}
+EXPORT_SYMBOL(ib_umem_get);
+
 /**
  * ib_umem_get_va - Pin and DMA map userspace memory.
  *
