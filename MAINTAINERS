@@ -7001,6 +7001,13 @@ M:	Jaya Kumar <jayakumar.alsa@gmail.com>
 S:	Maintained
 F:	sound/pci/cs5535audio/
 
+CTLV SUBSYSTEM
+M:	Jiri Pirko <jiri@resnulli.us>
+L:	linux-kernel@vger.kernel.org
+S:	Maintained
+F:	Documentation/ctlv/
+F:	tools/ctlv/
+
 CTU CAN FD DRIVER
 M:	Pavel Pisa <pisa@cmp.felk.cvut.cz>
 M:	Ondrej Ille <ondrej.ille@gmail.com>
