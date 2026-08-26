@@ -751,11 +751,18 @@ Tests and examples
     Every schema kind, records, actions, queries, events, blobs, availability,
     hooks, and an extension point.
 
+``lib/ctlv/tests/*_kunit.c``
+    Unit tests of CTLV parsing, serialization, metadata, blobs, events,
+    registration and device nodes.
+
 Configuration
 =============
 
 ``CONFIG_CTLV``
     CTLV. A family implementation selects it.
+
+``CONFIG_CTLV_KUNIT_TEST``
+    The KUnit suites for CTLV internals.
 
 Kernel API
 ==========
