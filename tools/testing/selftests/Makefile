@@ -14,6 +14,7 @@ TARGETS += connector
 TARGETS += core
 TARGETS += cpufreq
 TARGETS += cpu-hotplug
+TARGETS += ctlv
 TARGETS += damon
 TARGETS += dax
 TARGETS += devices/error_logs
