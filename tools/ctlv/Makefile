@@ -53,6 +53,13 @@ programs:
 	$(MAKE) -C libctlv
 	$(MAKE) -C ctlvctl
 
+# What one operation costs, against the floor of the same entry point and
+# against netlink. Its own target: it measures rather than ships, it needs a
+# device of the test family to measure against, and nothing else here needs it
+# built to be checked.
+bench:
+	$(MAKE) -C ctlvbench
+
 run_tests:
 	@python3 -m unittest discover -s tests -t . -v
 
@@ -65,5 +72,6 @@ clean:
 	rm -rf $(DOC_OUTPUT)
 	$(MAKE) -C libctlv clean
 	$(MAKE) -C ctlvctl clean
+	$(MAKE) -C ctlvbench clean
 
-.PHONY: all regen lint docs programs run_tests clean
+.PHONY: all regen lint docs programs bench run_tests clean
