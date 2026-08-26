@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI baseline of the ordered CTLV family registry.
+# Updated deliberately by "make -C tools/ctlv abi-update".
+families:
+  - ctlv

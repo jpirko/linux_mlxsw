@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Append-only registry of CTLV family names, indexed by family ID: the entry at
+# index N has family ID N, up to 65535. The root family owns ID 0 and heads the
+# list, and every other entry comes after the entry of the family it inherits.
+# An entry may be marked deprecated, but never reordered, removed, renamed or
+# reused, its position being its wire identity. Every entry must have a
+# specification in specs/<name>.yaml, and is added by the change that adds the
+# implementation. Fixtures under tools/ctlv/tests/ are not registered.
+
+families:
+  - ctlv
