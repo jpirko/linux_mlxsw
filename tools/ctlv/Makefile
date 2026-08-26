@@ -23,13 +23,16 @@ regen:
 #
 # A flow sequence is written "[ one, two ]" here, as in the tree's other
 # meta-schemas, which stock yamllint rejects; the same relaxation is in
-# Documentation/devicetree/bindings/.yamllint.
+# Documentation/devicetree/bindings/.yamllint. bad-specs/ is left out on
+# purpose: a corpus of deliberately invalid input cannot be lint-clean, since
+# one of its cases is a duplicate YAML key.
 YAMLLINT_CONF = {extends: default, rules: {brackets: {max-spaces-inside: 1}}}
 
-PYSRC = ctlvgen
+PYSRC = ctlvgen tests
 
 lint:
-	yamllint -d "$(YAMLLINT_CONF)" $(DOCDIR)
+	yamllint -d "$(YAMLLINT_CONF)" $(DOCDIR) tests/specs \
+		tests/families.yaml tests/generated-files.yaml
 	python3 -m pycodestyle $(PYSRC)
 	python3 -m pyflakes $(PYSRC)
 	python3 -m mypy $(PYSRC)
@@ -50,13 +53,17 @@ programs:
 	$(MAKE) -C libctlv
 	$(MAKE) -C ctlvctl
 
+run_tests:
+	@python3 -m unittest discover -s tests -t . -v
+
 clean:
 	rm -rf ctlvgen/__pycache__
 	rm -rf ctlvgen/lib/__pycache__
+	rm -rf tests/__pycache__
 	rm -rf ctlvgen.egg-info
 	rm -rf build
 	rm -rf $(DOC_OUTPUT)
 	$(MAKE) -C libctlv clean
 	$(MAKE) -C ctlvctl clean
 
-.PHONY: all regen lint docs programs clean
+.PHONY: all regen lint docs programs run_tests clean
