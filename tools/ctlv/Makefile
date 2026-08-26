@@ -5,6 +5,7 @@ DOCDIR = $(KDIR)/Documentation/ctlv
 SPECDIR = $(DOCDIR)/specs
 SPECS = $(wildcard $(SPECDIR)/*.yaml)
 TOOL = ./ctlvgen/cli.py
+DOC_OUTPUT ?= $(KDIR)/Documentation/output/ctlv/families
 
 all: validate abi-check
 
@@ -42,10 +43,21 @@ lint:
 	python3 -m pycodestyle $(PYSRC)
 	python3 -m pyflakes $(PYSRC)
 
-# The C half of this directory: the userspace library, which is not generated
-# and not Python, so it is its own target rather than part of the checks above.
+docs:
+	@mkdir -p $(DOC_OUTPUT)
+	@for spec in $(SPECS) ; do \
+		name=$$(basename $$spec .yaml) ; \
+		echo -e "\tDOC $$name.rst" ; \
+		$(TOOL) --spec $$spec --mode doc --rst \
+			-o $(DOC_OUTPUT)/$$name.rst || exit 1 ; \
+	done
+
+# The C half of this directory: the userspace library, and the tool that drives
+# a device it was never compiled against. Neither is generated and neither is
+# Python, so they are their own target rather than part of the checks above.
 programs:
 	$(MAKE) -C libctlv
+	$(MAKE) -C ctlvctl
 
 regen:
 	@./ctlv-regen.sh
@@ -60,6 +72,9 @@ clean:
 	rm -rf ctlvgen/lib/__pycache__
 	rm -rf ctlvgen.egg-info
 	rm -rf build
+	rm -rf $(DOC_OUTPUT)
 	$(MAKE) -C libctlv clean
+	$(MAKE) -C ctlvctl clean
 
-.PHONY: all validate abi-check abi-update lint programs regen check-regen clean
+.PHONY: all validate abi-check abi-update lint docs programs regen check-regen \
+	clean

@@ -11,7 +11,8 @@ header. CTLV validates requests before a callback sees them. The wire ABI is
 :doc:`/userspace-api/ctlv`; family specifications are under
 ``Documentation/ctlv/specs``.
 
-The code here is a small invented family, ``ctlv-example``.
+Generate the family
+===================
 
 Add the specification, registry entry, and output manifest entry in one change::
 
@@ -172,7 +173,8 @@ The generated child callback fills it:
             return 0;
     }
 
-An unfilled stub contributes no nest or message length. Neither side names the
+``ctlv_stub_read()`` delegates members received in the other direction. An
+unfilled stub contributes no nest or message length. Neither side names the
 family on the other side.
 
 Create and destroy a device
@@ -378,45 +380,19 @@ If an event occurred but allocation failed, commit the state change and call
 aborted event or for per-subscriber drops already tracked by
 ``ctlv_event_emit()``.
 
-If hardware changed before an event context could be allocated, the family
-must commit its invalidation and explicitly report the missing notification:
+Tests and examples
+==================
 
-.. code-block:: c
+``Documentation/ctlv/specs/ctlv-test.yaml``
+    Attribute forms, nesting, actions, queries, events, blobs, availability,
+    hooks, and an extension point.
 
-    invalidate_stale_state(priv);
-    priv->generation++;
+``drivers/ctlv/tests/ctlv_test.c``
+    The ``ctlv-test`` family implementation.
 
-    ctx = ctlv_example_thing_happened_create(ctlvdev, &event, GFP_ATOMIC);
-    if (IS_ERR(ctx)) {
-            if (PTR_ERR(ctx) == -ENOMEM)
-                    ctlv_event_lost(ctlvdev,
-                                    CTLV_EXAMPLE_OP_THING_HAPPENED);
-            return;
-    }
-    ctlv_example_generation_put(event, priv->generation);
-    ctlv_op_emit(ctx);
+``drivers/ctlv/tests/ctlv_test_child.c``
+    A separately built inheriting family and extension-point fill.
 
-``ctlv_event_lost()`` allocates nothing and does not sleep. For each subscribed
-file description it advances the event sequence and aggregates the loss into
-the preallocated ``EVENT_OVERFLOW`` record. The caller keeps the device alive
-and serializes the report with normal emission of that event. Like event
-emission, it is not called from interrupt context. It is only for an event that
-actually occurred but could not be constructed: do not call it for an aborted
-event or for copy-allocation and full-queue drops already accounted for by
-``ctlv_op_emit()``. Reports after event shutdown or the terminal
-``DEVICE_REMOVED`` record are ignored.
-
-Reporting an error
-------------------
-
-A callback returns a negative errno, and that is what the ioctl returns. Where
-CTLV itself refuses a message it also writes error information into the
-caller's reply buffer, naming the reason and the offset of the offending
-attribute. A family implementation does not build that; it adds its own errno
-and its reply.
-
-Configuration
-=============
-
-``CONFIG_CTLV``
-    CTLV. A family implementation selects it.
+``drivers/ctlv/tests/*_kunit.c`` and ``tools/testing/selftests/ctlv/``
+    Core unit tests plus raw-wire, generated-binding, allocation-failure, and
+    mutation selftests.

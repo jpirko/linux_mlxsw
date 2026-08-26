@@ -12,7 +12,10 @@ sys.path.append(pathlib.Path(__file__).resolve().parent.as_posix())
 
 from lib import cgen  # noqa: E402
 from lib import compat  # noqa: E402
+from lib import dump  # noqa: E402
+from lib import gen_doc  # noqa: E402
 from lib import gen_kernel  # noqa: E402
+from lib import gen_runtime  # noqa: E402
 from lib import gen_uapi  # noqa: E402
 from lib import gen_user  # noqa: E402
 from lib import outputs  # noqa: E402
@@ -27,6 +30,7 @@ GENERATORS = {
     ('uapi', 'header'): gen_uapi.render,
     ('user', 'header'): gen_user.render_header,
     ('user', 'source'): gen_user.render_source,
+    ('doc', 'rst'): gen_doc.render,
 }
 
 
@@ -46,6 +50,10 @@ def main():
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument('--validate', action='store_true',
                         help='validate the specification and exit')
+    action.add_argument('--dump', action='store_true',
+                        help='print the resolved schema in text form')
+    action.add_argument('--runtime-json', action='store_true',
+                        help='print the resolved runtime manifest as JSON')
     action.add_argument('--abi-check', action='store_true',
                         help='check the specification against its ABI '
                              'snapshot')
@@ -64,7 +72,7 @@ def main():
     action.add_argument('--outputs-update', action='store_true',
                         help='regenerate every file in the output manifests')
     action.add_argument('--mode',
-                        choices=('uapi', 'kernel', 'user'),
+                        choices=('uapi', 'kernel', 'user', 'doc'),
                         help='generate the files of this mode')
     parser.add_argument('--schema-only', action='store_true',
                         help='omit the family API from kernel output')
@@ -73,6 +81,8 @@ def main():
                       help='generate the header of --mode')
     kind.add_argument('--source', action='store_true',
                       help='generate the source of --mode')
+    kind.add_argument('--rst', action='store_true',
+                      help='generate the reStructuredText of --mode')
     parser.add_argument('-o', '--output', type=str,
                         help='write to this file instead of standard output')
     parser.add_argument('--cmp-out', action='store_true',
@@ -82,11 +92,13 @@ def main():
                         help='alternate destination root for generated files')
     args = parser.parse_args()
 
-    kinds = (args.header, args.source)
+    kinds = (args.header, args.source, args.rst)
     if args.mode and not any(kinds):
-        parser.error('--mode needs --header or --source')
+        parser.error('--mode needs --header, --source or --rst')
     if any(kinds) and not args.mode:
-        parser.error('--header and --source need --mode')
+        parser.error('--header, --source and --rst need --mode')
+    if args.mode == 'kernel' and args.rst:
+        parser.error('--mode kernel needs --header or --source')
     if args.schema_only and args.mode != 'kernel':
         parser.error('--schema-only needs --mode kernel')
     output_action = args.outputs_check or args.outputs_update
@@ -131,6 +143,10 @@ def main():
             # The root family has no binding: libctlv is that binding.
             if family.name != spec.CORE_FAMILY_NAME:
                 cgen.user_symbols(family)
+        elif args.dump:
+            sys.stdout.write(dump.render(family))
+        elif args.runtime_json:
+            sys.stdout.write(gen_runtime.render(family))
         elif args.abi_check:
             compat.registry_check(paths, spec.load_registry(paths))
             compat.check(family, paths.abi(family.name))
@@ -154,8 +170,10 @@ def _abi_update(paths, family):
 def _generate(args, family):
     if args.header:
         kind = 'header'
-    else:
+    elif args.source:
         kind = 'source'
+    else:
+        kind = 'rst'
     if args.mode == 'kernel':
         renderer = (gen_kernel.render_header if args.header
                     else gen_kernel.render_source)

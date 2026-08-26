@@ -7,10 +7,10 @@ CTLV userspace ABI
 :Author: Jiri Pirko
 
 CTLV is a transport for device control interfaces. A family describes what its
-devices accept in YAML, a generator turns that into kernel metadata and UAPI
-headers, and CTLV validates every message before a family callback sees it.
-Userspace sees one character device per instance, one ioctl, and ``read()`` for
-events.
+devices accept in YAML, a generator turns that into kernel metadata, UAPI
+headers and userspace bindings, and CTLV validates every message before a
+family callback sees it. Userspace sees one character
+device per instance, one ioctl, and ``read()`` for events.
 
 This document is the ABI. What each family accepts is specified under
 ``Documentation/ctlv/specs``; writing a family is :doc:`/driver-api/ctlv`.
@@ -233,7 +233,8 @@ define. Replies and events never carry it.
 This is how a program built against a newer version of a family talks to an
 older kernel. What that kernel knows is validated, what it does not is
 ignored, and a caller that has to know which is which asks ``op-schema-get``
-first.
+first. ``libctlv`` sets the bit with ``ctlv_msg_ignore_if_unknown()`` on the
+attribute written last.
 
 Executing an operation
 ======================
@@ -355,7 +356,7 @@ cut. The first call passes ``generation`` and ``cursor`` zero. On return:
 
 To continue, the caller repeats the call with the same ``op_id`` and request,
 the returned ``cursor`` and the returned ``generation``, and reassembles by
-concatenating the children of each still-open nest.
+concatenating the children of each still-open nest, which ``libctlv`` does.
 
 One answer of three items, cut by a buffer that holds two::
 
@@ -382,7 +383,8 @@ it, so a reader knows whether to append or to open a new nest beside it.
 
 Every continuing fragment adds at least one complete logical attr beyond its
 repeated path, and a cursor value cannot recur within one logical reply.
-A reader must reject either violation.
+``libctlv`` rejects either violation. It also limits one query to 65,536
+fragments and a 64 MiB reassembled reply.
 
 A continuation whose generation no longer matches fails with ``-ESTALE``, and
 the error information carries the expected and the current generation.
@@ -493,6 +495,48 @@ The lengths in ``ops-dump`` include whatever a descendant family added to an
 inherited operation, so ask rather than compute: a family's generated maximum
 is right for its own devices and a lower bound on a descendant's.
 
+Library and tools
+=================
+
+``tools/ctlv/libctlv`` is a small C library for the mechanical parts: opening
+a device, checking the chain, building requests, parsing replies, reassembling
+fragmented queries, reading events and building blob descriptors. Per-family
+bindings are generated beside it, turning operations into typed functions.
+
+``tools/ctlv/ctlvctl`` defaults to runtime introspection alone. Compiled
+against no family, it can list devices, print the operations one publishes and
+their schemas, execute an action, run a query and stream events::
+
+    ctlvctl list
+    ctlvctl ops /dev/ctlv0
+    ctlvctl schema /dev/ctlv0 0x0001000000000008
+    ctlvctl exec /dev/ctlv0 0x0001000000000001
+    ctlvctl query /dev/ctlv0 0x0001000000000002 0x0001000100000001=7
+    ctlvctl monitor /dev/ctlv0 0x000100000000000a
+
+Passing the directory of the kernel's family specifications adds the names
+that are deliberately absent from introspection. This is the ``specs``
+directory of a CTLV documentation bundle; its registry and meta-schemas are in
+the parent directory::
+
+    ctlvctl --spec-dir Documentation/ctlv/specs ops /dev/ctlv0
+    ctlvctl --spec-dir Documentation/ctlv/specs schema /dev/ctlv0 series-dump
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            query /dev/ctlv0 probe-get token=7
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            exec /dev/ctlv0 echo-reply \
+            --json '{"u":17,"mode":"busy","count":[3,5]}'
+
+``CTLV_SPEC_DIR`` avoids repeating the directory. Known items are printed by
+name without IDs; ``-n`` adds them, while an item unknown to the selected
+specifications stays numeric. ``schema --template`` prints a minimal JSON
+request. ``--output-json`` emits one object for an action or query and one JSON
+object per line while monitoring. A JSON request may be inline, read from
+``@file``, or read from standard input with ``--json -``; it cannot be combined
+with assignments. Specification and JSON support are built when json-c is
+available; specification mode also needs ``ctlvgen`` and its Python
+dependencies.
+
 Limits
 ======
 
@@ -505,3 +549,5 @@ later is a compatible change::
     CTLV_MAX_NEST_DEPTH           32       levels, root at zero
     CTLV_DEFAULT_QUERY_REPLY_LEN  64 KiB   suggested query buffer
     CTLV_MAX_EVENT_QUEUE_LEN      16 MiB   per file description
+    libctlv logical query reply   64 MiB   reassembled message
+    libctlv query fragments       65536    including the final fragment
