@@ -13,6 +13,7 @@ help:
 	@echo '  bpf                    - misc BPF tools'
 	@echo '  counter                - counter tools'
 	@echo '  cpupower               - a tool for all things x86 CPU power'
+	@echo '  ctlv                   - CTLV library and ctlvctl, after make headers'
 	@echo '  debugging              - tools for debugging'
 	@echo '  dma                    - tools for DMA mapping'
 	@echo '  firewire               - the userspace part of nosy, an IEEE-1394 traffic sniffer'
@@ -69,6 +70,9 @@ acpi: FORCE
 
 cpupower: FORCE
 	$(call descend,power/$@)
+
+ctlv: FORCE
+	$(call descend,ctlv/ctlvctl)
 
 counter dma firewire hv guest bootconfig spi usb virtio mm bpf iio gpio objtool leds wmi firmware debugging tracing: FORCE
 	$(call descend,$@)
@@ -179,6 +183,9 @@ acpi_clean:
 cpupower_clean:
 	$(call descend,power/cpupower,clean)
 
+ctlv_clean:
+	$(call descend,ctlv/ctlvctl,clean)
+
 counter_clean dma_clean hv_clean firewire_clean bootconfig_clean spi_clean usb_clean virtio_clean mm_clean wmi_clean bpf_clean iio_clean gpio_clean objtool_clean leds_clean firmware_clean debugging_clean tracing_clean:
 	$(call descend,$(@:_clean=),clean)
 
@@ -225,7 +232,7 @@ build_clean:
 ynl_clean:
 	$(call descend,net/$(@:_clean=),clean)
 
-clean: acpi_clean counter_clean cpupower_clean dma_clean hv_clean firewire_clean \
+clean: acpi_clean counter_clean cpupower_clean ctlv_clean dma_clean hv_clean firewire_clean \
 		perf_clean selftests_clean turbostat_clean bootconfig_clean spi_clean usb_clean virtio_clean \
 		mm_clean bpf_clean iio_clean x86_energy_perf_policy_clean tmon_clean \
 		freefall_clean build_clean libbpf_clean libsubcmd_clean \

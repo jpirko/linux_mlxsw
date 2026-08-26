@@ -14,7 +14,10 @@ from collections.abc import Callable
 sys.path.append(pathlib.Path(__file__).resolve().parents[1].as_posix())
 
 from ctlvgen.lib import cgen  # noqa: E402
+from ctlvgen.lib import dump  # noqa: E402
+from ctlvgen.lib import gen_doc  # noqa: E402
 from ctlvgen.lib import gen_kernel  # noqa: E402
+from ctlvgen.lib import gen_runtime  # noqa: E402
 from ctlvgen.lib import gen_uapi  # noqa: E402
 from ctlvgen.lib import gen_user  # noqa: E402
 from ctlvgen.lib import semantics  # noqa: E402
@@ -30,6 +33,7 @@ GENERATORS: dict[tuple[str, str], Callable[..., str]] = {
     ('kernel', 'source'): gen_kernel.render_source,
     ('user', 'header'): gen_user.render_header,
     ('user', 'source'): gen_user.render_source,
+    ('doc', 'rst'): gen_doc.render,
 }
 
 
@@ -46,6 +50,12 @@ def main() -> int:
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument('--validate', action='store_true',
                         help='validate the specification and exit')
+    action.add_argument('--dump', action='store_true',
+                        help='print the resolved schema in text form')
+    action.add_argument('--runtime-json', action='store_true',
+                        help='print the resolved runtime manifest as JSON')
+    action.add_argument('--signatures', action='store_true',
+                        help='print each op the family declares as a call')
     action.add_argument('--outputs-check', action='store_true',
                         help='check every file in the output manifests and '
                              'every ABI snapshot')
@@ -53,7 +63,7 @@ def main() -> int:
                         help='regenerate every file in the output manifests '
                              'and every ABI snapshot')
     action.add_argument('--mode',
-                        choices=('uapi', 'kernel', 'user'),
+                        choices=('uapi', 'kernel', 'user', 'doc'),
                         help='generate the files of this mode')
     parser.add_argument('--schema-only', action='store_true',
                         help='omit the family API from kernel output')
@@ -62,6 +72,8 @@ def main() -> int:
                        help='generate the header of --mode')
     files.add_argument('--source', action='store_true',
                        help='generate the source of --mode')
+    files.add_argument('--rst', action='store_true',
+                       help='generate the reStructuredText of --mode')
     parser.add_argument('-o', '--output', type=str,
                         help='write to this file instead of standard output')
     parser.add_argument('--cmp-out', action='store_true',
@@ -73,12 +85,12 @@ def main() -> int:
                         help='let --outputs-update break the committed ABI')
     args = parser.parse_args()
 
-    file = next((name for name in ('header', 'source')
+    file = next((name for name in ('header', 'source', 'rst')
                  if getattr(args, name)), None)
     if args.mode and not file:
-        parser.error('--mode needs --header or --source')
+        parser.error('--mode needs --header, --source or --rst')
     if file and not args.mode:
-        parser.error('--header and --source need --mode')
+        parser.error('--header, --source and --rst need --mode')
     if args.mode and (args.mode, file) not in GENERATORS:
         parser.error(f'--mode {args.mode} cannot generate --{file}')
     if args.schema_only and args.mode != 'kernel':
@@ -111,20 +123,43 @@ def main() -> int:
             # The root family has no binding: libctlv is that binding.
             if family.name != spec.CORE_FAMILY_NAME:
                 cgen.user_symbols(family)
+        elif args.dump:
+            sys.stdout.write(dump.render(family))
+        elif args.runtime_json:
+            sys.stdout.write(gen_runtime.render(family))
+        elif args.signatures:
+            sys.stdout.write(gen_doc.signatures(family))
         else:
             assert file is not None
-            _generate(args, file, family)
+            _generate(args, paths, file, family)
     except CtlvError as exc:
         print(f'ctlvgen: {exc}', file=sys.stderr)
         return 1
     return 0
 
 
-def _generate(args: argparse.Namespace, file: str,
+def _descendants(args: argparse.Namespace, paths: spec.Paths,
+                 family: semantics.Family) -> tuple[semantics.Family, ...]:
+    """Every family of the registry that inherits family."""
+    found = []
+    for entry in spec.load_registry(paths).entries:
+        path = paths.spec_dir / f'{entry.name}.yaml'
+        if entry.name == family.name or not path.exists():
+            continue
+        child = semantics.load(spec.Paths(str(path), schema=args.schema,
+                                          registry=args.registry))
+        if family.name in (item.name for item in child.chain[:-1]):
+            found.append(child)
+    return tuple(found)
+
+
+def _generate(args: argparse.Namespace, paths: spec.Paths, file: str,
               family: semantics.Family) -> None:
     render = GENERATORS[(args.mode, file)]
     if args.mode == 'kernel':
         text = render(family, family_api=not args.schema_only)
+    elif args.mode == 'doc':
+        text = render(family, _descendants(args, paths, family))
     else:
         text = render(family)
     if args.output is None:

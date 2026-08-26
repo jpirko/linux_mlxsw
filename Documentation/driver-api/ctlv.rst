@@ -235,6 +235,9 @@ checks the same without writing anything.
 
 Never edit a generated file; change the YAML or the generator and regenerate.
 
+``make -C tools/ctlv docs`` writes optional RST reference pages to
+``Documentation/output/ctlv/families``.
+
 Create and destroy a device
 ===========================
 
@@ -684,20 +687,24 @@ The node is of the foo driver's own class, ``foo_class``, registered as
 that ``ctlv_family_inherits()`` says is not ``ctlv-example`` or a descendant,
 then calls ``ctlv_init()``.
 
-Reporting an error
-------------------
+Tests and examples
+==================
 
-A callback returns a negative errno, and that is what the ioctl returns. Where
-CTLV itself refuses a message it also writes error information into the
-caller's reply buffer, naming the reason and the offset of the offending
-TLV. A family implementation does not build that; it adds its own errno
-and its reply.
+``Documentation/ctlv/specs/ctlv-test.yaml``
+    Every schema kind, records, actions, queries, blobs, availability, hooks,
+    and an extension point.
 
-Configuration
-=============
+``drivers/ctlv/tests/ctlv_test.c``
+    The ``ctlv-test`` family implementation.
 
-``CONFIG_CTLV``
-    CTLV. A family implementation selects it.
+``drivers/ctlv/tests/ctlv_test_child.c``
+    A separately built inheriting family and extension-point fill.
+
+``lib/ctlv/tests/*_kunit.c``
+    Unit tests of the engine and of its nodes.
+
+``tools/testing/selftests/ctlv/``
+    Raw-message, generated-binding, allocation-failure, and mutation selftests.
 
 Kernel API
 ==========

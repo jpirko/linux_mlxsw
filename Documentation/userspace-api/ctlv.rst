@@ -58,8 +58,8 @@ Each part of the design serves one of the needs:
   so that a caller whose answer changed between the parts gets ``ESTALE``
   rather than a mix of two states.
 - Introspection. Every device answers ``family-get``, ``op-get`` and
-  ``op-schema-get``, so a program built without a family still learns what
-  the device accepts.
+  ``op-schema-get``, so a program built without a family, such as ``ctlvctl``,
+  still learns what the device accepts.
 
 `Compatibility`_ collects the rules for growing a family.
 
@@ -132,6 +132,11 @@ specification: ``index`` must be at most 4095 and ``label`` at most 63 bytes.
     ctlv_example_item_set_index_put(req, 3);
     ctlv_example_item_set_label_put(req, "ab");
     ctlv_example_item_set(dev, req, &error);
+
+and so does ``ctlvctl``, given the family's specification::
+
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            exec /dev/ctlv-example item-set index=3 label=ab
 
 The sections below define each piece: the device, the message format, the
 ioctl, queries, blobs and introspection, and then the rules of compatibility.
@@ -564,7 +569,7 @@ cut. The first call passes ``generation`` and ``cursor`` zero. On return:
 
 To continue, the caller repeats the call with the same ``op_id`` and request,
 the returned ``cursor`` and the returned ``generation``, and reassembles by
-concatenating the children of each still-open record.
+concatenating the children of each still-open record, which ``libctlv`` does.
 
 One answer of three items, cut by a buffer that holds two::
 
@@ -591,7 +596,8 @@ it, so a reader knows whether to append or to open a new record beside it.
 
 Every continuing fragment adds at least one complete logical TLV beyond its
 repeated path, and a cursor value cannot recur within one logical reply.
-A reader must reject either violation.
+``libctlv`` rejects either violation. It also limits one query to 65,536
+fragments and a 64 MiB reassembled reply.
 
 A continuation whose generation no longer matches fails with ``-ESTALE``, and
 the error information carries the expected and the current generation.
@@ -709,3 +715,69 @@ removing or renumbering anything, changing a field's kind or an operation's
 type, access or availability, narrowing a bound or an occurrence limit,
 making a field that the kernel writes optional, and, in any message,
 making a field required or adding a required one.
+
+Library and tools
+=================
+
+``tools/ctlv/libctlv`` is a small C library for the mechanical parts: opening
+a device, checking the chain, building requests, parsing replies, reassembling
+fragmented queries and building blob descriptors. Per-family
+bindings are generated beside it, turning operations into typed functions.
+``ctlv_open()`` finds a device by the family its uevent announces, whichever
+subsystem it is in. ``ctlv_open_fd()`` takes a file the caller opened, through
+another subsystem's interface if need be, and ``ctlv_close()`` leaves it open.
+
+``tools/ctlv/ctlvctl`` defaults to runtime introspection alone. Compiled
+against no family, it can list devices, print the operations one publishes and
+their schemas, and execute its actions and queries alike. A device is
+named as ``list`` prints it, relative to ``/dev``, or by a path::
+
+    ctlvctl list
+    ctlvctl ops /dev/ctlv-example
+    ctlvctl schema /dev/ctlv-example 0x0001000000000008
+    ctlvctl exec /dev/ctlv-example 0x0001000000000001
+    ctlvctl exec /dev/ctlv-example 0x0001000000000002 0x0001800200000001=7
+
+Passing the directory of the kernel's family specifications adds the names
+that are deliberately absent from introspection. This is the ``specs``
+directory of a CTLV documentation bundle; its registry and meta-schemas are in
+the parent directory::
+
+    ctlvctl --spec-dir Documentation/ctlv/specs ops /dev/ctlv-example
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            schema /dev/ctlv-example series-get
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            exec /dev/ctlv-example probe-get token=7
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            exec /dev/ctlv-example echo-reply \
+            --json '{"u":17,"mode":"busy","count":[3,5]}'
+    ctlvctl --spec-dir Documentation/ctlv/specs \
+            exec /dev/ctlv-example transfer --json \
+            '{"source":{"file":"in"},"target":{"file":"out","length":64}}'
+
+``CTLV_SPEC_DIR`` avoids repeating the directory. Known items are printed by
+name without IDs; ``-n`` adds them, while an item unknown to the selected
+specifications stays numeric. ``schema --json-template`` prints a minimal JSON
+request. ``--output-json`` emits one object for an action or query. A JSON
+request may be inline, read from ``@file``, or read from standard input with
+``--json -``; it cannot be combined with assignments. Specification and JSON
+support are built when json-c is available.
+
+In JSON, a blob is ``{"file": "<path>"}``, passed as ``va`` memory. An input
+blob holds the file. An output blob is written to the file whole, so give it
+the ``"length"`` the operation writes; without one it starts at a byte and
+grows to each ``required-length`` the operation fails with, the operation
+being retried. An ``inout`` blob is read from the file and written back.
+
+In the directory, ``ctlvctl`` reads a family's names from ``<family>.json``
+when it is there, and otherwise has ``ctlvgen``, with its Python dependencies,
+resolve ``<family>.yaml``. Building ``ctlvctl`` writes the ``.json`` of each of
+the tree's families beside it, so a machine with neither the source tree nor
+Python needs only that directory and json-c. ``ctlvgen --spec <family>.yaml
+--runtime-json`` prints the file for a family outside the tree.
+
+``make -C tools/ctlv programs`` builds both in the source tree. After ``make
+O=<dir> headers``, ``make O=<dir> tools/ctlv`` builds ``ctlvctl`` into
+``<dir>/tools/ctlv/ctlvctl`` against that tree's headers, for another
+architecture with ``CROSS_COMPILE`` or ``LLVM`` as the kernel takes them;
+``PKG_CONFIG`` names the ``pkg-config`` that finds the target's json-c.
