@@ -73,6 +73,13 @@ programs:
 	$(MAKE) -C libctlv
 	$(MAKE) -C ctlvctl
 
+# What one operation costs, against the floor of the same entry point and
+# against netlink. Its own target: it measures rather than ships, it needs a
+# device of the test family to measure against, and nothing else here needs it
+# built to be checked.
+bench:
+	$(MAKE) -C ctlvbench
+
 regen:
 	@./ctlv-regen.sh
 
@@ -93,6 +100,7 @@ clean:
 	rm -rf $(DOC_OUTPUT)
 	$(MAKE) -C libctlv clean
 	$(MAKE) -C ctlvctl clean
+	$(MAKE) -C ctlvbench clean
 
-.PHONY: all validate abi-check abi-update lint docs programs regen check-regen \
-	run_tests clean
+.PHONY: all validate abi-check abi-update lint docs programs bench regen \
+	check-regen run_tests clean
