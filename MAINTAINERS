@@ -6948,6 +6948,8 @@ M:	Jiri Pirko <jiri@resnulli.us>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 F:	Documentation/ctlv/
+F:	include/linux/ctlv*.h
+F:	include/uapi/linux/ctlv*.h
 F:	tools/ctlv/
 
 CTU CAN FD DRIVER
