@@ -1,0 +1,365 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# The root CTLV family, family ID 0 and the first entry in families.yaml. It
+# inherits nothing, and every other family name begins with "ctlv-". Every CTLV
+# device answers these ops in addition to its own family's, and the attrs
+# declared here appear inside family messages: the blob group is the descriptor
+# nest of every family blob attr, the error group the error information written
+# on failure. Nothing here may be reordered or removed.
+
+family:
+  name: ctlv
+
+enums:
+  - name: op-type
+    values:
+      - action
+      - query
+      - event
+
+  # A permission, not a state: what a device currently allows is op.disabled.
+  - name: op-availability
+    values:
+      - fixed
+      - dynamic
+
+  - name: blob-type
+    values:
+      - va
+      - memfd
+      - dma-buf
+
+  - name: blob-direction
+    values:
+      - input
+      - output
+      - inout
+
+  - name: validation-reason
+    values:
+      - malformed-message
+      - unknown-attr
+      - unknown-flag
+      - nesting-too-deep
+      - missing-attr
+      - too-many-occurrences
+      - value-out-of-range
+      - bad-length
+      - bad-string
+      - bad-blob-descriptor
+      - stale-generation
+
+attr-groups:
+  # One record per family of the chain a device answers, as reported by
+  # families-dump.
+  - name: family
+    attrs:
+      - name: id
+        type: uint
+      # The registry name, also what a uevent carries. Bounded here, this being
+      # the only place a family name is on the wire.
+      - name: name
+        type: string
+        max-length: 63
+      - name: entry
+        attrs: family-entry
+        max-occurrences: unlimited
+
+  # The nest carried by every family blob attr. va uses address; memfd and
+  # dma-buf use fd and may use offset.
+  - name: blob
+    attrs:
+      - name: type
+        enum: blob-type
+      - name: address
+        type: uint
+      - name: fd
+        type: uint
+        max: 2147483647
+      - name: offset
+        type: uint
+      - name: length
+        type: uint
+        min: 1
+
+  # Error information: only what describes the first failure is present.
+  - name: error
+    attrs:
+      - name: reason
+        enum: validation-reason
+      - name: message
+        type: string
+        max-length: 255
+      - name: bad-attr-offset
+        type: uint
+      - name: nest-offset
+        type: uint
+      - name: missing-attr-id
+        type: uint
+      - name: expected-generation
+        type: uint
+      - name: current-generation
+        type: uint
+
+  # One entry per effective op, as reported by ops-dump. Length members that do
+  # not apply to an entry's op type are absent, as are availability and
+  # disabled for an event.
+  - name: op
+    attrs:
+      - name: id
+        type: uint
+        min: 1
+      - name: type
+        enum: op-type
+      - name: availability
+        enum: op-availability
+      - name: disabled
+        type: bool
+      - name: request-max-len
+        type: uint
+      - name: action-reply-max-len
+        type: uint
+      - name: query-reply-min-len
+        type: uint
+      - name: query-reply-suggested-len
+        type: uint
+      - name: event-record-max-len
+        type: uint
+      # Advances once per op state change on one device.
+      - name: state-generation
+        type: uint
+      - name: entry
+        attrs: op-entry
+        max-occurrences: unlimited
+
+  # One node of an op's request or reply tree, as reported by op-schema-get. A
+  # node describes a node, so attrs and optional-attrs hold these same members
+  # one level further in. Nothing here is a name: a caller matches the family
+  # chain from families-dump to find the generated UAPI.
+  - name: schema
+    attrs:
+      # Zero in a message root node, as on the wire.
+      - name: attr-id
+        type: uint
+      # enum ctlv_schema_kind.
+      - name: kind
+        type: uint
+      # Zero where the placement may repeat as often as the message has room.
+      - name: max-occurrences
+        type: uint
+      # Inclusive bounds of an integer or enum payload, raw 64-bit values read
+      # according to kind. An enum's values are numbered without gaps.
+      - name: min
+        type: uint
+      - name: max
+        type: uint
+      # Payload length bounds of a string or binary attr, a string's
+      # terminator excluded.
+      - name: min-length
+        type: uint
+      - name: max-length
+        type: uint
+      - name: flags-mask
+        type: uint
+      # enum ctlv_unit, absent when the payload is dimensionless, and a scale
+      # only ever accompanies a unit.
+      - name: unit
+        type: uint
+      - name: scale
+        type: sint
+      - name: blob-direction
+        enum: blob-direction
+      # Mask of BIT(enum ctlv_blob_type): the backings this placement takes.
+      - name: blob-backings
+        type: uint
+      # Maximum external payload length, unrelated to the inline message limit.
+      - name: blob-max-length
+        type: uint
+      - name: blob-alignment
+        type: uint
+      # Levels to climb to the node whose members are this one's as well, one
+      # meaning the node this one is a member of. A node that carries it lists
+      # no members itself.
+      - name: reenters
+        type: uint
+        min: 1
+      # The nodes one level in; required and optional are different attrs.
+      - name: attrs
+        attrs: schema-node
+        recursive: true
+        max-occurrences: unlimited
+      - name: optional-attrs
+        attrs: schema-node
+        recursive: true
+        max-occurrences: unlimited
+      # The root of each of an op's two trees, a node like any other.
+      - name: request
+        attrs: schema-node
+      - name: reply
+        attrs: schema-node
+
+  - name: event
+    attrs:
+      - name: op-id
+        type: uint
+        min: 1
+        max-occurrences: 256
+      - name: queue-len
+        type: uint
+        unit: bytes
+        min: 1
+        max: 16777216
+      - name: queue-used
+        type: uint
+        unit: bytes
+      - name: first-sequence
+        type: uint
+      - name: last-sequence
+        type: uint
+      - name: dropped-count
+        type: uint
+
+attr-sets:
+  - name: family-entry
+    attrs:
+      - family.id
+      - family.name
+
+  - name: op-entry
+    attrs:
+      - op.id
+      - op.type
+    optional-attrs:
+      - op.availability
+      - op.disabled
+      - op.request-max-len
+      - op.action-reply-max-len
+      - op.query-reply-min-len
+      - op.query-reply-suggested-len
+      - op.event-record-max-len
+
+  - name: op-schema-request
+    attrs: op.id
+
+  # Only the members the node's form has are present.
+  - name: schema-node
+    attrs:
+      - schema.attr-id
+      - schema.kind
+      - schema.max-occurrences
+    optional-attrs:
+      - schema.min
+      - schema.max
+      - schema.min-length
+      - schema.max-length
+      - schema.flags-mask
+      - schema.unit
+      - schema.scale
+      - schema.blob-direction
+      - schema.blob-backings
+      - schema.blob-max-length
+      - schema.blob-alignment
+      - schema.reenters
+      - schema.attrs
+      - schema.optional-attrs
+
+  # The two trees of one op, each absent when the op has no such message. An
+  # event's one tree is reported as the reply.
+  - name: op-schema-info
+    optional-attrs:
+      - schema.request
+      - schema.reply
+
+  # What changed about one op, in the same attrs a dump entry uses.
+  - name: op-change-info
+    attrs:
+      - op.id
+      - op.disabled
+      - op.state-generation
+
+  # The root of an error information message.
+  - name: error-info
+    optional-attrs:
+      - error.reason
+      - error.message
+      - error.bad-attr-offset
+      - error.nest-offset
+      - error.missing-attr-id
+      - error.expected-generation
+      - error.current-generation
+
+  - name: event-subscription
+    attrs: event.op-id
+
+  - name: event-queue-limit
+    attrs: event.queue-len
+
+  - name: event-queue-state
+    attrs:
+      - event.queue-len
+      - event.queue-used
+
+  - name: event-overflow-info
+    attrs:
+      - event.first-sequence
+      - event.last-sequence
+      - event.dropped-count
+
+ops:
+  # The families this device answers, this one first and the registered family
+  # last. The only names any reply of this family carries.
+  - name: families-dump
+    type: query
+    reply:
+      attrs: family.entry
+
+  - name: ops-dump
+    type: query
+    reply:
+      attrs: op.entry
+
+  # The request and reply ABI of one op, whether or not it can be called right
+  # now. A removed op answers as one that was never declared.
+  - name: op-schema-get
+    type: query
+    request:
+      attrs: op-schema-request
+    reply:
+      attrs: op-schema-info
+
+  - name: subscriptions-add
+    type: action
+    request:
+      attrs: event-subscription
+
+  - name: subscriptions-remove
+    type: action
+    request:
+      attrs: event-subscription
+
+  - name: event-queue-get
+    type: query
+    reply:
+      attrs: event-queue-state
+
+  - name: event-queue-set
+    type: action
+    request:
+      attrs: event-queue-limit
+
+  # A dynamically available op was enabled or disabled. The name is not about
+  # availability: a later mutable op property reports its state here too.
+  - name: op-changed
+    type: event
+    reply:
+      attrs: op-change-info
+
+  - name: event-overflow
+    type: event
+    reply:
+      attrs: event-overflow-info
+
+  # Payload-free: the record itself is the whole indication.
+  - name: device-removed
+    type: event
