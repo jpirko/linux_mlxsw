@@ -3,7 +3,7 @@ CFLAGS += -Wall -O2 -Wno-unused-function
 CFLAGS += $(KHDR_INCLUDES)
 LDLIBS += -lpthread
 
-TEST_GEN_PROGS := ctlv ctlv_user ctlv_bent
+TEST_GEN_PROGS := ctlv ctlv_user ctlv_fail_nth ctlv_bent
 
 # Optional prerequisites are reported as skips rather than disappearing.
 TEST_PROGS := generated.sh compat32.sh ctlvctl.sh
@@ -48,7 +48,7 @@ LIBCTLV := $(OUTPUT)/libctlv/libctlv.a
 $(OUTPUT)/ctlv_user: ctlv_user.c $(BINDINGS) $(LIBCTLV)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $^ $(LDLIBS) -o $@
 
-$(OUTPUT)/ctlv $(OUTPUT)/ctlv_bent: \
+$(OUTPUT)/ctlv $(OUTPUT)/ctlv_fail_nth $(OUTPUT)/ctlv_bent: \
 	ctlv_tlv.h ctlv_util.h
 
 # Built for the other ABI, and against the same UAPI headers as everything
