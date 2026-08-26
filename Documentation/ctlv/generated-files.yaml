@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Generated files for registered families.
+version: 1
+registry:
+  source: Documentation/ctlv/families.yaml
+  outputs:
+    uapi-header: include/uapi/linux/ctlv_families_gen.h
+
+families:
+  - name: ctlv
+    source: Documentation/ctlv/specs/ctlv.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_gen.h
+      kernel-header: include/linux/ctlv_gen.h
+      kernel-source: drivers/ctlv/ctlv_gen.c

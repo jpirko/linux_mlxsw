@@ -1,0 +1,186 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv family, written by
+# "make -C tools/ctlv abi-update".
+#
+# The checker compares this family's declarations and inherited stub fills
+# against this file. Updating it is how a UAPI change gets reviewed; an update
+# that removes or renumbers anything, narrows a bound, or makes a placement
+# required is an ABI break, whatever this file says afterwards.
+family: {name: ctlv, id: 0}
+enums:
+  op-type: {action: 1, query: 2, event: 3}
+  op-availability: {fixed: 1, dynamic: 2}
+  blob-type: {va: 1}
+  blob-direction: {input: 1, output: 2, inout: 3}
+  validation-reason: {malformed-message: 1, unknown-attr: 2, unknown-flag: 3,
+                      nesting-too-deep: 4, missing-attr: 5,
+                      too-many-occurrences: 6, value-out-of-range: 7,
+                      bad-length: 8, bad-string: 9, bad-blob-descriptor: 10,
+                      stale-generation: 11, noncontiguous-attr: 12}
+  op-fd-access: {read: 1, read-write: 2}
+attr-groups:
+  family:
+    id: 1
+    attrs:
+      id: {id: 1, type: uint}
+      name: {id: 2, type: string, max-length: 63}
+      entry: {id: 3, type: nested, max-occurrences: unlimited}
+  blob:
+    id: 2
+    attrs:
+      type: {id: 1, enum: blob-type}
+      address: {id: 2, type: uint}
+      fd: {id: 3, type: uint, max: 2147483647}
+      offset: {id: 4, type: uint}
+      length: {id: 5, type: uint, min: 1}
+  error:
+    id: 3
+    attrs:
+      reason: {id: 1, enum: validation-reason}
+      message: {id: 2, type: string, max-length: 255}
+      bad-attr-offset: {id: 3, type: uint}
+      nest-offset: {id: 4, type: uint}
+      missing-attr-id: {id: 5, type: uint}
+      expected-generation: {id: 6, type: uint}
+      current-generation: {id: 7, type: uint}
+  op:
+    id: 4
+    attrs:
+      id: {id: 1, type: uint, min: 1}
+      type: {id: 2, enum: op-type}
+      availability: {id: 3, enum: op-availability}
+      disabled: {id: 4, type: bool}
+      request-max-len: {id: 5, type: uint}
+      action-reply-max-len: {id: 6, type: uint}
+      query-reply-min-len: {id: 7, type: uint}
+      query-reply-suggested-len: {id: 8, type: uint}
+      event-record-max-len: {id: 9, type: uint}
+      state-generation: {id: 10, type: uint}
+      entry: {id: 11, type: nested, max-occurrences: unlimited}
+      fd-access: {id: 12, enum: op-fd-access}
+  schema:
+    id: 5
+    attrs:
+      attr-id: {id: 1, type: uint}
+      kind: {id: 2, type: uint}
+      max-occurrences: {id: 3, type: uint}
+      min: {id: 4, type: uint}
+      max: {id: 5, type: uint}
+      min-length: {id: 6, type: uint}
+      max-length: {id: 7, type: uint}
+      flags-mask: {id: 8, type: uint}
+      unit: {id: 9, type: uint}
+      scale: {id: 10, type: sint}
+      blob-direction: {id: 11, enum: blob-direction}
+      blob-backings: {id: 12, type: uint}
+      blob-max-length: {id: 13, type: uint}
+      blob-alignment: {id: 14, type: uint}
+      reenters: {id: 15, type: uint, min: 1}
+      attrs: {id: 16, type: nested, max-occurrences: unlimited}
+      optional-attrs: {id: 17, type: nested, max-occurrences: unlimited}
+      request: {id: 18, type: nested}
+      reply: {id: 19, type: nested}
+  event:
+    id: 6
+    attrs:
+      op-id: {id: 1, type: uint, min: 1, max-occurrences: 256}
+      queue-len: {id: 2, type: uint, min: 1, max: 16777216, unit: bytes}
+      queue-used: {id: 3, type: uint, unit: bytes}
+      first-sequence: {id: 4, type: uint}
+      last-sequence: {id: 5, type: uint}
+      dropped-count: {id: 6, type: uint}
+attr-sets:
+  family-entry: {id: 1}
+  op-entry: {id: 2}
+  op-schema-request: {id: 3}
+  schema-node: {id: 4}
+  op-schema-info: {id: 5}
+  op-change-info: {id: 6}
+  error-info: {id: 7}
+  event-subscription: {id: 8}
+  event-queue-limit: {id: 9}
+  event-queue-state: {id: 10}
+  event-overflow-info: {id: 11}
+ops:
+  families-dump:
+    abi: {id: 1, type: query, fd-access: read}
+    reply:
+      attrs:
+        - family.entry: {attrs: [family.id, family.name]}
+  ops-dump:
+    abi: {id: 2, type: query, fd-access: read}
+    reply:
+      attrs:
+        - op.entry:
+            attrs: [op.id, op.type]
+            optional-attrs: [op.availability, op.disabled, op.request-max-len,
+                             op.action-reply-max-len, op.query-reply-min-len,
+                             op.query-reply-suggested-len,
+                             op.event-record-max-len, op.fd-access]
+  op-schema-get:
+    abi: {id: 3, type: query, fd-access: read}
+    request: {attrs: [op.id]}
+    reply:
+      optional-attrs:
+        - schema.request:
+            attrs: [schema.attr-id, schema.kind, schema.max-occurrences]
+            optional-attrs:
+              - schema.min
+              - schema.max
+              - schema.min-length
+              - schema.max-length
+              - schema.flags-mask
+              - schema.unit
+              - schema.scale
+              - schema.blob-direction
+              - schema.blob-backings
+              - schema.blob-max-length
+              - schema.blob-alignment
+              - schema.reenters
+              - schema.attrs:
+                  reenters: schema-node
+              - schema.optional-attrs:
+                  reenters: schema-node
+        - schema.reply:
+            attrs: [schema.attr-id, schema.kind, schema.max-occurrences]
+            optional-attrs:
+              - schema.min
+              - schema.max
+              - schema.min-length
+              - schema.max-length
+              - schema.flags-mask
+              - schema.unit
+              - schema.scale
+              - schema.blob-direction
+              - schema.blob-backings
+              - schema.blob-max-length
+              - schema.blob-alignment
+              - schema.reenters
+              - schema.attrs:
+                  reenters: schema-node
+              - schema.optional-attrs:
+                  reenters: schema-node
+  subscriptions-add:
+    abi: {id: 4, type: action, fd-access: read}
+    request: {attrs: [event.op-id]}
+  subscriptions-remove:
+    abi: {id: 5, type: action, fd-access: read}
+    request: {attrs: [event.op-id]}
+  event-queue-get:
+    abi: {id: 6, type: query, fd-access: read}
+    reply: {attrs: [event.queue-len, event.queue-used]}
+  event-queue-set:
+    abi: {id: 7, type: action, fd-access: read}
+    request: {attrs: [event.queue-len]}
+  op-changed:
+    abi: {id: 8, type: event}
+    reply: {attrs: [op.id, op.disabled, op.state-generation]}
+  event-overflow:
+    abi: {id: 9, type: event}
+    reply:
+      attrs: [event.first-sequence, event.last-sequence, event.dropped-count]
+  device-removed:
+    abi: {id: 10, type: event}
+    reply: {}
