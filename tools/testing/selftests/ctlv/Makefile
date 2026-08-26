@@ -3,10 +3,10 @@ CFLAGS += -Wall -O2 -Wno-unused-function
 CFLAGS += $(KHDR_INCLUDES)
 LDLIBS += -lpthread
 
-TEST_GEN_PROGS := ctlv ctlv_bent
+TEST_GEN_PROGS := ctlv ctlv_user ctlv_bent
 
 # Optional prerequisites are reported as skips rather than disappearing.
-TEST_PROGS := compat32.sh ctlvctl.sh
+TEST_PROGS := generated.sh compat32.sh ctlvctl.sh
 
 # The same ioctls from a caller of the other ABI, where the toolchain can build
 # one. That means -m32 on the architectures whose second ABI is a flag away;
@@ -28,8 +28,16 @@ CTLV_MANIFESTS := $(patsubst %.yaml,%.json, \
 	$(notdir $(wildcard ../../../../Documentation/ctlv/specs/*.yaml)))
 TEST_GEN_FILES += $(CTLV_MANIFESTS)
 
+# ctlv_user speaks to the same devices through libctlv and the generated
+# bindings of the two test families, so it needs the library this tree also
+# ships. The library and ctlvctl are built into this build's output with its
+# compiler and headers; the bindings are generated files checked in beside
+# this file.
 LIBCTLV_DIR := ../../../ctlv/libctlv
 CTLVCTL_DIR := ../../../ctlv/ctlvctl
+BINDINGS := ctlv_test_user_gen.c ctlv_test_child_user_gen.c
+
+CFLAGS += -I$(LIBCTLV_DIR)
 
 EXTRA_CLEAN = $(OUTPUT)/libctlv $(OUTPUT)/ctlvctl.o $(OUTPUT)/spec.o
 
@@ -37,7 +45,11 @@ include ../lib.mk
 
 LIBCTLV := $(OUTPUT)/libctlv/libctlv.a
 
-$(OUTPUT)/ctlv $(OUTPUT)/ctlv_bent: ctlv_tlv.h ctlv_util.h
+$(OUTPUT)/ctlv_user: ctlv_user.c $(BINDINGS) $(LIBCTLV)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $^ $(LDLIBS) -o $@
+
+$(OUTPUT)/ctlv $(OUTPUT)/ctlv_bent: \
+	ctlv_tlv.h ctlv_util.h
 
 # Built for the other ABI, and against the same UAPI headers as everything
 # here: what the layout assertions in ctlv_util.h are for is that this
