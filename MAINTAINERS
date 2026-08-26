@@ -7006,6 +7006,7 @@ M:	Jiri Pirko <jiri@resnulli.us>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 F:	Documentation/ctlv/
+F:	Documentation/driver-api/ctlv.rst
 F:	Documentation/userspace-api/ctlv.rst
 F:	drivers/ctlv/
 F:	include/linux/ctlv*.h
