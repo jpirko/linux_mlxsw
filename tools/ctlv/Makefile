@@ -5,7 +5,7 @@ DOCDIR = $(KDIR)/Documentation/ctlv
 SPECDIR = $(DOCDIR)/specs
 SPECS = $(wildcard $(SPECDIR)/*.yaml)
 TOOL = ./ctlvgen/cli.py
-DOC_OUTPUT ?= $(KDIR)/Documentation/output/ctlv/families
+TREE_ARGS = --spec $(SPECDIR)/ctlv.yaml
 
 # Specifications that exist only to exercise the tool. They are not registered
 # families, so they keep their registry beside themselves and only have to be
@@ -13,10 +13,14 @@ DOC_OUTPUT ?= $(KDIR)/Documentation/output/ctlv/families
 FIXTURE_SPECDIR = tests/specs
 FIXTURE_SPECS = $(wildcard $(FIXTURE_SPECDIR)/*.yaml)
 FIXTURE_ARGS = --schema $(DOCDIR)/ctlv-schema.yaml
+DOC_OUTPUT ?= $(KDIR)/Documentation/output/ctlv/families
 
-all: validate abi-check
+all: validate abi-check check-regen
 
-validate:
+tree-check:
+	@$(TOOL) $(TREE_ARGS) --tree-check
+
+validate: tree-check
 	@for spec in $(SPECS) ; do \
 		echo -e "\tVALIDATE $$(basename $$spec)" ; \
 		$(TOOL) --spec $$spec --validate || exit 1 ; \
@@ -27,7 +31,7 @@ validate:
 	done
 
 # Fails when a specification no longer matches its checked-in ABI snapshot.
-abi-check:
+abi-check: tree-check
 	@for spec in $(SPECS) ; do \
 		echo -e "\tABICHECK $$(basename $$spec)" ; \
 		$(TOOL) --spec $$spec --abi-check || exit 1 ; \
@@ -35,9 +39,11 @@ abi-check:
 
 # Deliberate: an updated snapshot is how a UAPI change gets reviewed.
 abi-update:
+	@$(TOOL) $(TREE_ARGS) --tree-check-update
 	@for spec in $(SPECS) ; do \
 		$(TOOL) --spec $$spec --abi-update || exit 1 ; \
 	done
+	@$(TOOL) $(TREE_ARGS) --registry-abi-update
 
 # Style checks, needing yamllint, pycodestyle and pyflakes, which the tool
 # itself does not use.
@@ -102,5 +108,5 @@ clean:
 	$(MAKE) -C ctlvctl clean
 	$(MAKE) -C ctlvbench clean
 
-.PHONY: all validate abi-check abi-update lint docs programs bench regen \
-	check-regen run_tests clean
+.PHONY: all tree-check validate abi-check abi-update lint docs programs bench \
+	regen check-regen run_tests clean

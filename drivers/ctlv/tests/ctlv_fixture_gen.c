@@ -10,558 +10,141 @@
 #include <linux/limits.h>
 
 #include <uapi/linux/ctlv_gen.h>
+#include <linux/ctlv_fixture_gen.h>
 
 #include "ctlv_fixture_gen.h"
 
-static const struct ctlv_schema_node noop_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-	},
+static const struct ctlv_node_schema noop_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
 };
 
-static const struct ctlv_schema_node scalars_set_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 11,
-		.required_children_count = 11,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* scalar.s */
-	{
-		.attr_id = 0x0001000100000002ULL,
-		.kind = CTLV_SCHEMA_SINT,
-		.max_occurrences = 1,
-		.range = { .min = -100, .max = 100 },
-	},
-	/* scalar.delta */
-	{
-		.attr_id = 0x0001000100000003ULL,
-		.kind = CTLV_SCHEMA_SINT,
-		.max_occurrences = 1,
-		.range = { .min = S64_MIN, .max = S64_MAX },
-	},
-	/* scalar.freq */
-	{
-		.attr_id = 0x0001000100000004ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 0, .max = U64_MAX },
-		.unit = CTLV_UNIT_HERTZ,
-		.scale = 3,
-	},
-	/* scalar.size */
-	{
-		.attr_id = 0x0001000100000005ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 0, .max = U64_MAX },
-		.unit = CTLV_UNIT_BYTES,
-		.scale = 0,
-	},
-	/* scalar.mode */
-	{
-		.attr_id = 0x0001000100000006ULL,
-		.kind = CTLV_SCHEMA_ENUM,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 3 },
-	},
-	/* scalar.quirks */
-	{
-		.attr_id = 0x0001000100000007ULL,
-		.kind = CTLV_SCHEMA_FLAGS,
-		.max_occurrences = 1,
-		.flags_mask = 0x7ULL,
-	},
-	/* scalar.flag */
-	{
-		.attr_id = 0x0001000100000008ULL,
-		.kind = CTLV_SCHEMA_BOOL,
-		.max_occurrences = 1,
-	},
-	/* scalar.text */
-	{
-		.attr_id = 0x0001000100000009ULL,
-		.kind = CTLV_SCHEMA_STRING,
-		.max_occurrences = 1,
-		.length = { .min_len = 1, .max_len = 15 },
-	},
-	/* scalar.fixed */
-	{
-		.attr_id = 0x000100010000000aULL,
-		.kind = CTLV_SCHEMA_BINARY,
-		.max_occurrences = 1,
-		.length = { .min_len = 8, .max_len = 8 },
-	},
-	/* scalar.bounded */
-	{
-		.attr_id = 0x000100010000000bULL,
-		.kind = CTLV_SCHEMA_BINARY,
-		.max_occurrences = 1,
-		.length = { .min_len = 4, .max_len = 64 },
-	},
+static const struct ctlv_node_schema scalars_set_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 11, 11),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_SINT(CTLV_FIXTURE_ATTR_SCALAR_S, 1, -100, 100),
+	CTLV_NODE_SCHEMA_SINT(CTLV_FIXTURE_ATTR_SCALAR_DELTA, 1, S64_MIN, S64_MAX),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_FIXTURE_ATTR_SCALAR_FREQ, 1, 0, U64_MAX, CTLV_UNIT_HERTZ,
+				   3),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_FIXTURE_ATTR_SCALAR_SIZE, 1, 0, U64_MAX, CTLV_UNIT_BYTES,
+				   0),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_FIXTURE_ATTR_SCALAR_MODE, 1, 3),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_FIXTURE_ATTR_SCALAR_QUIRKS, 1, CTLV_FIXTURE_QUIRKS_MASK),
+	CTLV_NODE_SCHEMA_BOOL(CTLV_FIXTURE_ATTR_SCALAR_FLAG, 1),
+	CTLV_NODE_SCHEMA_STRING(CTLV_FIXTURE_ATTR_SCALAR_TEXT, 1, 1, 15),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_FIXTURE_ATTR_SCALAR_FIXED, 1, 8, 8),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_FIXTURE_ATTR_SCALAR_BOUNDED, 1, 4, 64),
 };
 
-static const struct ctlv_schema_node scalars_set_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 1,
-		.required_children_count = 1,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
+static const struct ctlv_node_schema scalars_set_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
 };
 
-static const struct ctlv_schema_node counts_get_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 3,
-		.required_children_count = 0,
-	},
-	/* count.few */
-	{
-		.attr_id = 0x0001000200000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 3,
-		.range = { .min = 0, .max = U64_MAX },
-	},
-	/* scalar.mode */
-	{
-		.attr_id = 0x0001000100000006ULL,
-		.kind = CTLV_SCHEMA_ENUM,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 3 },
-	},
-	/* nest.request */
-	{
-		.attr_id = 0x0001000300000005ULL,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 2,
-		.first_child = 4,
-		.children_count = 2,
-		.required_children_count = 2,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* scalar.s */
-	{
-		.attr_id = 0x0001000100000002ULL,
-		.kind = CTLV_SCHEMA_SINT,
-		.max_occurrences = 1,
-		.range = { .min = -100, .max = 100 },
-	},
+static const struct ctlv_node_schema counts_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 3, 0),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_COUNT_FEW, 3, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_FIXTURE_ATTR_SCALAR_MODE, 1, 3),
+	CTLV_NODE_SCHEMA_NEST(CTLV_FIXTURE_ATTR_NEST_REQUEST, 2, 4, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_SINT(CTLV_FIXTURE_ATTR_SCALAR_S, 1, -100, 100),
 };
 
-static const struct ctlv_schema_node counts_get_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 1,
-		.required_children_count = 1,
-	},
-	/* count.many */
-	{
-		.attr_id = 0x0001000200000002ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 0, /* unlimited */
-		.range = { .min = 0, .max = U64_MAX },
-	},
+static const struct ctlv_node_schema counts_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_COUNT_MANY, CTLV_NODE_SCHEMA_UNLIMITED, 0, U64_MAX),
 };
 
-static const struct ctlv_schema_node nests_dump_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-	},
+static const struct ctlv_node_schema nests_dump_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
 };
 
-static const struct ctlv_schema_node nests_dump_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* nest.level1 */
-	{
-		.attr_id = 0x0001000300000001ULL,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 2,
-		.first_child = 3,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* nest.extension */
-	{
-		.attr_id = 0x0001000300000004ULL,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* nest.level2 */
-	{
-		.attr_id = 0x0001000300000002ULL,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 0, /* unlimited */
-		.first_child = 5,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* nest.level3 */
-	{
-		.attr_id = 0x0001000300000003ULL,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 0, /* unlimited */
-		.first_child = 7,
-		.children_count = 2,
-		.required_children_count = 2,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* scalar.s */
-	{
-		.attr_id = 0x0001000100000002ULL,
-		.kind = CTLV_SCHEMA_SINT,
-		.max_occurrences = 1,
-		.range = { .min = -100, .max = 100 },
-	},
+static const struct ctlv_node_schema nests_dump_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_NEST(CTLV_FIXTURE_ATTR_NEST_LEVEL1, 2, 3, 2, 1),
+	CTLV_NODE_SCHEMA_NEST(CTLV_FIXTURE_ATTR_NEST_EXTENSION, 1, 0, 0, 0),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_NEST(CTLV_FIXTURE_ATTR_NEST_LEVEL2, CTLV_NODE_SCHEMA_UNLIMITED, 5, 2, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_NEST(CTLV_FIXTURE_ATTR_NEST_LEVEL3, CTLV_NODE_SCHEMA_UNLIMITED, 7, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_SINT(CTLV_FIXTURE_ATTR_SCALAR_S, 1, -100, 100),
 };
 
 /* Extension points selected by this tree. */
-static const struct ctlv_stub_ref nests_dump_reply_stubs[] = {
-	/* extension-point */
-	{
-		.family_id = 1,
-		.set_id = 1,
-		.node = 2,
-	},
+static const struct ctlv_stub_schema nests_dump_reply_stub_schemas[] = {
+	CTLV_STUB_SCHEMA(CTLV_FAMILY_FIXTURE, CTLV_FIXTURE_SET_EXTENSION_POINT, 2),
 };
 
-static const struct ctlv_schema_node blobs_submit_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 4,
-		.required_children_count = 2,
-	},
-	/* region.input-va */
-	{
-		.attr_id = 0x0001000400000001ULL,
-		.kind = CTLV_SCHEMA_BLOB,
-		.max_occurrences = 1,
-		.blob = {
-			.max_len = 4096,
-			.alignment = 1,
-			.backings = BIT(CTLV_BLOB_TYPE_VA),
-			.direction = CTLV_BLOB_DIRECTION_INPUT,
-		},
-	},
-	/* region.output-fd */
-	{
-		.attr_id = 0x0001000400000002ULL,
-		.kind = CTLV_SCHEMA_BLOB,
-		.max_occurrences = 1,
-		.blob = {
-			.max_len = 1048576,
-			.alignment = 4096,
-			.backings = BIT(CTLV_BLOB_TYPE_MEMFD) |
-				    BIT(CTLV_BLOB_TYPE_DMA_BUF),
-			.direction = CTLV_BLOB_DIRECTION_OUTPUT,
-		},
-	},
-	/* region.inout-any */
-	{
-		.attr_id = 0x0001000400000003ULL,
-		.kind = CTLV_SCHEMA_BLOB,
-		.max_occurrences = 1,
-		.blob = {
-			.max_len = 65536,
-			.alignment = 8,
-			.backings = BIT(CTLV_BLOB_TYPE_VA) |
-				    BIT(CTLV_BLOB_TYPE_MEMFD) |
-				    BIT(CTLV_BLOB_TYPE_DMA_BUF),
-			.direction = CTLV_BLOB_DIRECTION_INOUT,
-		},
-	},
-	/* region.pieces */
-	{
-		.attr_id = 0x0001000400000004ULL,
-		.kind = CTLV_SCHEMA_BLOB,
-		.max_occurrences = 3,
-		.blob = {
-			.max_len = 4096,
-			.alignment = 1,
-			.backings = BIT(CTLV_BLOB_TYPE_VA),
-			.direction = CTLV_BLOB_DIRECTION_INPUT,
-		},
-	},
+static const struct ctlv_node_schema blobs_submit_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 4, 2),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_FIXTURE_ATTR_REGION_INPUT_VA, 1, 4096, 1,
+			      BIT(CTLV_BLOB_TYPE_VA),
+			      CTLV_BLOB_DIRECTION_INPUT),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_FIXTURE_ATTR_REGION_OUTPUT_FD, 1, 1048576, 4096,
+			      BIT(CTLV_BLOB_TYPE_MEMFD) |
+			      BIT(CTLV_BLOB_TYPE_DMA_BUF),
+			      CTLV_BLOB_DIRECTION_OUTPUT),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_FIXTURE_ATTR_REGION_INOUT_ANY, 1, 65536, 8,
+			      BIT(CTLV_BLOB_TYPE_VA) |
+			      BIT(CTLV_BLOB_TYPE_MEMFD) |
+			      BIT(CTLV_BLOB_TYPE_DMA_BUF),
+			      CTLV_BLOB_DIRECTION_INOUT),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_FIXTURE_ATTR_REGION_PIECES, 3, 4096, 1,
+			      BIT(CTLV_BLOB_TYPE_VA),
+			      CTLV_BLOB_DIRECTION_INPUT),
 };
 
-static const struct ctlv_schema_node collapse_check_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* scalar.mode */
-	{
-		.attr_id = 0x0001000100000006ULL,
-		.kind = CTLV_SCHEMA_ENUM,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 3 },
-	},
+static const struct ctlv_node_schema collapse_check_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_FIXTURE_ATTR_SCALAR_MODE, 1, 3),
 };
 
-static const struct ctlv_schema_node thing_changed_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 2,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* scalar.s */
-	{
-		.attr_id = 0x0001000100000002ULL,
-		.kind = CTLV_SCHEMA_SINT,
-		.max_occurrences = 1,
-		.range = { .min = -100, .max = 100 },
-	},
+static const struct ctlv_node_schema thing_changed_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_SINT(CTLV_FIXTURE_ATTR_SCALAR_S, 1, -100, 100),
 };
 
-static const struct ctlv_schema_node pinged_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-	},
+static const struct ctlv_node_schema pinged_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
 };
 
 /* The ops this family declares, in declaration order. */
-const struct ctlv_op_schema ctlv_fixture_ctlv_op_schemas[] = {
-	{
-		.op_id = 0x0001000000000001ULL,
-		.type = CTLV_OP_TYPE_ACTION,
-		.fd_access = CTLV_OP_FD_ACCESS_READ,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.request = {
-			.nodes = noop_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(noop_request_nodes),
-		},
-		.sizes = {
-			.request_max_len = 16,
-		},
-	},
-	{
-		.op_id = 0x0001000000000002ULL,
-		.type = CTLV_OP_TYPE_ACTION,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_DYNAMIC,
-		.request = {
-			.nodes = scalars_set_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(scalars_set_request_nodes),
-		},
-		.reply = {
-			.nodes = scalars_set_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(scalars_set_reply_nodes),
-		},
-		.sizes = {
-			.request_max_len = 344,
-			.action_reply_max_len = 40,
-		},
-	},
-	{
-		.op_id = 0x0001000000000003ULL,
-		.type = CTLV_OP_TYPE_QUERY,
-		.fd_access = CTLV_OP_FD_ACCESS_READ,
-		.availability = CTLV_OP_AVAILABILITY_DYNAMIC,
-		.pre_post = true,
-		.request = {
-			.nodes = counts_get_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(counts_get_request_nodes),
-		},
-		.reply = {
-			.nodes = counts_get_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(counts_get_reply_nodes),
-		},
-		.sizes = {
-			.request_max_len = 240,
-			.query_reply_min_len = 40,
-			.query_reply_suggested_len = 65536,
-		},
-	},
-	{
-		.op_id = 0x0001000000000004ULL,
-		.type = CTLV_OP_TYPE_QUERY,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.request = {
-			.nodes = nests_dump_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(nests_dump_request_nodes),
-		},
-		.reply = {
-			.nodes = nests_dump_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(nests_dump_reply_nodes),
-			.stubs = nests_dump_reply_stubs,
-			.stubs_count =
-				ARRAY_SIZE(nests_dump_reply_stubs),
-		},
-		.sizes = {
-			.request_max_len = 16,
-			.query_reply_min_len = 88,
-			.query_reply_suggested_len = 4096,
-		},
-	},
-	{
-		.op_id = 0x0001000000000005ULL,
-		.type = CTLV_OP_TYPE_ACTION,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.request = {
-			.nodes = blobs_submit_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(blobs_submit_request_nodes),
-		},
-		.sizes = {
-			.request_max_len = 592,
-		},
-	},
-	{
-		.op_id = 0x0001000000000006ULL,
-		.type = CTLV_OP_TYPE_ACTION,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.optional = true,
-		.request = {
-			.nodes = collapse_check_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(collapse_check_request_nodes),
-		},
-		.sizes = {
-			.request_max_len = 64,
-		},
-	},
-	{
-		.op_id = 0x0001000000000007ULL,
-		.type = CTLV_OP_TYPE_EVENT,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.reply = {
-			.nodes = thing_changed_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(thing_changed_reply_nodes),
-		},
-		.sizes = {
-			.event_record_max_len = 88,
-		},
-	},
-	{
-		.op_id = 0x0001000000000008ULL,
-		.type = CTLV_OP_TYPE_EVENT,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.reply = {
-			.nodes = pinged_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(pinged_reply_nodes),
-		},
-		.sizes = {
-			.event_record_max_len = 40,
-		},
-	},
+const struct ctlv_op_schema ctlv_fixture_op_schemas[] = {
+	CTLV_OP_SCHEMA_ACTION(CTLV_FIXTURE_OP_NOOP, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 16, 0, CTLV_SCHEMA_TREE(noop_request),
+			      CTLV_SCHEMA_TREE_NONE()),
+	CTLV_OP_SCHEMA_ACTION(CTLV_FIXTURE_OP_SCALARS_SET, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_DYNAMIC, 344, 40,
+			      CTLV_SCHEMA_TREE(scalars_set_request),
+			      CTLV_SCHEMA_TREE(scalars_set_reply)),
+	CTLV_OP_SCHEMA_QUERY(CTLV_FIXTURE_OP_COUNTS_GET, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_DYNAMIC, 240, 40, 65536,
+			     CTLV_SCHEMA_TREE(counts_get_request),
+			     CTLV_SCHEMA_TREE(counts_get_reply), .pre_post = true),
+	CTLV_OP_SCHEMA_QUERY(CTLV_FIXTURE_OP_NESTS_DUMP, CTLV_OP_FD_ACCESS_READ_WRITE,
+			     CTLV_OP_AVAILABILITY_FIXED, 16, 88, 4096,
+			     CTLV_SCHEMA_TREE(nests_dump_request),
+			     CTLV_SCHEMA_TREE_STUBS(nests_dump_reply)),
+	CTLV_OP_SCHEMA_ACTION(CTLV_FIXTURE_OP_BLOBS_SUBMIT, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_FIXED, 592, 0,
+			      CTLV_SCHEMA_TREE(blobs_submit_request), CTLV_SCHEMA_TREE_NONE()),
+	CTLV_OP_SCHEMA_ACTION(CTLV_FIXTURE_OP_COLLAPSE_CHECK, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_FIXED, 64, 0,
+			      CTLV_SCHEMA_TREE(collapse_check_request), CTLV_SCHEMA_TREE_NONE(),
+			      .optional = true),
+	CTLV_OP_SCHEMA_EVENT(CTLV_FIXTURE_OP_THING_CHANGED, 88,
+			     CTLV_SCHEMA_TREE(thing_changed_reply)),
+	CTLV_OP_SCHEMA_EVENT(CTLV_FIXTURE_OP_PINGED, 40, CTLV_SCHEMA_TREE(pinged_reply)),
 };
 
 /* The family ID is its position in the central registry. */
-const struct ctlv_family_schema ctlv_fixture_ctlv_schema = {
+const struct ctlv_family_schema ctlv_fixture_schema = {
 	.name = "ctlv-fixture",
 	.family_id = 1,
-	.ops = ctlv_fixture_ctlv_op_schemas,
-	.ops_count = ARRAY_SIZE(ctlv_fixture_ctlv_op_schemas),
+	.ops = ctlv_fixture_op_schemas,
+	.ops_count = ARRAY_SIZE(ctlv_fixture_op_schemas),
 };
 
 /* Maximum uevent cost for this family chain. */

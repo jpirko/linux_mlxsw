@@ -11,8 +11,8 @@
 #include <linux/ctlv_family.h>
 
 /* Ops this family declares, in declaration order. */
-extern const struct ctlv_op_schema ctlv_fixture_child_ctlv_op_schemas[];
+extern const struct ctlv_op_schema ctlv_fixture_child_op_schemas[];
 
-extern const struct ctlv_family_schema ctlv_fixture_child_ctlv_schema;
+extern const struct ctlv_family_schema ctlv_fixture_child_schema;
 
 #endif /* _LINUX_CTLV_FIXTURE_CHILD_GEN_H */

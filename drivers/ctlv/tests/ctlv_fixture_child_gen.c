@@ -9,184 +9,63 @@
 #include <linux/limits.h>
 
 #include <uapi/linux/ctlv_gen.h>
+#include <linux/ctlv_fixture_child_gen.h>
 
 #include "ctlv_fixture_child_gen.h"
 
-static const struct ctlv_schema_node child_info_get_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* scalar.u */
-	{
-		.attr_id = 0x0001000100000001ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 1, .max = 4096 },
-	},
-	/* child.serial */
-	{
-		.attr_id = 0x0002000100000002ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 0, .max = U64_MAX },
-	},
+static const struct ctlv_node_schema child_info_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_ATTR_SCALAR_U, 1, 1, 4096),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_CHILD_ATTR_CHILD_SERIAL, 1, 0, U64_MAX),
 };
 
-static const struct ctlv_schema_node child_info_get_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* child.tag */
-	{
-		.attr_id = 0x0002000100000001ULL,
-		.kind = CTLV_SCHEMA_STRING,
-		.max_occurrences = 1,
-		.length = { .min_len = 0, .max_len = 31 },
-	},
-	/* child.serial */
-	{
-		.attr_id = 0x0002000100000002ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 0, .max = U64_MAX },
-	},
+static const struct ctlv_node_schema child_info_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_STRING(CTLV_FIXTURE_CHILD_ATTR_CHILD_TAG, 1, 0, 31),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_CHILD_ATTR_CHILD_SERIAL, 1, 0, U64_MAX),
 };
 
-static const struct ctlv_schema_node child_dump_request_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-	},
+static const struct ctlv_node_schema child_dump_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
 };
 
-static const struct ctlv_schema_node child_dump_reply_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 1,
-		.required_children_count = 1,
-	},
-	/* child.dump */
-	{
-		.attr_id = 0x0002000100000003ULL,
-		.kind = CTLV_SCHEMA_BINARY,
-		.max_occurrences = 1,
-		.length = { .min_len = 0, .max_len = 4096 },
-	},
+static const struct ctlv_node_schema child_dump_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_FIXTURE_CHILD_ATTR_CHILD_DUMP, 1, 0, 4096),
 };
 
-static const struct ctlv_schema_node extension_point_fill_nodes[] = {
-	/* root */
-	{
-		.attr_id = CTLV_ATTR_ID_ROOT,
-		.kind = CTLV_SCHEMA_NEST,
-		.max_occurrences = 1,
-		.first_child = 1,
-		.children_count = 2,
-		.required_children_count = 1,
-	},
-	/* child.tag */
-	{
-		.attr_id = 0x0002000100000001ULL,
-		.kind = CTLV_SCHEMA_STRING,
-		.max_occurrences = 1,
-		.length = { .min_len = 0, .max_len = 31 },
-	},
-	/* child.serial */
-	{
-		.attr_id = 0x0002000100000002ULL,
-		.kind = CTLV_SCHEMA_UINT,
-		.max_occurrences = 1,
-		.range = { .min = 0, .max = U64_MAX },
-	},
+static const struct ctlv_node_schema extension_point_fill_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_STRING(CTLV_FIXTURE_CHILD_ATTR_CHILD_TAG, 1, 0, 31),
+	CTLV_NODE_SCHEMA_UINT(CTLV_FIXTURE_CHILD_ATTR_CHILD_SERIAL, 1, 0, U64_MAX),
 };
 
 /* The extension points this family fills. */
-static const struct ctlv_stub_fill ctlv_fixture_child_ctlv_fills[] = {
-	/* extension-point */
-	{
-		.family_id = 1,
-		.set_id = 1,
-		.members = {
-			.nodes = extension_point_fill_nodes,
-			.nodes_count =
-				ARRAY_SIZE(extension_point_fill_nodes),
-		},
-	},
+static const struct ctlv_stub_fill_schema ctlv_fixture_child_stub_fill_schemas[] = {
+	CTLV_STUB_FILL_SCHEMA(CTLV_FAMILY_FIXTURE, CTLV_FIXTURE_SET_EXTENSION_POINT,
+			      extension_point),
 };
 
 /* The ops this family declares, in declaration order. */
-const struct ctlv_op_schema ctlv_fixture_child_ctlv_op_schemas[] = {
-	{
-		.op_id = 0x0002000000000001ULL,
-		.type = CTLV_OP_TYPE_QUERY,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_FIXED,
-		.request = {
-			.nodes = child_info_get_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(child_info_get_request_nodes),
-		},
-		.reply = {
-			.nodes = child_info_get_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(child_info_get_reply_nodes),
-		},
-		.sizes = {
-			.request_max_len = 64,
-			.query_reply_min_len = 64,
-			.query_reply_suggested_len = 65536,
-		},
-	},
-	{
-		.op_id = 0x0002000000000002ULL,
-		.type = CTLV_OP_TYPE_QUERY,
-		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
-		.availability = CTLV_OP_AVAILABILITY_DYNAMIC,
-		.optional = true,
-		.request = {
-			.nodes = child_dump_request_nodes,
-			.nodes_count =
-				ARRAY_SIZE(child_dump_request_nodes),
-		},
-		.reply = {
-			.nodes = child_dump_reply_nodes,
-			.nodes_count =
-				ARRAY_SIZE(child_dump_reply_nodes),
-		},
-		.sizes = {
-			.request_max_len = 16,
-			.query_reply_min_len = 4128,
-			.query_reply_suggested_len = 65536,
-		},
-	},
+const struct ctlv_op_schema ctlv_fixture_child_op_schemas[] = {
+	CTLV_OP_SCHEMA_QUERY(CTLV_FIXTURE_CHILD_OP_CHILD_INFO_GET, CTLV_OP_FD_ACCESS_READ_WRITE,
+			     CTLV_OP_AVAILABILITY_FIXED, 64, 64, 65536,
+			     CTLV_SCHEMA_TREE(child_info_get_request),
+			     CTLV_SCHEMA_TREE(child_info_get_reply)),
+	CTLV_OP_SCHEMA_QUERY(CTLV_FIXTURE_CHILD_OP_CHILD_DUMP, CTLV_OP_FD_ACCESS_READ_WRITE,
+			     CTLV_OP_AVAILABILITY_DYNAMIC, 16, 4128, 65536,
+			     CTLV_SCHEMA_TREE(child_dump_request),
+			     CTLV_SCHEMA_TREE(child_dump_reply), .optional = true),
 };
 
 /* The family ID is its position in the central registry. */
-const struct ctlv_family_schema ctlv_fixture_child_ctlv_schema = {
+const struct ctlv_family_schema ctlv_fixture_child_schema = {
 	.name = "ctlv-fixture-child",
 	.family_id = 2,
-	.ops = ctlv_fixture_child_ctlv_op_schemas,
-	.ops_count = ARRAY_SIZE(ctlv_fixture_child_ctlv_op_schemas),
-	.fills = ctlv_fixture_child_ctlv_fills,
-	.fills_count = ARRAY_SIZE(ctlv_fixture_child_ctlv_fills),
+	.ops = ctlv_fixture_child_op_schemas,
+	.ops_count = ARRAY_SIZE(ctlv_fixture_child_op_schemas),
+	.stub_fill_schemas = ctlv_fixture_child_stub_fill_schemas,
+	.stub_fill_schemas_count = ARRAY_SIZE(ctlv_fixture_child_stub_fill_schemas),
 };
 
 /* Maximum uevent cost for this family chain. */
