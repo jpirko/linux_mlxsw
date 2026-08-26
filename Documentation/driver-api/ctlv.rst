@@ -393,8 +393,15 @@ Tests and examples
     Attribute forms, nesting, actions, queries, events, blobs, availability,
     hooks, and an extension point.
 
+``drivers/ctlv/tests/*_kunit.c``
+    Unit tests of CTLV parsing, serialization, metadata, blobs, events and
+    registration.
+
 Configuration
 =============
 
 ``CONFIG_CTLV``
     CTLV. A family implementation selects it.
+
+``CONFIG_CTLV_KUNIT_TEST``
+    The KUnit suites for CTLV internals.

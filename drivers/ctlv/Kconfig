@@ -12,3 +12,25 @@ menuconfig CTLV
 	  semantics.
 
 	  If you don't know what to do here, say N.
+
+if CTLV
+
+config CTLV_KUNIT_TEST
+	tristate "CTLV metadata KUnit tests" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  Checks the generated schema metadata of every family in this tree
+	  against the rules the core relies on without re-checking them at
+	  runtime: node indices that stay inside their array, children that are
+	  contiguous with the required ones first, IDs composed of the declared
+	  parts, and message lengths that agree with the wire arithmetic. The
+	  schema tool's own fixture families are built in for this, so that
+	  every shape the schema language allows is covered.
+
+	  The tests are a module of their own, ctlv-kunit, and run when it is
+	  loaded, or during boot when it is built in.
+
+	  If you are unsure, say N.
+
+endif # CTLV
