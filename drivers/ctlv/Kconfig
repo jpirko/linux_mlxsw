@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menuconfig CTLV
+	tristate "CTLV character device TLV UAPI framework"
+	# A blob attr may name a dma-buf, whatever family declares one.
+	select DMA_SHARED_BUFFER
+	help
+	  CTLV is a framework for character device UAPIs that are described by
+	  a checked-in YAML specification instead of hand-written wire
+	  definitions. It owns the character device lifetime, the strict TLV
+	  message format, request validation, reply serialization, the large
+	  payloads a request describes rather than carries, per-open event
+	  queues and runtime schema introspection, so that families and their
+	  drivers only implement semantics.
+
+	  If you don't know what to do here, say N.
