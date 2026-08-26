@@ -767,6 +767,12 @@ The worked example
     Unit tests of the framework's own parsing, serialization, metadata, blobs,
     events and registration.
 
+``tools/testing/selftests/ctlv/``
+    Four selftest programs: one speaking the wire format through raw ioctls,
+    one through ``libctlv`` and the generated bindings, one sweeping an
+    allocation failure through each step of an operation, and one bending valid
+    messages at random from a seed it prints.
+
 Each test module has a debugfs directory named after its family. Its
 ``device_add`` and ``device_remove`` controls create and destroy numbered
 instances; creation also selects whether optional ops are withheld. The same
