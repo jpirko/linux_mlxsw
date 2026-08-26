@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: scale requires unit
+family:
+  name: ctlv-bad-scale-no-unit
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: interval
+        type: uint
+        scale: -3

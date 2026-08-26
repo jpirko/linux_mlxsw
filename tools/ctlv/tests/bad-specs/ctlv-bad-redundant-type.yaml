@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: conflicting primary declarations: type, enum
+family:
+  name: ctlv-bad-redundant-type
+  inherits: ctlv
+enums:
+  - name: mode
+    values:
+      - one
+attr-groups:
+  - name: thing
+    attrs:
+      - name: mode
+        type: uint
+        enum: mode

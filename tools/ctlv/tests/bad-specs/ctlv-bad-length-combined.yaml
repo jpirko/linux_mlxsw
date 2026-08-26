@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: length cannot be combined with min-length or max-length
+family:
+  name: ctlv-bad-length-combined
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: uuid
+        type: binary
+        length: 16
+        max-length: 32

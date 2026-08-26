@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: "mode" is a flags definition, not enum
+family:
+  name: ctlv-bad-enum-kind
+  inherits: ctlv
+flags:
+  - name: mode
+    values:
+      - fast
+attr-groups:
+  - name: thing
+    attrs:
+      - name: mode
+        enum: mode

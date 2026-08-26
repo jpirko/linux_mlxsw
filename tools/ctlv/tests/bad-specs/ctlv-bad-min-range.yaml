@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: min -1 is outside the uint range
+family:
+  name: ctlv-bad-min-range
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+        min: -1

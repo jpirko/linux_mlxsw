@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: blob max-length 4095 is not a multiple of alignment 4096
+family:
+  name: ctlv-bad-blob-max-length
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: data
+        blob:
+          direction: input
+          allowed-backings: [memfd]
+          max-length: 4095
+          alignment: 4096

@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+# The schema tool's fixture family, deliberately not a plausible UAPI: it holds
+# one of every shape the language allows, including shapes no real family would
+# combine. Not registered in Documentation/ctlv/families.yaml, so it has no ABI
+# and no snapshot.
+
+family:
+  name: ctlv-fixture
+  inherits: ctlv
+
+enums:
+  - name: mode
+    values:
+      - disabled
+      - enabled
+      - auto
+
+flags:
+  - name: quirks
+    values:
+      - slow
+      - noisy
+      - flaky
+
+attr-groups:
+  # One attr per primary form, carrying the bounds that form allows.
+  - name: scalar
+    attrs:
+      - name: u
+        type: uint
+        min: 1
+        max: 4096
+      - name: s
+        type: sint
+        min: -100
+        max: 100
+      # No bounds at all, so both signed defaults have to be filled in.
+      - name: delta
+        type: sint
+      - name: freq
+        type: uint
+        unit: hertz
+        scale: 3
+      - name: size
+        type: uint
+        unit: bytes
+      - name: mode
+        enum: mode
+      - name: quirks
+        flags: quirks
+      # One byte, and nothing a bound or a unit could apply to.
+      - name: flag
+        type: bool
+      - name: text
+        type: string
+        min-length: 1
+        max-length: 15
+      - name: fixed
+        type: binary
+        length: 8
+      - name: bounded
+        type: binary
+        min-length: 4
+        max-length: 64
+
+  - name: count
+    attrs:
+      - name: few
+        type: uint
+        max-occurrences: 3
+      - name: many
+        type: uint
+        max-occurrences: unlimited
+
+  # A nest chain with unlimited attrs at more than one depth, so that a reply
+  # has somewhere to stop fragmenting, plus an extension point.
+  - name: nest
+    attrs:
+      - name: level1
+        attrs: level1-members
+        max-occurrences: 2
+      - name: level2
+        attrs: level2-members
+        max-occurrences: unlimited
+      - name: level3
+        attrs: scalar-pair
+        max-occurrences: unlimited
+      - name: extension
+        attrs: extension-point
+      - name: request
+        attrs: scalar-pair
+        max-occurrences: 2
+
+  - name: region
+    attrs:
+      - name: input-va
+        blob:
+          direction: input
+          allowed-backings: [va]
+          max-length: 4096
+      - name: output-fd
+        blob:
+          direction: output
+          allowed-backings: [memfd, dma-buf]
+          max-length: 1048576
+          alignment: 4096
+      - name: inout-any
+        blob:
+          direction: inout
+          allowed-backings: [va, memfd, dma-buf]
+          max-length: 65536
+          alignment: 8
+      - name: pieces
+        blob:
+          direction: input
+          allowed-backings: [va]
+          max-length: 4096
+        max-occurrences: 3
+
+attr-sets:
+  # Left empty here and filled by ctlv-fixture-child.
+  - name: extension-point
+    stub: true
+
+  - name: scalar-key
+    attrs: scalar.u
+
+  - name: scalar-pair
+    attrs:
+      - scalar.u
+      - scalar.s
+
+  - name: level2-members
+    attrs: scalar-key
+    optional-attrs: nest.level3
+
+  - name: level1-members
+    attrs: scalar-key
+    optional-attrs: nest.level2
+
+  # A whole-group selector.
+  - name: every-scalar
+    attrs: scalar
+
+  # scalar.u is selected as required here and again as optional through
+  # scalar-key, so the required selection must win.
+  - name: collapse
+    attrs: scalar.u
+    optional-attrs:
+      - scalar-key
+      - scalar.mode
+
+ops:
+  - name: noop
+    type: action
+    fd-access: read
+
+  # The two ops a device may take away, one of each executable type.
+  - name: scalars-set
+    type: action
+    availability: dynamic
+    request:
+      attrs: every-scalar
+    reply:
+      attrs: scalar-key
+
+  # The one op with a hook pair of its own, inherited by ctlv-fixture-child.
+  - name: counts-get
+    type: query
+    fd-access: read
+    availability: dynamic
+    pre-post: true
+    request:
+      optional-attrs:
+        - count.few
+        - scalar.mode
+        - nest.request
+    reply:
+      attrs: count.many
+
+  - name: nests-dump
+    type: query
+    reply:
+      attrs: nest.level1
+      optional-attrs: nest.extension
+    suggested-reply-length: 4096
+
+  - name: blobs-submit
+    type: action
+    request:
+      attrs:
+        - region.input-va
+        - region.output-fd
+      optional-attrs:
+        - region.inout-any
+        - region.pieces
+
+  # Optional without being dynamic, the other half of the pairing the child
+  # fixture's own optional op covers.
+  - name: collapse-check
+    type: action
+    optional: true
+    request:
+      attrs: collapse
+
+  - name: thing-changed
+    type: event
+    reply:
+      attrs: scalar-pair
+
+  - name: pinged
+    type: event

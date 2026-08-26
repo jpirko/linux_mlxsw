@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a stub cannot be redeclared; a further extension point needs a new
+family:
+  name: ctlv-bad-base-restub
+  inherits: ctlv-bad-base
+attr-sets:
+  - name: base-stub
+    stub: true

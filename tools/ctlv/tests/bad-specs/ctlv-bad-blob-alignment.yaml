@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: blob alignment 3 is not a power of two
+family:
+  name: ctlv-bad-blob-alignment
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: data
+        blob:
+          direction: input
+          allowed-backings: [va]
+          max-length: 4096
+          alignment: 3

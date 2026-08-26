@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: the action suffix separates this callback from families-dump
+family:
+  name: ctlv-families
+  inherits: ctlv
+ops:
+  - name: dump
+    type: action

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: is registered before ctlv-bad-base, the family it inherits
+family:
+  name: ctlv-bad-base-unordered
+  inherits: ctlv-bad-base
+ops:
+  - name: mine-get
+    type: query
+    reply:
+      attrs: base.thing

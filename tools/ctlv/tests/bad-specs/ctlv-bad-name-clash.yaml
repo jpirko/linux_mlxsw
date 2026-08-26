@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: attr group "thing" is already declared
+family:
+  name: ctlv-bad-name-clash
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+attr-sets:
+  - name: thing
+    attrs: thing.id

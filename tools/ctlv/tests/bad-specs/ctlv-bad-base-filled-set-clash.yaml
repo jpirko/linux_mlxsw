@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: attr set is already declared by an inherited family
+family:
+  name: ctlv-bad-base-filled-set-clash
+  inherits: ctlv-bad-base-filled
+attr-groups:
+  - name: mine
+    attrs:
+      - name: id
+        type: uint
+attr-sets:
+  - name: filled-key
+    attrs: mine.id

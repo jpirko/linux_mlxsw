@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: attr set cycle: first -> second -> first
+family:
+  name: ctlv-bad-set-cycle
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+attr-sets:
+  - name: first
+    attrs:
+      - thing.id
+      - second
+  - name: second
+    attrs: first

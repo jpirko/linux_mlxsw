@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: typed callbacks keep the inherited parent symbols distinct
+family:
+  name: ctlv-bad-lifecycle-base-child
+  inherits: ctlv-bad-lifecycle-base
+ops:
+  - name: noop
+    type: action

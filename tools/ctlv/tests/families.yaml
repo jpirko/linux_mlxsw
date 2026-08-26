@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+# Family registry for the test corpus, covering both specs/ and bad-specs/.
+# Unlike Documentation/ctlv/families.yaml it is free to change: nothing here has
+# a wire ABI. The root family heads the list, owning family ID 0, and every
+# family here inherits it. Then the two specs/ fixtures, so the parent has
+# family ID 1 and the child 2, which the ID tests rely on. Everything after is a
+# bad-specs/ case; ctlv-bad-unregistered is absent on purpose, a missing family
+# being rejected as unregistered instead of for the mistake it demonstrates. The
+# order is otherwise alphabetical, except that ctlv-bad-base-unordered comes
+# before the family it inherits, which is that case's mistake.
+
+families:
+  - ctlv
+  - ctlv-fixture
+  - ctlv-fixture-child
+  - ctlv-bad-availability-event
+  - ctlv-bad-base-unordered
+  - ctlv-bad-base
+  - ctlv-bad-base-filled
+  - ctlv-bad-base-filled-refill
+  - ctlv-bad-base-filled-set-clash
+  - ctlv-bad-base-op-clash
+  - ctlv-bad-base-restub
+  - ctlv-bad-basement-child
+  - ctlv-bad-binary-unbounded
+  - ctlv-bad-blob-alignment
+  - ctlv-bad-blob-max-length
+  - ctlv-bad-blob-reply
+  - ctlv-bad-bool-bounds
+  - ctlv-bad-c-name-clash
+  - ctlv-bad-cross-family
+  - ctlv-bad-cycle-one
+  - ctlv-bad-cycle-two
+  - ctlv-bad-def-clash
+  - ctlv-bad-descriptor-clash
+  - ctlv-bad-duplicate-attr
+  - ctlv-bad-duplicate-key
+  - ctlv-bad-duplicate-value
+  - ctlv-bad-elsewhere
+  - ctlv-bad-empty-set
+  - ctlv-bad-empty-values
+  - ctlv-bad-enum-kind
+  - ctlv-bad-event-request
+  - ctlv-bad-fd-access-event
+  - ctlv-bad-filename
+  - ctlv-bad-getter-clash
+  - ctlv-bad-helper-clash
+  - ctlv-bad-length-combined
+  - ctlv-bad-lifecycle-base
+  - ctlv-bad-lifecycle-base-child
+  - ctlv-bad-lifecycle-clash
+  - ctlv-bad-min-over-max
+  - ctlv-bad-min-range
+  - ctlv-bad-name-clash
+  - ctlv-bad-nesting-cycle
+  - ctlv-bad-no-parent
+  - ctlv-bad-no-primary
+  - ctlv-bad-optional-attrs-scalar
+  - ctlv-bad-other
+  - ctlv-bad-parent-name
+  - ctlv-bad-pre-post-event
+  - ctlv-bad-query-no-reply
+  - ctlv-bad-recursive-group
+  - ctlv-bad-recursive-inert
+  - ctlv-bad-recursive-request
+  - ctlv-bad-redundant-type
+  - ctlv-bad-request-too-long
+  - ctlv-bad-scale-no-unit
+  - ctlv-bad-set-cycle
+  - ctlv-bad-string-min-over-max
+  - ctlv-bad-string-unbounded
+  - ctlv-bad-stub-members
+  - ctlv-bad-suggested-action
+  - ctlv-bad-suggested-large
+  - ctlv-bad-suggested-small
+  - ctlv-bad-too-many-flags
+  - ctlv-bad-two-parents
+  - ctlv-bad-unified-source-clash
+  - ctlv-bad-unknown-attr
+  - ctlv-bad-unknown-enum
+  - ctlv-bad-unknown-parent
+  - ctlv-bad-unknown-selector
+  - ctlv-bad-unlimited-action-reply
+  - ctlv-bad-unlimited-event
+  - ctlv-bad-unlimited-request
+  - ctlv-bad-unprefixed-child
+  - ctlv-bad-yaml-bool
+  - ctlv-device
+  - ctlv-families
+  - ctlv-family
+  - ctlv-priv
+  - foreign

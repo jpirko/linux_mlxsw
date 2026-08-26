@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: a parent callback remains distinct from its child's lifecycle
+family:
+  name: ctlv-bad-lifecycle-base
+  inherits: ctlv
+ops:
+  - name: child-device-init
+    type: action

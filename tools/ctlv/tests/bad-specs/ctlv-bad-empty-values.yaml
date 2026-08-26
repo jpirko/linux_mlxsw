@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: [] should be non-empty
+family:
+  name: ctlv-bad-empty-values
+  inherits: ctlv
+enums:
+  - name: mode
+    values: []

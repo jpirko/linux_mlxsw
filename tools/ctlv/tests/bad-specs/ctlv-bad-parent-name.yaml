@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: expected family ctlv-bad-filename
+# The file named as the parent declares some other family.
+family:
+  name: ctlv-bad-parent-name
+  inherits: ctlv-bad-filename

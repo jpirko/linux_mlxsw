@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: name ctlv_bad_getter_clash_foo_bar_baz_x_ref is already used by attr baz.x in foo-bar
+# Scope and declaration components may spell the same C identifier.
+family:
+  name: ctlv-bad-getter-clash
+  inherits: ctlv
+attr-groups:
+  - name: baz
+    attrs:
+      - name: x
+        type: uint
+  - name: bar-baz
+    attrs:
+      - name: x
+        type: uint
+ops:
+  - name: foo-bar
+    type: action
+    request:
+      attrs: baz.x
+  - name: foo
+    type: action
+    request:
+      attrs: bar-baz.x

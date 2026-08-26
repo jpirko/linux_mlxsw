@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a recursive attr nests exactly one attr set
+family:
+  name: ctlv-bad-recursive-two-sets
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: other
+        type: uint
+      - name: self
+        attrs:
+          - node
+          - extra
+        recursive: true
+        max-occurrences: unlimited
+attr-sets:
+  - name: node
+    attrs: thing.leaf
+    optional-attrs: thing.self
+  - name: extra
+    attrs: thing.other
+ops:
+  - name: get
+    type: query
+    reply:
+      attrs: node

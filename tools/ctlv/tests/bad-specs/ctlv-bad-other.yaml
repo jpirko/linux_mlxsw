@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: an unrelated family, named by the two-parents case
+family:
+  name: ctlv-bad-other
+  inherits: ctlv
+attr-groups:
+  - name: other
+    attrs:
+      - name: thing
+        type: uint

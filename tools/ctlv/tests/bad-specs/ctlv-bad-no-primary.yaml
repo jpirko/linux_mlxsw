@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: no primary declaration; expected one of type, enum, flags, attrs or
+family:
+  name: ctlv-bad-no-primary
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        max-occurrences: 2

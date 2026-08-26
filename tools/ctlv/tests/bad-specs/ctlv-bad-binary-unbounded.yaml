@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a binary attr requires length or max-length
+family:
+  name: ctlv-bad-binary-unbounded
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: opaque
+        type: binary
+        min-length: 4

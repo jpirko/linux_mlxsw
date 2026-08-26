@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.self re-enters "node", so it has no maximum length
+family:
+  name: ctlv-bad-recursive-request
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: self
+        attrs: node
+        recursive: true
+        max-occurrences: 4
+attr-sets:
+  - name: node
+    attrs: thing.leaf
+    optional-attrs: thing.self
+ops:
+  - name: get
+    type: action
+    request:
+      attrs: node

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: the action suffix separates a callback from another op's helper
+family:
+  name: ctlv-bad-helper-clash
+  inherits: ctlv
+ops:
+  - name: noop
+    type: action
+    optional: true
+
+  - name: noop-provide
+    type: action

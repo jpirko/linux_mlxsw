@@ -46,11 +46,17 @@ for f in $files; do
     params=( $(git grep --untracked --no-line-number -B1 -h \
 	       "\(/\*\|\.\.\) CTLV-GEN" $f | \
 	       sed -e 's@/\*\(.*\)\*/@\1@' -e 's@^\.\.[ \t]*@@') )
+    options=()
+    if [ "${params[2]}" = kernel ] &&
+       [[ "${params[0]}" == tools/ctlv/tests/specs/* ]]; then
+	options+=(--schema-only)
+    fi
 
     if [ -n "$check" ]; then
 	tmp=$(mktemp)
 	$TOOL --mode ${params[2]} --${params[3]} \
-	      --spec $KDIR/${params[0]} --schema $KDIR/$SCHEMA -o $tmp || exit 1
+	      --spec $KDIR/${params[0]} --schema $KDIR/$SCHEMA \
+	      "${options[@]}" -o $tmp || exit 1
 	if ! diff -u $f $tmp ; then
 	    echo -e "\tSTALE $f"
 	    rc=1
@@ -66,7 +72,8 @@ for f in $files; do
 
     echo -e "\tGEN ${params[2]}\t$f"
     $TOOL --cmp-out --mode ${params[2]} --${params[3]} \
-	  --spec $KDIR/${params[0]} --schema $KDIR/$SCHEMA -o $f || exit 1
+	  --spec $KDIR/${params[0]} --schema $KDIR/$SCHEMA \
+	  "${options[@]}" -o $f || exit 1
 done
 
 popd >>/dev/null

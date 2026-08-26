@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.self is recursive, so it nests an attr set, and "thing" is an
+family:
+  name: ctlv-bad-recursive-group
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: self
+        attrs: thing
+        recursive: true
+        max-occurrences: unlimited
+ops:
+  - name: get
+    type: query
+    reply:
+      attrs: thing.self

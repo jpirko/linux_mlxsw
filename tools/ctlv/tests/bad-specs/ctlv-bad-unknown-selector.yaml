@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: unknown selector "nope"
+family:
+  name: ctlv-bad-unknown-selector
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+ops:
+  - name: get
+    type: action
+    request:
+      attrs: nope

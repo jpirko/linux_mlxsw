@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: cannot read
+family:
+  name: ctlv-bad-unknown-parent
+  inherits: ctlv-bad-nothing

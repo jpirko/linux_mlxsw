@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a stub attr set cannot declare members
+family:
+  name: ctlv-bad-stub-members
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+attr-sets:
+  - name: extension
+    stub: true
+    attrs: thing.id

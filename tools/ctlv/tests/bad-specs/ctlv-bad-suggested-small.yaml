@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: suggested-reply-length 24 is below the computed minimum of 40
+family:
+  name: ctlv-bad-suggested-small
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+        max-occurrences: unlimited
+ops:
+  - name: dump
+    type: query
+    reply:
+      attrs: thing.id
+    suggested-reply-length: 24

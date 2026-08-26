@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: the action suffix separates this callback from ctlv_priv_parent
+family:
+  name: ctlv-priv
+  inherits: ctlv
+ops:
+  - name: parent
+    type: action

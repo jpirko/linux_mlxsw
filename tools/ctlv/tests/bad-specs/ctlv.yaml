@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: the root family heads every chain, so it inherits nothing
+# Named after the root family because that is the family it gets wrong; the
+# corpus inherits the real root from Documentation/ctlv/specs/.
+family:
+  name: ctlv
+  inherits: ctlv-bad-base

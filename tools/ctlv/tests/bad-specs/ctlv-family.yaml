@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: the action suffix separates this callback from the lifecycle API
+family:
+  name: ctlv-family
+  inherits: ctlv
+ops:
+  - name: init-fn
+    type: action
