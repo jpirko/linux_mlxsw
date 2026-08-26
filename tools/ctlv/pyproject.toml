@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctlvgen"
+authors = [
+    {name = "Jiri Pirko", email = "jiri@resnulli.us"},
+]
+description = "CTLV schema tool"
+version = "0.0.1"
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml==6.*",
+    "jsonschema==4.*"
+]
+
+[tool.setuptools.packages.find]
+include = ["ctlvgen", "ctlvgen.lib"]
+
+[project.scripts]
+ctlvgen = "ctlvgen.cli:main"
