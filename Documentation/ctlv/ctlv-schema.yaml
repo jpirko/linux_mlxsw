@@ -1,0 +1,227 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+$id: http://kernel.org/schemas/ctlv/ctlv-schema.yaml#
+$schema: https://json-schema.org/draft-07/schema
+
+# The syntax gate for a CTLV family specification: permitted keys and their
+# shapes. A field's schema kind and its bounds are parsed, and anything needing
+# more than one declaration at a time is checked, by tools/ctlv/ctlvgen/lib/.
+
+$defs:
+  name:
+    description: Kebab-case identifier.
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+
+  c-name:
+    description: C identifier.
+    type: string
+    pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+
+  family-name:
+    description: Name carried by family discovery.
+    allOf:
+      - $ref: '#/$defs/name'
+      - maxLength: 63
+
+  field-key:
+    description:
+      A field's name, then [N] for 1 to N occurrences, [enum] for one per
+      value of an enum, or [] for any number, which only a query reply can
+      hold, then ? when it may be absent.
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*(\[([0-9]*|[a-z0-9]+(-[a-z0-9]+)*)\])?\??$
+
+  include:
+    description:
+      A named record whose fields are spliced in with their IDs, all of them
+      optional when the name ends in ?.
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*\??$
+
+  field:
+    description:
+      A schema kind with its bounds, an enum or flags by name, "record X" for
+      a field holding named record X, "extension X" for a record a descendant
+      family fills, bare "record" for a field of records:, or an indented
+      map for an unnamed record.
+    oneOf:
+      - type: string
+        minLength: 1
+      - $ref: '#/$defs/record'
+
+  record:
+    description: Fields in the order they are numbered.
+    type: object
+    minProperties: 1
+    propertyNames:
+      anyOf:
+        - $ref: '#/$defs/field-key'
+        - const: $include
+    properties:
+      $include:
+        oneOf:
+          - $ref: '#/$defs/include'
+          - type: array
+            minItems: 1
+            items:
+              $ref: '#/$defs/include'
+    additionalProperties:
+      $ref: '#/$defs/field'
+
+  message:
+    description:
+      Omitted, empty or {} for no fields, "record X" to use named record X,
+      or the record written in place.
+    oneOf:
+      - type: 'null'
+      - type: object
+        maxProperties: 0
+      - type: string
+        pattern: ^record [a-z0-9]+(-[a-z0-9]+)*$
+      - $ref: '#/$defs/record'
+
+  value-list:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/name'
+
+  enum:
+    description:
+      Value names in declaration order, numbered from 1 because 0 is
+      reserved, and append-only. A $header enum is enum $enum of
+      include/uapi/<$header>, whose constants are its values, under their
+      own names and numbers; with $end, only those before that constant.
+      "extension" is an enum extension point, whose values one descendant
+      family gives.
+    oneOf:
+      - $ref: '#/$defs/value-list'
+      - type: object
+        required: [ $header, $enum ]
+        additionalProperties: false
+        properties:
+          $header:
+            type: string
+            pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)*\.h$
+          $enum:
+            $ref: '#/$defs/c-name'
+          $end:
+            $ref: '#/$defs/c-name'
+      - const: extension
+
+  flags:
+    description: Bit names, numbered from bit 0 and append-only.
+    allOf:
+      - $ref: '#/$defs/value-list'
+      - maxItems: 64
+
+  op:
+    type: object
+    required: [ type ]
+    additionalProperties: false
+    properties:
+      type:
+        description:
+          action is invoked once and never fragments, and query may fragment
+          its reply.
+        enum: [ action, query ]
+      fd-access:
+        description:
+          Authority needed to execute an action or query. read permits an
+          observation fd; read-write, the default, requires a full-control fd.
+        enum: [ read, read-write ]
+      availability:
+        description: >
+          Whether a family may enable and disable this op per device. fixed,
+          the default, is always enabled. dynamic is a permission rather than
+          a state: every device starts with the op enabled.
+        enum: [ fixed, dynamic ]
+      optional:
+        description:
+          Whether family initialization must opt in before publication for
+          this op to exist on the device. False by default. An op not opted
+          into is absent from introspection.
+        type: boolean
+      pre-post:
+        description: >
+          Whether this op gets a generated pre/post hook pair of its own,
+          which its declaring family implements. It runs inside the pair of
+          the device family, or the core family for a core op.
+          False by default. Kernel implementation metadata: it reaches
+          neither UAPI nor op-schema introspection.
+        type: boolean
+      request:
+        description: An op's request.
+        $ref: '#/$defs/message'
+      reply:
+        description:
+          Required on a query. Omitted on an action means ACK-only.
+        $ref: '#/$defs/message'
+      suggested-reply-length:
+        description:
+          Query only, in bytes. An omitted value is 64K raised to the
+          computed minimum. A declared value must be between that minimum
+          and the kernel's inline message limit.
+        oneOf:
+          - type: integer
+            minimum: 1
+          - type: string
+            pattern: ^[0-9]+[KMG]$
+
+title: CTLV family
+description: Specification of one CTLV family schema
+type: object
+required: [ family ]
+additionalProperties: false
+properties:
+  family:
+    description:
+      Registered family name. It carries no numeric ID; the ID comes from
+      the position in Documentation/ctlv/families.yaml.
+    $ref: '#/$defs/family-name'
+  inherits:
+    description:
+      Name of the single direct parent family, which every family but the
+      root one names. The complete parent schema is inherited and its
+      definitions keep the parent's IDs. The name above must be this name,
+      one dash, and a local suffix.
+    $ref: '#/$defs/family-name'
+  enums:
+    description:
+      A family that inherits may also fill an inherited enum extension point
+      here, by declaring an enum of the same name with its values.
+    type: object
+    minProperties: 1
+    propertyNames:
+      $ref: '#/$defs/name'
+    additionalProperties:
+      $ref: '#/$defs/enum'
+  flags:
+    type: object
+    minProperties: 1
+    propertyNames:
+      $ref: '#/$defs/name'
+    additionalProperties:
+      $ref: '#/$defs/flags'
+  records:
+    description:
+      Named records, which an op's message, "record X" or $include uses, and
+      fields of records:, written with their schema kind, which bare "record"
+      places. A family that inherits may also fill an inherited extension
+      point here, by declaring a record of the same name.
+    type: object
+    minProperties: 1
+    propertyNames:
+      $ref: '#/$defs/field-key'
+    additionalProperties:
+      $ref: '#/$defs/field'
+  ops:
+    description: Numbered from 1 in the order listed, and append-only.
+    type: object
+    minProperties: 1
+    propertyNames:
+      $ref: '#/$defs/name'
+    additionalProperties:
+      $ref: '#/$defs/op'

@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+$schema: https://json-schema.org/draft-07/schema
+
+$defs:
+  path:
+    type: string
+    minLength: 1
+    pattern: ^[^/].*$
+
+  outputs:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      uapi-header:
+        $ref: '#/$defs/path'
+      kernel-header:
+        $ref: '#/$defs/path'
+      kernel-source:
+        $ref: '#/$defs/path'
+
+  registry:
+    type: object
+    required: [ source, outputs ]
+    additionalProperties: false
+    properties:
+      source:
+        $ref: '#/$defs/path'
+      outputs:
+        type: object
+        required: [ uapi-header ]
+        additionalProperties: false
+        properties:
+          uapi-header:
+            $ref: '#/$defs/path'
+
+  family:
+    type: object
+    required: [ name, source, outputs ]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      source:
+        $ref: '#/$defs/path'
+      outputs:
+        $ref: '#/$defs/outputs'
+
+title: CTLV generated-file manifest
+type: object
+required: [ version, registry, families ]
+additionalProperties: false
+properties:
+  version:
+    const: 1
+  registry:
+    $ref: '#/$defs/registry'
+  families:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/family'
