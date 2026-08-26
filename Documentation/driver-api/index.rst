@@ -37,6 +37,7 @@ of interest to most developers working on device drivers.
 
    early-userspace/index
    connector
+   ctlv
    device-io
    devfreq
    dma-buf
