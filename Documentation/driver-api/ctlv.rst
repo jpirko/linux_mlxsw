@@ -752,8 +752,15 @@ The worked example
     Every declaration form the schema language has, including an extension
     point that its child family fills.
 
+``drivers/ctlv/tests/*_kunit.c``
+    Unit tests of the framework's own parsing, serialization, metadata, blobs,
+    events and registration.
+
 Configuration
 =============
 
 ``CONFIG_CTLV``
     The framework. A family driver selects it.
+
+``CONFIG_CTLV_KUNIT_TEST``
+    The KUnit suites for the framework's internals.
