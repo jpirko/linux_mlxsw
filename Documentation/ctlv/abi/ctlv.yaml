@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv family, from
+# Documentation/ctlv/specs/ctlv.yaml, written by
+# "make -C tools/ctlv regen".
+#
+# Updating the file is how a UAPI change gets reviewed; an update that
+# removes or renumbers anything, narrows a bound, or makes a member required
+# is an ABI break, whatever the file says afterwards.
+family: {name: ctlv, id: 0}
+enums:
+  op-type: {action: 1, query: 2}
+  op-availability: {fixed: 1, dynamic: 2}
+  blob-type: {va: 1}
+  blob-direction: {input: 1, output: 2, inout: 3}
+  validation-reason: {malformed-message: 1, unknown-type: 2, unknown-flag: 3,
+                      record-too-deep: 4, missing-field: 5,
+                      too-many-occurrences: 6, value-out-of-range: 7,
+                      bad-length: 8, bad-string: 9, bad-blob-descriptor: 10,
+                      stale-generation: 11, noncontiguous-type: 12}
+  op-fd-access: {read: 1, read-write: 2}
+records:
+  blob:
+    id: 0x00010000
+    fields:
+      type: {number: 1, enum: blob-type}
+      address: {number: 2, type: uint, optional: true}
+      fd: {number: 3, type: uint, max: s32-max, optional: true}
+      offset: {number: 4, type: uint, optional: true}
+      length: {number: 5, type: uint, min: 1}
+  error-info:
+    id: 0x00020000
+    fields:
+      reason: {number: 1, enum: validation-reason, optional: true}
+      message: {number: 2, type: string, max-length: 255, optional: true}
+      bad-tlv-offset: {number: 3, type: uint, optional: true}
+      record-offset: {number: 4, type: uint, optional: true}
+      missing-type: {number: 5, type: uint, optional: true}
+      expected-generation: {number: 6, type: uint, optional: true}
+      current-generation: {number: 7, type: uint, optional: true}
+      required-length: {number: 8, type: uint, optional: true}
+  schema-node:
+    id: 0x00030000
+    fields:
+      type: {number: 1, type: uint}
+      kind: {number: 2, type: uint}
+      max-occurrences: {number: 3, type: uint}
+      min: {number: 4, type: uint, optional: true}
+      max: {number: 5, type: uint, optional: true}
+      min-length: {number: 6, type: uint, optional: true}
+      max-length: {number: 7, type: uint, optional: true}
+      flags-mask: {number: 8, type: uint, optional: true}
+      unit: {number: 9, type: uint, optional: true}
+      scale: {number: 10, type: sint, optional: true}
+      blob-direction: {number: 11, enum: blob-direction, optional: true}
+      blob-backings: {number: 12, type: uint, optional: true}
+      blob-max-length: {number: 13, type: uint, optional: true}
+      blob-alignment: {number: 14, type: uint, optional: true}
+      reenters: {number: 15, type: uint, min: 1, optional: true}
+      fields: {number: 16, record: schema-node, max-occurrences: unlimited,
+               optional: true}
+      optional-fields: {number: 17, record: schema-node,
+                        max-occurrences: unlimited, optional: true}
+  family-get request:
+    id: 0x80010000
+  family-get reply:
+    id: 0xc0010000
+    fields:
+      families: {number: 1, record: family-get families,
+                 max-occurrences: unlimited}
+  family-get families:
+    id: 0xc0011000
+    fields:
+      id: {number: 1, type: uint}
+      name: {number: 2, type: string, max-length: 63}
+  op-get request:
+    id: 0x80020000
+  op-get reply:
+    id: 0xc0020000
+    fields:
+      ops: {number: 1, record: op-get ops, max-occurrences: unlimited}
+  op-get ops:
+    id: 0xc0021000
+    fields:
+      id: {number: 1, type: uint, min: 1}
+      type: {number: 2, enum: op-type}
+      availability: {number: 3, enum: op-availability, optional: true}
+      disabled: {number: 4, type: bool, optional: true}
+      request-max-len: {number: 5, type: uint, optional: true}
+      action-reply-max-len: {number: 6, type: uint, optional: true}
+      query-reply-min-len: {number: 7, type: uint, optional: true}
+      query-reply-suggested-len: {number: 8, type: uint, optional: true}
+      fd-access: {number: 9, enum: op-fd-access, optional: true}
+      error-info-max-len: {number: 10, type: uint, optional: true}
+  op-schema-get request:
+    id: 0x80030000
+    fields:
+      id: {number: 1, type: uint, min: 1}
+  op-schema-get reply:
+    id: 0xc0030000
+    fields:
+      request: {number: 1, record: schema-node, optional: true}
+      reply: {number: 2, record: schema-node, optional: true}
+ops:
+  family-get: {id: 1, type: query, fd-access: read, request: family-get request,
+               reply: family-get reply}
+  op-get: {id: 2, type: query, fd-access: read, request: op-get request,
+           reply: op-get reply}
+  op-schema-get: {id: 3, type: query, fd-access: read,
+                  request: op-schema-get request, reply: op-schema-get reply}

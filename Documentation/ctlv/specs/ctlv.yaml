@@ -1,0 +1,211 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# The root CTLV family, family ID 0 and the first entry in families.yaml. It
+# inherits nothing, and every other family name begins with "ctlv-". Every
+# CTLV device answers these ops in addition to its own family's. Every blob
+# field of every family carries the blob record, and every failure may write
+# error-info. Nothing here may be reordered or removed.
+family: ctlv
+
+enums:
+  # What an op is, which decides the messages it has.
+  op-type:
+    # Executed and acknowledged.
+    - action
+    # Executed and answered, in as many fragments as the answer needs.
+    - query
+  # A permission, not a state: what a device currently allows is disabled.
+  op-availability:
+    # A device that publishes the op always answers it.
+    - fixed
+    # A device may disable and enable the op at any time.
+    - dynamic
+  # What holds the bytes of a blob.
+  blob-type:
+    # Anonymous memory of the calling process, at address.
+    - va
+  # Which way the bytes of a blob go.
+  blob-direction:
+    # From the caller to the device, which only reads the blob.
+    - input
+    # From the device to the caller.
+    - output
+    # Both ways: the device reads the blob and writes it.
+    - inout
+  # The first rule a refused message broke.
+  validation-reason:
+    # The TLVs do not frame: the root is not one, a length runs past its
+    # record, or a TLV is a record where its schema has a scalar or the
+    # reverse.
+    - malformed-message
+    # A TLV of a type its record does not place there, not marked
+    # IGNORE_IF_UNKNOWN or of a type the schema places elsewhere.
+    - unknown-type
+    # A header flag the message may not carry, or a flags payload with a bit
+    # its field does not declare.
+    - unknown-flag
+    # Records nested deeper than the core follows.
+    - record-too-deep
+    # A required field is absent, and missing-type says which.
+    - missing-field
+    # A field occurs more often than its schema allows.
+    - too-many-occurrences
+    # An integer, an enum value or a bool outside what its field takes.
+    - value-out-of-range
+    # A payload of the wrong length for its kind, or outside its field's
+    # length bounds.
+    - bad-length
+    # A string payload that is not exactly one NUL-terminated string.
+    - bad-string
+    # A blob descriptor its field does not take, or one whose memory could
+    # not be acquired or is too short for what the op writes there.
+    - bad-blob-descriptor
+    # A query continuation of a generation the query no longer has.
+    - stale-generation
+    # The TLVs of one type are not contiguous in their record.
+    - noncontiguous-type
+  # What an op asks of the file description that executes it.
+  op-fd-access:
+    # Read access, which an observation fd has as well as a full-control one.
+    - read
+    # Read-write access, which only a full-control fd has.
+    - read-write
+
+records:
+  # va takes address; fd and offset are reserved for later fd-backed
+  # types.
+  blob:
+    # What holds the bytes, which says which of the fields below are present.
+    type: blob-type
+    # Where a va blob starts in the calling process.
+    address?: uint
+    # Reserved for a later fd-backed type.
+    fd?: uint(..s32-max)
+    # Reserved for a later fd-backed type.
+    offset?: uint
+    # The length of the blob in bytes, at most what its field takes.
+    length: uint(1..)
+
+  # Only what describes the first failure is present.
+  error-info:
+    # The rule the message broke.
+    reason?: validation-reason
+    # What went wrong, for a person to read.
+    message?: string(..255)
+    # The offset of the offending TLV from the start of the message, or of
+    # its record when what is wrong is something the record lacks.
+    bad-tlv-offset?: uint
+    # The offset of the record holding it, from the start of the message.
+    record-offset?: uint
+    # The type of the required field that is absent.
+    missing-type?: uint
+    # The generation the query continuation carried.
+    expected-generation?: uint
+    # The generation the query has now.
+    current-generation?: uint
+    # How long the output blob at bad-tlv-offset has to be for the op.
+    required-length?: uint
+
+  # One node of an op's request or reply tree. Only the members the node's
+  # schema kind has are present. Nothing here is a name: a caller matches the
+  # family chain from family-get to find the generated UAPI.
+  schema-node:
+    # Zero in a message root node, as in the root TLV.
+    type: uint
+    # enum ctlv_schema_kind.
+    kind: uint
+    # Zero where the node may repeat as often as the message has room.
+    max-occurrences: uint
+    # The inclusive lower bound of an integer or enum payload, a raw 64-bit
+    # value read according to kind. An enum's values are numbered without
+    # gaps.
+    min?: uint
+    # The inclusive upper bound, read the same way.
+    max?: uint
+    # The shortest payload of a string or binary field, a string's terminator
+    # excluded.
+    min-length?: uint
+    # The longest payload, likewise.
+    max-length?: uint
+    # The bits a flags payload may carry.
+    flags-mask?: uint
+    # enum ctlv_unit, absent when the payload is dimensionless.
+    unit?: uint
+    # The decimal exponent of the unit, a payload being value * 10^scale of
+    # it, present only with a unit.
+    scale?: sint
+    # Which way a blob field's bytes go.
+    blob-direction?: blob-direction
+    # Mask of BIT(enum ctlv_blob_type): the backings this node takes.
+    blob-backings?: uint
+    # Maximum external payload length, unrelated to the inline message limit.
+    blob-max-length?: uint
+    # The power of two a blob's address or offset is a multiple of.
+    blob-alignment?: uint
+    # Levels to climb to the node whose members are this one's as well, one
+    # meaning the node this one is a member of. A node that carries it lists
+    # no members itself.
+    reenters?: uint(1..)
+    # The required nodes one level in.
+    fields[]?: record schema-node
+    # The optional nodes one level in.
+    optional-fields[]?: record schema-node
+
+ops:
+  # The families this device answers, this one first and the device family
+  # last. The only names any reply of this family carries.
+  family-get:
+    type: query
+    fd-access: read
+    reply:
+      # One entry per family of the chain.
+      families[]:
+        # The family ID, which bits 63..48 of the family's types carry.
+        id: uint
+        # The registry name, also what a uevent carries. Bounded here, this
+        # being the only place a message carries a family name.
+        name: string(..63)
+
+  # One entry per effective op. Length fields that do not apply to an
+  # entry's op type are absent.
+  op-get:
+    type: query
+    fd-access: read
+    reply:
+      # One entry per op the device publishes.
+      ops[]:
+        # The op ID, which CTLV_IOC_OP_EXEC carries.
+        id: uint(1..)
+        # Action or query.
+        type: op-type
+        # Whether the device may disable and enable the op.
+        availability?: op-availability
+        # Whether the device has the op disabled right now.
+        disabled?: bool
+        # The longest request composed from the schema.
+        request-max-len?: uint
+        # The reply buffer an action needs, zero for one that answers nothing.
+        action-reply-max-len?: uint
+        # The shortest reply buffer a query takes.
+        query-reply-min-len?: uint
+        # The reply buffer length the family suggests for a query.
+        query-reply-suggested-len?: uint
+        # The access a file description needs to execute the op.
+        fd-access?: op-fd-access
+        # The longest error information the op can return.
+        error-info-max-len?: uint
+
+  # The request and reply ABI of one op, whether or not it can be called right
+  # now. A removed op answers as one that was never declared.
+  op-schema-get:
+    type: query
+    fd-access: read
+    request:
+      # The ID of the op to describe.
+      id: uint(1..)
+    reply:
+      # The root of the op's request tree, absent when it has no request.
+      request?: record schema-node
+      # The root of its reply tree, absent when it has no reply.
+      reply?: record schema-node
