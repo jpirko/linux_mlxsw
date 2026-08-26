@@ -16,6 +16,7 @@ sys.path.append(pathlib.Path(__file__).resolve().parents[1].as_posix())
 from ctlvgen.lib import cgen  # noqa: E402
 from ctlvgen.lib import gen_kernel  # noqa: E402
 from ctlvgen.lib import gen_uapi  # noqa: E402
+from ctlvgen.lib import gen_user  # noqa: E402
 from ctlvgen.lib import semantics  # noqa: E402
 from ctlvgen.lib import spec  # noqa: E402
 from ctlvgen.lib import tree  # noqa: E402
@@ -27,6 +28,8 @@ GENERATORS: dict[tuple[str, str], Callable[..., str]] = {
     ('uapi', 'header'): gen_uapi.render,
     ('kernel', 'header'): gen_kernel.render_header,
     ('kernel', 'source'): gen_kernel.render_source,
+    ('user', 'header'): gen_user.render_header,
+    ('user', 'source'): gen_user.render_source,
 }
 
 
@@ -50,7 +53,7 @@ def main() -> int:
                         help='regenerate every file in the output manifests '
                              'and every ABI snapshot')
     action.add_argument('--mode',
-                        choices=('uapi', 'kernel'),
+                        choices=('uapi', 'kernel', 'user'),
                         help='generate the files of this mode')
     parser.add_argument('--schema-only', action='store_true',
                         help='omit the family API from kernel output')
@@ -105,6 +108,9 @@ def main() -> int:
         family = semantics.load(paths)
         if args.validate:
             cgen.symbols(family)
+            # The root family has no binding: libctlv is that binding.
+            if family.name != spec.CORE_FAMILY_NAME:
+                cgen.user_symbols(family)
         else:
             assert file is not None
             _generate(args, file, family)

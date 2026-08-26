@@ -30,10 +30,16 @@ lint:
 	python3 -m pyflakes $(PYSRC)
 	python3 -m mypy $(PYSRC)
 
+# The C half of this directory: the userspace library, which is not generated
+# and not Python, so it is its own target rather than part of the checks above.
+programs:
+	$(MAKE) -C libctlv
+
 clean:
 	rm -rf ctlvgen/__pycache__
 	rm -rf ctlvgen/lib/__pycache__
 	rm -rf ctlvgen.egg-info
 	rm -rf build
+	$(MAKE) -C libctlv clean
 
-.PHONY: all regen lint clean
+.PHONY: all regen lint programs clean

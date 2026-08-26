@@ -118,6 +118,21 @@ The op ID and the types come from the family's generated UAPI header.
 Before the family sees the request, the kernel checks it against the
 specification: ``index`` must be at most 4095 and ``label`` at most 63 bytes.
 
+``libctlv`` and the generated bindings build and send the same message:
+
+.. code-block:: c
+
+    struct ctlv_error error;
+    struct ctlv_msg *req;
+    struct ctlv_dev *dev;
+
+    /* Error checks left out. */
+    ctlv_open("ctlv-example", 0, O_RDWR, &dev);
+    ctlv_example_item_set_request_new(&req);
+    ctlv_example_item_set_index_put(req, 3);
+    ctlv_example_item_set_label_put(req, "ab");
+    ctlv_example_item_set(dev, req, &error);
+
 The sections below define each piece: the device, the message format, the
 ioctl, queries, blobs and introspection, and then the rules of compatibility.
 
@@ -410,6 +425,8 @@ defined flags. The root cannot carry the flag, and replies never do.
 
 So the kernel acts on what it knows and ignores the rest. A caller that needs
 to know which of its fields will be acted on asks ``op-schema-get`` first.
+``libctlv`` sets the flag with ``ctlv_msg_ignore_if_unknown()`` on the TLV
+written last.
 
 Executing an operation
 ======================

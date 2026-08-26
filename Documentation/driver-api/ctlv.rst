@@ -312,7 +312,7 @@ driver selects its optional operations and their initial dynamic state, see
 Hooks and availability. ``ctlv_publish()`` makes operations live, and only then
 may the node be added, as a program may open it as soon as it appears.
 ``ctlv_device_add()`` adds the node, whose uevent names the family; that is how
-udev finds the device. Destruction is the reverse:
+libctlv and udev find the device. Destruction is the reverse:
 
 .. code-block:: c
 
