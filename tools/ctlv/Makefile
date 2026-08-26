@@ -42,10 +42,12 @@ lint:
 	python3 -m pycodestyle $(PYSRC)
 	python3 -m pyflakes $(PYSRC)
 
-# The C half of this directory: the userspace library, which is not generated
-# and not Python, so it is its own target rather than part of the checks above.
+# The C half of this directory: the userspace library, and the tool that drives
+# a device it was never compiled against. Neither is generated and neither is
+# Python, so they are their own target rather than part of the checks above.
 programs:
 	$(MAKE) -C libctlv
+	$(MAKE) -C ctlvctl
 
 regen:
 	@./ctlv-regen.sh
@@ -61,5 +63,6 @@ clean:
 	rm -rf ctlvgen.egg-info
 	rm -rf build
 	$(MAKE) -C libctlv clean
+	$(MAKE) -C ctlvctl clean
 
 .PHONY: all validate abi-check abi-update lint programs regen check-regen clean
