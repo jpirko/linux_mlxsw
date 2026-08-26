@@ -397,38 +397,8 @@ Tests and examples
     The ``ctlv-test`` family implementation.
 
 ``drivers/ctlv/tests/ctlv_test_child.c``
-    A second module registering the family that inherits the above, which is
-    the shape a vendor extension has. It shares no code with the parent family
-    implementation: it answers the one op it declares, fills the extension
-    point left for it, and inherits every other op from the module it depends
-    on.
+    A separately built inheriting family and extension-point fill.
 
-``drivers/ctlv/tests/*_kunit.c``
-    Unit tests of CTLV parsing, serialization, metadata, blobs, events and
-    registration.
-
-Each test module has a debugfs directory named after its family. Its
-``device_add`` and ``device_remove`` controls create and destroy numbered
-instances; creation also selects whether optional ops are withheld. The same
-directory holds the hooks a test makes refuse and the records it reads back, so
-one run says which family answered what.
-
-The test family also carries deliberate misbehaviour, so CTLV can be tested
-against a family implementation that gets it wrong: a device that withholds
-operations, and callbacks written to write more than their schema allows or
-claim the wrong length. Those are not patterns to copy.
-
-Configuration
-=============
-
-``CONFIG_CTLV``
-    CTLV. A family implementation selects it.
-
-``CONFIG_CTLV_TEST``
-    The ``ctlv-test`` family, as a module, for the selftests to run against.
-
-``CONFIG_CTLV_TEST_CHILD``
-    The ``ctlv-test-child`` family, as a module of its own.
-
-``CONFIG_CTLV_KUNIT_TEST``
-    The KUnit suites for CTLV internals.
+``drivers/ctlv/tests/*_kunit.c`` and ``tools/testing/selftests/ctlv/``
+    Core unit tests plus raw-wire, generated-binding, allocation-failure, and
+    mutation selftests.
