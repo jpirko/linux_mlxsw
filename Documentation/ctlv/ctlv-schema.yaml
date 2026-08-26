@@ -1,0 +1,299 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+$id: http://kernel.org/schemas/ctlv/ctlv-schema.yaml#
+$schema: https://json-schema.org/draft-07/schema
+
+# The syntax gate for a CTLV family specification: permitted keys, their shapes
+# and the closed sets of keywords. Anything needing more than one declaration at
+# a time is checked by tools/ctlv/ctlvgen/lib/semantics.py.
+
+$defs:
+  name:
+    description: Kebab-case identifier. A dot is reserved for selectors.
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+
+  selector:
+    description: |
+      A named attr set, a whole attr group, or one exact attr as
+      "group.attr". There are no tuple selectors and no cross-family
+      qualification.
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)?$
+
+  selectors:
+    oneOf:
+      - $ref: '#/$defs/selector'
+      - type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/selector'
+
+  uint:
+    type: integer
+    minimum: 0
+
+  sint:
+    type: integer
+
+  max-occurrences:
+    description: |
+      A finite positive count, or unlimited, which is reachable only from
+      query replies.
+    oneOf:
+      - type: integer
+        minimum: 1
+      - const: unlimited
+
+  unit:
+    description: Framework-owned unit, matching enum ctlv_unit.
+    enum: [ seconds, hertz, bytes, celsius ]
+
+  value-list:
+    description: An enum or a flags definition.
+    type: object
+    required: [ name, values ]
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/$defs/name'
+      values:
+        description: |
+          Value names in declaration order. Enum values are numbered from 1
+          because 0 is reserved; flag bits are numbered from bit 0. Both are
+          append-only.
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/name'
+
+  blob:
+    type: object
+    required: [ direction, allowed-backings, max-length ]
+    additionalProperties: false
+    properties:
+      direction:
+        description: How the family may use the described memory.
+        enum: [ input, output, inout ]
+      allowed-backings:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          enum: [ va, memfd, dma-buf ]
+      max-length:
+        description: |
+          Authoritative maximum external payload length for this placement,
+          independent of the inline message limit.
+        type: integer
+        minimum: 1
+      alignment:
+        description: Required alignment of the described address or offset.
+        type: integer
+        minimum: 1
+
+  attr:
+    description: |
+      One attr declaration. Exactly one primary form out of type, enum,
+      flags, attrs and blob must be present. optional-attrs and recursive
+      may only accompany attrs.
+    type: object
+    required: [ name ]
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/$defs/name'
+      type:
+        description: |
+          Primitive payload. Integers are always 64-bit, and a bool is one
+          byte holding zero or one.
+        enum: [ uint, sint, bool, string, binary ]
+      enum:
+        description: Name of an enum definition; implies an unsigned payload.
+        $ref: '#/$defs/name'
+      flags:
+        description: Name of a flags definition; implies an unsigned payload.
+        $ref: '#/$defs/name'
+      attrs:
+        description: Nested payload, given as selectors.
+        $ref: '#/$defs/selectors'
+      optional-attrs:
+        description: Further nested payload whose placements are optional.
+        $ref: '#/$defs/selectors'
+      recursive:
+        description: |
+          The nested payload is one attr set that may contain this attr
+          again, describing a structure of any depth. Only a query reply can
+          hold one, since such a nest has no maximum length.
+        const: true
+      blob:
+        $ref: '#/$defs/blob'
+      min:
+        description: Inclusive minimum of an integer payload.
+        $ref: '#/$defs/sint'
+      max:
+        description: Inclusive maximum of an integer payload.
+        $ref: '#/$defs/sint'
+      length:
+        description: Exact payload length of a binary attr.
+        $ref: '#/$defs/uint'
+      min-length:
+        description: |
+          Minimum payload length, excluding the terminator of a string.
+        $ref: '#/$defs/uint'
+      max-length:
+        description: |
+          Maximum payload length, excluding the terminator of a string.
+        $ref: '#/$defs/uint'
+      unit:
+        $ref: '#/$defs/unit'
+      scale:
+        description: Decimal exponent applied to the payload.
+        $ref: '#/$defs/sint'
+      max-occurrences:
+        $ref: '#/$defs/max-occurrences'
+
+  attr-group:
+    description: |
+      A namespace of attr declarations. The group name is also the generated
+      symbol prefix of its attrs.
+    type: object
+    required: [ name, attrs ]
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/$defs/name'
+      attrs:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/attr'
+
+  attr-set:
+    description: |
+      A compositional schema unit. Either a stub, which may be filled once
+      by one descendant family, or a set of members.
+    type: object
+    required: [ name ]
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/$defs/name'
+      stub:
+        const: true
+      attrs:
+        $ref: '#/$defs/selectors'
+      optional-attrs:
+        $ref: '#/$defs/selectors'
+
+  placements:
+    description: The required and optional attr placements at one level.
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      attrs:
+        $ref: '#/$defs/selectors'
+      optional-attrs:
+        $ref: '#/$defs/selectors'
+
+  op:
+    type: object
+    required: [ name, type ]
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/$defs/name'
+      type:
+        description: |
+          action is invoked once and never fragments, query may fragment its
+          reply, and event is an unsolicited reply-only schema.
+        enum: [ action, query, event ]
+      availability:
+        description: |
+          Whether a family may enable and disable this op per device. fixed,
+          the default, is always enabled. dynamic is action and query only,
+          and is a permission rather than a state: every device starts with
+          the op enabled.
+        enum: [ fixed, dynamic ]
+      pre-post:
+        description: |
+          Whether this op gets a generated pre/post hook pair of its own,
+          which its family must implement, in addition to the family-wide
+          pair every family implements. Action and query only, and false by
+          default. Kernel implementation metadata: it reaches neither the
+          UAPI nor op-schema introspection.
+        type: boolean
+      request:
+        description: |
+          Omitted means a request root with no children. An event has no
+          request.
+        $ref: '#/$defs/placements'
+      reply:
+        description: |
+          Required on a query. Omitted on an action means ACK-only, while an
+          event always has a reply root, so omitting it there means a root
+          with no children.
+        $ref: '#/$defs/placements'
+      suggested-reply-length:
+        description: |
+          Query only. An omitted value is CTLV_DEFAULT_QUERY_REPLY_LEN raised
+          to the computed minimum. A declared value must be between that
+          minimum and CTLV_MAX_INLINE_MESSAGE_LEN.
+        type: integer
+        minimum: 1
+
+title: CTLV family
+description: Specification of one CTLV family schema
+type: object
+required: [ family ]
+additionalProperties: false
+properties:
+  family:
+    type: object
+    required: [ name ]
+    additionalProperties: false
+    properties:
+      name:
+        description: |
+          Registered family name. It carries no numeric ID; the ID comes
+          from the position in Documentation/ctlv/families.yaml.
+        $ref: '#/$defs/name'
+      inherits:
+        description: |
+          Name of the single direct parent family, which every family but
+          the root one names. The complete parent schema is inherited and
+          its definitions keep the parent's IDs. The name above must be
+          this name, one dash, and a local suffix.
+        $ref: '#/$defs/name'
+
+  enums:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/value-list'
+
+  flags:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/value-list'
+
+  attr-groups:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/attr-group'
+
+  attr-sets:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/attr-set'
+
+  ops:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/op'
