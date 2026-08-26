@@ -20,6 +20,10 @@ $defs:
         $ref: '#/$defs/path'
       kernel-source:
         $ref: '#/$defs/path'
+      user-header:
+        $ref: '#/$defs/path'
+      user-source:
+        $ref: '#/$defs/path'
 
   registry:
     type: object

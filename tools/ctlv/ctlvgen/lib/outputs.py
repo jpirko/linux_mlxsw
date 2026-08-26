@@ -11,6 +11,7 @@ import tempfile
 
 from . import gen_kernel
 from . import gen_uapi
+from . import gen_user
 from . import semantics
 from . import spec
 from . import yamlload
@@ -21,16 +22,21 @@ FLAVOURS = {
     'uapi-header': gen_uapi.render,
     'kernel-header': gen_kernel.render_header,
     'kernel-source': gen_kernel.render_source,
+    'user-header': gen_user.render_header,
+    'user-source': gen_user.render_source,
 }
 
 IDENTITIES = {
     'uapi-header': ('uapi', 'header', '.h'),
     'kernel-header': ('kernel', 'header', '.h'),
     'kernel-source': ('kernel', 'source', '.c'),
+    'user-header': ('user', 'header', '.h'),
+    'user-source': ('user', 'source', '.c'),
 }
 
-ROOT_FLAVOURS = frozenset(FLAVOURS)
-FAMILY_FLAVOURS = frozenset(FLAVOURS)
+USER_FLAVOURS = frozenset({'user-header', 'user-source'})
+ROOT_FLAVOURS = frozenset(FLAVOURS) - {'user-header'}
+FAMILY_FLAVOURS = frozenset(FLAVOURS) - USER_FLAVOURS
 FIXTURE_FLAVOURS = frozenset({
     'uapi-header', 'kernel-header', 'kernel-source',
 })
@@ -134,6 +140,8 @@ def load(paths):
             if not fixture and name == spec.CORE_FAMILY_NAME:
                 required = ROOT_FLAVOURS
             flavours = frozenset(record['outputs'])
+            if required == FAMILY_FLAVOURS and flavours & USER_FLAVOURS:
+                required |= USER_FLAVOURS
             if flavours != required:
                 missing = sorted(required - flavours)
                 extra = sorted(flavours - required)

@@ -14,6 +14,7 @@ from lib import cgen  # noqa: E402
 from lib import compat  # noqa: E402
 from lib import gen_kernel  # noqa: E402
 from lib import gen_uapi  # noqa: E402
+from lib import gen_user  # noqa: E402
 from lib import outputs  # noqa: E402
 from lib import semantics  # noqa: E402
 from lib import spec  # noqa: E402
@@ -24,6 +25,8 @@ from lib.errors import CtlvError  # noqa: E402
 # What each non-kernel --mode and file kind generates.
 GENERATORS = {
     ('uapi', 'header'): gen_uapi.render,
+    ('user', 'header'): gen_user.render_header,
+    ('user', 'source'): gen_user.render_source,
 }
 
 
@@ -61,7 +64,7 @@ def main():
     action.add_argument('--outputs-update', action='store_true',
                         help='regenerate every file in the output manifests')
     action.add_argument('--mode',
-                        choices=('uapi', 'kernel'),
+                        choices=('uapi', 'kernel', 'user'),
                         help='generate the files of this mode')
     parser.add_argument('--schema-only', action='store_true',
                         help='omit the family API from kernel output')
@@ -125,6 +128,9 @@ def main():
         family = semantics.load(paths)
         if args.validate:
             cgen.symbols(family)
+            # The root family has no binding: libctlv is that binding.
+            if family.name != spec.CORE_FAMILY_NAME:
+                cgen.user_symbols(family)
         elif args.abi_check:
             compat.registry_check(paths, spec.load_registry(paths))
             compat.check(family, paths.abi(family.name))
