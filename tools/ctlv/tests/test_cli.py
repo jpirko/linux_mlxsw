@@ -14,6 +14,7 @@ import unittest
 from tests import support
 
 CLI = support.TOOL_DIR / 'ctlvgen' / 'cli.py'
+REGEN = support.TOOL_DIR / 'ctlv-regen.sh'
 
 # argparse exit status for a usage error.
 USAGE_ERROR = 2
@@ -46,13 +47,28 @@ class TestUsage(unittest.TestCase):
         result = run_cli('--spec', 'nonexistent.yaml', '--validate', '--dump')
         self.assertEqual(USAGE_ERROR, result.returncode)
 
-    def test_kernel_output_options_are_scoped(self):
+    def test_output_options_are_scoped_to_their_actions(self):
+        result = run_cli('--spec', 'nonexistent.yaml', '--tree-check',
+                         '-o', 'output')
+        self.assertEqual(USAGE_ERROR, result.returncode)
+        result = run_cli('--spec', 'nonexistent.yaml', '--outputs-check',
+                         '--output-root', '')
+        self.assertEqual(USAGE_ERROR, result.returncode)
         result = run_cli('--spec', 'nonexistent.yaml', '--mode', 'uapi',
                          '--header', '--schema-only')
         self.assertEqual(USAGE_ERROR, result.returncode)
         result = run_cli('--spec', 'nonexistent.yaml', '--mode', 'kernel',
                          '--rst')
         self.assertEqual(USAGE_ERROR, result.returncode)
+
+    def test_regen_requires_a_nonempty_search_directory(self):
+        for args in (('-p',), ('-p', '')):
+            with self.subTest(args=args):
+                result = subprocess.run(
+                    [str(REGEN), *args], capture_output=True, text=True,
+                    check=False)
+                self.assertEqual(1, result.returncode)
+                self.assertIn('needs a', result.stderr)
 
 
 class TestCheckedInSpecs(unittest.TestCase):
@@ -81,6 +97,14 @@ class TestCheckedInSpecs(unittest.TestCase):
                 self.assertEqual('', result.stderr)
                 self.assertEqual(0, result.returncode)
 
+    def test_whole_tree_and_output_checks(self):
+        args = ('--spec', str(support.SPEC_DIR / 'ctlv.yaml'))
+        for action in ('--tree-check', '--outputs-check'):
+            with self.subTest(action=action):
+                result = run_cli(*args, action)
+                self.assertEqual('', result.stderr)
+                self.assertEqual(0, result.returncode)
+
     def test_a_dump_does_not_depend_on_the_hash_seed(self):
         for name in support.ALL_FAMILIES:
             with self.subTest(family=name):
@@ -102,8 +126,11 @@ class TestCheckedInSpecs(unittest.TestCase):
         self.assertEqual('ctlv-test-child', manifest['family'])
         self.assertEqual(['ctlv', 'ctlv-test', 'ctlv-test-child'],
                          [item['name'] for item in manifest['chain']])
-        self.assertIn('probe-get',
-                      [item['name'] for item in manifest['ops']])
+        ops = {item['name']: item for item in manifest['ops']}
+        self.assertIn('probe-get', ops)
+        self.assertEqual('read', ops['probe-get']['fd-access'])
+        self.assertEqual('read-write', ops['series-dump']['fd-access'])
+        self.assertNotIn('fd-access', ops['pinged'])
         self.assertIn('child.extra',
                       [item['name'] for item in manifest['attrs']])
         definitions = {item['name']: item
