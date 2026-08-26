@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+/*.json
+/ctlv
+/ctlv_bent
+/ctlv_compat32
+/ctlvctl

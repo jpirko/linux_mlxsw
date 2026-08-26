@@ -885,4 +885,6 @@ Python needs only that directory and json-c. ``ctlvgen --spec <family>.yaml
 O=<dir> headers``, ``make O=<dir> tools/ctlv`` builds ``ctlvctl`` into
 ``<dir>/tools/ctlv/ctlvctl`` against that tree's headers, for another
 architecture with ``CROSS_COMPILE`` or ``LLVM`` as the kernel takes them;
-``PKG_CONFIG`` names the ``pkg-config`` that finds the target's json-c.
+``PKG_CONFIG`` names the ``pkg-config`` that finds the target's json-c. The
+CTLV selftests build and install a ``ctlvctl`` of their own, with the
+families' ``.json`` files.
