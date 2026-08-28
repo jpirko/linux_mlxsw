@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config CTLV_TEST
+	tristate "CTLV test device"
+	select CTLV
+	select DEBUG_FS
+	help
+	  A CTLV family with no hardware behind it, implementing ctlv-test so
+	  that the kselftests in tools/testing/selftests/ctlv/ can drive CTLV
+	  from userspace.
+	  Every op it answers exists because a test needs that exact shape, so
+	  some of them behave badly on purpose.
+
+	  Its debugfs directory controls which devices exist and arranges an
+	  op's test conditions.
+
+	  If you are unsure, say N.
+
+config CTLV_TEST_MISC
+	tristate "CTLV test device on a file of another subsystem"
+	depends on CTLV_TEST
+	help
+	  A ctlv-test device on a misc device, /dev/ctlv-test-misc, whose read
+	  answers for the misc device itself. The selftests drive it as a
+	  subsystem's own file that also takes CTLV ioctls, with events on a
+	  file of their own.
+
+	  If you are unsure, say N.
