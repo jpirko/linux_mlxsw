@@ -393,15 +393,32 @@ Tests and examples
     Attribute forms, nesting, actions, queries, events, blobs, availability,
     hooks, and an extension point.
 
+``drivers/ctlv/tests/ctlv_test.c``
+    The ``ctlv-test`` family implementation.
+
 ``drivers/ctlv/tests/*_kunit.c``
     Unit tests of CTLV parsing, serialization, metadata, blobs, events and
     registration.
+
+A device of the test family is made and taken away by ``mkdir`` and ``rmdir``
+under ``/sys/kernel/config/ctlv-test/``, one directory per device, and what a
+device is to publish is written there before ``live`` registers it. The
+debugfs directory ``/sys/kernel/debug/ctlv-test/`` carries the hooks a test
+makes refuse and the records it reads back.
+
+The test family also carries deliberate misbehaviour, so CTLV can be tested
+against a family implementation that gets it wrong: a device that withholds
+operations, and callbacks written to write more than their schema allows or
+claim the wrong length. Those are not patterns to copy.
 
 Configuration
 =============
 
 ``CONFIG_CTLV``
     CTLV. A family implementation selects it.
+
+``CONFIG_CTLV_TEST``
+    The ``ctlv-test`` family, as a module, for the selftests to run against.
 
 ``CONFIG_CTLV_KUNIT_TEST``
     The KUnit suites for CTLV internals.

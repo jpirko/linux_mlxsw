@@ -27,3 +27,9 @@ CFLAGS_tests/metadata_kunit.o := $(ctlv-kunit-cflags)
 CFLAGS_tests/registration_kunit.o := $(ctlv-kunit-cflags)
 CFLAGS_tests/ctlv_fixture_gen.o := $(ctlv-kunit-cflags)
 CFLAGS_tests/ctlv_fixture_child_gen.o := $(ctlv-kunit-cflags)
+
+# The test device and the generated kernel interface of its family.
+obj-$(CONFIG_CTLV_TEST) += ctlv-test.o
+
+ctlv-test-y += tests/ctlv_test.o \
+	       tests/ctlv_test_gen.o
