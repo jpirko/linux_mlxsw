@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-test-child family, from
+# Documentation/ctlv/specs/ctlv-test-child.yaml, written by
+# "make -C tools/ctlv regen".
+#
+# Updating the file is how a UAPI change gets reviewed; an update that
+# removes or renumbers anything, narrows a bound, or makes a member required
+# is an ABI break, whatever the file says afterwards.
+family: {name: ctlv-test-child, id: 4, inherits: ctlv-test}
+enums:
+  echo-variant: {plain: 1, fancy: 2}
+records:
+  extension-point:
+    id: 0x00010000
+    fields:
+      extra: {number: 1, type: uint, optional: true}
+  extra-noop request:
+    id: 0x80010000
+fills: {extension-point: extension-point}
+ops:
+  extra-noop: {id: 1, type: action, request: extra-noop request}

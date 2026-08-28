@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# A family that inherits ctlv-test, so one selftest run covers a device whose op
+# table is entirely its own and a device whose table is mostly inherited. Its
+# name carries its parent's, as every child name must.
+family: ctlv-test-child
+inherits: ctlv-test
+
+enums:
+  # Fills ctlv-test's echo-variant.
+  echo-variant:
+    # The first value, which means nothing of its own.
+    - plain
+    # The second and highest, likewise.
+    - fancy
+
+records:
+  # Fills ctlv-test's extension-point, which probe-get's reply carries.
+  extension-point:
+    # The one member the child adds, wherever the extension point is.
+    extra?: uint
+
+ops:
+  # The child's one op of its own, answered with nothing.
+  extra-noop:
+    type: action

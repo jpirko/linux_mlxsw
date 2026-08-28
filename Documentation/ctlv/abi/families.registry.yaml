@@ -8,3 +8,4 @@ families:
   - ctlv-attestation
   - ctlv-attestation-tdx
   - ctlv-test
+  - ctlv-test-child
