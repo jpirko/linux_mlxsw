@@ -396,15 +396,22 @@ Tests and examples
 ``drivers/ctlv/tests/ctlv_test.c``
     The ``ctlv-test`` family implementation.
 
+``drivers/ctlv/tests/ctlv_test_child.c``
+    A second module registering the family that inherits the above, which is
+    the shape a vendor extension has. It shares no code with the parent family
+    implementation: it answers the one op it declares, fills the extension
+    point left for it, and inherits every other op from the module it depends
+    on.
+
 ``drivers/ctlv/tests/*_kunit.c``
     Unit tests of CTLV parsing, serialization, metadata, blobs, events and
     registration.
 
-A device of the test family is made and taken away by ``mkdir`` and ``rmdir``
-under ``/sys/kernel/config/ctlv-test/``, one directory per device, and what a
-device is to publish is written there before ``live`` registers it. The
-debugfs directory ``/sys/kernel/debug/ctlv-test/`` carries the hooks a test
-makes refuse and the records it reads back.
+Each test module has a debugfs directory named after its family. Its
+``device_add`` and ``device_remove`` controls create and destroy numbered
+instances; creation also selects whether optional ops are withheld. The same
+directory holds the hooks a test makes refuse and the records it reads back, so
+one run says which family answered what.
 
 The test family also carries deliberate misbehaviour, so CTLV can be tested
 against a family implementation that gets it wrong: a device that withholds
@@ -419,6 +426,9 @@ Configuration
 
 ``CONFIG_CTLV_TEST``
     The ``ctlv-test`` family, as a module, for the selftests to run against.
+
+``CONFIG_CTLV_TEST_CHILD``
+    The ``ctlv-test-child`` family, as a module of its own.
 
 ``CONFIG_CTLV_KUNIT_TEST``
     The KUnit suites for CTLV internals.

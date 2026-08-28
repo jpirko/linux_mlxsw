@@ -49,4 +49,15 @@ config CTLV_TEST
 
 	  If you are unsure, say N.
 
+config CTLV_TEST_CHILD
+	tristate "CTLV test device of an inheriting family"
+	depends on CTLV_TEST
+	help
+	  The same, for the ctlv-test-child family, which inherits ctlv-test
+	  and adds one op of its own. A separate module, so that the selftests
+	  cover an inheritance chain crossing a module boundary, with a debugfs
+	  directory of its own.
+
+	  If you are unsure, say N.
+
 endif # CTLV
