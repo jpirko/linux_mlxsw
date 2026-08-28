@@ -752,15 +752,34 @@ The worked example
     Every declaration form the schema language has, including an extension
     point that its child family fills.
 
+``drivers/ctlv/tests/ctlv_test.c``
+    The driver: an action with no reply, an action with a reply, a query that
+    fragments inside two levels of nesting, an event, a blob operation over
+    all three backings, dynamic availability, and both hook pairs.
+
 ``drivers/ctlv/tests/*_kunit.c``
     Unit tests of the framework's own parsing, serialization, metadata, blobs,
     events and registration.
+
+A device of the test family is made and taken away by ``mkdir`` and ``rmdir``
+under ``/sys/kernel/config/ctlv-test/``, one directory per device, and what a
+device is to publish is written there before ``live`` registers it. The
+debugfs directory ``/sys/kernel/debug/ctlv-test/`` carries the hooks a test
+makes refuse and the records it reads back.
+
+The test family also carries deliberate misbehaviour, so the framework can be
+tested against a family that gets it wrong: a device that withholds
+operations, and callbacks written to write more than their schema allows or to
+claim the wrong length. Those are not patterns to copy.
 
 Configuration
 =============
 
 ``CONFIG_CTLV``
     The framework. A family driver selects it.
+
+``CONFIG_CTLV_TEST``
+    The ``ctlv-test`` family, as a module, for the selftests to run against.
 
 ``CONFIG_CTLV_KUNIT_TEST``
     The KUnit suites for the framework's internals.

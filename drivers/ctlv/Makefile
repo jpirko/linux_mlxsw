@@ -26,3 +26,9 @@ CFLAGS_tests/event_kunit.o := -I $(srctree)/$(src)/tests
 CFLAGS_tests/message_kunit.o := -I $(srctree)/$(src)/tests
 CFLAGS_tests/metadata_kunit.o := -I $(srctree)/$(src)/tests
 CFLAGS_tests/registration_kunit.o := -I $(srctree)/$(src)/tests
+
+# The test device and the generated kernel interface of its family.
+obj-$(CONFIG_CTLV_TEST) += ctlv-test.o
+
+ctlv-test-y += tests/ctlv_test.o \
+	       tests/ctlv_test_gen.o

@@ -34,4 +34,20 @@ config CTLV_KUNIT_TEST
 
 	  If you are unsure, say N.
 
+config CTLV_TEST
+	tristate "CTLV test device"
+	depends on CTLV
+	select DEBUG_FS
+	help
+	  A CTLV family driver with no hardware behind it, implementing the
+	  ctlv-test family so that the kselftests in
+	  tools/testing/selftests/ctlv/ can drive the framework from userspace.
+	  Every op it answers exists because a test needs that exact shape, so
+	  some of them behave badly on purpose.
+
+	  Its debugfs directory controls which devices exist and arranges an
+	  op's test conditions.
+
+	  If you are unsure, say N.
+
 endif # CTLV
