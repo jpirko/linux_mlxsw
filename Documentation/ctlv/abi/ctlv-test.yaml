@@ -1,0 +1,207 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-test family, written by
+# "make -C tools/ctlv abi-update".
+#
+# The checker compares this family's declarations and inherited stub fills
+# against this file. Updating it is how a UAPI change gets reviewed; an update
+# that removes or renumbers anything, narrows a bound, or makes a placement
+# required is an ABI break, whatever this file says afterwards.
+family: {name: ctlv-test, id: 3, inherits: ctlv, post-init: true,
+         pre-fini: true}
+enums:
+  echo-mode: {idle: 1, busy: 2, auto: 3}
+flags:
+  echo-quirk: {slow: 0, noisy: 1}
+attr-groups:
+  probe:
+    id: 1
+    attrs:
+      token: {id: 1, type: uint}
+      extension: {id: 2, type: nested}
+  echo:
+    id: 2
+    attrs:
+      u: {id: 1, type: uint, min: 1, max: 4096}
+      s: {id: 2, type: sint, min: -100, max: 100}
+      flag: {id: 3, type: bool}
+      mode: {id: 4, enum: echo-mode}
+      quirks: {id: 5, flags: echo-quirk}
+      text: {id: 6, type: string, min-length: 1, max-length: 15}
+      data: {id: 7, type: binary, min-length: 4, max-length: 32}
+      count: {id: 8, type: uint, max-occurrences: 3}
+      item: {id: 9, type: nested, max-occurrences: 2}
+      region: {id: 10, blob: input, backings: [va, memfd, dma-buf],
+               max-length: 4096, alignment: 8}
+      page: {id: 11, blob: output, backings: [memfd], max-length: 65536,
+             alignment: 4096}
+  item:
+    id: 3
+    attrs:
+      index: {id: 1, type: uint, max: 7}
+      label: {id: 2, type: string, max-length: 7}
+      leaf: {id: 3, type: nested}
+  series:
+    id: 4
+    attrs:
+      chunks: {id: 1, type: uint, max: 8}
+      items: {id: 2, type: uint, max: 8}
+      values: {id: 3, type: uint, max: 8}
+      totals: {id: 4, type: uint, max: 8}
+      chunk: {id: 5, type: nested, max-occurrences: unlimited}
+      item: {id: 6, type: nested, max-occurrences: unlimited}
+      value: {id: 7, type: uint, max-occurrences: unlimited}
+      total: {id: 8, type: uint, max-occurrences: unlimited}
+      index: {id: 9, type: uint, max: 8}
+  ping:
+    id: 5
+    attrs:
+      count: {id: 1, type: uint, max: 64}
+      serial: {id: 2, type: uint}
+      payload: {id: 3, type: uint, max: 1024}
+      abort: {id: 4, type: bool}
+      empty: {id: 5, type: bool}
+      filler: {id: 6, type: binary, max-length: 1024}
+  transfer:
+    id: 6
+    attrs:
+      source: {id: 1, blob: input, backings: [va, memfd, dma-buf],
+               max-length: 268435456, alignment: 8}
+      target: {id: 2, blob: output, backings: [va, memfd, dma-buf],
+               max-length: 268435456, alignment: 8}
+      scratch: {id: 3, blob: inout, backings: [va, memfd, dma-buf],
+                max-length: 268435456, alignment: 8}
+      piece: {id: 4, blob: input, backings: [va, memfd, dma-buf],
+              max-length: 1048576, max-occurrences: 4}
+      fill: {id: 5, type: uint, max: 255}
+      skip: {id: 6, type: bool}
+      twice: {id: 7, type: bool}
+      hold: {id: 8, type: bool}
+      sum: {id: 9, type: uint}
+      written: {id: 10, type: uint}
+      distinct: {id: 11, type: bool}
+attr-sets:
+  extension-point: {id: 1, stub: true}
+  token-info: {id: 2}
+  probe-report: {id: 3}
+  echo-leaf: {id: 4}
+  echo-item: {id: 5}
+  echo-message: {id: 6}
+  echo-reply: {id: 7}
+  series-item: {id: 8}
+  series-chunk: {id: 9}
+  series-request: {id: 10}
+  series-reply: {id: 11}
+  ping-request: {id: 12}
+  ping-report: {id: 13}
+  transfer-request: {id: 14}
+  transfer-report: {id: 15}
+ops:
+  noop:
+    abi: {id: 1, type: action, fd-access: read}
+  probe-get:
+    abi: {id: 2, type: query, fd-access: read, pre-post: true}
+    request: {optional-attrs: [probe.token]}
+    reply:
+      optional-attrs:
+        - probe.token
+        - probe.extension: {attrs: [extension-point]}
+  dynamic-noop:
+    abi: {id: 3, type: action, availability: dynamic, optional: true,
+          pre-post: true}
+  dynamic-toggle:
+    abi: {id: 4, type: action, optional: true}
+    request: {optional-attrs: [probe.token]}
+    reply: {optional-attrs: [probe.token]}
+  pinged:
+    abi: {id: 5, type: event}
+    reply: {}
+  echo:
+    abi: {id: 6, type: action}
+    request:
+      attrs: [echo.u]
+      optional-attrs:
+        - echo.s
+        - echo.flag
+        - echo.mode
+        - echo.quirks
+        - echo.text
+        - echo.data
+        - echo.count
+        - echo.item:
+            attrs: [item.index]
+            optional-attrs:
+              - item.label
+              - item.leaf: {attrs: [item.index]}
+        - echo.region
+        - echo.page
+        - probe.extension: {attrs: [extension-point]}
+  echo-reply:
+    abi: {id: 7, type: action}
+    request:
+      attrs: [echo.u]
+      optional-attrs:
+        - echo.s
+        - echo.flag
+        - echo.mode
+        - echo.quirks
+        - echo.text
+        - echo.data
+        - echo.count
+        - echo.item:
+            attrs: [item.index]
+            optional-attrs:
+              - item.label
+              - item.leaf: {attrs: [item.index]}
+        - echo.region
+        - echo.page
+        - probe.extension: {attrs: [extension-point]}
+    reply:
+      optional-attrs:
+        - echo.u
+        - echo.s
+        - echo.flag
+        - echo.mode
+        - echo.quirks
+        - echo.text
+        - echo.data
+        - echo.count
+        - echo.item:
+            attrs: [item.index]
+            optional-attrs:
+              - item.label
+              - item.leaf: {attrs: [item.index]}
+        - probe.extension: {attrs: [extension-point]}
+  series-dump:
+    abi: {id: 8, type: query, pre-post: true}
+    request:
+      optional-attrs: [series.chunks, series.items, series.values,
+                       series.totals]
+    reply:
+      optional-attrs:
+        - series.chunk:
+            attrs: [series.index]
+            optional-attrs:
+              - series.item:
+                  attrs: [series.index]
+                  optional-attrs: [series.value]
+        - series.total
+  ping:
+    abi: {id: 9, type: action}
+    request:
+      optional-attrs: [ping.count, ping.serial, ping.payload, ping.abort,
+                       ping.empty]
+  beeped:
+    abi: {id: 10, type: event}
+    reply:
+      attrs: [ping.serial]
+      optional-attrs: [ping.filler]
+  transfer:
+    abi: {id: 11, type: action}
+    request:
+      optional-attrs: [transfer.source, transfer.target, transfer.scratch,
+                       transfer.piece, transfer.fill, transfer.skip,
+                       transfer.twice, transfer.hold]
+    reply:
+      optional-attrs: [transfer.sum, transfer.written, transfer.distinct]

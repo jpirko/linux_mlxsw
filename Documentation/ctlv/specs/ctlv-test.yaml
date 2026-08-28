@@ -1,0 +1,411 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Synthetic family for kernel and userspace tests. Existing declarations are
+# ABI and are never reordered or removed.
+
+family:
+  name: ctlv-test
+  inherits: ctlv
+  post-init: true
+  pre-fini: true
+
+# Both exist to be sent a value nothing declared.
+enums:
+  - name: echo-mode
+    values:
+      - idle
+      - busy
+      - auto
+
+flags:
+  - name: echo-quirk
+    values:
+      - slow
+      - noisy
+
+attr-groups:
+  - name: probe
+    attrs:
+      - name: token
+        type: uint
+      - name: extension
+        attrs: extension-point
+
+  # One attr of every primary form, each bounded so that a request can be made
+  # to break exactly one rule.
+  - name: echo
+    attrs:
+      - name: u
+        type: uint
+        min: 1
+        max: 4096
+      - name: s
+        type: sint
+        min: -100
+        max: 100
+      - name: flag
+        type: bool
+      - name: mode
+        enum: echo-mode
+      - name: quirks
+        flags: echo-quirk
+      - name: text
+        type: string
+        min-length: 1
+        max-length: 15
+      - name: data
+        type: binary
+        min-length: 4
+        max-length: 32
+      - name: count
+        type: uint
+        max-occurrences: 3
+      - name: item
+        attrs: echo-item
+        max-occurrences: 2
+      # Two blobs: any backing at eight bytes, or a memfd at a page.
+      - name: region
+        blob:
+          direction: input
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 4096
+          alignment: 8
+      - name: page
+        blob:
+          direction: output
+          allowed-backings: [ memfd ]
+          max-length: 65536
+          alignment: 4096
+
+  # The members of the nest above, and of the nest inside it.
+  - name: item
+    attrs:
+      - name: index
+        type: uint
+        max: 7
+      - name: label
+        type: string
+        max-length: 7
+      - name: leaf
+        attrs: echo-leaf
+
+  # What a reply too long for one fragment is made of: an unlimited attr at
+  # three depths and one more beside the outermost, so a boundary can fall
+  # before a nest, inside any array, between the siblings, or at the last leaf.
+  - name: series
+    attrs:
+      - name: chunks
+        type: uint
+        max: 8
+      - name: items
+        type: uint
+        max: 8
+      - name: values
+        type: uint
+        max: 8
+      - name: totals
+        type: uint
+        max: 8
+      - name: chunk
+        attrs: series-chunk
+        max-occurrences: unlimited
+      - name: item
+        attrs: series-item
+        max-occurrences: unlimited
+      - name: value
+        type: uint
+        max-occurrences: unlimited
+      - name: total
+        type: uint
+        max-occurrences: unlimited
+      # Which chunk or item this is, written once however many fragments the
+      # nest holding it spans.
+      - name: index
+        type: uint
+        max: 8
+
+  # What a burst of events is made of: a serial to hold a record against its
+  # burst, and a filler long enough to overflow a queue after a known count.
+  - name: ping
+    attrs:
+      - name: count
+        type: uint
+        max: 64
+      - name: serial
+        type: uint
+      - name: payload
+        type: uint
+        max: 1024
+      # Build every event of the burst and throw it away instead of emitting it.
+      - name: abort
+        type: bool
+      # Emit the event that carries nothing: a header and an empty root.
+      - name: empty
+        type: bool
+      - name: filler
+        type: binary
+        max-length: 1024
+
+  # One blob descriptor of each direction, and what to do with the bytes each
+  # points at. A quarter of a gibibyte, more than an inline message can hold.
+  - name: transfer
+    attrs:
+      - name: source
+        blob:
+          direction: input
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 268435456
+          alignment: 8
+      - name: target
+        blob:
+          direction: output
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 268435456
+          alignment: 8
+      - name: scratch
+        blob:
+          direction: inout
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 268435456
+          alignment: 8
+      # A blob a request may carry more than one of, each its own acquisition.
+      - name: piece
+        blob:
+          direction: input
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 1048576
+          alignment: 1
+        max-occurrences: 4
+      # What the pattern a write leaves behind is seeded from.
+      - name: fill
+        type: uint
+        max: 255
+      # Resolve nothing at all, the descriptors being valid and unused.
+      - name: skip
+        type: bool
+      # Resolve the source twice, two calls being two acquisitions.
+      - name: twice
+        type: bool
+      # Hold everything resolved until the module is told to let go, so a test
+      # can close, unmap or reuse what a descriptor named while the kernel has
+      # it.
+      - name: hold
+        type: bool
+      # What every readable byte added up to, and how many bytes were written.
+      - name: sum
+        type: uint
+      - name: written
+        type: uint
+      # Whether resolving one descriptor twice produced two objects.
+      - name: distinct
+        type: bool
+
+attr-sets:
+  # Filled by ctlv-test-child, so one selftest run sees both states.
+  - name: extension-point
+    stub: true
+
+  # Every member optional, so a message the root rules accept is complete.
+  - name: token-info
+    optional-attrs: probe.token
+
+  - name: probe-report
+    optional-attrs:
+      - probe.token
+      - probe.extension
+
+  # The third level, where a nest inside a nest ends.
+  - name: echo-leaf
+    attrs: item.index
+
+  - name: echo-item
+    attrs: item.index
+    optional-attrs:
+      - item.label
+      - item.leaf
+
+  # One required member, so a request missing it is refused for that and not
+  # for being empty; everything else optional, one shape per request.
+  - name: echo-message
+    attrs: echo.u
+    optional-attrs:
+      - echo.s
+      - echo.flag
+      - echo.mode
+      - echo.quirks
+      - echo.text
+      - echo.data
+      - echo.count
+      - echo.item
+      - echo.region
+      - echo.page
+      - probe.extension
+
+  # The same shape without the two blobs: a blob describes memory of the
+  # caller's, so a reply never carries one.
+  - name: echo-reply
+    optional-attrs:
+      - echo.u
+      - echo.s
+      - echo.flag
+      - echo.mode
+      - echo.quirks
+      - echo.text
+      - echo.data
+      - echo.count
+      - echo.item
+      - probe.extension
+
+  # The two inner levels of a fragmented reply. The required index is what a
+  # fragment is not held to: a nest a boundary fell inside re-emits without it.
+  - name: series-item
+    attrs: series.index
+    optional-attrs: series.value
+
+  - name: series-chunk
+    attrs: series.index
+    optional-attrs: series.item
+
+  # How much to answer with, all of it optional so that absent means none.
+  - name: series-request
+    optional-attrs:
+      - series.chunks
+      - series.items
+      - series.values
+      - series.totals
+
+  - name: series-reply
+    optional-attrs:
+      - series.chunk
+      - series.total
+
+  # How much of a burst to emit; a request carrying nothing is one empty event.
+  - name: ping-request
+    optional-attrs:
+      - ping.count
+      - ping.serial
+      - ping.payload
+      - ping.abort
+      - ping.empty
+
+  # What one event of a burst carries: which of the burst it is, and the filler.
+  - name: ping-report
+    attrs: ping.serial
+    optional-attrs: ping.filler
+
+  # Which blobs to work on and what to do with them, all optional: one shape
+  # per request, and a request carrying nothing resolves nothing.
+  - name: transfer-request
+    optional-attrs:
+      - transfer.source
+      - transfer.target
+      - transfer.scratch
+      - transfer.piece
+      - transfer.fill
+      - transfer.skip
+      - transfer.twice
+      - transfer.hold
+
+  # What the kernel read, what it wrote, and what resolving twice produced.
+  - name: transfer-report
+    optional-attrs:
+      - transfer.sum
+      - transfer.written
+      - transfer.distinct
+
+ops:
+  # Answers with nothing: a caller may pass neither buffer.
+  - name: noop
+    type: action
+    fd-access: read
+
+  # The request-framing cases are driven through this one, a query changing
+  # nothing and so taking a malformed request as often as a test likes.
+  - name: probe-get
+    type: query
+    fd-access: read
+    pre-post: true
+    request:
+      attrs: token-info
+    reply:
+      attrs: probe-report
+
+  # Disabled before publication on the first device of this family and enabled
+  # on the first of every family inheriting it, so one selftest run sees both
+  # initial states. Its hook pair shows a disabled op running hooks, not
+  # callback.
+  # Optional as well, so one op carries all three of the decisions a family
+  # makes about one: opt in, hooks of its own, and a state to flip.
+  - name: dynamic-noop
+    type: action
+    availability: dynamic
+    optional: true
+    pre-post: true
+
+  # Flips dynamic-noop on the device it runs on. Its bounded reply makes the
+  # reply-length precheck observable: too small a buffer must flip nothing.
+  # Optional without being dynamic, which is the other half of the pairing.
+  - name: dynamic-toggle
+    type: action
+    optional: true
+    request:
+      attrs: token-info
+    reply:
+      attrs: token-info
+
+  # Proves an event ID is not an executable op, and that a generated table
+  # carries an event with no callback of its own.
+  - name: pinged
+    type: event
+
+  # Reads its whole request through the generated getters and logs what they
+  # returned. Every validation case is driven through it, answered by an ACK.
+  - name: echo
+    type: action
+    request:
+      attrs: echo-message
+
+  # The same request answered rather than logged: every attr found is written
+  # back through the serializer of its form.
+  - name: echo-reply
+    type: action
+    request:
+      attrs: echo-message
+    reply:
+      attrs: echo-reply
+
+  # Answered in as many fragments as the caller's buffer needs, the request
+  # saying how long the whole of it is, so a case knows where every boundary
+  # falls. Its hook pair shows a chain running once per fragment.
+  - name: series-dump
+    type: query
+    pre-post: true
+    request:
+      attrs: series-request
+    reply:
+      attrs: series-reply
+    suggested-reply-length: 4096
+
+  # Emits a burst of events, as many and as long as the request asks, so a
+  # reader can be made to lose a known number by sizing its own queue.
+  - name: ping
+    type: action
+    request:
+      attrs: ping-request
+
+  # The event with a payload, emitted by the op above and by nothing else.
+  - name: beeped
+    type: event
+    reply:
+      attrs: ping-report
+
+  # Works on the memory its request describes rather than carries: it sums every
+  # readable byte, writes a pattern over every writable one, and answers with
+  # both. An action, a blob belonging to the callback the ioctl is executing.
+  - name: transfer
+    type: action
+    request:
+      attrs: transfer-request
+    reply:
+      attrs: transfer-report

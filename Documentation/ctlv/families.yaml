@@ -13,3 +13,4 @@ families:
   - ctlv
   - ctlv-attestation
   - ctlv-attestation-tdx
+  - ctlv-test

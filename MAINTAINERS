@@ -7023,6 +7023,7 @@ F:	drivers/ctlv/
 F:	include/linux/ctlv*.h
 F:	include/uapi/linux/ctlv*.h
 F:	tools/ctlv/
+F:	tools/testing/selftests/ctlv/
 
 CTU CAN FD DRIVER
 M:	Pavel Pisa <pisa@cmp.felk.cvut.cz>

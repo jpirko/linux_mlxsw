@@ -30,3 +30,12 @@ families:
       uapi-header: include/uapi/linux/ctlv_attestation_tdx_gen.h
       kernel-header: drivers/attestation/generated/ctlv_attestation_tdx_gen.h
       kernel-source: drivers/attestation/generated/ctlv_attestation_tdx_gen.c
+
+  - name: ctlv-test
+    source: Documentation/ctlv/specs/ctlv-test.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_test_gen.h
+      kernel-header: drivers/ctlv/tests/ctlv_test_gen.h
+      kernel-source: drivers/ctlv/tests/ctlv_test_gen.c
+      user-header: tools/testing/selftests/ctlv/ctlv_test_user_gen.h
+      user-source: tools/testing/selftests/ctlv/ctlv_test_user_gen.c
