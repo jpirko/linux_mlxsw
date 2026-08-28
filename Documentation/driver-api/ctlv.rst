@@ -11,7 +11,8 @@ device accepts, and the framework validates every message against that
 description before a callback sees it. The ABI is :doc:`/userspace-api/ctlv`;
 the generated reference pages are under :doc:`/ctlv/families/index`.
 
-The code here is a small invented family, ``ctlv-example``.
+The code here is a small invented family, ``ctlv-example``. The complete
+example in the tree is ``ctlv-test``, described at the end.
 
 The shape of the work
 =====================
@@ -741,6 +742,15 @@ A callback returns a negative errno, and that is what the ioctl returns. Where
 the framework itself refuses a message it also writes error information into
 the caller's reply buffer, naming the reason and the offset of the offending
 attribute. A driver does not build that; it adds its own errno and its reply.
+
+The worked example
+==================
+
+``ctlv-test`` is the most complete example in the tree:
+
+``Documentation/ctlv/specs/ctlv-test.yaml``
+    Every declaration form the schema language has, including an extension
+    point that its child family fills.
 
 Configuration
 =============
