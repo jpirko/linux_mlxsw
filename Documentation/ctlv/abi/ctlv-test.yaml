@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-test family, from
+# Documentation/ctlv/specs/ctlv-test.yaml, written by
+# "make -C tools/ctlv regen".
+#
+# Updating the file is how a UAPI change gets reviewed; an update that
+# removes or renumbers anything, narrows a bound, or makes a member required
+# is an ABI break, whatever the file says afterwards.
+family: {name: ctlv-test, id: 3, inherits: ctlv}
+enums:
+  echo-mode: {idle: 1, busy: 2, auto: 3}
+flags:
+  echo-quirk: {slow: 0, noisy: 1}
+records:
+  echo-values:
+    id: 0x00010000
+    fields:
+      u: {number: 1, type: uint, min: 1, max: 4096}
+      s: {number: 2, type: sint, min: -100, max: 100, optional: true}
+      flag: {number: 3, type: bool, optional: true}
+      mode: {number: 4, enum: echo-mode, optional: true}
+      quirks: {number: 5, flags: echo-quirk, optional: true}
+      text: {number: 6, type: string, min-length: 1, max-length: 15,
+             optional: true}
+      data: {number: 7, type: binary, min-length: 4, max-length: 32,
+             optional: true}
+      count: {number: 8, type: uint, max-occurrences: 3, optional: true}
+      item: {number: 9, record: echo-values.item, max-occurrences: 2,
+             optional: true}
+      extension: {number: 10, extension: extension-point, optional: true}
+      variant: {number: 11, enum: echo-variant, optional: true}
+  echo-values.item:
+    id: 0x00011000
+    fields:
+      index: {number: 1, type: uint, max: 7}
+      label: {number: 2, type: string, max-length: 7, optional: true}
+      leaf: {number: 3, record: echo-values.item.leaf, optional: true}
+  echo-values.item.leaf:
+    id: 0x00011100
+    fields:
+      index: {number: 1, type: uint, max: 7}
+  echo-message:
+    id: 0x00020000
+    fields:
+      region: {number: 1, blob: input, backings: [va, memfd, dma-buf],
+               max-length: 4K, alignment: 8, optional: true}
+      page: {number: 2, blob: output, backings: [memfd], max-length: 64K,
+             alignment: 4K, optional: true}
+    members: [$include echo-values]
+  token-info:
+    id: 0x00030000
+    fields:
+      token: {number: 1, type: uint, optional: true}
+  noop request:
+    id: 0x80010000
+  probe-get reply:
+    id: 0xc0020000
+    fields:
+      extension: {number: 1, extension: extension-point, optional: true}
+    members: [$include token-info]
+  dynamic-noop request:
+    id: 0x80030000
+  pinged payload:
+    id: 0xc0050000
+  echo-reply reply:
+    id: 0xc0070000
+    members: ['$include echo-values?']
+  series-get request:
+    id: 0x80080000
+    fields:
+      chunks: {number: 1, type: uint, max: 8, optional: true}
+      items: {number: 2, type: uint, max: 8, optional: true}
+      values: {number: 3, type: uint, max: 8, optional: true}
+      totals: {number: 4, type: uint, max: 8, optional: true}
+  series-get reply:
+    id: 0xc0080000
+    fields:
+      chunk: {number: 1, record: series-get chunk, max-occurrences: unlimited,
+              optional: true}
+      total: {number: 2, type: uint, max-occurrences: unlimited, optional: true}
+  series-get chunk:
+    id: 0xc0081000
+    fields:
+      index: {number: 1, type: uint, max: 8}
+      item: {number: 2, record: series-get chunk.item,
+             max-occurrences: unlimited, optional: true}
+  series-get chunk.item:
+    id: 0xc0081100
+    fields:
+      index: {number: 1, type: uint, max: 8}
+      value: {number: 2, type: uint, max-occurrences: unlimited, optional: true}
+  ping request:
+    id: 0x80090000
+    fields:
+      count: {number: 1, type: uint, max: 64, optional: true}
+      serial: {number: 2, type: uint, optional: true}
+      payload: {number: 3, type: uint, max: 1024, optional: true}
+      abort: {number: 4, type: bool, optional: true}
+      empty: {number: 5, type: bool, optional: true}
+  beeped payload:
+    id: 0xc00a0000
+    fields:
+      serial: {number: 1, type: uint}
+      filler: {number: 2, type: binary, max-length: 1K, optional: true}
+  transfer request:
+    id: 0x800b0000
+    fields:
+      source: {number: 1, blob: input, backings: [va, memfd, dma-buf],
+               max-length: 256M, alignment: 8, optional: true}
+      target: {number: 2, blob: output, backings: [va, memfd, dma-buf],
+               max-length: 256M, alignment: 8, optional: true}
+      scratch: {number: 3, blob: inout, backings: [va, memfd, dma-buf],
+                max-length: 256M, alignment: 8, optional: true}
+      piece: {number: 4, blob: input, backings: [va, memfd, dma-buf],
+              max-length: 1M, max-occurrences: 4, optional: true}
+      fill: {number: 5, type: uint, max: u8-max, optional: true}
+      skip: {number: 6, type: bool, optional: true}
+      twice: {number: 7, type: bool, optional: true}
+      hold: {number: 8, type: bool, optional: true}
+  transfer reply:
+    id: 0xc00b0000
+    fields:
+      sum: {number: 1, type: uint, optional: true}
+      written: {number: 2, type: uint, optional: true}
+      distinct: {number: 3, type: bool, optional: true}
+extensions: {extension-point: 1}
+enum-extensions: {echo-variant: 1}
+ops:
+  noop: {id: 1, type: action, fd-access: read, request: noop request}
+  probe-get: {id: 2, type: query, fd-access: read, pre-post: true,
+              request: token-info, reply: probe-get reply}
+  dynamic-noop: {id: 3, type: action, availability: dynamic, optional: true,
+                 pre-post: true, request: dynamic-noop request}
+  dynamic-toggle: {id: 4, type: action, optional: true, request: token-info,
+                   reply: token-info}
+  pinged: {id: 5, type: event, payload: pinged payload}
+  echo: {id: 6, type: action, request: echo-message}
+  echo-reply: {id: 7, type: action, request: echo-message,
+               reply: echo-reply reply}
+  series-get: {id: 8, type: query, pre-post: true, request: series-get request,
+               reply: series-get reply}
+  ping: {id: 9, type: action, request: ping request}
+  beeped: {id: 10, type: event, payload: beeped payload}
+  transfer: {id: 11, type: action, request: transfer request,
+             reply: transfer reply}

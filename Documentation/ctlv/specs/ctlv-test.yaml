@@ -1,0 +1,232 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Synthetic family for kernel and userspace tests. Existing declarations are
+# ABI and are never reordered or removed.
+family: ctlv-test
+inherits: ctlv
+
+enums:
+  # Exists to be sent a value nothing declared, as echo-quirk does.
+  echo-mode:
+    # The first value, which means nothing of its own.
+    - idle
+    # The second, likewise.
+    - busy
+    # The third and highest, likewise.
+    - auto
+  # An enum extension point, which ctlv-test-child fills.
+  echo-variant: extension
+
+flags:
+  # Exists to be sent a bit nothing declared, as echo-mode does a value.
+  echo-quirk:
+    # Bit 0, which means nothing of its own.
+    - slow
+    # Bit 1 and the highest, likewise.
+    - noisy
+
+records:
+  # One field of every schema kind, each bounded so that a request can be
+  # made to break exactly one rule.
+  echo-values:
+    # The one required field, an integer bounded on both sides.
+    u: uint(1..4096)
+    # A signed integer, bounded on both sides.
+    s?: sint(-100..100)
+    # A bool.
+    flag?: bool
+    # An enum.
+    mode?: echo-mode
+    # A flags.
+    quirks?: echo-quirk
+    # A string of 1 to 15 characters.
+    text?: string(1..15)
+    # A binary of 4 to 32 bytes.
+    data?: binary(4..32)
+    # An integer that may occur three times.
+    count[3]?: uint
+    # A record in place that may occur twice.
+    item[2]?:
+      # A member the item requires.
+      index: uint(..7)
+      # A member it may leave out.
+      label?: string(..7)
+      # The third level, where a record inside a record ends.
+      leaf?:
+        # The leaf's one member.
+        index: uint(..7)
+    # Filled by ctlv-test-child, and empty on a ctlv-test device.
+    extension?: extension extension-point
+    # Valued by ctlv-test-child, and taking nothing on a ctlv-test device.
+    variant?: echo-variant
+
+  # What echo and echo-reply take: echo-values and two blobs, which echo logs
+  # the arrival of without acquiring them.
+  echo-message:
+    $include: echo-values
+    # Any backing at eight bytes.
+    region?: blob(in, ..4K, align 8, va memfd dma-buf)
+    # A memfd at a page.
+    page?: blob(out, ..64K, align 4K, memfd)
+
+  # Every member optional, so a message the root rules accept is complete.
+  token-info:
+    # What probe-get answers with as it was sent.
+    token?: uint
+
+ops:
+  # Answers with nothing: a caller may pass neither buffer.
+  noop:
+    type: action
+    fd-access: read
+
+  # The request-framing cases are driven through this one, a query changing
+  # nothing and so taking a malformed request as often as a test likes.
+  probe-get:
+    type: query
+    fd-access: read
+    pre-post: true
+    request: record token-info
+    reply:
+      $include: token-info
+      # Filled by ctlv-test-child, so one selftest run sees both states.
+      extension?: extension extension-point
+
+  # Disabled before publication on the first device of this family and enabled
+  # on the first of every family inheriting it, so one selftest run sees both
+  # initial states. Its hook pair shows a disabled op running hooks, not
+  # callback.
+  # Optional as well, so one op carries all three of the decisions a family
+  # makes about one: opt in, hooks of its own, and a state to flip.
+  dynamic-noop:
+    type: action
+    availability: dynamic
+    optional: true
+    pre-post: true
+
+  # Flips dynamic-noop on the device it runs on. Its bounded reply makes the
+  # reply-length precheck observable: too small a buffer must flip nothing.
+  # Optional without being dynamic, which is the other half of the pairing.
+  dynamic-toggle:
+    type: action
+    optional: true
+    request: record token-info
+    reply: record token-info
+
+  # Proves an event ID is not an executable op, and that a generated table
+  # carries an event with no callback of its own.
+  pinged:
+    type: event
+
+  # Reads its whole request through the generated getters and logs what they
+  # returned. Every validation case is driven through it, answered by an ACK.
+  echo:
+    type: action
+    request: record echo-message
+
+  # The same request answered; a reply never carries a blob.
+  echo-reply:
+    type: action
+    request: record echo-message
+    reply:
+      $include: echo-values?
+
+  # Answered in as many fragments as the caller's buffer needs, the request
+  # saying how long the whole of it is, so a case knows where every boundary
+  # falls. Its hook pair shows a chain running once per fragment.
+  series-get:
+    type: query
+    pre-post: true
+    suggested-reply-length: 4K
+    # How much to answer with, absent meaning none.
+    request:
+      # How many chunks.
+      chunks?: uint(..8)
+      # How many items in each chunk.
+      items?: uint(..8)
+      # How many values in each item.
+      values?: uint(..8)
+      # How many totals after the chunks.
+      totals?: uint(..8)
+    # An unlimited field at three depths and one more beside the outermost, so
+    # a boundary can fall before a record, inside any array, between the
+    # siblings, or at the last leaf. The required index is what a fragment is
+    # not held to: a record a boundary fell inside re-emits without it.
+    reply:
+      # One chunk, as many as chunks asks for.
+      chunk[]?:
+        # The chunk's number, from one.
+        index: uint(..8)
+        # One item, as many as items asks for.
+        item[]?:
+          # The item's number in its chunk, from one.
+          index: uint(..8)
+          # One value, as many as values asks for, each the chunk's number
+          # times 100, plus the item's times 10, plus its own.
+          value[]?: uint
+      # One total, as many as totals asks for, numbered from one.
+      total[]?: uint
+
+  # Emits a burst of events, as many and as long as the request asks, so a
+  # reader can be made to lose a known number by sizing its own queue. A
+  # request carrying nothing is one empty event.
+  ping:
+    type: action
+    request:
+      # How many events, one when absent.
+      count?: uint(..64)
+      # Held against each event of the burst.
+      serial?: uint
+      # How many bytes of filler each event carries.
+      payload?: uint(..1024)
+      # Build every event of the burst and throw it away instead of emitting it.
+      abort?: bool
+      # Emit the event that carries nothing: a header and an empty root.
+      empty?: bool
+
+  # The event with a payload, emitted by the op above and by nothing else:
+  # which of the burst it is, and a filler long enough to overflow a queue
+  # after a known count.
+  beeped:
+    type: event
+    payload:
+      # The request's serial plus the event's place in its burst, from zero.
+      serial: uint
+      # As many bytes as the request's payload asks for, byte n being n % 256.
+      filler?: binary(..1K)
+
+  # Works on the memory its request describes rather than carries: it sums every
+  # readable byte, writes a pattern over every writable one, and answers with
+  # both. An action, a blob belonging to the callback the ioctl is executing.
+  # Every field is optional: one shape per request, and a request carrying
+  # nothing resolves nothing.
+  transfer:
+    type: action
+    request:
+      # What is summed. It and the two blobs below take up to a quarter of a
+      # gibibyte each, more than an inline message can hold.
+      source?: blob(in, ..256M, align 8, va memfd dma-buf)
+      # What the pattern is written over.
+      target?: blob(out, ..256M, align 8, va memfd dma-buf)
+      # What is summed and then written over.
+      scratch?: blob(inout, ..256M, align 8, va memfd dma-buf)
+      # A blob a request may carry more than one of, each its own acquisition.
+      piece[4]?: blob(in, ..1M, va memfd dma-buf)
+      # What the pattern a write leaves behind is seeded from.
+      fill?: uint(..u8-max)
+      # Resolve nothing at all, the descriptors being valid and unused.
+      skip?: bool
+      # Resolve the source twice, two calls being two acquisitions.
+      twice?: bool
+      # Hold everything resolved until the module is told to let go, so a test
+      # can close, unmap or reuse what a descriptor named while the kernel has
+      # it.
+      hold?: bool
+    reply:
+      # What every readable byte added up to.
+      sum?: uint
+      # How many bytes were written.
+      written?: uint
+      # Whether resolving one descriptor twice produced two objects.
+      distinct?: bool
