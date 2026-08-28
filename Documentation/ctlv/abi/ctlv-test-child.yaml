@@ -1,0 +1,1444 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-test-child family, written by
+# "make -C tools/ctlv abi-update".
+#
+# The compatibility checker compares the specification against this file, so
+# updating it is how a UAPI change gets reviewed. An update that removes or
+# renumbers anything, narrows a bound, or makes a placement required is an ABI
+# break, whatever this file says afterwards.
+family: ctlv-test-child
+family-id: 2
+parent: ctlv-test
+pre-init: true
+post-init: false
+pre-fini: true
+definitions:
+  op-type:
+    kind: enum
+    family-id: 0
+    values:
+      action: 1
+      query: 2
+      event: 3
+  op-availability:
+    kind: enum
+    family-id: 0
+    values:
+      fixed: 1
+      dynamic: 2
+  blob-type:
+    kind: enum
+    family-id: 0
+    values:
+      va: 1
+      memfd: 2
+      dma-buf: 3
+  blob-direction:
+    kind: enum
+    family-id: 0
+    values:
+      input: 1
+      output: 2
+      inout: 3
+  validation-reason:
+    kind: enum
+    family-id: 0
+    values:
+      malformed-message: 1
+      unknown-attr: 2
+      unknown-flag: 3
+      nesting-too-deep: 4
+      missing-attr: 5
+      too-many-occurrences: 6
+      value-out-of-range: 7
+      bad-length: 8
+      bad-string: 9
+      bad-blob-descriptor: 10
+      stale-generation: 11
+      noncontiguous-attr: 12
+  op-fd-access:
+    kind: enum
+    family-id: 0
+    values:
+      read: 1
+      read-write: 2
+  echo-mode:
+    kind: enum
+    family-id: 1
+    values:
+      idle: 1
+      busy: 2
+      auto: 3
+  echo-quirk:
+    kind: flags
+    family-id: 1
+    values:
+      slow: 0
+      noisy: 1
+groups:
+  family:
+    family-id: 0
+    group-id: 1
+    attrs:
+      id:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      name:
+        local-id: 2
+        kind: string
+        min-length: 0
+        max-length: 63
+        max-occurrences: 1
+      entry:
+        local-id: 3
+        kind: nested
+        max-occurrences: 0
+  blob:
+    family-id: 0
+    group-id: 2
+    attrs:
+      type:
+        local-id: 1
+        kind: enum
+        definition: blob-type
+        max-occurrences: 1
+      address:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      fd:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 2147483647
+        max-occurrences: 1
+      offset:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      length:
+        local-id: 5
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+  error:
+    family-id: 0
+    group-id: 3
+    attrs:
+      reason:
+        local-id: 1
+        kind: enum
+        definition: validation-reason
+        max-occurrences: 1
+      message:
+        local-id: 2
+        kind: string
+        min-length: 0
+        max-length: 255
+        max-occurrences: 1
+      bad-attr-offset:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      nest-offset:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      missing-attr-id:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      expected-generation:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      current-generation:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+  op:
+    family-id: 0
+    group-id: 4
+    attrs:
+      id:
+        local-id: 1
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+      type:
+        local-id: 2
+        kind: enum
+        definition: op-type
+        max-occurrences: 1
+      availability:
+        local-id: 3
+        kind: enum
+        definition: op-availability
+        max-occurrences: 1
+      disabled:
+        local-id: 4
+        kind: bool
+        max-occurrences: 1
+      request-max-len:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      action-reply-max-len:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      query-reply-min-len:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      query-reply-suggested-len:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      event-record-max-len:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      state-generation:
+        local-id: 10
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      entry:
+        local-id: 11
+        kind: nested
+        max-occurrences: 0
+      fd-access:
+        local-id: 12
+        kind: enum
+        definition: op-fd-access
+        max-occurrences: 1
+  schema:
+    family-id: 0
+    group-id: 5
+    attrs:
+      attr-id:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      kind:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-occurrences:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      min:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      min-length:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-length:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      flags-mask:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      unit:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      scale:
+        local-id: 10
+        kind: sint
+        min: -9223372036854775808
+        max: 9223372036854775807
+        max-occurrences: 1
+      blob-direction:
+        local-id: 11
+        kind: enum
+        definition: blob-direction
+        max-occurrences: 1
+      blob-backings:
+        local-id: 12
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      blob-max-length:
+        local-id: 13
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      blob-alignment:
+        local-id: 14
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      reenters:
+        local-id: 15
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+      attrs:
+        local-id: 16
+        kind: nested
+        max-occurrences: 0
+      optional-attrs:
+        local-id: 17
+        kind: nested
+        max-occurrences: 0
+      request:
+        local-id: 18
+        kind: nested
+        max-occurrences: 1
+      reply:
+        local-id: 19
+        kind: nested
+        max-occurrences: 1
+  event:
+    family-id: 0
+    group-id: 6
+    attrs:
+      op-id:
+        local-id: 1
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 256
+      queue-len:
+        local-id: 2
+        kind: uint
+        min: 1
+        max: 16777216
+        unit: bytes
+        scale: 0
+        max-occurrences: 1
+      queue-used:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        unit: bytes
+        scale: 0
+        max-occurrences: 1
+      first-sequence:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      last-sequence:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      dropped-count:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+  probe:
+    family-id: 1
+    group-id: 1
+    attrs:
+      token:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      extension:
+        local-id: 2
+        kind: nested
+        max-occurrences: 1
+  echo:
+    family-id: 1
+    group-id: 2
+    attrs:
+      u:
+        local-id: 1
+        kind: uint
+        min: 1
+        max: 4096
+        max-occurrences: 1
+      s:
+        local-id: 2
+        kind: sint
+        min: -100
+        max: 100
+        max-occurrences: 1
+      flag:
+        local-id: 3
+        kind: bool
+        max-occurrences: 1
+      mode:
+        local-id: 4
+        kind: enum
+        definition: echo-mode
+        max-occurrences: 1
+      quirks:
+        local-id: 5
+        kind: flags
+        definition: echo-quirk
+        max-occurrences: 1
+      text:
+        local-id: 6
+        kind: string
+        min-length: 1
+        max-length: 15
+        max-occurrences: 1
+      data:
+        local-id: 7
+        kind: binary
+        min-length: 4
+        max-length: 32
+        max-occurrences: 1
+      count:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 3
+      item:
+        local-id: 9
+        kind: nested
+        max-occurrences: 2
+      region:
+        local-id: 10
+        kind: blob
+        blob:
+          direction: input
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 4096
+          alignment: 8
+        max-occurrences: 1
+      page:
+        local-id: 11
+        kind: blob
+        blob:
+          direction: output
+          backings:
+            - memfd
+          max-length: 65536
+          alignment: 4096
+        max-occurrences: 1
+  item:
+    family-id: 1
+    group-id: 3
+    attrs:
+      index:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 7
+        max-occurrences: 1
+      label:
+        local-id: 2
+        kind: string
+        min-length: 0
+        max-length: 7
+        max-occurrences: 1
+      leaf:
+        local-id: 3
+        kind: nested
+        max-occurrences: 1
+  series:
+    family-id: 1
+    group-id: 4
+    attrs:
+      chunks:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 8
+        max-occurrences: 1
+      items:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 8
+        max-occurrences: 1
+      values:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 8
+        max-occurrences: 1
+      totals:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 8
+        max-occurrences: 1
+      chunk:
+        local-id: 5
+        kind: nested
+        max-occurrences: 0
+      item:
+        local-id: 6
+        kind: nested
+        max-occurrences: 0
+      value:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 0
+      total:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 0
+      index:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 8
+        max-occurrences: 1
+  ping:
+    family-id: 1
+    group-id: 5
+    attrs:
+      count:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 64
+        max-occurrences: 1
+      serial:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      payload:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 1024
+        max-occurrences: 1
+      abort:
+        local-id: 4
+        kind: bool
+        max-occurrences: 1
+      empty:
+        local-id: 5
+        kind: bool
+        max-occurrences: 1
+      filler:
+        local-id: 6
+        kind: binary
+        min-length: 0
+        max-length: 1024
+        max-occurrences: 1
+  transfer:
+    family-id: 1
+    group-id: 6
+    attrs:
+      source:
+        local-id: 1
+        kind: blob
+        blob:
+          direction: input
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 268435456
+          alignment: 8
+        max-occurrences: 1
+      target:
+        local-id: 2
+        kind: blob
+        blob:
+          direction: output
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 268435456
+          alignment: 8
+        max-occurrences: 1
+      scratch:
+        local-id: 3
+        kind: blob
+        blob:
+          direction: inout
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 268435456
+          alignment: 8
+        max-occurrences: 1
+      piece:
+        local-id: 4
+        kind: blob
+        blob:
+          direction: input
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 1048576
+          alignment: 1
+        max-occurrences: 4
+      fill:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 255
+        max-occurrences: 1
+      skip:
+        local-id: 6
+        kind: bool
+        max-occurrences: 1
+      twice:
+        local-id: 7
+        kind: bool
+        max-occurrences: 1
+      hold:
+        local-id: 8
+        kind: bool
+        max-occurrences: 1
+      sum:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      written:
+        local-id: 10
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      distinct:
+        local-id: 11
+        kind: bool
+        max-occurrences: 1
+  child:
+    family-id: 2
+    group-id: 1
+    attrs:
+      extra:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+sets:
+  family-entry:
+    family-id: 0
+    set-id: 1
+  op-entry:
+    family-id: 0
+    set-id: 2
+  op-schema-request:
+    family-id: 0
+    set-id: 3
+  schema-node:
+    family-id: 0
+    set-id: 4
+  op-schema-info:
+    family-id: 0
+    set-id: 5
+  op-change-info:
+    family-id: 0
+    set-id: 6
+  error-info:
+    family-id: 0
+    set-id: 7
+  event-subscription:
+    family-id: 0
+    set-id: 8
+  event-queue-limit:
+    family-id: 0
+    set-id: 9
+  event-queue-state:
+    family-id: 0
+    set-id: 10
+  event-overflow-info:
+    family-id: 0
+    set-id: 11
+  extension-point:
+    family-id: 1
+    set-id: 1
+  token-info:
+    family-id: 1
+    set-id: 2
+  probe-report:
+    family-id: 1
+    set-id: 3
+  echo-leaf:
+    family-id: 1
+    set-id: 4
+  echo-item:
+    family-id: 1
+    set-id: 5
+  echo-message:
+    family-id: 1
+    set-id: 6
+  echo-reply:
+    family-id: 1
+    set-id: 7
+  series-item:
+    family-id: 1
+    set-id: 8
+  series-chunk:
+    family-id: 1
+    set-id: 9
+  series-request:
+    family-id: 1
+    set-id: 10
+  series-reply:
+    family-id: 1
+    set-id: 11
+  ping-request:
+    family-id: 1
+    set-id: 12
+  ping-report:
+    family-id: 1
+    set-id: 13
+  transfer-request:
+    family-id: 1
+    set-id: 14
+  transfer-report:
+    family-id: 1
+    set-id: 15
+ops:
+  families-dump:
+    family-id: 0
+    op-id: 1
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: family.entry
+        required: true
+        max-occurrences: 0
+        children:
+          - attr: family.id
+            required: true
+            max-occurrences: 1
+          - attr: family.name
+            required: true
+            max-occurrences: 1
+    fd-access: read
+  ops-dump:
+    family-id: 0
+    op-id: 2
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: op.entry
+        required: true
+        max-occurrences: 0
+        children:
+          - attr: op.id
+            required: true
+            max-occurrences: 1
+          - attr: op.type
+            required: true
+            max-occurrences: 1
+          - attr: op.availability
+            required: false
+            max-occurrences: 1
+          - attr: op.disabled
+            required: false
+            max-occurrences: 1
+          - attr: op.request-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.action-reply-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.query-reply-min-len
+            required: false
+            max-occurrences: 1
+          - attr: op.query-reply-suggested-len
+            required: false
+            max-occurrences: 1
+          - attr: op.event-record-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.fd-access
+            required: false
+            max-occurrences: 1
+    fd-access: read
+  op-schema-get:
+    family-id: 0
+    op-id: 3
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: op.id
+        required: true
+        max-occurrences: 1
+    reply:
+      - attr: schema.request
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: schema.attr-id
+            required: true
+            max-occurrences: 1
+          - attr: schema.kind
+            required: true
+            max-occurrences: 1
+          - attr: schema.max-occurrences
+            required: true
+            max-occurrences: 1
+          - attr: schema.min
+            required: false
+            max-occurrences: 1
+          - attr: schema.max
+            required: false
+            max-occurrences: 1
+          - attr: schema.min-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.flags-mask
+            required: false
+            max-occurrences: 1
+          - attr: schema.unit
+            required: false
+            max-occurrences: 1
+          - attr: schema.scale
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-direction
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-backings
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-alignment
+            required: false
+            max-occurrences: 1
+          - attr: schema.reenters
+            required: false
+            max-occurrences: 1
+          - attr: schema.attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+          - attr: schema.optional-attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+      - attr: schema.reply
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: schema.attr-id
+            required: true
+            max-occurrences: 1
+          - attr: schema.kind
+            required: true
+            max-occurrences: 1
+          - attr: schema.max-occurrences
+            required: true
+            max-occurrences: 1
+          - attr: schema.min
+            required: false
+            max-occurrences: 1
+          - attr: schema.max
+            required: false
+            max-occurrences: 1
+          - attr: schema.min-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.flags-mask
+            required: false
+            max-occurrences: 1
+          - attr: schema.unit
+            required: false
+            max-occurrences: 1
+          - attr: schema.scale
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-direction
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-backings
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-alignment
+            required: false
+            max-occurrences: 1
+          - attr: schema.reenters
+            required: false
+            max-occurrences: 1
+          - attr: schema.attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+          - attr: schema.optional-attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+    fd-access: read
+  subscriptions-add:
+    family-id: 0
+    op-id: 4
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.op-id
+        required: true
+        max-occurrences: 256
+    reply: null
+    fd-access: read
+  subscriptions-remove:
+    family-id: 0
+    op-id: 5
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.op-id
+        required: true
+        max-occurrences: 256
+    reply: null
+    fd-access: read
+  event-queue-get:
+    family-id: 0
+    op-id: 6
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: event.queue-len
+        required: true
+        max-occurrences: 1
+      - attr: event.queue-used
+        required: true
+        max-occurrences: 1
+    fd-access: read
+  event-queue-set:
+    family-id: 0
+    op-id: 7
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.queue-len
+        required: true
+        max-occurrences: 1
+    reply: null
+    fd-access: read
+  op-changed:
+    family-id: 0
+    op-id: 8
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: op.id
+        required: true
+        max-occurrences: 1
+      - attr: op.disabled
+        required: true
+        max-occurrences: 1
+      - attr: op.state-generation
+        required: true
+        max-occurrences: 1
+  event-overflow:
+    family-id: 0
+    op-id: 9
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: event.first-sequence
+        required: true
+        max-occurrences: 1
+      - attr: event.last-sequence
+        required: true
+        max-occurrences: 1
+      - attr: event.dropped-count
+        required: true
+        max-occurrences: 1
+  device-removed:
+    family-id: 0
+    op-id: 10
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply: []
+  noop:
+    family-id: 1
+    op-id: 1
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply: null
+    fd-access: read
+  probe-get:
+    family-id: 1
+    op-id: 2
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: true
+    request:
+      - attr: probe.token
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: probe.token
+        required: false
+        max-occurrences: 1
+      - attr: probe.extension
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: child.extra
+            required: false
+            max-occurrences: 1
+    fd-access: read
+  dynamic-noop:
+    family-id: 1
+    op-id: 3
+    type: action
+    availability: dynamic
+    optional: true
+    pre-post: true
+    request: []
+    reply: null
+    fd-access: read-write
+  dynamic-toggle:
+    family-id: 1
+    op-id: 4
+    type: action
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: probe.token
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: probe.token
+        required: false
+        max-occurrences: 1
+    fd-access: read-write
+  pinged:
+    family-id: 1
+    op-id: 5
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply: []
+  echo:
+    family-id: 1
+    op-id: 6
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: echo.u
+        required: true
+        max-occurrences: 1
+      - attr: echo.s
+        required: false
+        max-occurrences: 1
+      - attr: echo.flag
+        required: false
+        max-occurrences: 1
+      - attr: echo.mode
+        required: false
+        max-occurrences: 1
+      - attr: echo.quirks
+        required: false
+        max-occurrences: 1
+      - attr: echo.text
+        required: false
+        max-occurrences: 1
+      - attr: echo.data
+        required: false
+        max-occurrences: 1
+      - attr: echo.count
+        required: false
+        max-occurrences: 3
+      - attr: echo.item
+        required: false
+        max-occurrences: 2
+        children:
+          - attr: item.index
+            required: true
+            max-occurrences: 1
+          - attr: item.label
+            required: false
+            max-occurrences: 1
+          - attr: item.leaf
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: item.index
+                required: true
+                max-occurrences: 1
+      - attr: echo.region
+        required: false
+        max-occurrences: 1
+      - attr: echo.page
+        required: false
+        max-occurrences: 1
+      - attr: probe.extension
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: child.extra
+            required: false
+            max-occurrences: 1
+    reply: null
+    fd-access: read-write
+  echo-reply:
+    family-id: 1
+    op-id: 7
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: echo.u
+        required: true
+        max-occurrences: 1
+      - attr: echo.s
+        required: false
+        max-occurrences: 1
+      - attr: echo.flag
+        required: false
+        max-occurrences: 1
+      - attr: echo.mode
+        required: false
+        max-occurrences: 1
+      - attr: echo.quirks
+        required: false
+        max-occurrences: 1
+      - attr: echo.text
+        required: false
+        max-occurrences: 1
+      - attr: echo.data
+        required: false
+        max-occurrences: 1
+      - attr: echo.count
+        required: false
+        max-occurrences: 3
+      - attr: echo.item
+        required: false
+        max-occurrences: 2
+        children:
+          - attr: item.index
+            required: true
+            max-occurrences: 1
+          - attr: item.label
+            required: false
+            max-occurrences: 1
+          - attr: item.leaf
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: item.index
+                required: true
+                max-occurrences: 1
+      - attr: echo.region
+        required: false
+        max-occurrences: 1
+      - attr: echo.page
+        required: false
+        max-occurrences: 1
+      - attr: probe.extension
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: child.extra
+            required: false
+            max-occurrences: 1
+    reply:
+      - attr: echo.u
+        required: false
+        max-occurrences: 1
+      - attr: echo.s
+        required: false
+        max-occurrences: 1
+      - attr: echo.flag
+        required: false
+        max-occurrences: 1
+      - attr: echo.mode
+        required: false
+        max-occurrences: 1
+      - attr: echo.quirks
+        required: false
+        max-occurrences: 1
+      - attr: echo.text
+        required: false
+        max-occurrences: 1
+      - attr: echo.data
+        required: false
+        max-occurrences: 1
+      - attr: echo.count
+        required: false
+        max-occurrences: 3
+      - attr: echo.item
+        required: false
+        max-occurrences: 2
+        children:
+          - attr: item.index
+            required: true
+            max-occurrences: 1
+          - attr: item.label
+            required: false
+            max-occurrences: 1
+          - attr: item.leaf
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: item.index
+                required: true
+                max-occurrences: 1
+      - attr: probe.extension
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: child.extra
+            required: false
+            max-occurrences: 1
+    fd-access: read-write
+  series-dump:
+    family-id: 1
+    op-id: 8
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: true
+    request:
+      - attr: series.chunks
+        required: false
+        max-occurrences: 1
+      - attr: series.items
+        required: false
+        max-occurrences: 1
+      - attr: series.values
+        required: false
+        max-occurrences: 1
+      - attr: series.totals
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: series.chunk
+        required: false
+        max-occurrences: 0
+        children:
+          - attr: series.index
+            required: true
+            max-occurrences: 1
+          - attr: series.item
+            required: false
+            max-occurrences: 0
+            children:
+              - attr: series.index
+                required: true
+                max-occurrences: 1
+              - attr: series.value
+                required: false
+                max-occurrences: 0
+      - attr: series.total
+        required: false
+        max-occurrences: 0
+    fd-access: read-write
+  ping:
+    family-id: 1
+    op-id: 9
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: ping.count
+        required: false
+        max-occurrences: 1
+      - attr: ping.serial
+        required: false
+        max-occurrences: 1
+      - attr: ping.payload
+        required: false
+        max-occurrences: 1
+      - attr: ping.abort
+        required: false
+        max-occurrences: 1
+      - attr: ping.empty
+        required: false
+        max-occurrences: 1
+    reply: null
+    fd-access: read-write
+  beeped:
+    family-id: 1
+    op-id: 10
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: ping.serial
+        required: true
+        max-occurrences: 1
+      - attr: ping.filler
+        required: false
+        max-occurrences: 1
+  transfer:
+    family-id: 1
+    op-id: 11
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: transfer.source
+        required: false
+        max-occurrences: 1
+      - attr: transfer.target
+        required: false
+        max-occurrences: 1
+      - attr: transfer.scratch
+        required: false
+        max-occurrences: 1
+      - attr: transfer.piece
+        required: false
+        max-occurrences: 4
+      - attr: transfer.fill
+        required: false
+        max-occurrences: 1
+      - attr: transfer.skip
+        required: false
+        max-occurrences: 1
+      - attr: transfer.twice
+        required: false
+        max-occurrences: 1
+      - attr: transfer.hold
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: transfer.sum
+        required: false
+        max-occurrences: 1
+      - attr: transfer.written
+        required: false
+        max-occurrences: 1
+      - attr: transfer.distinct
+        required: false
+        max-occurrences: 1
+    fd-access: read-write
+  extra-noop:
+    family-id: 2
+    op-id: 1
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply: null
+    fd-access: read-write
