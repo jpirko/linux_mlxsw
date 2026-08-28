@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-test-child family, written by
+# "make -C tools/ctlv abi-update".
+#
+# The checker compares this family's declarations and inherited stub fills
+# against this file. Updating it is how a UAPI change gets reviewed; an update
+# that removes or renumbers anything, narrows a bound, or makes a placement
+# required is an ABI break, whatever this file says afterwards.
+family: {name: ctlv-test-child, id: 4, inherits: ctlv-test, pre-init: true,
+         pre-fini: true}
+attr-groups:
+  child:
+    id: 1
+    attrs:
+      extra: {id: 1, type: uint}
+fills:
+  extension-point: {optional-attrs: [child.extra]}
+ops:
+  extra-noop:
+    abi: {id: 1, type: action}

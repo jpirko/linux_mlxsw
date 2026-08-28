@@ -39,3 +39,12 @@ families:
       kernel-source: drivers/ctlv/tests/ctlv_test_gen.c
       user-header: tools/testing/selftests/ctlv/ctlv_test_user_gen.h
       user-source: tools/testing/selftests/ctlv/ctlv_test_user_gen.c
+
+  - name: ctlv-test-child
+    source: Documentation/ctlv/specs/ctlv-test-child.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_test_child_gen.h
+      kernel-header: drivers/ctlv/tests/ctlv_test_child_gen.h
+      kernel-source: drivers/ctlv/tests/ctlv_test_child_gen.c
+      user-header: tools/testing/selftests/ctlv/ctlv_test_child_user_gen.h
+      user-source: tools/testing/selftests/ctlv/ctlv_test_child_user_gen.c
