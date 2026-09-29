@@ -19,6 +19,7 @@
 #include <linux/sockptr.h>
 #include <linux/tsm.h>
 #include <linux/tsm-mr.h>
+#include <linux/tdx-guest.h>
 
 #include <uapi/linux/tdx-guest.h>
 
@@ -27,9 +28,20 @@
 
 /* TDREPORT buffer */
 static u8 *tdx_report_buf;
+static struct tdx_guest_info tdx_guest_info;
+static struct miscdevice tdx_misc_dev;
+
+static_assert(TDX_REPORTDATA_LEN == TDX_GUEST_REPORTDATA_LEN);
+static_assert(TDX_REPORT_LEN == TDX_GUEST_REPORT_LEN);
 
 /* Lock to serialize TDG.MR.REPORT and TDG.MR.RTMR.EXTEND TDCALLs */
 static DEFINE_MUTEX(mr_lock);
+
+/* Serializes native client registration and service attachment. */
+static DEFINE_MUTEX(client_lock);
+static const struct tdx_guest_client *tdx_client;
+static void *tdx_client_priv;
+static bool tdx_service_ready;
 
 /* TDREPORT fields */
 enum {
@@ -49,24 +61,30 @@ enum {
 	TDREPORT_servtd_hash = TDREPORT_rtmr3 + SHA384_DIGEST_SIZE,
 };
 
+static int __tdx_do_report(sockptr_t data, sockptr_t tdreport)
+{
+	u8 *reportdata = tdx_report_buf + TDREPORT_reportdata;
+	int ret;
+
+	lockdep_assert_held(&mr_lock);
+	if (!sockptr_is_null(data) &&
+	    copy_from_sockptr(reportdata, data, TDX_REPORTDATA_LEN))
+		return -EFAULT;
+
+	ret = tdx_mcall_get_report0(reportdata, tdx_report_buf);
+	if (WARN_ONCE(ret, "tdx_mcall_get_report0() failed: %d", ret))
+		return ret;
+
+	if (!sockptr_is_null(tdreport) &&
+	    copy_to_sockptr(tdreport, tdx_report_buf, TDX_REPORT_LEN))
+		return -EFAULT;
+	return 0;
+}
+
 static int tdx_do_report(sockptr_t data, sockptr_t tdreport)
 {
-	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock) {
-		u8 *reportdata = tdx_report_buf + TDREPORT_reportdata;
-		int ret;
-
-		if (!sockptr_is_null(data) &&
-		    copy_from_sockptr(reportdata, data, TDX_REPORTDATA_LEN))
-			return -EFAULT;
-
-		ret = tdx_mcall_get_report0(reportdata, tdx_report_buf);
-		if (WARN_ONCE(ret, "tdx_mcall_get_report0() failed: %d", ret))
-			return ret;
-
-		if (!sockptr_is_null(tdreport) &&
-		    copy_to_sockptr(tdreport, tdx_report_buf, TDX_REPORT_LEN))
-			return -EFAULT;
-	}
+	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock)
+		return __tdx_do_report(data, tdreport);
 	return 0;
 }
 
@@ -88,6 +106,76 @@ static int tdx_do_extend(u8 mr_ind, const u8 *data)
 			return ret;
 	}
 	return 0;
+}
+
+static bool tdx_guest_device_valid(struct device *dev)
+{
+	return dev && dev == tdx_misc_dev.this_device;
+}
+
+static const struct tdx_guest_info *tdx_guest_info_get(struct device *dev)
+{
+	return tdx_guest_device_valid(dev) ? &tdx_guest_info : NULL;
+}
+
+static int tdx_guest_report_get(struct device *dev, const u8 *reportdata,
+				size_t length, void *out, size_t capacity,
+				size_t *out_length)
+{
+	int ret;
+
+	if (!tdx_guest_device_valid(dev))
+		return -ENODEV;
+	if (!reportdata || length != TDX_REPORTDATA_LEN || !out || !out_length)
+		return -EINVAL;
+	if (capacity < TDX_REPORT_LEN)
+		return -EMSGSIZE;
+	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock) {
+		ret = __tdx_do_report(KERNEL_SOCKPTR((void *)reportdata),
+				      KERNEL_SOCKPTR(NULL));
+		if (ret)
+			return ret;
+		memcpy(out, tdx_report_buf, TDX_REPORT_LEN);
+	}
+	*out_length = TDX_REPORT_LEN;
+	return 0;
+}
+
+static int tdx_guest_mr_read(struct device *dev, enum tdx_guest_mr mr,
+			     u8 value[SHA384_DIGEST_SIZE])
+{
+	static const size_t offsets[] = {
+		[TDX_GUEST_MR_MRTD] = TDREPORT_mrtd,
+		[TDX_GUEST_MR_RTMR0] = TDREPORT_rtmr0,
+		[TDX_GUEST_MR_RTMR1] = TDREPORT_rtmr1,
+		[TDX_GUEST_MR_RTMR2] = TDREPORT_rtmr2,
+		[TDX_GUEST_MR_RTMR3] = TDREPORT_rtmr3,
+	};
+	int ret;
+
+	if (!tdx_guest_device_valid(dev))
+		return -ENODEV;
+	if (mr >= ARRAY_SIZE(offsets) || !value)
+		return -EINVAL;
+	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock) {
+		ret = __tdx_do_report(KERNEL_SOCKPTR(NULL),
+				      KERNEL_SOCKPTR(NULL));
+		if (ret)
+			return ret;
+		memcpy(value, tdx_report_buf + offsets[mr],
+		       SHA384_DIGEST_SIZE);
+	}
+	return 0;
+}
+
+static int tdx_guest_rtmr_extend(struct device *dev, unsigned int rtmr,
+				 const u8 value[SHA384_DIGEST_SIZE])
+{
+	if (!tdx_guest_device_valid(dev))
+		return -ENODEV;
+	if (rtmr >= 4 || !value)
+		return -EINVAL;
+	return tdx_do_extend(rtmr, value);
 }
 
 #define TDX_MR_(r) .mr_value = (void *)TDREPORT_##r, TSM_MR_(r, SHA384)
@@ -135,6 +223,12 @@ static const struct attribute_group *tdx_mr_init(void)
 	rc = tdx_mr_refresh(&tdx_measurements);
 	if (rc)
 		return ERR_PTR(rc);
+	memcpy(tdx_guest_info.mrconfigid,
+	       buf + TDREPORT_mrconfigid, SHA384_DIGEST_SIZE);
+	memcpy(tdx_guest_info.mrowner,
+	       buf + TDREPORT_mrowner, SHA384_DIGEST_SIZE);
+	memcpy(tdx_guest_info.mrownerconfig,
+	       buf + TDREPORT_mrownerconfig, SHA384_DIGEST_SIZE);
 
 	/*
 	 * @mr_value was initialized with the offset only, while the base
@@ -190,6 +284,8 @@ struct tdx_quote_buf {
 	u32 out_len;
 	u8 data[];
 };
+
+static_assert(TDX_QUOTE_MAX_LEN == TDX_GUEST_QUOTE_MAX_LEN);
 
 /* Quote data buffer */
 static void *quote_data;
@@ -265,15 +361,18 @@ static int wait_for_quote_completion(struct tdx_quote_buf *quote_buf, u32 timeou
 	return (i == timeout) ? -ETIMEDOUT : 0;
 }
 
-static int tdx_report_new_locked(struct tsm_report *report, void *data)
+static int __tdx_guest_quote_get(const u8 *reportdata, size_t length,
+				 void *out, size_t capacity,
+				 size_t *out_length)
 {
-	u8 *buf;
 	struct tdx_quote_buf *quote_buf = quote_data;
-	struct tsm_report_desc *desc = &report->desc;
 	u32 out_len;
 	int ret;
 	u64 err;
 
+	lockdep_assert_held(&quote_lock);
+	if (!reportdata || length != TDX_REPORTDATA_LEN || !out || !out_length)
+		return -EINVAL;
 	/*
 	 * If the previous request is timedout or interrupted, and the
 	 * Quote buf status is still in GET_QUOTE_IN_FLIGHT (owned by
@@ -282,16 +381,13 @@ static int tdx_report_new_locked(struct tsm_report *report, void *data)
 	if (quote_buf->status == GET_QUOTE_IN_FLIGHT)
 		return -EBUSY;
 
-	if (desc->inblob_len != TDX_REPORTDATA_LEN)
-		return -EINVAL;
-
 	memset(quote_data, 0, GET_QUOTE_BUF_SIZE);
 
 	/* Update Quote buffer header */
 	quote_buf->version = GET_QUOTE_CMD_VER;
 	quote_buf->in_len = TDX_REPORT_LEN;
 
-	ret = tdx_do_report(KERNEL_SOCKPTR(desc->inblob),
+	ret = tdx_do_report(KERNEL_SOCKPTR((void *)reportdata),
 			    KERNEL_SOCKPTR(quote_buf->data));
 	if (ret)
 		return ret;
@@ -317,13 +413,10 @@ static int tdx_report_new_locked(struct tsm_report *report, void *data)
 
 	if (out_len > TDX_QUOTE_MAX_LEN)
 		return -EFBIG;
-
-	buf = kvmemdup(quote_buf->data, out_len, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	report->outblob = buf;
-	report->outblob_len = out_len;
+	if (out_len > capacity)
+		return -EMSGSIZE;
+	memcpy(out, quote_buf->data, out_len);
+	*out_length = out_len;
 
 	/*
 	 * TODO: parse the PEM-formatted cert chain out of the quote buffer when
@@ -331,6 +424,39 @@ static int tdx_report_new_locked(struct tsm_report *report, void *data)
 	 */
 
 	return ret;
+}
+
+static int tdx_guest_quote_get(struct device *dev, const u8 *reportdata,
+			       size_t length, void *out, size_t capacity,
+			       size_t *out_length)
+{
+	if (!tdx_guest_device_valid(dev))
+		return -ENODEV;
+	scoped_cond_guard(mutex_intr, return -EINTR, &quote_lock)
+		return __tdx_guest_quote_get(reportdata, length, out,
+					     capacity, out_length);
+	return 0;
+}
+
+static int tdx_report_new_locked(struct tsm_report *report, void *data)
+{
+	struct tsm_report_desc *desc = &report->desc;
+	size_t length;
+	void *buf;
+	int ret;
+
+	buf = kvmalloc(TDX_QUOTE_MAX_LEN, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	ret = __tdx_guest_quote_get(desc->inblob, desc->inblob_len,
+				    buf, TDX_QUOTE_MAX_LEN, &length);
+	if (ret) {
+		kvfree(buf);
+		return ret;
+	}
+	report->outblob = buf;
+	report->outblob_len = length;
+	return 0;
 }
 
 static int tdx_report_new(struct tsm_report *report, void *data)
@@ -402,6 +528,68 @@ static const struct tsm_report_ops tdx_tsm_ops = {
 	.report_bin_attr_visible = tdx_report_bin_attr_visible,
 };
 
+static const struct tdx_guest_ops tdx_guest_ops = {
+	.info_get = tdx_guest_info_get,
+	.report_get = tdx_guest_report_get,
+	.quote_get = tdx_guest_quote_get,
+	.mr_read = tdx_guest_mr_read,
+	.rtmr_extend = tdx_guest_rtmr_extend,
+};
+
+static bool tdx_client_attached;
+
+static int tdx_guest_client_attach(void)
+{
+	void *priv;
+
+	lockdep_assert_held(&client_lock);
+	if (!tdx_client || !tdx_service_ready)
+		return 0;
+	priv = tdx_client->add(tdx_misc_dev.this_device, &tdx_guest_ops);
+	if (IS_ERR(priv))
+		return PTR_ERR(priv);
+	tdx_client_priv = priv;
+	tdx_client_attached = true;
+	return 0;
+}
+
+static void tdx_guest_client_detach(void)
+{
+	lockdep_assert_held(&client_lock);
+	if (!tdx_client_attached)
+		return;
+	tdx_client->remove(tdx_client_priv);
+	tdx_client_priv = NULL;
+	tdx_client_attached = false;
+}
+
+int tdx_guest_client_register(const struct tdx_guest_client *client)
+{
+	int ret;
+
+	if (!client || !client->add || !client->remove)
+		return -EINVAL;
+	guard(mutex)(&client_lock);
+	if (tdx_client)
+		return -EBUSY;
+	tdx_client = client;
+	ret = tdx_guest_client_attach();
+	if (ret)
+		tdx_client = NULL;
+	return ret;
+}
+EXPORT_SYMBOL_NS_GPL(tdx_guest_client_register, "TDX_GUEST");
+
+void tdx_guest_client_unregister(const struct tdx_guest_client *client)
+{
+	guard(mutex)(&client_lock);
+	if (WARN_ON_ONCE(client != tdx_client))
+		return;
+	tdx_guest_client_detach();
+	tdx_client = NULL;
+}
+EXPORT_SYMBOL_NS_GPL(tdx_guest_client_unregister, "TDX_GUEST");
+
 static int __init tdx_guest_init(void)
 {
 	int ret;
@@ -427,9 +615,19 @@ static int __init tdx_guest_init(void)
 	ret = tsm_report_register(&tdx_tsm_ops, NULL);
 	if (ret)
 		goto free_quote;
+	scoped_guard(mutex, &client_lock) {
+		tdx_service_ready = true;
+		ret = tdx_guest_client_attach();
+		if (ret)
+			tdx_service_ready = false;
+	}
+	if (ret)
+		goto unregister_tsm;
 
 	return 0;
 
+unregister_tsm:
+	tsm_report_unregister(&tdx_tsm_ops);
 free_quote:
 	free_quote_buf(quote_data);
 free_misc:
@@ -443,6 +641,10 @@ module_init(tdx_guest_init);
 
 static void __exit tdx_guest_exit(void)
 {
+	scoped_guard(mutex, &client_lock) {
+		tdx_guest_client_detach();
+		tdx_service_ready = false;
+	}
 	tsm_report_unregister(&tdx_tsm_ops);
 	free_quote_buf(quote_data);
 	misc_deregister(&tdx_misc_dev);

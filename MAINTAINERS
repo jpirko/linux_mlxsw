@@ -29669,6 +29669,9 @@ L:	linux-coco@lists.linux.dev
 L:	kvm@vger.kernel.org
 S:	Supported
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/tip/tip.git x86/tdx
+F:	Documentation/virt/coco/tdx-guest.rst
+F:	drivers/virt/coco/tdx-guest/
+F:	include/linux/tdx-guest.h
 N:	tdx
 K:	\b(tdx)
 

@@ -50,3 +50,21 @@ TDX reference material is collected here:
 https://www.intel.com/content/www/us/en/developer/articles/technical/intel-trust-domain-extensions.html
 
 The driver is based on TDX module specification v1.0 and TDX GHCI specification v1.0.
+
+Kernel clients
+==============
+
+``<linux/tdx-guest.h>`` exposes the same native service to one in-kernel
+client.  The client receives the misc device as its lifetime anchor and a
+complete ``struct tdx_guest_ops``.  The operations retrieve TDREPORT or Quote
+bytes, read MRTD/RTMR values, extend an RTMR, and return immutable construction
+fields.
+
+Registering a client attaches it immediately when the service is already
+available.  Otherwise attachment occurs when the TDX guest driver finishes
+initialization.  Driver removal calls the client's remove callback before
+freeing report or Quote buffers.  Client unregistration similarly drains the
+attachment before returning.
+
+The misc ioctl, TSM-report configfs interface, and TSM-MR sysfs attributes
+remain independent frontends over the same native serialization and buffers.
