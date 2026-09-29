@@ -10,3 +10,7 @@ menuconfig ATTESTATION
 	  translate the common operations to their native service.
 
 	  If you are unsure, say N.
+
+if ATTESTATION
+
+endif # ATTESTATION

@@ -50,3 +50,11 @@ TDX reference material is collected here:
 https://www.intel.com/content/www/us/en/developer/articles/technical/intel-trust-domain-extensions.html
 
 The driver is based on TDX module specification v1.0 and TDX GHCI specification v1.0.
+
+Attestation device
+==================
+
+With ``CONFIG_ATTESTATION``, the driver also registers an attestation device,
+described in Documentation/userspace-api/attestation-tdx.rst. It shares the
+TDREPORT, Quote and RTMR paths, and their locks, with the misc ioctl, the
+TSM-report configfs interface and the TSM-MR sysfs attributes.

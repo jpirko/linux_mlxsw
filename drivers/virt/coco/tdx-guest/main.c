@@ -522,6 +522,12 @@ static int __init tdx_guest_init(void)
 	if (ret)
 		goto free_quote;
 
+	/* The other interfaces stay up without the attestation device. */
+	ret = tdx_attestation_register(tdx_misc_dev.this_device,
+				       &tdx_guest_info);
+	if (ret)
+		pr_warn("attestation device registration failed: %d\n", ret);
+
 	return 0;
 
 free_quote:
@@ -537,6 +543,7 @@ module_init(tdx_guest_init);
 
 static void __exit tdx_guest_exit(void)
 {
+	tdx_attestation_unregister();
 	tsm_report_unregister(&tdx_tsm_ops);
 	free_quote_buf(quote_buf);
 	misc_deregister(&tdx_misc_dev);

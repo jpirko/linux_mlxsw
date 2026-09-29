@@ -1,12 +1,14 @@
 config TDX_GUEST_DRIVER
 	tristate "TDX Guest driver"
 	depends on INTEL_TDX_GUEST
+	depends on ATTESTATION || !ATTESTATION
 	select TSM_REPORTS
 	select TSM_MEASUREMENTS
 	help
 	  The driver provides userspace interface to communicate with
 	  the TDX module to request the TDX guest details like attestation
-	  report.
+	  report. With ATTESTATION, it also registers a TDX attestation
+	  device.
 
 	  To compile this driver as module, choose M here. The module will
 	  be called tdx-guest.

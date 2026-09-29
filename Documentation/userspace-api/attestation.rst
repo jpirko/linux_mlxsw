@@ -282,3 +282,13 @@ The reply carries ``mr-generation``, the MR generation after the extension.
     have or repeats one, or a digest has the wrong length.
 
 Access is read-write.
+
+Providers
+=========
+
+What each provider's family adds, and what its device produces:
+
+.. toctree::
+   :maxdepth: 1
+
+   attestation-tdx
