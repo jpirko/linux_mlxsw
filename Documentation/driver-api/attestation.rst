@@ -46,3 +46,19 @@ CTLV first drains userspace operations.  The base ``pre_fini`` callback then
 withdraws the instance from the kernel registry while provider state and CTLV
 event emission remain available.  CTLV stops events only after that callback
 returns; provider and base ``fini`` callbacks may then release native storage.
+
+TDX provider
+============
+
+``CONFIG_ATTESTATION_TDX`` registers a ``ctlv-attestation-tdx`` instance for
+the native TDX guest service.  MRTD has stable MR ID 0 and is read-only.
+RTMR0 through RTMR3 have IDs 1 through 4 and are readable and extendable with
+SHA-384.
+
+``EVIDENCE_GET`` supports complete raw TDREPORT and Quote objects.  Both
+formats cryptographically bind all architectural TDX measurement registers,
+so successful replies carry the matching MR-journal boundary.  The provider
+exposes no verdict or device-security operation.
+
+The provider consumes only ``<linux/tdx-guest.h>``.  It does not call the TDX
+misc ioctl, configfs TSM-report, or TSM-MR sysfs frontends.

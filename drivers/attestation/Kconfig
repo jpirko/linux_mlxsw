@@ -10,3 +10,17 @@ menuconfig ATTESTATION
 	  translate the common operations to their native service.
 
 	  If you are unsure, say N.
+
+if ATTESTATION
+
+config ATTESTATION_TDX
+	tristate "TDX attestation provider"
+	depends on TDX_GUEST_DRIVER
+	help
+	  Exposes TDREPORT, Quote, MRTD and RTMR operations through the common
+	  attestation CTLV family. The native TDX misc, TSM-report and TSM-MR
+	  interfaces remain available independently.
+
+	  If you are unsure, say N.
+
+endif # ATTESTATION
