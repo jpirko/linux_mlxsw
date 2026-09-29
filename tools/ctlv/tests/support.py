@@ -30,7 +30,8 @@ BAD_SPEC_DIR = TESTS_DIR / 'bad-specs'
 FIXTURE_REGISTRY = TESTS_DIR / 'families.yaml'
 
 # Every registered family, in registry order.
-FAMILIES = ('ctlv', 'ctlv-test', 'ctlv-test-child', 'ctlv-attestation')
+FAMILIES = ('ctlv', 'ctlv-test', 'ctlv-test-child',
+            'ctlv-attestation', 'ctlv-attestation-sim')
 
 # The fixture families, in fixture registry order: a parent holding one of
 # every shape the language allows, and a child that inherits it.

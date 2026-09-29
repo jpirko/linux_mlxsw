@@ -1,0 +1,1824 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-attestation-sim family, written by
+# "make -C tools/ctlv abi-update".
+#
+# The compatibility checker compares the specification against this file, so
+# updating it is how a UAPI change gets reviewed. An update that removes or
+# renumbers anything, narrows a bound, or makes a placement required is an ABI
+# break, whatever this file says afterwards.
+family: ctlv-attestation-sim
+family-id: 4
+parent: ctlv-attestation
+pre-init: true
+post-init: false
+pre-fini: false
+definitions:
+  op-type:
+    kind: enum
+    family-id: 0
+    values:
+      action: 1
+      query: 2
+      event: 3
+  op-availability:
+    kind: enum
+    family-id: 0
+    values:
+      fixed: 1
+      dynamic: 2
+  blob-type:
+    kind: enum
+    family-id: 0
+    values:
+      va: 1
+      memfd: 2
+      dma-buf: 3
+  blob-direction:
+    kind: enum
+    family-id: 0
+    values:
+      input: 1
+      output: 2
+      inout: 3
+  validation-reason:
+    kind: enum
+    family-id: 0
+    values:
+      malformed-message: 1
+      unknown-attr: 2
+      unknown-flag: 3
+      nesting-too-deep: 4
+      missing-attr: 5
+      too-many-occurrences: 6
+      value-out-of-range: 7
+      bad-length: 8
+      bad-string: 9
+      bad-blob-descriptor: 10
+      stale-generation: 11
+      noncontiguous-attr: 12
+  op-fd-access:
+    kind: enum
+    family-id: 0
+    values:
+      read: 1
+      read-write: 2
+  evidence-representation:
+    kind: enum
+    family-id: 3
+    values:
+      raw: 1
+      tcb-digest: 2
+  evidence-blob-class:
+    kind: enum
+    family-id: 3
+    values:
+      primary: 1
+      auxiliary: 2
+      manifest: 3
+      cert-chain: 4
+      spdm-vca: 5
+      spdm-measurements: 6
+      tdisp-report: 7
+      signature: 8
+      event-log: 9
+  mr-log-event:
+    kind: enum
+    family-id: 3
+    values:
+      info: 1
+      extend: 2
+  tdisp-state:
+    kind: enum
+    family-id: 3
+    values:
+      unlocked: 1
+      locked: 2
+      run: 3
+      error: 4
+  device-trust-state:
+    kind: enum
+    family-id: 3
+    values:
+      unset: 1
+      none: 2
+      adversary: 3
+      auto: 4
+      tcb: 5
+  evidence-capabilities:
+    kind: flags
+    family-id: 3
+    values:
+      evidence-accept: 0
+      mr-selection: 1
+      privlevel: 2
+      service: 3
+  mr-device-capabilities:
+    kind: flags
+    family-id: 3
+    values:
+      read: 0
+      extend: 1
+      dynamic-topology: 2
+  devsec-capabilities:
+    kind: flags
+    family-id: 3
+    values:
+      run: 0
+  mr-capabilities:
+    kind: flags
+    family-id: 3
+    values:
+      read: 0
+      extend: 1
+      removable: 2
+  mr-state-flags:
+    kind: flags
+    family-id: 3
+    values:
+      ima-active: 0
+groups:
+  family:
+    family-id: 0
+    group-id: 1
+    attrs:
+      id:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      name:
+        local-id: 2
+        kind: string
+        min-length: 0
+        max-length: 63
+        max-occurrences: 1
+      entry:
+        local-id: 3
+        kind: nested
+        max-occurrences: 0
+  blob:
+    family-id: 0
+    group-id: 2
+    attrs:
+      type:
+        local-id: 1
+        kind: enum
+        definition: blob-type
+        max-occurrences: 1
+      address:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      fd:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 2147483647
+        max-occurrences: 1
+      offset:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      length:
+        local-id: 5
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+  error:
+    family-id: 0
+    group-id: 3
+    attrs:
+      reason:
+        local-id: 1
+        kind: enum
+        definition: validation-reason
+        max-occurrences: 1
+      message:
+        local-id: 2
+        kind: string
+        min-length: 0
+        max-length: 255
+        max-occurrences: 1
+      bad-attr-offset:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      nest-offset:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      missing-attr-id:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      expected-generation:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      current-generation:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+  op:
+    family-id: 0
+    group-id: 4
+    attrs:
+      id:
+        local-id: 1
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+      type:
+        local-id: 2
+        kind: enum
+        definition: op-type
+        max-occurrences: 1
+      availability:
+        local-id: 3
+        kind: enum
+        definition: op-availability
+        max-occurrences: 1
+      disabled:
+        local-id: 4
+        kind: bool
+        max-occurrences: 1
+      request-max-len:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      action-reply-max-len:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      query-reply-min-len:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      query-reply-suggested-len:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      event-record-max-len:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      state-generation:
+        local-id: 10
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      entry:
+        local-id: 11
+        kind: nested
+        max-occurrences: 0
+      fd-access:
+        local-id: 12
+        kind: enum
+        definition: op-fd-access
+        max-occurrences: 1
+  schema:
+    family-id: 0
+    group-id: 5
+    attrs:
+      attr-id:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      kind:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-occurrences:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      min:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      min-length:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-length:
+        local-id: 7
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      flags-mask:
+        local-id: 8
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      unit:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      scale:
+        local-id: 10
+        kind: sint
+        min: -9223372036854775808
+        max: 9223372036854775807
+        max-occurrences: 1
+      blob-direction:
+        local-id: 11
+        kind: enum
+        definition: blob-direction
+        max-occurrences: 1
+      blob-backings:
+        local-id: 12
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      blob-max-length:
+        local-id: 13
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      blob-alignment:
+        local-id: 14
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      reenters:
+        local-id: 15
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 1
+      attrs:
+        local-id: 16
+        kind: nested
+        max-occurrences: 0
+      optional-attrs:
+        local-id: 17
+        kind: nested
+        max-occurrences: 0
+      request:
+        local-id: 18
+        kind: nested
+        max-occurrences: 1
+      reply:
+        local-id: 19
+        kind: nested
+        max-occurrences: 1
+  event:
+    family-id: 0
+    group-id: 6
+    attrs:
+      op-id:
+        local-id: 1
+        kind: uint
+        min: 1
+        max: 18446744073709551615
+        max-occurrences: 256
+      queue-len:
+        local-id: 2
+        kind: uint
+        min: 1
+        max: 16777216
+        unit: bytes
+        scale: 0
+        max-occurrences: 1
+      queue-used:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        unit: bytes
+        scale: 0
+        max-occurrences: 1
+      first-sequence:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      last-sequence:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      dropped-count:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+  device:
+    family-id: 3
+    group-id: 1
+    attrs:
+      generation:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      capabilities:
+        local-id: 2
+        kind: nested
+        max-occurrences: 1
+      info:
+        local-id: 3
+        kind: nested
+        max-occurrences: 1
+  capability:
+    family-id: 3
+    group-id: 2
+    attrs:
+      evidence:
+        local-id: 1
+        kind: nested
+        max-occurrences: 1
+      mr:
+        local-id: 2
+        kind: nested
+        max-occurrences: 1
+      devsec:
+        local-id: 3
+        kind: nested
+        max-occurrences: 1
+      min-challenge-length:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-challenge-length:
+        local-id: 5
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      max-total-output-length:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+      evidence-flags:
+        local-id: 7
+        kind: flags
+        definition: evidence-capabilities
+        max-occurrences: 1
+      mr-flags:
+        local-id: 8
+        kind: flags
+        definition: mr-device-capabilities
+        max-occurrences: 1
+      devsec-flags:
+        local-id: 9
+        kind: flags
+        definition: devsec-capabilities
+        max-occurrences: 1
+      object:
+        local-id: 10
+        kind: nested
+        max-occurrences: 16
+      blob-class:
+        local-id: 11
+        kind: enum
+        definition: evidence-blob-class
+        max-occurrences: 1
+      blob-instance:
+        local-id: 12
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      format:
+        local-id: 13
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      representation:
+        local-id: 14
+        kind: enum
+        definition: evidence-representation
+        max-occurrences: 2
+      hash-algo:
+        local-id: 15
+        kind: uint
+        min: 0
+        max: 20
+        max-occurrences: 21
+      max-length:
+        local-id: 16
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 1
+  evidence:
+    family-id: 3
+    group-id: 3
+    attrs:
+      generation:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      accepted-generation:
+        local-id: 2
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      challenge:
+        local-id: 3
+        kind: binary
+        min-length: 0
+        max-length: 4096
+        max-occurrences: 1
+      object:
+        local-id: 4
+        kind: nested
+        max-occurrences: 16
+      blob-class:
+        local-id: 5
+        kind: enum
+        definition: evidence-blob-class
+        max-occurrences: 1
+      blob-instance:
+        local-id: 6
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      format:
+        local-id: 7
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      representation:
+        local-id: 8
+        kind: enum
+        definition: evidence-representation
+        max-occurrences: 1
+      hash-algo:
+        local-id: 9
+        kind: uint
+        min: 0
+        max: 20
+        max-occurrences: 1
+      data:
+        local-id: 10
+        kind: blob
+        blob:
+          direction: output
+          backings:
+            - va
+            - memfd
+            - dma-buf
+          max-length: 4294967295
+          alignment: 1
+        max-occurrences: 1
+      selection:
+        local-id: 11
+        kind: nested
+        max-occurrences: 256
+      privlevel:
+        local-id: 12
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      service-provider:
+        local-id: 13
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      service-guid:
+        local-id: 14
+        kind: binary
+        min-length: 16
+        max-length: 16
+        max-occurrences: 1
+      service-manifest-version:
+        local-id: 15
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      options:
+        local-id: 16
+        kind: nested
+        max-occurrences: 1
+      object-length:
+        local-id: 17
+        kind: uint
+        min: 0
+        max: 18446744073709551615
+        max-occurrences: 16
+  mr:
+    family-id: 3
+    group-id: 4
+    attrs:
+      id:
+        local-id: 1
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      name:
+        local-id: 2
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      hash-algo:
+        local-id: 3
+        kind: uint
+        min: 0
+        max: 20
+        max-occurrences: 21
+      register-index:
+        local-id: 4
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      capabilities:
+        local-id: 5
+        kind: flags
+        definition: mr-capabilities
+        max-occurrences: 1
+      state-flags:
+        local-id: 6
+        kind: flags
+        definition: mr-state-flags
+        max-occurrences: 1
+      item:
+        local-id: 7
+        kind: nested
+        max-occurrences: 0
+      options:
+        local-id: 8
+        kind: nested
+        max-occurrences: 1
+      value:
+        local-id: 9
+        kind: nested
+        max-occurrences: 21
+      data:
+        local-id: 10
+        kind: binary
+        min-length: 16
+        max-length: 64
+        max-occurrences: 1
+      generation:
+        local-id: 11
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      selection:
+        local-id: 12
+        kind: nested
+        max-occurrences: 256
+      start-generation:
+        local-id: 13
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+      end-generation:
+        local-id: 14
+        kind: uint
+        min: 0
+        max: 4294967295
+        max-occurrences: 1
+  record:
+    family-id: 3
+    group-id: 5
+    attrs:
+      item:
+        local-id: 1
+        kind: nested
+        max-occurrences: 1
+      format:
+        local-id: 2
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      data:
+        local-id: 3
+        kind: binary
+        min-length: 0
+        max-length: 4096
+        max-occurrences: 1
+  log:
+    family-id: 3
+    group-id: 6
+    attrs:
+      entry:
+        local-id: 1
+        kind: nested
+        max-occurrences: 0
+      event:
+        local-id: 2
+        kind: enum
+        definition: mr-log-event
+        max-occurrences: 1
+      mr:
+        local-id: 3
+        kind: nested
+        max-occurrences: 1
+      ima:
+        local-id: 4
+        kind: nested
+        max-occurrences: 1
+      template-name:
+        local-id: 5
+        kind: string
+        min-length: 1
+        max-length: 128
+        max-occurrences: 1
+      template-data:
+        local-id: 6
+        kind: binary
+        min-length: 0
+        max-length: 65536
+        max-occurrences: 1
+      violation:
+        local-id: 7
+        kind: bool
+        max-occurrences: 1
+  devsec:
+    family-id: 3
+    group-id: 7
+    attrs:
+      tdisp-state:
+        local-id: 1
+        kind: enum
+        definition: tdisp-state
+        max-occurrences: 1
+      device-trust:
+        local-id: 2
+        kind: enum
+        definition: device-trust-state
+        max-occurrences: 1
+  notification:
+    family-id: 3
+    group-id: 8
+    attrs:
+      entry:
+        local-id: 1
+        kind: nested
+        max-occurrences: 1
+  sim:
+    family-id: 4
+    group-id: 1
+    attrs:
+      name:
+        local-id: 1
+        kind: string
+        min-length: 1
+        max-length: 63
+        max-occurrences: 1
+sets:
+  family-entry:
+    family-id: 0
+    set-id: 1
+  op-entry:
+    family-id: 0
+    set-id: 2
+  op-schema-request:
+    family-id: 0
+    set-id: 3
+  schema-node:
+    family-id: 0
+    set-id: 4
+  op-schema-info:
+    family-id: 0
+    set-id: 5
+  op-change-info:
+    family-id: 0
+    set-id: 6
+  error-info:
+    family-id: 0
+    set-id: 7
+  event-subscription:
+    family-id: 0
+    set-id: 8
+  event-queue-limit:
+    family-id: 0
+    set-id: 9
+  event-queue-state:
+    family-id: 0
+    set-id: 10
+  event-overflow-info:
+    family-id: 0
+    set-id: 11
+  device-info:
+    family-id: 3
+    set-id: 1
+  evidence-options:
+    family-id: 3
+    set-id: 2
+  mr-options:
+    family-id: 3
+    set-id: 3
+  evidence-object-capability:
+    family-id: 3
+    set-id: 4
+  evidence-capability:
+    family-id: 3
+    set-id: 5
+  mr-device-capability:
+    family-id: 3
+    set-id: 6
+  devsec-capability:
+    family-id: 3
+    set-id: 7
+  device-capabilities:
+    family-id: 3
+    set-id: 8
+  device-reply:
+    family-id: 3
+    set-id: 9
+  evidence-object-request:
+    family-id: 3
+    set-id: 10
+  evidence-mr-selection:
+    family-id: 3
+    set-id: 11
+  evidence-request:
+    family-id: 3
+    set-id: 12
+  evidence-reply:
+    family-id: 3
+    set-id: 13
+  evidence-generation-request:
+    family-id: 3
+    set-id: 14
+  mr-props:
+    family-id: 3
+    set-id: 15
+  mr-dump-entry:
+    family-id: 3
+    set-id: 16
+  mr-id-request:
+    family-id: 3
+    set-id: 17
+  mr-read-request:
+    family-id: 3
+    set-id: 18
+  mr-value:
+    family-id: 3
+    set-id: 19
+  mr-read-reply:
+    family-id: 3
+    set-id: 20
+  record-data:
+    family-id: 3
+    set-id: 21
+  mr-extend-request:
+    family-id: 3
+    set-id: 22
+  mr-change-reply:
+    family-id: 3
+    set-id: 23
+  mr-log-selection:
+    family-id: 3
+    set-id: 24
+  mr-log-request:
+    family-id: 3
+    set-id: 25
+  mr-log-info:
+    family-id: 3
+    set-id: 26
+  mr-log-ima:
+    family-id: 3
+    set-id: 27
+  mr-log-entry:
+    family-id: 3
+    set-id: 28
+  mr-log-reply:
+    family-id: 3
+    set-id: 29
+  devsec-state-reply:
+    family-id: 3
+    set-id: 30
+  devsec-run-reply:
+    family-id: 3
+    set-id: 31
+  device-state-event:
+    family-id: 3
+    set-id: 32
+  evidence-state-event:
+    family-id: 3
+    set-id: 33
+  mr-log-event:
+    family-id: 3
+    set-id: 34
+ops:
+  families-dump:
+    family-id: 0
+    op-id: 1
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: family.entry
+        required: true
+        max-occurrences: 0
+        children:
+          - attr: family.id
+            required: true
+            max-occurrences: 1
+          - attr: family.name
+            required: true
+            max-occurrences: 1
+    fd-access: read
+  ops-dump:
+    family-id: 0
+    op-id: 2
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: op.entry
+        required: true
+        max-occurrences: 0
+        children:
+          - attr: op.id
+            required: true
+            max-occurrences: 1
+          - attr: op.type
+            required: true
+            max-occurrences: 1
+          - attr: op.availability
+            required: false
+            max-occurrences: 1
+          - attr: op.disabled
+            required: false
+            max-occurrences: 1
+          - attr: op.request-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.action-reply-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.query-reply-min-len
+            required: false
+            max-occurrences: 1
+          - attr: op.query-reply-suggested-len
+            required: false
+            max-occurrences: 1
+          - attr: op.event-record-max-len
+            required: false
+            max-occurrences: 1
+          - attr: op.fd-access
+            required: false
+            max-occurrences: 1
+    fd-access: read
+  op-schema-get:
+    family-id: 0
+    op-id: 3
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: op.id
+        required: true
+        max-occurrences: 1
+    reply:
+      - attr: schema.request
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: schema.attr-id
+            required: true
+            max-occurrences: 1
+          - attr: schema.kind
+            required: true
+            max-occurrences: 1
+          - attr: schema.max-occurrences
+            required: true
+            max-occurrences: 1
+          - attr: schema.min
+            required: false
+            max-occurrences: 1
+          - attr: schema.max
+            required: false
+            max-occurrences: 1
+          - attr: schema.min-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.flags-mask
+            required: false
+            max-occurrences: 1
+          - attr: schema.unit
+            required: false
+            max-occurrences: 1
+          - attr: schema.scale
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-direction
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-backings
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-alignment
+            required: false
+            max-occurrences: 1
+          - attr: schema.reenters
+            required: false
+            max-occurrences: 1
+          - attr: schema.attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+          - attr: schema.optional-attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+      - attr: schema.reply
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: schema.attr-id
+            required: true
+            max-occurrences: 1
+          - attr: schema.kind
+            required: true
+            max-occurrences: 1
+          - attr: schema.max-occurrences
+            required: true
+            max-occurrences: 1
+          - attr: schema.min
+            required: false
+            max-occurrences: 1
+          - attr: schema.max
+            required: false
+            max-occurrences: 1
+          - attr: schema.min-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.flags-mask
+            required: false
+            max-occurrences: 1
+          - attr: schema.unit
+            required: false
+            max-occurrences: 1
+          - attr: schema.scale
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-direction
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-backings
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-max-length
+            required: false
+            max-occurrences: 1
+          - attr: schema.blob-alignment
+            required: false
+            max-occurrences: 1
+          - attr: schema.reenters
+            required: false
+            max-occurrences: 1
+          - attr: schema.attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+          - attr: schema.optional-attrs
+            required: false
+            max-occurrences: 0
+            reenters: schema-node
+    fd-access: read
+  subscriptions-add:
+    family-id: 0
+    op-id: 4
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.op-id
+        required: true
+        max-occurrences: 256
+    reply: null
+    fd-access: read
+  subscriptions-remove:
+    family-id: 0
+    op-id: 5
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.op-id
+        required: true
+        max-occurrences: 256
+    reply: null
+    fd-access: read
+  event-queue-get:
+    family-id: 0
+    op-id: 6
+    type: query
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: event.queue-len
+        required: true
+        max-occurrences: 1
+      - attr: event.queue-used
+        required: true
+        max-occurrences: 1
+    fd-access: read
+  event-queue-set:
+    family-id: 0
+    op-id: 7
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request:
+      - attr: event.queue-len
+        required: true
+        max-occurrences: 1
+    reply: null
+    fd-access: read
+  op-changed:
+    family-id: 0
+    op-id: 8
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: op.id
+        required: true
+        max-occurrences: 1
+      - attr: op.disabled
+        required: true
+        max-occurrences: 1
+      - attr: op.state-generation
+        required: true
+        max-occurrences: 1
+  event-overflow:
+    family-id: 0
+    op-id: 9
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: event.first-sequence
+        required: true
+        max-occurrences: 1
+      - attr: event.last-sequence
+        required: true
+        max-occurrences: 1
+      - attr: event.dropped-count
+        required: true
+        max-occurrences: 1
+  device-removed:
+    family-id: 0
+    op-id: 10
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply: []
+  device-get:
+    family-id: 3
+    op-id: 1
+    type: action
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: []
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: device.capabilities
+        required: true
+        max-occurrences: 1
+        children:
+          - attr: capability.evidence
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: capability.min-challenge-length
+                required: true
+                max-occurrences: 1
+              - attr: capability.max-challenge-length
+                required: true
+                max-occurrences: 1
+              - attr: capability.max-total-output-length
+                required: true
+                max-occurrences: 1
+              - attr: capability.evidence-flags
+                required: true
+                max-occurrences: 1
+              - attr: capability.object
+                required: true
+                max-occurrences: 16
+                children:
+                  - attr: capability.blob-class
+                    required: true
+                    max-occurrences: 1
+                  - attr: capability.format
+                    required: true
+                    max-occurrences: 1
+                  - attr: capability.representation
+                    required: true
+                    max-occurrences: 2
+                  - attr: capability.max-length
+                    required: true
+                    max-occurrences: 1
+                  - attr: capability.blob-instance
+                    required: false
+                    max-occurrences: 1
+                  - attr: capability.hash-algo
+                    required: false
+                    max-occurrences: 21
+          - attr: capability.mr
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: capability.mr-flags
+                required: true
+                max-occurrences: 1
+          - attr: capability.devsec
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: capability.devsec-flags
+                required: true
+                max-occurrences: 1
+      - attr: device.info
+        required: true
+        max-occurrences: 1
+        children:
+          - attr: sim.name
+            required: true
+            max-occurrences: 1
+    fd-access: read
+  evidence-get:
+    family-id: 3
+    op-id: 2
+    type: action
+    availability: dynamic
+    optional: true
+    pre-post: false
+    request:
+      - attr: evidence.challenge
+        required: true
+        max-occurrences: 1
+      - attr: evidence.object
+        required: true
+        max-occurrences: 16
+        children:
+          - attr: evidence.blob-class
+            required: true
+            max-occurrences: 1
+          - attr: evidence.format
+            required: true
+            max-occurrences: 1
+          - attr: evidence.representation
+            required: true
+            max-occurrences: 1
+          - attr: evidence.data
+            required: true
+            max-occurrences: 1
+          - attr: evidence.blob-instance
+            required: false
+            max-occurrences: 1
+          - attr: evidence.hash-algo
+            required: false
+            max-occurrences: 1
+      - attr: device.generation
+        required: false
+        max-occurrences: 1
+      - attr: evidence.selection
+        required: false
+        max-occurrences: 256
+        children:
+          - attr: mr.id
+            required: true
+            max-occurrences: 1
+          - attr: evidence.hash-algo
+            required: true
+            max-occurrences: 1
+      - attr: evidence.privlevel
+        required: false
+        max-occurrences: 1
+      - attr: evidence.service-provider
+        required: false
+        max-occurrences: 1
+      - attr: evidence.service-guid
+        required: false
+        max-occurrences: 1
+      - attr: evidence.service-manifest-version
+        required: false
+        max-occurrences: 1
+      - attr: evidence.options
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: evidence.object-length
+        required: true
+        max-occurrences: 16
+      - attr: evidence.generation
+        required: false
+        max-occurrences: 1
+      - attr: mr.generation
+        required: false
+        max-occurrences: 1
+    fd-access: read-write
+  evidence-accept:
+    family-id: 3
+    op-id: 3
+    type: action
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: evidence.generation
+        required: true
+        max-occurrences: 1
+    reply: null
+    fd-access: read-write
+  evidence-accept-clear:
+    family-id: 3
+    op-id: 4
+    type: action
+    availability: fixed
+    optional: true
+    pre-post: false
+    request: []
+    reply: null
+    fd-access: read-write
+  mr-get:
+    family-id: 3
+    op-id: 5
+    type: action
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: mr.id
+        required: true
+        max-occurrences: 1
+    reply:
+      - attr: mr.name
+        required: true
+        max-occurrences: 1
+      - attr: mr.hash-algo
+        required: true
+        max-occurrences: 21
+      - attr: mr.capabilities
+        required: true
+        max-occurrences: 1
+      - attr: mr.state-flags
+        required: true
+        max-occurrences: 1
+      - attr: mr.register-index
+        required: false
+        max-occurrences: 1
+    fd-access: read
+  mr-dump:
+    family-id: 3
+    op-id: 6
+    type: query
+    availability: fixed
+    optional: true
+    pre-post: false
+    request: []
+    reply:
+      - attr: mr.item
+        required: true
+        max-occurrences: 0
+        children:
+          - attr: mr.id
+            required: true
+            max-occurrences: 1
+          - attr: mr.name
+            required: true
+            max-occurrences: 1
+          - attr: mr.hash-algo
+            required: true
+            max-occurrences: 21
+          - attr: mr.capabilities
+            required: true
+            max-occurrences: 1
+          - attr: mr.state-flags
+            required: true
+            max-occurrences: 1
+          - attr: mr.register-index
+            required: false
+            max-occurrences: 1
+    fd-access: read
+  mr-read:
+    family-id: 3
+    op-id: 7
+    type: query
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: mr.id
+        required: true
+        max-occurrences: 1
+      - attr: device.generation
+        required: false
+        max-occurrences: 1
+      - attr: mr.options
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: mr.generation
+        required: true
+        max-occurrences: 1
+      - attr: mr.value
+        required: true
+        max-occurrences: 21
+        children:
+          - attr: mr.hash-algo
+            required: true
+            max-occurrences: 21
+          - attr: mr.data
+            required: true
+            max-occurrences: 1
+    fd-access: read
+  mr-extend:
+    family-id: 3
+    op-id: 8
+    type: action
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: mr.id
+        required: true
+        max-occurrences: 1
+      - attr: mr.value
+        required: true
+        max-occurrences: 21
+        children:
+          - attr: mr.hash-algo
+            required: true
+            max-occurrences: 21
+          - attr: mr.data
+            required: true
+            max-occurrences: 1
+      - attr: device.generation
+        required: false
+        max-occurrences: 1
+      - attr: mr.options
+        required: false
+        max-occurrences: 1
+      - attr: record.item
+        required: false
+        max-occurrences: 1
+        children:
+          - attr: record.format
+            required: true
+            max-occurrences: 1
+          - attr: record.data
+            required: true
+            max-occurrences: 1
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: mr.generation
+        required: true
+        max-occurrences: 1
+    fd-access: read-write
+  mr-log-get:
+    family-id: 3
+    op-id: 9
+    type: query
+    availability: fixed
+    optional: true
+    pre-post: false
+    request:
+      - attr: mr.selection
+        required: false
+        max-occurrences: 256
+        children:
+          - attr: mr.id
+            required: true
+            max-occurrences: 1
+      - attr: mr.start-generation
+        required: false
+        max-occurrences: 1
+      - attr: mr.end-generation
+        required: false
+        max-occurrences: 1
+    reply:
+      - attr: mr.start-generation
+        required: false
+        max-occurrences: 1
+      - attr: mr.end-generation
+        required: false
+        max-occurrences: 1
+      - attr: log.entry
+        required: false
+        max-occurrences: 0
+        children:
+          - attr: mr.generation
+            required: true
+            max-occurrences: 1
+          - attr: device.generation
+            required: true
+            max-occurrences: 1
+          - attr: mr.id
+            required: true
+            max-occurrences: 1
+          - attr: log.event
+            required: true
+            max-occurrences: 1
+          - attr: mr.value
+            required: false
+            max-occurrences: 21
+            children:
+              - attr: mr.hash-algo
+                required: true
+                max-occurrences: 21
+              - attr: mr.data
+                required: true
+                max-occurrences: 1
+          - attr: record.item
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: record.format
+                required: true
+                max-occurrences: 1
+              - attr: record.data
+                required: true
+                max-occurrences: 1
+          - attr: log.mr
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: mr.name
+                required: true
+                max-occurrences: 1
+              - attr: mr.hash-algo
+                required: true
+                max-occurrences: 21
+              - attr: mr.capabilities
+                required: true
+                max-occurrences: 1
+              - attr: mr.register-index
+                required: false
+                max-occurrences: 1
+          - attr: log.ima
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: log.template-name
+                required: true
+                max-occurrences: 1
+              - attr: log.template-data
+                required: true
+                max-occurrences: 1
+              - attr: log.violation
+                required: true
+                max-occurrences: 1
+    fd-access: read
+  devsec-state-get:
+    family-id: 3
+    op-id: 10
+    type: query
+    availability: fixed
+    optional: true
+    pre-post: false
+    request: []
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: evidence.generation
+        required: false
+        max-occurrences: 1
+      - attr: evidence.accepted-generation
+        required: false
+        max-occurrences: 1
+      - attr: devsec.tdisp-state
+        required: false
+        max-occurrences: 1
+      - attr: devsec.device-trust
+        required: false
+        max-occurrences: 1
+    fd-access: read
+  devsec-run:
+    family-id: 3
+    op-id: 11
+    type: action
+    availability: dynamic
+    optional: true
+    pre-post: false
+    request:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: evidence.generation
+        required: true
+        max-occurrences: 1
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+    fd-access: read-write
+  device-state-changed:
+    family-id: 3
+    op-id: 12
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+  evidence-state-changed:
+    family-id: 3
+    op-id: 13
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: device.generation
+        required: true
+        max-occurrences: 1
+      - attr: evidence.generation
+        required: false
+        max-occurrences: 1
+      - attr: evidence.accepted-generation
+        required: false
+        max-occurrences: 1
+  mr-log-entry-appended:
+    family-id: 3
+    op-id: 14
+    type: event
+    availability: fixed
+    optional: false
+    pre-post: false
+    request: null
+    reply:
+      - attr: notification.entry
+        required: true
+        max-occurrences: 1
+        children:
+          - attr: mr.generation
+            required: true
+            max-occurrences: 1
+          - attr: device.generation
+            required: true
+            max-occurrences: 1
+          - attr: mr.id
+            required: true
+            max-occurrences: 1
+          - attr: log.event
+            required: true
+            max-occurrences: 1
+          - attr: mr.value
+            required: false
+            max-occurrences: 21
+            children:
+              - attr: mr.hash-algo
+                required: true
+                max-occurrences: 21
+              - attr: mr.data
+                required: true
+                max-occurrences: 1
+          - attr: record.item
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: record.format
+                required: true
+                max-occurrences: 1
+              - attr: record.data
+                required: true
+                max-occurrences: 1
+          - attr: log.mr
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: mr.name
+                required: true
+                max-occurrences: 1
+              - attr: mr.hash-algo
+                required: true
+                max-occurrences: 21
+              - attr: mr.capabilities
+                required: true
+                max-occurrences: 1
+              - attr: mr.register-index
+                required: false
+                max-occurrences: 1
+          - attr: log.ima
+            required: false
+            max-occurrences: 1
+            children:
+              - attr: log.template-name
+                required: true
+                max-occurrences: 1
+              - attr: log.template-data
+                required: true
+                max-occurrences: 1
+              - attr: log.violation
+                required: true
+                max-occurrences: 1

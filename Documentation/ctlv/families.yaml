@@ -14,3 +14,4 @@ families:
   - ctlv-test
   - ctlv-test-child
   - ctlv-attestation
+  - ctlv-attestation-sim

@@ -75,3 +75,22 @@ supplies that byte stream to the next kernel.  Restoration matches the exact
 provider family and backing-device tuple, validates topology and native values,
 then reconstructs the journal without re-extending any MR or duplicating INFO
 entries.
+
+Simulation provider
+===================
+
+``CONFIG_ATTESTATION_SIM`` provides synthetic evidence and RAM-backed MRs for
+testing.  It is not a hardware security boundary.  Root may create and destroy
+named fixtures through ``/sys/kernel/debug/attestation-sim``.  Each fixture has
+one parent device and one ``ctlv-attestation-sim`` instance.
+
+The ``state``, ``mr-add`` and ``mr-remove`` files model native changes through
+the normal provider API.  ``fail-next`` injects one provider errno.
+``pause-next`` and ``resume`` provide deterministic operation races, while
+``status`` reports callback counts and the paused callback.  Removing a fixture
+cancels pauses before calling ``ctlv_destroy()``.
+
+When the provider is built in, ``attestation_sim.early_fixture=<name>`` creates
+one fixture at device-init time.  This opt-in path exists so later IMA tests can
+select a provider before IMA's late initialization; post-boot debugfs creation
+is too late for that boot target.
