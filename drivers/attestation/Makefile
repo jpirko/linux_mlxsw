@@ -4,6 +4,10 @@ obj-$(CONFIG_ATTESTATION) += attestation.o
 attestation-y := core/core.o core/ctlv.o core/consumer.o core/events.o \
 		 core/kexec.o core/mr.o generated/ctlv_attestation_gen.o
 
+obj-$(CONFIG_ATTESTATION_KUNIT_TEST) += attestation-kunit.o
+
+attestation-kunit-y := tests/core_kunit.o
+
 obj-$(CONFIG_ATTESTATION_SIM) += attestation-sim.o
 
 attestation-sim-y := providers/sim.o \
