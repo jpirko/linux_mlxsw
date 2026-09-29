@@ -1,0 +1,588 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+family:
+  name: ctlv-attestation
+  inherits: ctlv
+  post-init: true
+  pre-fini: true
+
+enums:
+  - name: evidence-representation
+    values:
+      - raw
+      - tcb-digest
+
+  - name: evidence-blob-class
+    values:
+      - primary
+      - auxiliary
+      - manifest
+      - cert-chain
+      - spdm-vca
+      - spdm-measurements
+      - tdisp-report
+      - signature
+      - event-log
+
+  - name: mr-log-event
+    values:
+      - info
+      - extend
+
+  - name: tdisp-state
+    values:
+      - unlocked
+      - locked
+      - run
+      - error
+
+  - name: device-trust-state
+    values:
+      - unset
+      - none
+      - adversary
+      - auto
+      - tcb
+
+flags:
+  - name: evidence-capabilities
+    values:
+      - evidence-accept
+      - mr-selection
+      - privlevel
+      - service
+
+  - name: mr-device-capabilities
+    values:
+      - read
+      - extend
+      - dynamic-topology
+
+  - name: devsec-capabilities
+    values:
+      - run
+
+  - name: mr-capabilities
+    values:
+      - read
+      - extend
+      - removable
+
+  - name: mr-state-flags
+    values:
+      - ima-active
+
+attr-groups:
+  - name: device
+    attrs:
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: capabilities
+        attrs: device-capabilities
+      - name: info
+        attrs: device-info
+
+  - name: capability
+    attrs:
+      - name: evidence
+        attrs: evidence-capability
+      - name: mr
+        attrs: mr-device-capability
+      - name: devsec
+        attrs: devsec-capability
+      - name: min-challenge-length
+        type: uint
+      - name: max-challenge-length
+        type: uint
+      - name: max-total-output-length
+        type: uint
+      - name: evidence-flags
+        flags: evidence-capabilities
+      - name: mr-flags
+        flags: mr-device-capabilities
+      - name: devsec-flags
+        flags: devsec-capabilities
+      - name: object
+        attrs: evidence-object-capability
+        max-occurrences: 16
+      - name: blob-class
+        enum: evidence-blob-class
+      - name: blob-instance
+        type: uint
+        max: 4294967295
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: representation
+        enum: evidence-representation
+        max-occurrences: 2
+      - name: hash-algo
+        type: uint
+        max: 20
+        max-occurrences: 21
+      - name: max-length
+        type: uint
+
+  - name: evidence
+    attrs:
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: accepted-generation
+        type: uint
+        max: 4294967295
+      - name: challenge
+        type: binary
+        max-length: 4096
+      - name: object
+        attrs: evidence-object-request
+        max-occurrences: 16
+      - name: blob-class
+        enum: evidence-blob-class
+      - name: blob-instance
+        type: uint
+        max: 4294967295
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: representation
+        enum: evidence-representation
+      - name: hash-algo
+        type: uint
+        max: 20
+      - name: data
+        blob:
+          direction: output
+          allowed-backings: [ va, memfd, dma-buf ]
+          max-length: 4294967295
+          alignment: 1
+      - name: selection
+        attrs: evidence-mr-selection
+        max-occurrences: 256
+      - name: privlevel
+        type: uint
+        max: 4294967295
+      - name: service-provider
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: service-guid
+        type: binary
+        min-length: 16
+        max-length: 16
+      - name: service-manifest-version
+        type: uint
+        max: 4294967295
+      - name: options
+        attrs: evidence-options
+      - name: object-length
+        type: uint
+        max-occurrences: 16
+
+  - name: mr
+    attrs:
+      - name: id
+        type: uint
+        max: 4294967295
+      - name: name
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: hash-algo
+        type: uint
+        max: 20
+        max-occurrences: 21
+      - name: register-index
+        type: uint
+        max: 4294967295
+      - name: capabilities
+        flags: mr-capabilities
+      - name: state-flags
+        flags: mr-state-flags
+      - name: item
+        attrs: mr-dump-entry
+        max-occurrences: unlimited
+      - name: options
+        attrs: mr-options
+      - name: value
+        attrs: mr-value
+        max-occurrences: 21
+      - name: data
+        type: binary
+        min-length: 16
+        max-length: 64
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: selection
+        attrs: mr-log-selection
+        max-occurrences: 256
+      - name: start-generation
+        type: uint
+        max: 4294967295
+      - name: end-generation
+        type: uint
+        max: 4294967295
+
+  - name: record
+    attrs:
+      - name: item
+        attrs: record-data
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: data
+        type: binary
+        max-length: 4096
+
+  - name: log
+    attrs:
+      - name: entry
+        attrs: mr-log-entry
+        max-occurrences: unlimited
+      - name: event
+        enum: mr-log-event
+      - name: mr
+        attrs: mr-log-info
+      - name: ima
+        attrs: mr-log-ima
+      - name: template-name
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: template-data
+        type: binary
+        max-length: 65536
+      - name: violation
+        type: bool
+
+  - name: devsec
+    attrs:
+      - name: tdisp-state
+        enum: tdisp-state
+      - name: device-trust
+        enum: device-trust-state
+
+  - name: notification
+    attrs:
+      - name: entry
+        attrs: mr-log-entry
+
+attr-sets:
+  - name: device-info
+    stub: true
+
+  - name: evidence-options
+    stub: true
+
+  - name: mr-options
+    stub: true
+
+  - name: evidence-object-capability
+    attrs:
+      - capability.blob-class
+      - capability.format
+      - capability.representation
+      - capability.max-length
+    optional-attrs:
+      - capability.blob-instance
+      - capability.hash-algo
+
+  - name: evidence-capability
+    attrs:
+      - capability.min-challenge-length
+      - capability.max-challenge-length
+      - capability.max-total-output-length
+      - capability.evidence-flags
+      - capability.object
+
+  - name: mr-device-capability
+    attrs: capability.mr-flags
+
+  - name: devsec-capability
+    attrs: capability.devsec-flags
+
+  - name: device-capabilities
+    optional-attrs:
+      - capability.evidence
+      - capability.mr
+      - capability.devsec
+
+  - name: device-reply
+    attrs:
+      - device.generation
+      - device.capabilities
+      - device.info
+
+  - name: evidence-object-request
+    attrs:
+      - evidence.blob-class
+      - evidence.format
+      - evidence.representation
+      - evidence.data
+    optional-attrs:
+      - evidence.blob-instance
+      - evidence.hash-algo
+
+  - name: evidence-mr-selection
+    attrs:
+      - mr.id
+      - evidence.hash-algo
+
+  - name: evidence-request
+    attrs:
+      - evidence.challenge
+      - evidence.object
+    optional-attrs:
+      - device.generation
+      - evidence.selection
+      - evidence.privlevel
+      - evidence.service-provider
+      - evidence.service-guid
+      - evidence.service-manifest-version
+      - evidence.options
+
+  - name: evidence-reply
+    attrs:
+      - device.generation
+      - evidence.object-length
+    optional-attrs:
+      - evidence.generation
+      - mr.generation
+
+  - name: evidence-generation-request
+    attrs:
+      - device.generation
+      - evidence.generation
+
+  - name: mr-props
+    attrs:
+      - mr.name
+      - mr.hash-algo
+      - mr.capabilities
+      - mr.state-flags
+    optional-attrs: mr.register-index
+
+  - name: mr-dump-entry
+    attrs:
+      - mr.id
+      - mr.name
+      - mr.hash-algo
+      - mr.capabilities
+      - mr.state-flags
+    optional-attrs: mr.register-index
+
+  - name: mr-id-request
+    attrs: mr.id
+
+  - name: mr-read-request
+    attrs: mr.id
+    optional-attrs:
+      - device.generation
+      - mr.options
+
+  - name: mr-value
+    attrs:
+      - mr.hash-algo
+      - mr.data
+
+  - name: mr-read-reply
+    attrs:
+      - device.generation
+      - mr.generation
+      - mr.value
+
+  - name: record-data
+    attrs:
+      - record.format
+      - record.data
+
+  - name: mr-extend-request
+    attrs:
+      - mr.id
+      - mr.value
+    optional-attrs:
+      - device.generation
+      - mr.options
+      - record.item
+
+  - name: mr-change-reply
+    attrs:
+      - device.generation
+      - mr.generation
+
+  - name: mr-log-selection
+    attrs: mr.id
+
+  - name: mr-log-request
+    optional-attrs:
+      - mr.selection
+      - mr.start-generation
+      - mr.end-generation
+
+  - name: mr-log-info
+    attrs:
+      - mr.name
+      - mr.hash-algo
+      - mr.capabilities
+    optional-attrs: mr.register-index
+
+  - name: mr-log-ima
+    attrs:
+      - log.template-name
+      - log.template-data
+      - log.violation
+
+  - name: mr-log-entry
+    attrs:
+      - mr.generation
+      - device.generation
+      - mr.id
+      - log.event
+    optional-attrs:
+      - mr.value
+      - record.item
+      - log.mr
+      - log.ima
+
+  - name: mr-log-reply
+    optional-attrs:
+      - mr.start-generation
+      - mr.end-generation
+      - log.entry
+
+  - name: devsec-state-reply
+    attrs: device.generation
+    optional-attrs:
+      - evidence.generation
+      - evidence.accepted-generation
+      - devsec.tdisp-state
+      - devsec.device-trust
+
+  - name: devsec-run-reply
+    attrs: device.generation
+
+  - name: device-state-event
+    attrs: device.generation
+
+  - name: evidence-state-event
+    attrs: device.generation
+    optional-attrs:
+      - evidence.generation
+      - evidence.accepted-generation
+
+  - name: mr-log-event
+    attrs: notification.entry
+
+ops:
+  - name: device-get
+    type: action
+    fd-access: read
+    reply:
+      attrs: device-reply
+
+  - name: evidence-get
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      attrs: evidence-request
+    reply:
+      attrs: evidence-reply
+
+  - name: evidence-accept
+    type: action
+    fd-access: read-write
+    optional: true
+    request:
+      attrs: evidence-generation-request
+
+  - name: evidence-accept-clear
+    type: action
+    fd-access: read-write
+    optional: true
+
+  - name: mr-get
+    type: action
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-id-request
+    reply:
+      attrs: mr-props
+
+  - name: mr-dump
+    type: query
+    fd-access: read
+    optional: true
+    reply:
+      attrs: mr.item
+    suggested-reply-length: 4096
+
+  - name: mr-read
+    type: query
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-read-request
+    reply:
+      attrs: mr-read-reply
+    suggested-reply-length: 4096
+
+  - name: mr-extend
+    type: action
+    fd-access: read-write
+    optional: true
+    request:
+      attrs: mr-extend-request
+    reply:
+      attrs: mr-change-reply
+
+  - name: mr-log-get
+    type: query
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-log-request
+    reply:
+      attrs: mr-log-reply
+    suggested-reply-length: 131072
+
+  - name: devsec-state-get
+    type: query
+    fd-access: read
+    optional: true
+    reply:
+      attrs: devsec-state-reply
+    suggested-reply-length: 1024
+
+  - name: devsec-run
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      attrs: evidence-generation-request
+    reply:
+      attrs: devsec-run-reply
+
+  - name: device-state-changed
+    type: event
+    reply:
+      attrs: device-state-event
+
+  - name: evidence-state-changed
+    type: event
+    reply:
+      attrs: evidence-state-event
+
+  - name: mr-log-entry-appended
+    type: event
+    reply:
+      attrs: mr-log-event

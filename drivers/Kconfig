@@ -27,6 +27,8 @@ source "drivers/connector/Kconfig"
 
 source "drivers/ctlv/Kconfig"
 
+source "drivers/attestation/Kconfig"
+
 source "drivers/firmware/Kconfig"
 
 source "drivers/fwctl/Kconfig"

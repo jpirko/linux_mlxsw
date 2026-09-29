@@ -372,7 +372,12 @@ def _events(writer, names, family):
         writer.signature('static inline bool', names.user_op_helper(op, 'is'),
                          ('const struct ctlv_event *event',), ')')
         writer.line('{')
-        writer.line(f'\treturn ctlv_event_op_id(event) == {names.op(op)};')
+        comparison = f'\treturn ctlv_event_op_id(event) == {names.op(op)};'
+        if cgen.width(comparison) <= cgen.LINE_LIMIT:
+            writer.line(comparison)
+        else:
+            writer.line('\treturn ctlv_event_op_id(event) ==')
+            writer.line(f'\t\t{names.op(op)};')
         writer.line('}')
         for what in ('subscribe', 'unsubscribe'):
             writer.line()

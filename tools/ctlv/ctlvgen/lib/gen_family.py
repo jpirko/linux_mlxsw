@@ -125,6 +125,8 @@ def emit_header(writer, names, family, reader_scopes):
                        'action and query it declares.')
     for op in bound:
         writer.signature('int', names.callback(op), CALLBACK_PARAMS)
+    if bound:
+        writer.line()
     _hooks(writer, names, family)
     _lifecycle_hooks(writer, names, family)
     _stub_hooks(writer, names, family)
@@ -140,7 +142,6 @@ def emit_header(writer, names, family, reader_scopes):
 
 def _hooks(writer, names, family):
     """The pair around every op, and the pair around one op."""
-    writer.line()
     if family.name == spec.CORE_FAMILY_NAME:
         writer.comment('Called around every core action or query,',
                        'on every device.')
@@ -320,7 +321,8 @@ def _reference(writer, names, scope, slot, attr):
              *cgen.wrapped(
                  '\t\t',
                  (scope.tree, names.attr(attr), str(scope.node_index),
-                  str(slot), cgen.KINDS[attr.decl.kind]), ' })', ' \\'))
+                  str(slot), cgen.KINDS[attr.decl.kind]), ' })', ' \\',
+                 adaptive=True))
     writer.define_block(f'{names.input_ref(scope, attr)}()', *value)
 
 
@@ -333,7 +335,7 @@ def _find(writer, cursor, nest, names, scope, attr):
 def _check(writer, cursor, names, scope, attr, failure=()):
     check = cgen.wrapped('\tif (!ctlv_input_cursor(',
                          (cursor, f'{names.input_ref(scope, attr)}()'),
-                         ')) {' if failure else '))')
+                         ')) {' if failure else '))', adaptive=True)
     for line in check:
         writer.line(line)
     for line in failure:
@@ -361,7 +363,7 @@ def _iterator(writer, names, scope, slot, attr):
             *cgen.wrapped(
                 '\t\tctlv_input_attr(',
                 ('_attr', '_nest', f'{names.input_ref(scope, attr)}()'),
-                ');', ' \\'))
+                ');', ' \\', adaptive=True))
     writer.define_block(f'{names.input_iterator(scope, attr)}(_attr, _nest)',
                         *head,
                         '\t     ctlv_attr_ok(__ctlv_attr);',

@@ -97,7 +97,7 @@ def spec_path(path):
         full = parent
 
 
-def wrapped(opening, items, closing, trailer=''):
+def wrapped(opening, items, closing, trailer='', adaptive=False):
     """Return the lines of one parenthesized list, wrapped at the limit.
 
     trailer is what a continued line ends with beyond the item: a backslash
@@ -105,13 +105,23 @@ def wrapped(opening, items, closing, trailer=''):
     """
     parts = [f'{item}, ' for item in items[:-1]] + [items[-1] + closing]
     column = width(opening)
-    indent = '\t' * (column // TAB_WIDTH) + ' ' * (column % TAB_WIDTH)
+    part_width = max(width(part.rstrip() + trailer) for part in parts)
+    indent_column = column
+    if adaptive:
+        indent_column = min(column, max(0, LINE_LIMIT - part_width))
+    indent = '\t' * (indent_column // TAB_WIDTH) + \
+        ' ' * (indent_column % TAB_WIDTH)
     lines = []
     line = opening
     for part in parts:
-        if (line != opening and
-                width(line + part.rstrip() + trailer) > LINE_LIMIT):
-            lines.append(line.rstrip())
+        if width(line + part.rstrip() + trailer) > LINE_LIMIT:
+            if line != opening:
+                lines.append(line.rstrip())
+            elif adaptive and opening.rstrip():
+                lines.append(opening.rstrip())
+            else:
+                line += part
+                continue
             line = indent
         line += part
     lines.append(line.rstrip())
@@ -139,7 +149,15 @@ class Writer:
 
     def define_block(self, name, *lines):
         """One #define whose value takes more than the one line."""
-        self.line(f'#define {name} \\')
+        header = f'#define {name} \\'
+        if width(header) > LINE_LIMIT and '(' in name:
+            macro, params = name.removesuffix(')').split('(', 1)
+            for text in wrapped(f'#define {macro}(',
+                                tuple(params.split(', ')), ')', ' \\',
+                                adaptive=True):
+                self.line(f'{text} \\')
+        else:
+            self.line(header)
         for text in lines[:-1]:
             self.line(f'{text} \\')
         self.line(lines[-1])
@@ -161,7 +179,9 @@ class Writer:
         if width(f'\t{call}') <= LINE_LIMIT:
             self.define_block(name, f'\t{call}')
             return
-        self.define_block(name, *wrapped(f'\t{function}(', args, ')', ' \\'))
+        self.define_block(
+            name, *wrapped(f'\t{function}(', args, ')', ' \\',
+                           adaptive=True))
 
     def declaration(self, prefix, declarator):
         """One declaration, continued when it would run past the limit."""
@@ -171,11 +191,14 @@ class Writer:
             return
         indent = prefix[:len(prefix) - len(prefix.lstrip('\t'))]
         self.line(prefix)
-        self.line(f'{indent}\t{declarator}')
+        continuation = f'{indent}\t'
+        if width(f'{continuation}{declarator}') > LINE_LIMIT:
+            continuation = '\t'
+        self.line(f'{continuation}{declarator}')
 
     def parenthesized(self, opening, items, closing):
         """One parenthesized list, wrapped at the line limit."""
-        for text in wrapped(opening, items, closing):
+        for text in wrapped(opening, items, closing, adaptive=True):
             self.line(text)
 
     def assertion(self, left, operator, right):

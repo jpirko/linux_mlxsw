@@ -36,6 +36,19 @@ families:
       user-source: tools/testing/selftests/ctlv/ctlv_test_child_user_gen.c
       doc-rst: Documentation/ctlv/families/ctlv-test-child.rst
 
+  - name: ctlv-attestation
+    scope: registered
+    spec: Documentation/ctlv/specs/ctlv-attestation.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_attestation_gen.h
+      kernel-header: drivers/attestation/generated/ctlv_attestation_gen.h
+      kernel-source: drivers/attestation/generated/ctlv_attestation_gen.c
+      user-header: >-
+        tools/testing/selftests/attestation/ctlv_attestation_user_gen.h
+      user-source: >-
+        tools/testing/selftests/attestation/ctlv_attestation_user_gen.c
+      doc-rst: Documentation/ctlv/families/ctlv-attestation.rst
+
   - name: ctlv-fixture
     scope: fixture
     spec: tools/ctlv/tests/specs/ctlv-fixture.yaml
