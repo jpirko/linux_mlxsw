@@ -25,8 +25,11 @@
 #include <asm/cpu_device_id.h>
 #include <asm/tdx.h>
 
+#include "internal.h"
+
 /* TDREPORT buffer */
 static u8 *tdx_report_buf;
+static struct tdx_guest_info tdx_guest_info;
 
 /* Lock to serialize TDG.MR.REPORT and TDG.MR.RTMR.EXTEND TDCALLs */
 static DEFINE_MUTEX(mr_lock);
@@ -49,25 +52,30 @@ enum {
 	TDREPORT_servtd_hash = TDREPORT_rtmr3 + SHA384_DIGEST_SIZE,
 };
 
+static int __tdx_do_report(sockptr_t data, sockptr_t tdreport)
+{
+	u8 *reportdata = tdx_report_buf + TDREPORT_reportdata;
+	int ret;
+
+	lockdep_assert_held(&mr_lock);
+	if (!sockptr_is_null(data) &&
+	    copy_from_sockptr(reportdata, data, TDX_REPORTDATA_LEN))
+		return -EFAULT;
+
+	ret = tdx_mcall_get_report0(reportdata, tdx_report_buf);
+	if (WARN_ONCE(ret, "tdx_mcall_get_report0() failed: %d", ret))
+		return ret;
+
+	if (!sockptr_is_null(tdreport) &&
+	    copy_to_sockptr(tdreport, tdx_report_buf, TDX_REPORT_LEN))
+		return -EFAULT;
+	return 0;
+}
+
 static int tdx_do_report(sockptr_t data, sockptr_t tdreport)
 {
-	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock) {
-		u8 *reportdata = tdx_report_buf + TDREPORT_reportdata;
-		int ret;
-
-		if (!sockptr_is_null(data) &&
-		    copy_from_sockptr(reportdata, data, TDX_REPORTDATA_LEN))
-			return -EFAULT;
-
-		ret = tdx_mcall_get_report0(reportdata, tdx_report_buf);
-		if (WARN_ONCE(ret, "tdx_mcall_get_report0() failed: %d", ret))
-			return ret;
-
-		if (!sockptr_is_null(tdreport) &&
-		    copy_to_sockptr(tdreport, tdx_report_buf, TDX_REPORT_LEN))
-			return -EFAULT;
-	}
-	return 0;
+	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock)
+		return __tdx_do_report(data, tdreport);
 }
 
 static int tdx_do_extend(u8 mr_ind, const u8 *data)
@@ -88,6 +96,34 @@ static int tdx_do_extend(u8 mr_ind, const u8 *data)
 			return ret;
 	}
 	return 0;
+}
+
+int tdx_guest_mr_read(enum tdx_guest_mr mr, u8 value[SHA384_DIGEST_SIZE])
+{
+	static const size_t offsets[] = {
+		[TDX_GUEST_MR_MRTD] = TDREPORT_mrtd,
+		[TDX_GUEST_MR_RTMR0] = TDREPORT_rtmr0,
+		[TDX_GUEST_MR_RTMR1] = TDREPORT_rtmr1,
+		[TDX_GUEST_MR_RTMR2] = TDREPORT_rtmr2,
+		[TDX_GUEST_MR_RTMR3] = TDREPORT_rtmr3,
+	};
+	int ret;
+
+	scoped_cond_guard(mutex_intr, return -EINTR, &mr_lock) {
+		ret = __tdx_do_report(KERNEL_SOCKPTR(NULL),
+				      KERNEL_SOCKPTR(NULL));
+		if (ret)
+			return ret;
+		memcpy(value, tdx_report_buf + offsets[mr],
+		       SHA384_DIGEST_SIZE);
+	}
+	return 0;
+}
+
+int tdx_guest_rtmr_extend(unsigned int rtmr,
+			  const u8 value[SHA384_DIGEST_SIZE])
+{
+	return tdx_do_extend(rtmr, value);
 }
 
 #define TDX_MR_(r) .mr_value = (void *)TDREPORT_##r, TSM_MR_(r, SHA384)
@@ -135,6 +171,12 @@ static const struct attribute_group *tdx_mr_init(void)
 	rc = tdx_mr_refresh(&tdx_measurements);
 	if (rc)
 		return ERR_PTR(rc);
+	memcpy(tdx_guest_info.mrconfigid,
+	       buf + TDREPORT_mrconfigid, SHA384_DIGEST_SIZE);
+	memcpy(tdx_guest_info.mrowner,
+	       buf + TDREPORT_mrowner, SHA384_DIGEST_SIZE);
+	memcpy(tdx_guest_info.mrownerconfig,
+	       buf + TDREPORT_mrownerconfig, SHA384_DIGEST_SIZE);
 
 	/*
 	 * @mr_value was initialized with the offset only, while the base
@@ -188,6 +230,9 @@ struct tdx_quote_buf {
 	u32 out_len;
 	u8 data[];
 };
+
+static_assert(TDX_GUEST_QUOTE_MAX_LEN ==
+	      TDX_DEFAULT_QUOTE_SIZE - sizeof(struct tdx_quote_buf));
 
 static struct tdx_quote_buf *quote_buf;
 
@@ -285,15 +330,18 @@ static int wait_for_quote_completion(struct tdx_quote_buf *buf, u32 timeout)
 	return (i == timeout) ? -ETIMEDOUT : 0;
 }
 
-static int tdx_report_new_locked(struct tsm_report *report)
+/* Leaves the Quote in quote_buf; copy it out before dropping quote_lock. */
+static int __tdx_guest_quote_get(const u8 *reportdata, size_t length,
+				 size_t *out_length)
 {
-	u8 *buf;
-	struct tsm_report_desc *desc = &report->desc;
 	size_t quote_buf_size = get_quote_buf_size();
 	u32 out_len;
 	int ret;
 	u64 err;
 
+	lockdep_assert_held(&quote_lock);
+	if (!reportdata || length != TDX_REPORTDATA_LEN)
+		return -EINVAL;
 	/*
 	 * If the previous request is timedout or interrupted, and the
 	 * Quote buf status is still in GET_QUOTE_IN_FLIGHT (owned by
@@ -302,16 +350,13 @@ static int tdx_report_new_locked(struct tsm_report *report)
 	if (quote_buf->status == GET_QUOTE_IN_FLIGHT)
 		return -EBUSY;
 
-	if (desc->inblob_len != TDX_REPORTDATA_LEN)
-		return -EINVAL;
-
 	memset(quote_buf, 0, quote_buf_size);
 
 	/* Update Quote buffer header */
 	quote_buf->version = GET_QUOTE_CMD_VER;
 	quote_buf->in_len = TDX_REPORT_LEN;
 
-	ret = tdx_do_report(KERNEL_SOCKPTR(desc->inblob),
+	ret = tdx_do_report(KERNEL_SOCKPTR((void *)reportdata),
 			    KERNEL_SOCKPTR(quote_buf->data));
 	if (ret)
 		return ret;
@@ -337,13 +382,7 @@ static int tdx_report_new_locked(struct tsm_report *report)
 
 	if (struct_size(quote_buf, data, out_len) > quote_buf_size)
 		return -EFBIG;
-
-	buf = kvmemdup(quote_buf->data, out_len, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	report->outblob = buf;
-	report->outblob_len = out_len;
+	*out_length = out_len;
 
 	/*
 	 * TODO: parse the PEM-formatted cert chain out of the quote buffer when
@@ -351,6 +390,41 @@ static int tdx_report_new_locked(struct tsm_report *report)
 	 */
 
 	return ret;
+}
+
+int tdx_guest_quote_get(const u8 *reportdata, void *out, size_t *out_length)
+{
+	int ret;
+
+	scoped_cond_guard(mutex_intr, return -EINTR, &quote_lock) {
+		ret = __tdx_guest_quote_get(reportdata, TDX_REPORTDATA_LEN,
+					    out_length);
+		if (ret)
+			return ret;
+		/* The TDX module may allow a Quote longer than @out. */
+		if (*out_length > TDX_GUEST_QUOTE_MAX_LEN)
+			return -EFBIG;
+		memcpy(out, quote_buf->data, *out_length);
+	}
+	return 0;
+}
+
+static int tdx_report_new_locked(struct tsm_report *report)
+{
+	struct tsm_report_desc *desc = &report->desc;
+	size_t length;
+	void *buf;
+	int ret;
+
+	ret = __tdx_guest_quote_get(desc->inblob, desc->inblob_len, &length);
+	if (ret)
+		return ret;
+	buf = kvmemdup(quote_buf->data, length, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	report->outblob = buf;
+	report->outblob_len = length;
+	return 0;
 }
 
 static int tdx_report_new(struct tsm_report *report, void *unused)
