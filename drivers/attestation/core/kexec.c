@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <kunit/visibility.h>
 #include <linux/byteorder/generic.h>
 #include <linux/device.h>
 #include <linux/kexec_handover.h>
@@ -7,6 +8,7 @@
 #include <linux/reboot.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 #include "internal.h"
 
@@ -755,7 +757,7 @@ attestation_kexec_log_restore(struct attestation *att,
 			      struct attestation_kexec_reader *reader,
 			      u32 generation, u32 count)
 {
-	DEFINE_XARRAY(lifetimes);
+	struct xarray lifetimes;
 	struct attestation_mr_log_entry *entry;
 	struct attestation_mr_log_entry_info *info;
 	struct attestation_mr_log_entry_extend *extend;
@@ -767,6 +769,7 @@ attestation_kexec_log_restore(struct attestation *att,
 	log = kzalloc_obj(*log, GFP_KERNEL);
 	if (!log)
 		return -ENOMEM;
+	xa_init(&lifetimes);
 	xa_init(&log->entries);
 	while (count--) {
 		ret = attestation_kexec_entry_read(reader, &entry);
@@ -1026,3 +1029,51 @@ void attestation_kexec_exit(void)
 		attestation_kexec_in_size = 0;
 	}
 }
+
+#if IS_ENABLED(CONFIG_KUNIT)
+int attestation_kexec_test_roundtrip(struct attestation *att)
+{
+	struct attestation_kexec_writer writer;
+	struct attestation_kexec_reader reader;
+	struct attestation_mr_log *old_log;
+	u32 length;
+	void *buffer;
+	int ret;
+
+	buffer = kvzalloc(ATTESTATION_KEXEC_SIZE, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+	writer = (struct attestation_kexec_writer) {
+		.data = buffer,
+		.capacity = ATTESTATION_KEXEC_SIZE,
+	};
+	mutex_lock(&att->lock);
+	ret = attestation_kexec_instance_write(&writer, att);
+	if (ret)
+		goto out_unlock;
+	reader = (struct attestation_kexec_reader) {
+		.data = buffer,
+		.length = writer.length,
+	};
+	ret = attestation_kexec_get_u32(&reader, &length);
+	if (ret)
+		goto out_unlock;
+	old_log = att->log;
+	att->log = NULL;
+	ret = attestation_kexec_instance_restore(att, &reader, length);
+	if (ret == 1) {
+		attestation_mr_log_free(old_log);
+		ret = 0;
+	} else {
+		attestation_mr_log_free(att->log);
+		att->log = old_log;
+		if (!ret)
+			ret = -ESTALE;
+	}
+out_unlock:
+	mutex_unlock(&att->lock);
+	kvfree(buffer);
+	return ret;
+}
+EXPORT_SYMBOL_IF_KUNIT(attestation_kexec_test_roundtrip);
+#endif

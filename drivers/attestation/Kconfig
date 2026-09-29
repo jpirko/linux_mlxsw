@@ -13,6 +13,19 @@ menuconfig ATTESTATION
 
 if ATTESTATION
 
+config ATTESTATION_KUNIT_TEST
+	tristate "Attestation core KUnit tests" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  Checks provider contracts, generation and journal transactions,
+	  kernel targets, lifecycle races, allocation failures and orderly
+	  kexec serialization without a hardware provider.
+
+	  The tests are a separate module named attestation-kunit.
+
+	  If you are unsure, say N.
+
 config ATTESTATION_SIM
 	tristate "Simulated attestation provider"
 	depends on DEBUG_FS
