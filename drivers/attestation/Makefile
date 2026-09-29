@@ -12,3 +12,8 @@ obj-$(CONFIG_ATTESTATION_SIM) += attestation-sim.o
 
 attestation-sim-y := providers/sim.o \
 		     generated/ctlv_attestation_sim_gen.o
+
+obj-$(CONFIG_ATTESTATION_TDX) += attestation-tdx.o
+
+attestation-tdx-y := providers/tdx.o \
+		     generated/ctlv_attestation_tdx_gen.o

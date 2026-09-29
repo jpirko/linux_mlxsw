@@ -62,6 +62,19 @@ families:
         tools/testing/selftests/attestation/ctlv_attestation_sim_user_gen.c
       doc-rst: Documentation/ctlv/families/ctlv-attestation-sim.rst
 
+  - name: ctlv-attestation-tdx
+    scope: registered
+    spec: Documentation/ctlv/specs/ctlv-attestation-tdx.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_attestation_tdx_gen.h
+      kernel-header: drivers/attestation/generated/ctlv_attestation_tdx_gen.h
+      kernel-source: drivers/attestation/generated/ctlv_attestation_tdx_gen.c
+      user-header: >-
+        tools/testing/selftests/attestation/ctlv_attestation_tdx_user_gen.h
+      user-source: >-
+        tools/testing/selftests/attestation/ctlv_attestation_tdx_user_gen.c
+      doc-rst: Documentation/ctlv/families/ctlv-attestation-tdx.rst
+
   - name: ctlv-fixture
     scope: fixture
     spec: tools/ctlv/tests/specs/ctlv-fixture.yaml

@@ -31,7 +31,8 @@ FIXTURE_REGISTRY = TESTS_DIR / 'families.yaml'
 
 # Every registered family, in registry order.
 FAMILIES = ('ctlv', 'ctlv-test', 'ctlv-test-child',
-            'ctlv-attestation', 'ctlv-attestation-sim')
+            'ctlv-attestation', 'ctlv-attestation-sim',
+            'ctlv-attestation-tdx')
 
 # The fixture families, in fixture registry order: a parent holding one of
 # every shape the language allows, and a child that inherits it.

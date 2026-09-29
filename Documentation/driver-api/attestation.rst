@@ -94,3 +94,20 @@ When the provider is built in, ``attestation_sim.early_fixture=<name>`` creates
 one fixture at device-init time.  This opt-in path exists so later IMA tests can
 select a provider before IMA's late initialization; post-boot debugfs creation
 is too late for that boot target.
+
+TDX provider
+============
+
+``CONFIG_ATTESTATION_TDX`` registers a ``ctlv-attestation-tdx`` instance for
+the native TDX guest service.  MRTD has stable MR ID 0 and is read-only.
+RTMR0 through RTMR3 have IDs 1 through 4 and are readable and extendable with
+SHA-384.
+
+``EVIDENCE_GET`` supports complete raw TDREPORT and Quote objects.  Both
+formats cryptographically bind the architectural TDX measurement registers,
+so successful replies carry the matching MR-journal boundary.  The provider
+accepts an MR selection because the native evidence contains all selected
+registers, but it exposes no verdict or device-security operation.
+
+The provider consumes only ``<linux/tdx-guest.h>``.  It does not call the TDX
+misc ioctl, configfs TSM-report, or TSM-MR sysfs frontends.
