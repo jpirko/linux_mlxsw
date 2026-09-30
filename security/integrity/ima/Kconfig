@@ -33,8 +33,13 @@ config IMA
 if IMA
 
 config IMA_ATTESTATION
-	bool
+	bool "Route IMA measurements through attestation"
 	depends on ATTESTATION=y
+	help
+	  Allow a boot parameter to select an attestation measurement
+	  register as IMA's measurement target.
+
+	  If unsure, say N.
 
 config IMA_KEXEC
 	bool "Enable carrying the IMA measurement list across a soft boot"

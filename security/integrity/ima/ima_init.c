@@ -146,6 +146,11 @@ int __init ima_init(void)
 	rc = ima_init_template();
 	if (rc != 0)
 		goto out_attestation;
+	if (ima_attestation_mode()) {
+		rc = ima_init_template_fields_all();
+		if (rc)
+			goto out_attestation;
+	}
 
 	/* It can be called before ima_init_digests(), it does not use TPM. */
 	ima_load_kexec_buffer();
@@ -156,6 +161,10 @@ int __init ima_init(void)
 
 	rc = ima_init_htable();
 	if (rc != 0)
+		goto out_attestation;
+
+	rc = ima_attestation_projection_init();
+	if (rc)
 		goto out_attestation;
 
 	rc = ima_add_boot_aggregate();	/* boot aggregate must be first entry */
