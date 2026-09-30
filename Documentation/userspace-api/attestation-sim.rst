@@ -87,4 +87,7 @@ Destroying a fixture releases a paused call, which fails with ``ENODEV``.
 
 With the simulator built in, ``attestation_sim.early_fixture=<name>`` creates
 a fixture at boot, early enough for IMA to select its device, which one
-created through debugfs is not.
+created through debugfs is not. The IMA selftest wants a kernel booted with
+``attestation_sim.early_fixture=ima-test
+ima_attestation=ctlv-attestation-sim:1``, for IMA to extend the fixture's
+``sim-extendable``. ``IMA_ATTESTATION_TEST_FIXTURE`` names another fixture.
