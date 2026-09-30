@@ -45,6 +45,8 @@ static DEFINE_HASHTABLE(ima_attestation_digests, IMA_HASH_BITS);
 
 #define IMA_ATTESTATION_BATCH_ENTRIES	128
 #define IMA_ATTESTATION_TEMPLATE_MAX	65536
+#define IMA_ATTESTATION_RECORD_DATA_MAX	4096
+#define IMA_ATTESTATION_RECORD_FORMAT_MAX	128
 #define IMA_ATTESTATION_KEXEC_MAGIC	0x494d4141
 #define IMA_ATTESTATION_KEXEC_VERSION	1
 #define IMA_ATTESTATION_KEXEC_SIZE	SZ_1K
@@ -53,6 +55,9 @@ static DEFINE_HASHTABLE(ima_attestation_digests, IMA_HASH_BITS);
 #define IMA_ATTESTATION_SELECTOR_FAMILY	BIT(0)
 #define IMA_ATTESTATION_SELECTOR_BUS	BIT(1)
 #define IMA_ATTESTATION_SELECTOR_DEVICE	BIT(2)
+
+static const char ima_attestation_record_prefix[] =
+	"attestation-mr-record-v1";
 
 struct ima_attestation_kexec_writer {
 	u8 *data;
@@ -933,6 +938,50 @@ static void ima_attestation_put_u32(struct seq_file *seq, u32 value)
 }
 
 static int
+ima_attestation_record_encode(struct ima_attestation_file *file,
+			      const struct attestation_mr_log_entry *entry,
+			      size_t *encoded_length)
+{
+	const char *format =
+		attestation_mr_log_entry_record_format(entry);
+	const u8 *data;
+	size_t format_length;
+	size_t data_length;
+	size_t length;
+	size_t offset = 0;
+	__le32 encoded;
+
+	if (!format) {
+		*encoded_length = 0;
+		return 0;
+	}
+	data = attestation_mr_log_entry_record_data(entry, &data_length);
+	format_length = strlen(format);
+	length = sizeof(ima_attestation_record_prefix) + sizeof(encoded) +
+		 format_length + sizeof(encoded) + data_length;
+	if (format_length > IMA_ATTESTATION_RECORD_FORMAT_MAX ||
+	    data_length > IMA_ATTESTATION_RECORD_DATA_MAX ||
+	    length > IMA_ATTESTATION_TEMPLATE_MAX)
+		return -EINVAL;
+
+	memcpy(file->scratch + offset, ima_attestation_record_prefix,
+	       sizeof(ima_attestation_record_prefix));
+	offset += sizeof(ima_attestation_record_prefix);
+	encoded = cpu_to_le32(format_length);
+	memcpy(file->scratch + offset, &encoded, sizeof(encoded));
+	offset += sizeof(encoded);
+	memcpy(file->scratch + offset, format, format_length);
+	offset += format_length;
+	encoded = cpu_to_le32(data_length);
+	memcpy(file->scratch + offset, &encoded, sizeof(encoded));
+	offset += sizeof(encoded);
+	if (data_length)
+		memcpy(file->scratch + offset, data, data_length);
+	*encoded_length = length;
+	return 0;
+}
+
+static int
 ima_attestation_fields_show(struct seq_file *seq,
 			    struct ima_attestation_file *file,
 			    const char *template_name,
@@ -987,8 +1036,10 @@ static int ima_attestation_binary_show(struct seq_file *seq, void *v)
 	const char *template_name;
 	const u8 *template_data;
 	size_t data_length;
+	size_t record_length;
 	u8 zero_digest[HASH_MAX_DIGESTSIZE] = {};
 	u8 *digest;
+	int ret;
 
 	value = ima_attestation_entry_value(file, entry);
 	if (!value)
@@ -1004,8 +1055,12 @@ static int ima_attestation_binary_show(struct seq_file *seq, void *v)
 	} else {
 		template_name = "ima-mr-extend";
 		digest = (u8 *)value->data;
-		template_data = NULL;
-		data_length = 0;
+		ret = ima_attestation_record_encode(file, entry,
+						    &record_length);
+		if (ret)
+			return ret;
+		template_data = file->scratch;
+		data_length = record_length;
 	}
 
 	ima_attestation_put_u32(seq, file->mr_id);
@@ -1027,6 +1082,7 @@ static int ima_attestation_ascii_show(struct seq_file *seq, void *v)
 	const char *template_name;
 	const u8 *template_data;
 	size_t data_length;
+	size_t record_length;
 	u8 zero_digest[HASH_MAX_DIGESTSIZE] = {};
 	u8 *digest;
 	int ret;
@@ -1045,14 +1101,24 @@ static int ima_attestation_ascii_show(struct seq_file *seq, void *v)
 			digest = zero_digest;
 	} else {
 		template_name = "ima-mr-extend";
-		template_data = NULL;
-		data_length = 0;
+		ret = ima_attestation_record_encode(file, entry,
+						    &record_length);
+		if (ret)
+			return ret;
+		template_data = file->scratch;
+		data_length = record_length;
 	}
 
 	seq_printf(seq, "%2u ", file->mr_id);
 	ima_print_digest(seq, digest, hash_digest_size[file->algorithm]);
 	seq_printf(seq, " %s", template_name);
-	if (strcmp(template_name, "ima-mr-extend")) {
+	if (!strcmp(template_name, "ima-mr-extend")) {
+		if (data_length) {
+			seq_puts(seq, " ");
+			ima_print_digest(seq, (u8 *)template_data,
+					 data_length);
+		}
+	} else {
 		ret = ima_attestation_fields_show(seq, file, template_name,
 						  template_data, data_length);
 		if (ret)

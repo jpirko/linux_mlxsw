@@ -142,8 +142,9 @@ through its TPM path.
 The existing IMA binary and ASCII runtime-measurement files project that MR
 lifetime from the attestation journal.  IMA entries retain their original
 template records; userspace extensions appear as ``ima-mr-extend`` records
-carrying the exact submitted value, in the files of the banks they extended
-only, so two banks' files may list different records.
+carrying the exact submitted value and optional canonical record envelope, in
+the files of the banks they extended only, so two banks' files may list
+different records.
 Each open file owns a log-only target clone and traverses fixed journal ends in
 bounded SRCU batches.  Targets without SHA-1 do not create the unsuffixed
 SHA-1 aliases.
