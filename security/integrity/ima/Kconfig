@@ -32,6 +32,10 @@ config IMA
 
 if IMA
 
+config IMA_ATTESTATION
+	bool
+	depends on ATTESTATION=y
+
 config IMA_KEXEC
 	bool "Enable carrying the IMA measurement list across a soft boot"
 	depends on TCG_TPM && HAVE_IMA_KEXEC

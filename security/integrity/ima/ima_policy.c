@@ -39,6 +39,12 @@
 #define IMA_EGID	0x4000
 #define IMA_FGROUP	0x8000
 #define IMA_FS_SUBTYPE	0x10000
+#define IMA_ATTESTATION	0x20000
+#define IMA_ATTESTATION_BUS	0x40000
+#define IMA_ATTESTATION_DEVICE	0x80000
+#define IMA_MR_ID	0x100000
+#define IMA_ATTESTATION_FLAGS	(IMA_ATTESTATION | IMA_ATTESTATION_BUS | \
+				 IMA_ATTESTATION_DEVICE | IMA_MR_ID)
 
 #define UNKNOWN		0
 #define MEASURE		0x0001	/* same as IMA_MEASURE */
@@ -124,6 +130,10 @@ struct ima_rule_entry {
 	} lsm[MAX_LSM_RULES];
 	char *fsname;
 	char *fs_subtype;
+	char *attestation;
+	char *attestation_bus;
+	char *attestation_device;
+	unsigned int mr_id;
 	struct ima_rule_opt_list *keyrings; /* Measure keys added to these keyrings */
 	struct ima_rule_opt_list *label; /* Measure data grouped under this label */
 	struct ima_template_desc *template;
@@ -409,6 +419,9 @@ static void ima_free_rule(struct ima_rule_entry *entry)
 	 */
 	kfree(entry->fsname);
 	kfree(entry->fs_subtype);
+	kfree(entry->attestation);
+	kfree(entry->attestation_bus);
+	kfree(entry->attestation_device);
 	ima_free_rule_opt_list(entry->keyrings);
 	ima_lsm_free_rule(entry);
 	kfree(entry);
@@ -1102,7 +1115,8 @@ enum policy_opt {
 	Opt_digest_type,
 	Opt_appraise_type, Opt_appraise_flag, Opt_appraise_algos,
 	Opt_permit_directio, Opt_pcr, Opt_template, Opt_keyrings,
-	Opt_label, Opt_err
+	Opt_label, Opt_attestation, Opt_attestation_bus,
+	Opt_attestation_device, Opt_mr_id, Opt_err
 };
 
 static const match_table_t policy_tokens = {
@@ -1153,6 +1167,10 @@ static const match_table_t policy_tokens = {
 	{Opt_template, "template=%s"},
 	{Opt_keyrings, "keyrings=%s"},
 	{Opt_label, "label=%s"},
+	{Opt_attestation, "attestation=%s"},
+	{Opt_attestation_bus, "attestation-bus=%s"},
+	{Opt_attestation_device, "attestation-dev=%s"},
+	{Opt_mr_id, "mr-id=%s"},
 	{Opt_err, NULL}
 };
 
@@ -1270,8 +1288,14 @@ static void check_template_field(const struct ima_template_desc *template,
 
 static bool ima_validate_rule(struct ima_rule_entry *entry)
 {
+	unsigned int flags = entry->flags & ~IMA_ATTESTATION_FLAGS;
+
 	/* Ensure that the action is set and is compatible with the flags */
 	if (entry->action == UNKNOWN)
+		return false;
+
+	if (entry->action != MEASURE &&
+	    entry->flags & IMA_ATTESTATION_FLAGS)
 		return false;
 
 	if (entry->action != MEASURE && entry->flags & IMA_PCR)
@@ -1306,30 +1330,30 @@ static bool ima_validate_rule(struct ima_rule_entry *entry)
 	case POST_SETATTR:
 	case FIRMWARE_CHECK:
 	case POLICY_CHECK:
-		if (entry->flags & ~(IMA_FUNC | IMA_MASK | IMA_FSMAGIC |
-				     IMA_UID | IMA_FOWNER | IMA_FSUUID |
-				     IMA_INMASK | IMA_EUID | IMA_PCR |
-				     IMA_FSNAME | IMA_FS_SUBTYPE |
-				     IMA_GID | IMA_EGID |
-				     IMA_FGROUP | IMA_DIGSIG_REQUIRED |
-				     IMA_PERMIT_DIRECTIO | IMA_VALIDATE_ALGOS |
-				     IMA_CHECK_BLACKLIST | IMA_VERITY_REQUIRED |
-				     IMA_SIGV3_REQUIRED))
+		if (flags & ~(IMA_FUNC | IMA_MASK | IMA_FSMAGIC |
+			      IMA_UID | IMA_FOWNER | IMA_FSUUID |
+			      IMA_INMASK | IMA_EUID | IMA_PCR |
+			      IMA_FSNAME | IMA_FS_SUBTYPE |
+			      IMA_GID | IMA_EGID |
+			      IMA_FGROUP | IMA_DIGSIG_REQUIRED |
+			      IMA_PERMIT_DIRECTIO | IMA_VALIDATE_ALGOS |
+			      IMA_CHECK_BLACKLIST | IMA_VERITY_REQUIRED |
+			      IMA_SIGV3_REQUIRED))
 			return false;
 
 		break;
 	case MODULE_CHECK:
 	case KEXEC_KERNEL_CHECK:
 	case KEXEC_INITRAMFS_CHECK:
-		if (entry->flags & ~(IMA_FUNC | IMA_MASK | IMA_FSMAGIC |
-				     IMA_UID | IMA_FOWNER | IMA_FSUUID |
-				     IMA_INMASK | IMA_EUID | IMA_PCR |
-				     IMA_FSNAME | IMA_FS_SUBTYPE |
-				     IMA_GID | IMA_EGID |
-				     IMA_FGROUP | IMA_DIGSIG_REQUIRED |
-				     IMA_PERMIT_DIRECTIO | IMA_MODSIG_ALLOWED |
-				     IMA_CHECK_BLACKLIST | IMA_VALIDATE_ALGOS |
-				     IMA_SIGV3_REQUIRED))
+		if (flags & ~(IMA_FUNC | IMA_MASK | IMA_FSMAGIC |
+			      IMA_UID | IMA_FOWNER | IMA_FSUUID |
+			      IMA_INMASK | IMA_EUID | IMA_PCR |
+			      IMA_FSNAME | IMA_FS_SUBTYPE |
+			      IMA_GID | IMA_EGID |
+			      IMA_FGROUP | IMA_DIGSIG_REQUIRED |
+			      IMA_PERMIT_DIRECTIO | IMA_MODSIG_ALLOWED |
+			      IMA_CHECK_BLACKLIST | IMA_VALIDATE_ALGOS |
+			      IMA_SIGV3_REQUIRED))
 			return false;
 
 		break;
@@ -1337,11 +1361,10 @@ static bool ima_validate_rule(struct ima_rule_entry *entry)
 		if (entry->action & ~(MEASURE | DONT_MEASURE))
 			return false;
 
-		if (entry->flags & ~(IMA_FUNC | IMA_FSMAGIC | IMA_UID |
-				     IMA_FOWNER | IMA_FSUUID | IMA_EUID |
-				     IMA_PCR | IMA_FSNAME | IMA_FS_SUBTYPE |
-				     IMA_GID | IMA_EGID |
-				     IMA_FGROUP))
+		if (flags & ~(IMA_FUNC | IMA_FSMAGIC | IMA_UID |
+			      IMA_FOWNER | IMA_FSUUID | IMA_EUID |
+			      IMA_PCR | IMA_FSNAME | IMA_FS_SUBTYPE |
+			      IMA_GID | IMA_EGID | IMA_FGROUP))
 			return false;
 
 		break;
@@ -1349,8 +1372,8 @@ static bool ima_validate_rule(struct ima_rule_entry *entry)
 		if (entry->action & ~(MEASURE | DONT_MEASURE))
 			return false;
 
-		if (entry->flags & ~(IMA_FUNC | IMA_UID | IMA_GID | IMA_PCR |
-				     IMA_KEYRINGS))
+		if (flags & ~(IMA_FUNC | IMA_UID | IMA_GID | IMA_PCR |
+			      IMA_KEYRINGS))
 			return false;
 
 		if (ima_rule_contains_lsm_cond(entry))
@@ -1361,8 +1384,8 @@ static bool ima_validate_rule(struct ima_rule_entry *entry)
 		if (entry->action & ~(MEASURE | DONT_MEASURE))
 			return false;
 
-		if (entry->flags & ~(IMA_FUNC | IMA_UID | IMA_GID | IMA_PCR |
-				     IMA_LABEL))
+		if (flags & ~(IMA_FUNC | IMA_UID | IMA_GID | IMA_PCR |
+			      IMA_LABEL))
 			return false;
 
 		if (ima_rule_contains_lsm_cond(entry))
@@ -1382,7 +1405,7 @@ static bool ima_validate_rule(struct ima_rule_entry *entry)
 		 * full policies are not supported, they would have too
 		 * much of a performance impact
 		 */
-		if (entry->flags & ~(IMA_FUNC | IMA_VALIDATE_ALGOS))
+		if (flags & ~(IMA_FUNC | IMA_VALIDATE_ALGOS))
 			return false;
 
 		break;
@@ -1436,6 +1459,14 @@ static unsigned int ima_parse_appraise_algos(char *arg)
 	}
 
 	return res;
+}
+
+static int ima_parse_rule_string(substring_t *args, char **value)
+{
+	if (*value || !*args[0].from)
+		return -EINVAL;
+	*value = match_strdup(args);
+	return *value ? 0 : -ENOMEM;
 }
 
 static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
@@ -1914,6 +1945,38 @@ static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
 				entry->flags |= IMA_PCR;
 
 			break;
+		case Opt_attestation:
+			ima_log_string(ab, "attestation", args[0].from);
+			result = ima_parse_rule_string(args,
+						       &entry->attestation);
+			if (!result)
+				entry->flags |= IMA_ATTESTATION;
+			break;
+		case Opt_attestation_bus:
+			ima_log_string(ab, "attestation-bus", args[0].from);
+			result = ima_parse_rule_string(args,
+						       &entry->attestation_bus);
+			if (!result)
+				entry->flags |= IMA_ATTESTATION_BUS;
+			break;
+		case Opt_attestation_device:
+			ima_log_string(ab, "attestation-dev", args[0].from);
+			result = ima_parse_rule_string(args,
+						       &entry->attestation_device);
+			if (!result)
+				entry->flags |= IMA_ATTESTATION_DEVICE;
+			break;
+		case Opt_mr_id:
+			ima_log_string(ab, "mr-id", args[0].from);
+			if (entry->flags & IMA_MR_ID) {
+				result = -EINVAL;
+				break;
+			}
+			result = kstrtouint(args[0].from, 10,
+					    &entry->mr_id);
+			if (!result)
+				entry->flags |= IMA_MR_ID;
+			break;
 		case Opt_template:
 			ima_log_string(ab, "template", args[0].from);
 			if (entry->action != MEASURE) {
@@ -1944,7 +2007,14 @@ static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
 	}
 	if (!result && !ima_validate_rule(entry))
 		result = -EINVAL;
-	else if (entry->action == APPRAISE)
+	if (!result)
+		result = ima_attestation_policy_check(entry->attestation,
+						      entry->attestation_bus,
+						      entry->attestation_device,
+						      entry->flags & IMA_MR_ID,
+						      entry->mr_id,
+						      entry->flags & IMA_PCR);
+	if (!result && entry->action == APPRAISE)
 		temp_ima_appraise |= ima_appraise_flag(entry->func);
 
 	if (!result && entry->flags & IMA_MODSIG_ALLOWED) {
@@ -2211,6 +2281,25 @@ int ima_policy_show(struct seq_file *m, void *v)
 	if (entry->flags & IMA_PCR) {
 		snprintf(tbuf, sizeof(tbuf), "%d", entry->pcr);
 		seq_printf(m, pt(Opt_pcr), tbuf);
+		seq_puts(m, " ");
+	}
+	if (entry->flags & IMA_ATTESTATION) {
+		seq_printf(m, pt(Opt_attestation), entry->attestation);
+		seq_puts(m, " ");
+	}
+	if (entry->flags & IMA_ATTESTATION_BUS) {
+		seq_printf(m, pt(Opt_attestation_bus),
+			   entry->attestation_bus);
+		seq_puts(m, " ");
+	}
+	if (entry->flags & IMA_ATTESTATION_DEVICE) {
+		seq_printf(m, pt(Opt_attestation_device),
+			   entry->attestation_device);
+		seq_puts(m, " ");
+	}
+	if (entry->flags & IMA_MR_ID) {
+		snprintf(tbuf, sizeof(tbuf), "%u", entry->mr_id);
+		seq_printf(m, pt(Opt_mr_id), tbuf);
 		seq_puts(m, " ");
 	}
 

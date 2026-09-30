@@ -79,6 +79,57 @@ extern struct tpm_chip *ima_tpm_chip;
 extern const char boot_aggregate_name[];
 extern const char boot_aggregate_late_name[];
 
+#ifdef CONFIG_IMA_ATTESTATION
+struct attestation_mr_target;
+
+struct ima_attestation_target {
+	struct attestation_mr_target *mr_target;
+	enum hash_algo *algorithms;
+	size_t algorithms_count;
+	unsigned int mr_id;
+};
+
+extern struct ima_attestation_target *ima_attestation_target;
+
+bool ima_attestation_requested(void);
+bool ima_attestation_mode(void);
+int __init ima_attestation_init(void);
+void __init ima_attestation_destroy(void);
+int ima_attestation_policy_check(const char *family_name,
+				 const char *bus_name,
+				 const char *device_name,
+				 bool mr_id_present, unsigned int mr_id,
+				 bool pcr_present);
+#else
+static inline bool ima_attestation_requested(void)
+{
+	return false;
+}
+
+static inline bool ima_attestation_mode(void)
+{
+	return false;
+}
+
+static inline int ima_attestation_init(void)
+{
+	return 0;
+}
+
+static inline void ima_attestation_destroy(void)
+{
+}
+
+static inline int
+ima_attestation_policy_check(const char *family_name, const char *bus_name,
+			     const char *device_name, bool mr_id_present,
+			     unsigned int mr_id, bool pcr_present)
+{
+	return family_name || bus_name || device_name || mr_id_present ?
+		-EINVAL : 0;
+}
+#endif
+
 /* IMA event related data */
 struct ima_event_data {
 	struct ima_iint_cache *iint;

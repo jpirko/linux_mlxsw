@@ -1328,8 +1328,9 @@ static int __init init_ima(void)
 	hash_setup(CONFIG_IMA_DEFAULT_HASH);
 	error = ima_init();
 
-	if (error && strcmp(hash_algo_name[ima_hash_algo],
-			    CONFIG_IMA_DEFAULT_HASH) != 0) {
+	if (error && !ima_attestation_requested() &&
+	    strcmp(hash_algo_name[ima_hash_algo],
+		   CONFIG_IMA_DEFAULT_HASH) != 0) {
 		pr_info("Allocating %s failed, going to use default hash algorithm %s\n",
 			hash_algo_name[ima_hash_algo], CONFIG_IMA_DEFAULT_HASH);
 		hash_setup_done = 0;

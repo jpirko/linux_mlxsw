@@ -31,6 +31,8 @@ Description:
 			option:	[digest_type=] [template=] [permit_directio]
 				[appraise_type=] [appraise_flag=]
 				[appraise_algos=] [keyrings=]
+				[attestation=] [attestation-bus=]
+				[attestation-dev=] [mr-id=]
 		  base:
 			func:= [BPRM_CHECK][MMAP_CHECK][CREDS_CHECK][FILE_CHECK][MODULE_CHECK]
 				[FIRMWARE_CHECK]
@@ -67,6 +69,10 @@ Description:
 			template:= name of a defined IMA template type
 			(eg, ima-ng). Only valid when action is "measure".
 			pcr:= decimal value
+			attestation:= attestation family name
+			attestation-bus:= parent bus or class name
+			attestation-dev:= parent device name
+			mr-id:= unsigned decimal measurement register ID
 			label:= [selinux]|[kernel_info]|[data_label]
 			data_label:= a unique string used for grouping and limiting critical data.
 			For example, "selinux" to measure critical data for SELinux.
@@ -74,6 +80,14 @@ Description:
 			For example, "sha256,sha512" to only accept to appraise
 			files where the security.ima xattr was hashed with one
 			of these two algorithms.
+
+			When ima_attestation= selected the measurement target,
+			a measure rule with no attestation fields inherits that
+			target. An explicit assertion requires mr-id and either
+			attestation, the complete attestation-bus and
+			attestation-dev pair, or both. The pcr option is invalid
+			in this mode. Attestation assertions are invalid in the
+			legacy mode.
 
 		  default policy:
 			# PROC_SUPER_MAGIC
