@@ -134,33 +134,39 @@ int __init ima_init(void)
 	if (rc)
 		return rc;
 
+	rc = ima_attestation_init();
+	if (rc) {
+		ima_attestation_destroy();
+		return rc;
+	}
+
 	rc = ima_init_crypto();
 	if (rc)
-		return rc;
+		goto out_attestation;
 	rc = ima_init_template();
 	if (rc != 0)
-		return rc;
+		goto out_attestation;
 
 	/* It can be called before ima_init_digests(), it does not use TPM. */
 	ima_load_kexec_buffer();
 
 	rc = ima_init_digests();
 	if (rc != 0)
-		return rc;
+		goto out_attestation;
 
 	rc = ima_init_htable();
 	if (rc != 0)
-		return rc;
+		goto out_attestation;
 
 	rc = ima_add_boot_aggregate();	/* boot aggregate must be first entry */
 	if (rc != 0)
-		return rc;
+		goto out_attestation;
 
 	ima_init_policy();
 
 	rc = ima_fs_init();
 	if (rc != 0)
-		return rc;
+		goto out_attestation;
 
 	ima_init_key_queue();
 
@@ -170,5 +176,9 @@ int __init ima_init(void)
 				  UTS_RELEASE, strlen(UTS_RELEASE), false,
 				  NULL, 0);
 
+	return 0;
+
+out_attestation:
+	ima_attestation_destroy();
 	return rc;
 }
