@@ -63,6 +63,7 @@ struct attestation {
 	struct xarray mrs;
 	struct attestation_mr_log *log;
 	bool initialized;
+	bool kexec_restored;
 };
 
 struct attestation_mr {

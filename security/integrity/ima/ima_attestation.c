@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/attestation/ima.h>
+#include <linux/byteorder/generic.h>
 #include <linux/hashtable.h>
+#include <linux/ima.h>
 #include <linux/init.h>
+#include <linux/io.h>
+#include <linux/kexec_handover.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/notifier.h>
 #include <linux/overflow.h>
+#include <linux/reboot.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 
 #include "ima.h"
@@ -22,7 +29,7 @@ struct ima_attestation_selector {
 	bool device_present;
 };
 
-static struct ima_attestation_selector ima_selector __initdata;
+static struct ima_attestation_selector ima_selector;
 static char ima_attestation_boot_family[256];
 static char ima_attestation_boot_bus[256];
 static char ima_attestation_boot_device[256];
@@ -40,9 +47,35 @@ static DEFINE_HASHTABLE(ima_attestation_digests, IMA_HASH_BITS);
 #define IMA_ATTESTATION_TEMPLATE_MAX	65536
 #define IMA_ATTESTATION_RECORD_DATA_MAX	4096
 #define IMA_ATTESTATION_RECORD_FORMAT_MAX	128
+#define IMA_ATTESTATION_KEXEC_MAGIC	0x494d4141
+#define IMA_ATTESTATION_KEXEC_VERSION	1
+#define IMA_ATTESTATION_KEXEC_SIZE	SZ_1K
+#define IMA_ATTESTATION_KEXEC_NAME	"ima-attestation"
+
+#define IMA_ATTESTATION_SELECTOR_FAMILY	BIT(0)
+#define IMA_ATTESTATION_SELECTOR_BUS	BIT(1)
+#define IMA_ATTESTATION_SELECTOR_DEVICE	BIT(2)
 
 static const char ima_attestation_record_prefix[] =
 	"attestation-mr-record-v1";
+
+struct ima_attestation_kexec_writer {
+	u8 *data;
+	size_t length;
+	size_t capacity;
+};
+
+struct ima_attestation_kexec_reader {
+	const u8 *data;
+	size_t length;
+	size_t offset;
+};
+
+static void *ima_attestation_kexec_out;
+static const void *ima_attestation_kexec_in;
+static const void *ima_attestation_kexec_consumed;
+static size_t ima_attestation_kexec_in_size;
+static bool ima_attestation_kexec_registered;
 
 struct ima_attestation_file {
 	/* Serializes read and seek on one open file. */
@@ -58,6 +91,99 @@ struct ima_attestation_file {
 	enum hash_algo algorithm;
 	bool srcu_active;
 };
+
+static int
+ima_attestation_kexec_put(struct ima_attestation_kexec_writer *writer,
+			  const void *data, size_t length)
+{
+	if (length > writer->capacity - writer->length)
+		return -E2BIG;
+	if (length)
+		memcpy(writer->data + writer->length, data, length);
+	writer->length += length;
+	return 0;
+}
+
+static int
+ima_attestation_kexec_put_u32(struct ima_attestation_kexec_writer *writer,
+			      u32 value)
+{
+	__le32 encoded = cpu_to_le32(value);
+
+	return ima_attestation_kexec_put(writer, &encoded, sizeof(encoded));
+}
+
+static int
+ima_attestation_kexec_put_u64(struct ima_attestation_kexec_writer *writer,
+			      u64 value)
+{
+	__le64 encoded = cpu_to_le64(value);
+
+	return ima_attestation_kexec_put(writer, &encoded, sizeof(encoded));
+}
+
+static void
+ima_attestation_kexec_patch_u32(struct ima_attestation_kexec_writer *writer,
+				size_t offset, u32 value)
+{
+	__le32 encoded = cpu_to_le32(value);
+
+	if (!WARN_ON_ONCE(offset > writer->length - sizeof(encoded)))
+		memcpy(writer->data + offset, &encoded, sizeof(encoded));
+}
+
+static int
+ima_attestation_kexec_get(struct ima_attestation_kexec_reader *reader,
+			  void *data, size_t length)
+{
+	if (length > reader->length - reader->offset)
+		return -EINVAL;
+	memcpy(data, reader->data + reader->offset, length);
+	reader->offset += length;
+	return 0;
+}
+
+static int
+ima_attestation_kexec_get_u32(struct ima_attestation_kexec_reader *reader,
+			      u32 *value)
+{
+	__le32 encoded;
+	int ret;
+
+	ret = ima_attestation_kexec_get(reader, &encoded, sizeof(encoded));
+	if (!ret)
+		*value = le32_to_cpu(encoded);
+	return ret;
+}
+
+static int
+ima_attestation_kexec_get_u64(struct ima_attestation_kexec_reader *reader,
+			      u64 *value)
+{
+	__le64 encoded;
+	int ret;
+
+	ret = ima_attestation_kexec_get(reader, &encoded, sizeof(encoded));
+	if (!ret)
+		*value = le64_to_cpu(encoded);
+	return ret;
+}
+
+static bool
+ima_attestation_kexec_string_equal(struct ima_attestation_kexec_reader *reader,
+				   u32 length, const char *expected)
+{
+	size_t expected_length = expected ? strlen(expected) : 0;
+	bool equal;
+
+	if (length > reader->length - reader->offset)
+		return false;
+	equal = length == expected_length &&
+		(!length ||
+		 !memcmp(reader->data + reader->offset, expected, length));
+	reader->offset += length;
+	return equal;
+}
 
 static void __init ima_attestation_set_error(int error)
 {
@@ -191,16 +317,200 @@ static int __init ima_attestation_selector_materialize(void)
 	return 0;
 }
 
+static int ima_attestation_kexec_capture(void)
+{
+	struct ima_attestation_kexec_writer writer = {
+		.data = ima_attestation_kexec_out,
+		.capacity = IMA_ATTESTATION_KEXEC_SIZE,
+	};
+	struct attestation_mr_target *target =
+		ima_attestation_target->mr_target;
+	const char *resolved_family =
+		ima_attestation_target->resolved_family;
+	const char *resolved_bus = ima_attestation_target->resolved_bus;
+	const char *resolved_device =
+		ima_attestation_target->resolved_device;
+	u32 family_length = ima_selector.family_name ?
+		strlen(ima_selector.family_name) : 0;
+	u32 bus_length = ima_selector.bus_name ?
+		strlen(ima_selector.bus_name) : 0;
+	u32 device_length = ima_selector.device_name ?
+		strlen(ima_selector.device_name) : 0;
+	u32 resolved_family_length = strlen(resolved_family);
+	u32 resolved_bus_length = strlen(resolved_bus);
+	u32 resolved_device_length = strlen(resolved_device);
+	u32 flags = 0;
+	unsigned int end_generation;
+	unsigned int start_generation;
+	long violations;
+	int ret;
+
+	ret = attestation_mr_log_end_generation(target, &end_generation);
+	if (ret)
+		return ret;
+	start_generation =
+		attestation_mr_target_start_generation(target);
+	violations = atomic_long_read(&ima_num_violations);
+	if (violations < 0)
+		return -EOVERFLOW;
+	if (ima_selector.family_name)
+		flags |= IMA_ATTESTATION_SELECTOR_FAMILY;
+	if (ima_selector.bus_name)
+		flags |= IMA_ATTESTATION_SELECTOR_BUS;
+	if (ima_selector.device_name)
+		flags |= IMA_ATTESTATION_SELECTOR_DEVICE;
+
+	memset(writer.data, 0, writer.capacity);
+	ret = ima_attestation_kexec_put_u32(&writer,
+					    IMA_ATTESTATION_KEXEC_MAGIC);
+	ret |= ima_attestation_kexec_put_u32(&writer,
+					     IMA_ATTESTATION_KEXEC_VERSION);
+	ret |= ima_attestation_kexec_put_u32(&writer, 0);
+	ret |= ima_attestation_kexec_put_u32(&writer, 0);
+	ret |= ima_attestation_kexec_put_u32(&writer, flags);
+	ret |= ima_attestation_kexec_put_u32(&writer,
+					     ima_attestation_target->mr_id);
+	ret |= ima_attestation_kexec_put_u32(&writer, start_generation);
+	ret |= ima_attestation_kexec_put_u32(&writer, end_generation);
+	ret |= ima_attestation_kexec_put_u64(&writer, violations);
+	ret |= ima_attestation_kexec_put_u32(&writer, family_length);
+	ret |= ima_attestation_kexec_put_u32(&writer, bus_length);
+	ret |= ima_attestation_kexec_put_u32(&writer, device_length);
+	ret |= ima_attestation_kexec_put_u32(&writer,
+					     resolved_family_length);
+	ret |= ima_attestation_kexec_put_u32(&writer, resolved_bus_length);
+	ret |= ima_attestation_kexec_put_u32(&writer,
+					     resolved_device_length);
+	ret |= ima_attestation_kexec_put(&writer, ima_selector.family_name,
+					 family_length);
+	ret |= ima_attestation_kexec_put(&writer, ima_selector.bus_name,
+					 bus_length);
+	ret |= ima_attestation_kexec_put(&writer, ima_selector.device_name,
+					 device_length);
+	ret |= ima_attestation_kexec_put(&writer, resolved_family,
+					 resolved_family_length);
+	ret |= ima_attestation_kexec_put(&writer, resolved_bus,
+					 resolved_bus_length);
+	ret |= ima_attestation_kexec_put(&writer, resolved_device,
+					 resolved_device_length);
+	if (ret)
+		return ret;
+	ima_attestation_kexec_patch_u32(&writer, 12, writer.length);
+	/* Publish completeness only after the full payload. */
+	smp_wmb();
+	ima_attestation_kexec_patch_u32(&writer, 8, 1);
+	return 0;
+}
+
+void ima_attestation_measure_kexec_event(const char *event_name)
+{
+	char event[48];
+	int length;
+
+	length = scnprintf(event, sizeof(event), "mr-id=%u;",
+			   ima_attestation_target->mr_id);
+	ima_measure_critical_data("ima_kexec", event_name, event, length,
+				  false, NULL, 0);
+}
+
+static int ima_attestation_kexec_notify(struct notifier_block *nb,
+					unsigned long action, void *data)
+{
+	int ret;
+
+	if (action != SYS_RESTART || !data ||
+	    strcmp(data, "kexec reboot") || !ima_attestation_kexec_out)
+		return NOTIFY_DONE;
+	ret = ima_attestation_kexec_capture();
+	if (ret) {
+		pr_err("IMA attestation handover capture failed: %d\n", ret);
+		memset(ima_attestation_kexec_out, 0,
+		       IMA_ATTESTATION_KEXEC_SIZE);
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block ima_attestation_kexec_nb = {
+	.notifier_call = ima_attestation_kexec_notify,
+	.priority = -2,
+};
+
+static int __init ima_attestation_kexec_input_init(void)
+{
+	phys_addr_t phys;
+	size_t size;
+	int ret;
+
+	ret = kho_retrieve_subtree(IMA_ATTESTATION_KEXEC_NAME, &phys, &size);
+	if (ret == -ENOENT || ret == -EOPNOTSUPP)
+		return 0;
+	if (ret)
+		return ret;
+	ima_attestation_kexec_in = phys_to_virt(phys);
+	ima_attestation_kexec_in_size = size;
+	if (size != IMA_ATTESTATION_KEXEC_SIZE) {
+		kho_restore_free((void *)ima_attestation_kexec_in);
+		ima_attestation_kexec_in = NULL;
+		ima_attestation_kexec_in_size = 0;
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int __init ima_attestation_kexec_output_init(void)
+{
+	int ret;
+
+	if (!ima_attestation_target->resolved_family ||
+	    !ima_attestation_target->resolved_bus ||
+	    !ima_attestation_target->resolved_device)
+		return -EOPNOTSUPP;
+	if (!kho_is_enabled())
+		return 0;
+	ima_attestation_kexec_out =
+		kho_alloc_preserve(IMA_ATTESTATION_KEXEC_SIZE);
+	if (IS_ERR(ima_attestation_kexec_out)) {
+		ret = PTR_ERR(ima_attestation_kexec_out);
+		ima_attestation_kexec_out = NULL;
+		return ret;
+	}
+	memset(ima_attestation_kexec_out, 0, IMA_ATTESTATION_KEXEC_SIZE);
+	ret = kho_add_subtree(IMA_ATTESTATION_KEXEC_NAME,
+			      ima_attestation_kexec_out,
+			      IMA_ATTESTATION_KEXEC_SIZE);
+	if (ret)
+		goto err_buffer;
+	ret = register_reboot_notifier(&ima_attestation_kexec_nb);
+	if (ret)
+		goto err_subtree;
+	ima_attestation_kexec_registered = true;
+	return 0;
+
+err_subtree:
+	kho_remove_subtree(ima_attestation_kexec_out);
+err_buffer:
+	kho_unpreserve_free(ima_attestation_kexec_out);
+	ima_attestation_kexec_out = NULL;
+	return ret;
+}
+
 int __init ima_attestation_init(void)
 {
 	struct ima_attestation_target *target;
 	int ret;
 
+	ret = ima_attestation_kexec_input_init();
+	if (ret)
+		return ret;
+#ifdef CONFIG_HAVE_IMA_KEXEC
+	if (ima_attestation_requested())
+		ima_free_kexec_buffer();
+#endif
 	ret = ima_attestation_selector_validate();
 	if (ret)
 		return ret;
 	if (!ima_attestation_requested())
-		return 0;
+		return ima_attestation_kexec_in ? -ESTALE : 0;
 	ret = ima_attestation_selector_materialize();
 	if (ret)
 		return ret;
@@ -224,10 +534,32 @@ int __init ima_attestation_init(void)
 		ret = PTR_ERR(target->algorithms);
 		goto err_put_target;
 	}
+	ret = attestation_mr_target_identity(target->mr_target,
+					     &target->resolved_family,
+					     &target->resolved_bus,
+					     &target->resolved_device);
+	if (ret && ret != -EOPNOTSUPP)
+		goto err_algorithms;
+	ret = attestation_mr_target_handover_restored(target->mr_target);
+	if (ret < 0)
+		goto err_identity;
+	target->handover_restored = ret;
 	target->mr_id = ima_selector.mr_id;
 	ima_attestation_target = target;
+	ret = ima_attestation_kexec_output_init();
+	if (ret == -EOPNOTSUPP)
+		pr_info("IMA attestation handover needs a stable backing device\n");
+	else if (ret)
+		pr_err("IMA attestation handover reservation failed: %d\n",
+		       ret);
 	return 0;
 
+err_identity:
+	kfree(target->resolved_family);
+	kfree(target->resolved_bus);
+	kfree(target->resolved_device);
+err_algorithms:
+	kfree(target->algorithms);
 err_put_target:
 	attestation_mr_target_put(target->mr_target);
 err_free_target:
@@ -248,13 +580,31 @@ int __init ima_attestation_projection_init(void)
 	return 0;
 }
 
-void __init ima_attestation_destroy(void)
+void ima_attestation_destroy(void)
 {
 	struct ima_attestation_target *target = ima_attestation_target;
 	struct ima_attestation_digest *digest;
 	struct hlist_node *tmp;
 	unsigned int bucket;
 
+	if (ima_attestation_kexec_registered) {
+		unregister_reboot_notifier(&ima_attestation_kexec_nb);
+		ima_attestation_kexec_registered = false;
+	}
+	if (ima_attestation_kexec_out) {
+		kho_remove_subtree(ima_attestation_kexec_out);
+		kho_unpreserve_free(ima_attestation_kexec_out);
+		ima_attestation_kexec_out = NULL;
+	}
+	if (ima_attestation_kexec_in) {
+		kho_restore_free((void *)ima_attestation_kexec_in);
+		ima_attestation_kexec_in = NULL;
+		ima_attestation_kexec_in_size = 0;
+	}
+	if (ima_attestation_kexec_consumed) {
+		kho_restore_free((void *)ima_attestation_kexec_consumed);
+		ima_attestation_kexec_consumed = NULL;
+	}
 	ima_attestation_target = NULL;
 	hash_for_each_safe(ima_attestation_digests, bucket, tmp, digest, node) {
 		hash_del(&digest->node);
@@ -263,6 +613,9 @@ void __init ima_attestation_destroy(void)
 	if (target) {
 		attestation_mr_target_put(target->projection_target);
 		kfree(target->algorithms);
+		kfree(target->resolved_family);
+		kfree(target->resolved_bus);
+		kfree(target->resolved_device);
 		attestation_mr_target_put(target->mr_target);
 		kfree(target);
 	}
@@ -395,6 +748,7 @@ int ima_attestation_store(struct ima_template_entry *entry, bool violation)
 		return ret;
 	if (!violation && !IS_ENABLED(CONFIG_IMA_DISABLE_HTABLE)) {
 		if (ima_attestation_digest_exists(&values)) {
+			ima_free_template_entry(entry);
 			ret = -EEXIST;
 			goto out_values;
 		}
@@ -940,6 +1294,245 @@ int ima_attestation_measurements_count(unsigned long *count)
 	ret = IS_ERR(entry) ? PTR_ERR(entry) : 0;
 out:
 	ima_attestation_srcu_unlock(&file);
+	return ret;
+}
+
+static int
+ima_attestation_restore_digest(const struct attestation_digest_set *values)
+{
+	struct ima_attestation_digest *digest;
+	size_t allocation_size;
+	unsigned int key;
+
+	if (IS_ENABLED(CONFIG_IMA_DISABLE_HTABLE) ||
+	    ima_attestation_digest_exists(values))
+		return 0;
+	allocation_size = struct_size(digest, values, values->values_count);
+	digest = kmalloc(allocation_size, GFP_KERNEL);
+	if (!digest)
+		return -ENOMEM;
+	memcpy(digest->values, values->values,
+	       sizeof(*values->values) * values->values_count);
+	key = ima_hash_key(values->values[0].data);
+	hash_add(ima_attestation_digests, &digest->node, key);
+	return 0;
+}
+
+static int ima_attestation_restore_digests(unsigned int end_generation)
+{
+	struct ima_attestation_file file = {
+		.target = ima_attestation_target->mr_target,
+		.end_generation = end_generation,
+	};
+	const struct attestation_mr_log_entry *entry;
+	unsigned long records = 0;
+	int ret = 0;
+
+	ima_attestation_srcu_lock(&file);
+	entry = attestation_mr_log_iter_seek(file.target, 0,
+					     file.end_generation);
+	entry = ima_attestation_find_selected(&file, entry);
+	while (!IS_ERR_OR_NULL(entry)) {
+		const struct attestation_digest *digests;
+		const struct ima_template_desc *template;
+		const char *template_name;
+		struct attestation_digest_set values;
+		size_t count;
+		size_t index;
+
+		if (records == LONG_MAX) {
+			ret = -EOVERFLOW;
+			goto out;
+		}
+		records++;
+		template_name =
+			attestation_mr_log_entry_template_name(entry);
+		template = template_name ?
+			lookup_template_desc(template_name) : NULL;
+		if (template_name &&
+		    (!template || !template->fields || !template->num_fields)) {
+			ret = -ESTALE;
+			goto out;
+		}
+		if (template_name &&
+		    !attestation_mr_log_entry_violation(entry)) {
+			digests = attestation_mr_log_entry_values(entry,
+								  &count);
+			if (count !=
+			    ima_attestation_target->algorithms_count) {
+				ret = -EINVAL;
+				goto out;
+			}
+			for (index = 0; index < count; index++)
+				if (digests[index].algorithm !=
+				    ima_attestation_target->algorithms[index]) {
+					ret = -EINVAL;
+					goto out;
+				}
+			values.values = (struct attestation_digest *)digests;
+			values.values_count = count;
+			ret = ima_attestation_restore_digest(&values);
+			if (ret)
+				goto out;
+		}
+		file.generation =
+			attestation_mr_log_entry_generation(entry);
+		entry = ima_attestation_after(&file, entry);
+		entry = ima_attestation_find_selected(&file, entry);
+	}
+	ret = IS_ERR(entry) ? PTR_ERR(entry) : 0;
+	if (!ret) {
+		atomic_long_set(&ima_num_records[BINARY], records);
+		atomic_long_set(&ima_num_records[BINARY_FULL], records);
+	}
+out:
+	ima_attestation_srcu_unlock(&file);
+	return ret;
+}
+
+static int
+ima_attestation_kexec_header_read(struct ima_attestation_kexec_reader *reader,
+				  unsigned int *end_generation,
+				  u64 *violations)
+{
+	struct attestation_mr_target *target =
+		ima_attestation_target->mr_target;
+	const char *family = ima_selector.family_name;
+	const char *bus = ima_selector.bus_name;
+	const char *device = ima_selector.device_name;
+	const char *resolved_family = ima_attestation_target->resolved_family;
+	const char *resolved_bus = ima_attestation_target->resolved_bus;
+	const char *resolved_device = ima_attestation_target->resolved_device;
+	u32 magic, version, complete, length, flags;
+	u32 mr_id, start_generation;
+	u32 family_length, bus_length, device_length;
+	u32 resolved_family_length, resolved_bus_length;
+	u32 resolved_device_length;
+	u32 expected_flags = 0;
+	unsigned int current_start;
+	bool family_match;
+	bool device_match;
+	bool bus_match;
+	bool resolved_family_match;
+	bool resolved_device_match;
+	bool resolved_bus_match;
+	int ret;
+
+	ret = ima_attestation_kexec_get_u32(reader, &magic);
+	ret |= ima_attestation_kexec_get_u32(reader, &version);
+	ret |= ima_attestation_kexec_get_u32(reader, &complete);
+	ret |= ima_attestation_kexec_get_u32(reader, &length);
+	ret |= ima_attestation_kexec_get_u32(reader, &flags);
+	ret |= ima_attestation_kexec_get_u32(reader, &mr_id);
+	ret |= ima_attestation_kexec_get_u32(reader, &start_generation);
+	ret |= ima_attestation_kexec_get_u32(reader, end_generation);
+	ret |= ima_attestation_kexec_get_u64(reader, violations);
+	ret |= ima_attestation_kexec_get_u32(reader, &family_length);
+	ret |= ima_attestation_kexec_get_u32(reader, &bus_length);
+	ret |= ima_attestation_kexec_get_u32(reader, &device_length);
+	ret |= ima_attestation_kexec_get_u32(reader,
+					     &resolved_family_length);
+	ret |= ima_attestation_kexec_get_u32(reader, &resolved_bus_length);
+	ret |= ima_attestation_kexec_get_u32(reader,
+					     &resolved_device_length);
+	if (ret || magic != IMA_ATTESTATION_KEXEC_MAGIC ||
+	    version != IMA_ATTESTATION_KEXEC_VERSION || complete != 1 ||
+	    length < reader->offset || length > reader->length ||
+	    flags & ~(IMA_ATTESTATION_SELECTOR_FAMILY |
+		      IMA_ATTESTATION_SELECTOR_BUS |
+		      IMA_ATTESTATION_SELECTOR_DEVICE) ||
+	    !!(flags & IMA_ATTESTATION_SELECTOR_BUS) !=
+		    !!(flags & IMA_ATTESTATION_SELECTOR_DEVICE) ||
+	    !start_generation || start_generation > *end_generation ||
+	    *violations > LONG_MAX)
+		return -EINVAL;
+	reader->length = length;
+
+	if (family)
+		expected_flags |= IMA_ATTESTATION_SELECTOR_FAMILY;
+	if (bus)
+		expected_flags |= IMA_ATTESTATION_SELECTOR_BUS;
+	if (device)
+		expected_flags |= IMA_ATTESTATION_SELECTOR_DEVICE;
+	current_start = attestation_mr_target_start_generation(target);
+	if (flags != expected_flags || mr_id != ima_selector.mr_id ||
+	    start_generation != current_start)
+		return -ESTALE;
+	family_match = ima_attestation_kexec_string_equal(reader,
+							  family_length,
+							  family);
+	bus_match = ima_attestation_kexec_string_equal(reader, bus_length,
+						       bus);
+	device_match = ima_attestation_kexec_string_equal(reader,
+							  device_length,
+							  device);
+	resolved_family_match =
+		ima_attestation_kexec_string_equal(reader,
+						   resolved_family_length,
+						   resolved_family);
+	resolved_bus_match =
+		ima_attestation_kexec_string_equal(reader,
+						   resolved_bus_length,
+						   resolved_bus);
+	resolved_device_match =
+		ima_attestation_kexec_string_equal(reader,
+						   resolved_device_length,
+						   resolved_device);
+	if (!family_match || !bus_match || !device_match ||
+	    !resolved_family_match || !resolved_bus_match ||
+	    !resolved_device_match ||
+	    reader->offset != reader->length)
+		return -ESTALE;
+	return 0;
+}
+
+int __init ima_attestation_kexec_restore(void)
+{
+	struct ima_attestation_kexec_reader reader;
+	struct attestation_mr_target *target;
+	unsigned int current_end;
+	unsigned int expected_end;
+	unsigned int saved_end;
+	u64 violations;
+	int ret;
+
+	if (!ima_attestation_mode())
+		return 0;
+	if (!ima_attestation_kexec_in)
+		return is_kho_boot() ? -ESTALE : 0;
+	if (!is_kho_boot()) {
+		ret = -EINVAL;
+		goto out_free;
+	}
+	if (!ima_attestation_target->handover_restored) {
+		ret = -ESTALE;
+		goto out_free;
+	}
+	reader = (struct ima_attestation_kexec_reader) {
+		.data = ima_attestation_kexec_in,
+		.length = ima_attestation_kexec_in_size,
+	};
+	ret = ima_attestation_kexec_header_read(&reader, &saved_end,
+						&violations);
+	if (ret)
+		goto out_free;
+	target = ima_attestation_target->mr_target;
+	ret = attestation_mr_log_end_generation(target, &current_end);
+	if (ret)
+		goto out_free;
+	if (check_add_overflow(saved_end, 1U, &expected_end) ||
+	    current_end != expected_end) {
+		ret = -ESTALE;
+		goto out_free;
+	}
+	ret = ima_attestation_restore_digests(saved_end);
+	if (!ret)
+		atomic_long_set(&ima_num_violations, violations);
+
+out_free:
+	ima_attestation_kexec_consumed = ima_attestation_kexec_in;
+	ima_attestation_kexec_in = NULL;
+	ima_attestation_kexec_in_size = 0;
 	return ret;
 }
 

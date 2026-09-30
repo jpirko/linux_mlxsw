@@ -327,6 +327,7 @@ int ctlv_attestation_post_init(struct ctlv_device *ctlvdev, void *priv)
 	ret = attestation_kexec_restore(att);
 	if (ret < 0)
 		return ret;
+	att->kexec_restored = ret > 0;
 	if (!ret) {
 		ret = attestation_mr_log_init(att);
 		if (ret)

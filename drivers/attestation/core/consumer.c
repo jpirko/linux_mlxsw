@@ -282,6 +282,90 @@ out:
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_target_algorithms, "ATTESTATION");
 
+int attestation_mr_target_identity(const struct attestation_mr_target *target,
+				   char **family_name, char **bus_name,
+				   char **device_name)
+{
+	const struct ctlv_family *family;
+	struct attestation_mr *mr;
+	struct attestation *att;
+	struct device *parent;
+	const char *bus;
+	const char *device;
+	int srcu_index;
+	int ret = 0;
+
+	if (!target || !family_name || !bus_name || !device_name)
+		return -EINVAL;
+	*family_name = NULL;
+	*bus_name = NULL;
+	*device_name = NULL;
+	srcu_index = srcu_read_lock(&attestation_instances_srcu);
+	att = attestation_instance_lock(target->index);
+	if (IS_ERR(att)) {
+		ret = PTR_ERR(att);
+		goto out;
+	}
+	mr = xa_load(&att->mrs, target->mr_id);
+	family = ctlv_device_family(att->ctlvdev);
+	parent = ctlv_device_parent(att->ctlvdev);
+	bus = parent ? dev_bus_name(parent) : NULL;
+	device = parent ? dev_name(parent) : NULL;
+	if (!mr || mr->start_generation != target->start_generation) {
+		ret = -ENODEV;
+		goto out_unlock;
+	}
+	if (!family || !bus || !*bus || !device || !*device) {
+		ret = -EOPNOTSUPP;
+		goto out_unlock;
+	}
+	*family_name = kstrdup(family->schema->name, GFP_KERNEL);
+	*bus_name = kstrdup(bus, GFP_KERNEL);
+	*device_name = kstrdup(device, GFP_KERNEL);
+	if (!*family_name || !*bus_name || !*device_name) {
+		kfree(*family_name);
+		kfree(*bus_name);
+		kfree(*device_name);
+		*family_name = NULL;
+		*bus_name = NULL;
+		*device_name = NULL;
+		ret = -ENOMEM;
+	}
+out_unlock:
+	attestation_instance_unlock(att);
+out:
+	srcu_read_unlock(&attestation_instances_srcu, srcu_index);
+	return ret;
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_target_identity, "ATTESTATION");
+
+int attestation_mr_target_handover_restored(const struct attestation_mr_target *target)
+{
+	struct attestation_mr *mr;
+	struct attestation *att;
+	int srcu_index;
+	int ret;
+
+	if (!target)
+		return -EINVAL;
+	srcu_index = srcu_read_lock(&attestation_instances_srcu);
+	att = attestation_instance_lock(target->index);
+	if (IS_ERR(att)) {
+		ret = PTR_ERR(att);
+		goto out;
+	}
+	mr = xa_load(&att->mrs, target->mr_id);
+	if (!mr || mr->start_generation != target->start_generation)
+		ret = -ENODEV;
+	else
+		ret = att->kexec_restored;
+	attestation_instance_unlock(att);
+out:
+	srcu_read_unlock(&attestation_instances_srcu, srcu_index);
+	return ret;
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_target_handover_restored, "ATTESTATION");
+
 int attestation_mr_target_extend(const struct attestation_mr_target *target,
 				 const struct attestation_digest_set *values,
 				 const char *template_name,

@@ -144,7 +144,7 @@ void ima_add_violation(struct file *file, const unsigned char *filename,
 	int result;
 
 	/* can overflow, only indicator */
-	atomic_long_inc(&ima_num_violations);
+	ima_count_violation();
 
 	result = ima_alloc_init_template(&event_data, &entry, NULL);
 	if (result < 0) {

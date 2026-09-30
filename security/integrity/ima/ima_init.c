@@ -152,8 +152,14 @@ int __init ima_init(void)
 			goto out_attestation;
 	}
 
-	/* It can be called before ima_init_digests(), it does not use TPM. */
-	ima_load_kexec_buffer();
+	if (ima_attestation_mode()) {
+		rc = ima_attestation_kexec_restore();
+		if (rc)
+			goto out_attestation;
+	} else {
+		/* This can run before ima_init_digests(); it does not use TPM. */
+		ima_load_kexec_buffer();
+	}
 
 	rc = ima_init_digests();
 	if (rc != 0)

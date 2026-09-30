@@ -25,6 +25,10 @@ attestation_mr_target_start_generation(const struct attestation_mr_target *targe
 enum hash_algo *
 attestation_mr_target_algorithms(const struct attestation_mr_target *target,
 				 size_t *algorithms_count);
+int attestation_mr_target_identity(const struct attestation_mr_target *target,
+				   char **family_name, char **bus_name,
+				   char **device_name);
+int attestation_mr_target_handover_restored(const struct attestation_mr_target *target);
 int attestation_mr_target_extend(const struct attestation_mr_target *target,
 				 const struct attestation_digest_set *values,
 				 const char *template_name,
