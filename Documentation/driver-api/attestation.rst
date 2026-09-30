@@ -123,6 +123,14 @@ one fixture at device-init time.  This opt-in path exists so later IMA tests can
 select a provider before IMA's late initialization; post-boot debugfs creation
 is too late for that boot target.
 
+The IMA selftest boots with
+``attestation_sim.early_fixture=ima-test
+ima_attestation=ctlv-attestation-sim:1``.  It checks target ownership,
+kernel-originated journal metadata, both algorithm-specific securityfs views,
+single boot-aggregate projection, policy target assertions and interleaved
+userspace extensions.  A different fixture name may be supplied through
+``IMA_ATTESTATION_TEST_FIXTURE``.
+
 TDX provider
 ============
 

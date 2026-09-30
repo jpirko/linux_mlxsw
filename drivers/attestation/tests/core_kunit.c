@@ -215,7 +215,14 @@ static void attestation_test_initial_journal(struct kunit *test)
 	struct attestation_test *fixture = test->priv;
 	struct attestation_mr_target *target;
 	enum hash_algo *algorithms;
+	char *family_name;
+	char *device_name;
+	char *bus_name;
+	char **family = &family_name;
+	char **device = &device_name;
+	char **bus = &bus_name;
 	size_t count;
+	int ret;
 
 	KUNIT_ASSERT_EQ(test, attestation_test_create(
 				test, fixture, "attestation-initial"), 0);
@@ -229,6 +236,21 @@ static void attestation_test_initial_journal(struct kunit *test)
 	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, algorithms);
 	KUNIT_EXPECT_EQ(test, count, 1);
 	KUNIT_EXPECT_EQ(test, algorithms[0], HASH_ALGO_SHA256);
+	KUNIT_EXPECT_EQ(test,
+			attestation_mr_target_handover_restored(target), 0);
+	if (dev_bus_name(fixture->parent)) {
+		ret = attestation_mr_target_identity(target, family, bus,
+						     device);
+		KUNIT_ASSERT_EQ(test, ret, 0);
+		KUNIT_EXPECT_STREQ(test, family_name, "ctlv-attestation");
+		KUNIT_EXPECT_STREQ(test, bus_name,
+				   dev_bus_name(fixture->parent));
+		KUNIT_EXPECT_STREQ(test, device_name,
+				   dev_name(fixture->parent));
+		kfree(family_name);
+		kfree(bus_name);
+		kfree(device_name);
+	}
 	kfree(algorithms);
 	attestation_mr_target_put(target);
 }
@@ -502,6 +524,73 @@ static void attestation_test_kexec_roundtrip(struct kunit *test)
 	KUNIT_EXPECT_GT(test, fixture->read_count, 0);
 }
 
+static void attestation_test_kexec_ima_roundtrip(struct kunit *test)
+{
+	struct attestation_test *fixture = test->priv;
+	struct attestation_digest value = {
+		.algorithm = HASH_ALGO_SHA256,
+		.data = { 0xa5 },
+	};
+	struct attestation_digest_set values = {
+		.values_count = 1,
+		.values = &value,
+	};
+	const struct attestation_mr_log_entry *entry;
+	struct attestation_mr_target *target;
+	unsigned int generation = 0;
+	unsigned int end_generation;
+	const char *family = "ctlv-attestation";
+	const char *template_name;
+	const u8 *template_data;
+	size_t length;
+	int srcu_index;
+	int ret;
+	bool found = false;
+	bool violation;
+
+	ret = attestation_test_create(test, fixture,
+				      "attestation-kexec-ima");
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	if (!dev_bus_name(fixture->parent))
+		kunit_skip(test, "KUnit parent has no stable bus name");
+	target = attestation_mr_target_get(family, NULL, NULL,
+					   fixture->props.id);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, target);
+	ret = attestation_mr_target_extend(target, &values, "ima-ng",
+					   (const u8 *)"kexec-template",
+					   14, true);
+	KUNIT_ASSERT_EQ(test, ret, 0);
+	KUNIT_ASSERT_EQ(test,
+			attestation_kexec_test_roundtrip(fixture->att), 0);
+
+	srcu_index = srcu_read_lock(&attestation_instances_srcu);
+	end_generation = fixture->att->log->generation;
+	entry = attestation_mr_log_iter_seek(target, generation,
+					     end_generation);
+	while (!IS_ERR_OR_NULL(entry)) {
+		generation = attestation_mr_log_entry_generation(entry);
+		template_name =
+			attestation_mr_log_entry_template_name(entry);
+		if (template_name) {
+			KUNIT_EXPECT_STREQ(test, template_name, "ima-ng");
+			violation =
+				attestation_mr_log_entry_violation(entry);
+			KUNIT_EXPECT_TRUE(test, violation);
+			template_data =
+				attestation_mr_log_entry_template_data(entry,
+								       &length);
+			KUNIT_EXPECT_EQ(test, length, 14);
+			KUNIT_EXPECT_MEMEQ(test, template_data,
+					   "kexec-template", 14);
+			found = true;
+		}
+		entry = attestation_mr_log_iter_next(entry, end_generation);
+	}
+	srcu_read_unlock(&attestation_instances_srcu, srcu_index);
+	KUNIT_EXPECT_TRUE(test, found);
+	attestation_mr_target_put(target);
+}
+
 static struct kunit_case attestation_test_cases[] = {
 	KUNIT_CASE(attestation_test_provider_contracts),
 	KUNIT_CASE(attestation_test_initial_journal),
@@ -515,6 +604,7 @@ static struct kunit_case attestation_test_cases[] = {
 	KUNIT_CASE(attestation_test_event_allocation_failure),
 	KUNIT_CASE(attestation_test_teardown_waits_for_srcu),
 	KUNIT_CASE(attestation_test_kexec_roundtrip),
+	KUNIT_CASE(attestation_test_kexec_ima_roundtrip),
 	{}
 };
 

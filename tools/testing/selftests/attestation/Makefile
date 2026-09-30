@@ -3,7 +3,7 @@ CFLAGS += -Wall -O2 $(KHDR_INCLUDES)
 CFLAGS += -I../../../ctlv/libctlv
 LDLIBS += -lpthread
 
-TEST_GEN_PROGS := attestation_test tdx_attestation_test
+TEST_GEN_PROGS := attestation_test ima_attestation_test tdx_attestation_test
 
 LIBCTLV := ../../../ctlv/libctlv/libctlv.a
 BINDINGS := ctlv_attestation_user_gen.c \
@@ -13,6 +13,9 @@ BINDINGS := ctlv_attestation_user_gen.c \
 include ../lib.mk
 
 $(OUTPUT)/attestation_test: attestation_test.c $(BINDINGS) $(LIBCTLV)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $^ $(LDLIBS) -o $@
+
+$(OUTPUT)/ima_attestation_test: ima_attestation_test.c $(BINDINGS) $(LIBCTLV)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $^ $(LDLIBS) -o $@
 
 $(OUTPUT)/tdx_attestation_test: tdx_attestation_test.c $(BINDINGS) $(LIBCTLV)
