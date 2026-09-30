@@ -88,6 +88,7 @@ struct ima_template_entry;
 
 struct ima_attestation_target {
 	struct attestation_mr_target *mr_target;
+	struct attestation_mr_target *projection_target;
 	enum hash_algo *algorithms;
 	size_t algorithms_count;
 	unsigned int mr_id;
@@ -98,9 +99,13 @@ extern struct ima_attestation_target *ima_attestation_target;
 bool ima_attestation_requested(void);
 bool ima_attestation_mode(void);
 int __init ima_attestation_init(void);
+int __init ima_attestation_projection_init(void);
 void __init ima_attestation_destroy(void);
 unsigned int ima_attestation_mr_id(void);
 int ima_attestation_store(struct ima_template_entry *entry, bool violation);
+int ima_attestation_measurements_count(unsigned long *count);
+extern const struct file_operations ima_attestation_binary_ops;
+extern const struct file_operations ima_attestation_ascii_ops;
 int ima_attestation_policy_check(const char *family_name,
 				 const char *bus_name,
 				 const char *device_name,
@@ -126,6 +131,11 @@ static inline void ima_attestation_destroy(void)
 {
 }
 
+static inline int ima_attestation_projection_init(void)
+{
+	return 0;
+}
+
 static inline unsigned int ima_attestation_mr_id(void)
 {
 	return 0;
@@ -133,6 +143,11 @@ static inline unsigned int ima_attestation_mr_id(void)
 
 static inline int ima_attestation_store(struct ima_template_entry *entry,
 					bool violation)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int ima_attestation_measurements_count(unsigned long *count)
 {
 	return -EOPNOTSUPP;
 }
@@ -405,6 +420,7 @@ int ima_measurements_show(struct seq_file *m, void *v);
 int __init ima_init_htable(void);
 unsigned long ima_get_binary_runtime_size(enum binary_lists binary_list);
 int ima_init_template(void);
+int __init ima_init_template_fields_all(void);
 void ima_init_template_list(void);
 int __init ima_init_digests(void);
 void __init ima_init_reboot_notifier(void);

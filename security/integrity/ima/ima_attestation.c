@@ -3,7 +3,10 @@
 #include <linux/hashtable.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/overflow.h>
+#include <linux/sched.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 
 #include "ima.h"
@@ -32,6 +35,29 @@ struct ima_attestation_digest {
 };
 
 static DEFINE_HASHTABLE(ima_attestation_digests, IMA_HASH_BITS);
+
+#define IMA_ATTESTATION_BATCH_ENTRIES	128
+#define IMA_ATTESTATION_TEMPLATE_MAX	65536
+#define IMA_ATTESTATION_RECORD_DATA_MAX	4096
+#define IMA_ATTESTATION_RECORD_FORMAT_MAX	128
+
+static const char ima_attestation_record_prefix[] =
+	"attestation-mr-record-v1";
+
+struct ima_attestation_file {
+	/* Serializes read and seek on one open file. */
+	struct mutex lock;
+	struct attestation_mr_target *target;
+	u8 *scratch;
+	loff_t position;
+	unsigned int generation;
+	unsigned int end_generation;
+	unsigned int visited;
+	unsigned int mr_id;
+	int srcu_index;
+	enum hash_algo algorithm;
+	bool srcu_active;
+};
 
 static void __init ima_attestation_set_error(int error)
 {
@@ -209,6 +235,19 @@ err_free_target:
 	return ret;
 }
 
+int __init ima_attestation_projection_init(void)
+{
+	struct attestation_mr_target *target;
+
+	if (!ima_attestation_mode())
+		return 0;
+	target = attestation_mr_target_clone(ima_attestation_target->mr_target);
+	if (IS_ERR(target))
+		return PTR_ERR(target);
+	ima_attestation_target->projection_target = target;
+	return 0;
+}
+
 void __init ima_attestation_destroy(void)
 {
 	struct ima_attestation_target *target = ima_attestation_target;
@@ -222,6 +261,7 @@ void __init ima_attestation_destroy(void)
 		kfree(digest);
 	}
 	if (target) {
+		attestation_mr_target_put(target->projection_target);
 		kfree(target->algorithms);
 		attestation_mr_target_put(target->mr_target);
 		kfree(target);
@@ -395,6 +435,511 @@ out_digest:
 	kfree(digest);
 out_values:
 	kfree(values.values);
+	return ret;
+}
+
+static void ima_attestation_srcu_lock(struct ima_attestation_file *file)
+{
+	file->srcu_index = srcu_read_lock(&attestation_instances_srcu);
+	file->srcu_active = true;
+	file->visited = 0;
+}
+
+static void ima_attestation_srcu_unlock(struct ima_attestation_file *file)
+{
+	if (!file->srcu_active)
+		return;
+	srcu_read_unlock(&attestation_instances_srcu, file->srcu_index);
+	file->srcu_active = false;
+}
+
+static const struct attestation_mr_log_entry *
+ima_attestation_reseek(struct ima_attestation_file *file)
+{
+	const struct attestation_mr_log_entry *entry;
+
+	ima_attestation_srcu_unlock(file);
+	cond_resched();
+	ima_attestation_srcu_lock(file);
+	entry = attestation_mr_log_iter_seek(file->target, file->generation,
+					     file->end_generation);
+	if (IS_ERR(entry))
+		ima_attestation_srcu_unlock(file);
+	return entry;
+}
+
+static const struct attestation_mr_log_entry *
+ima_attestation_after(struct ima_attestation_file *file,
+		      const struct attestation_mr_log_entry *entry)
+{
+	if (file->visited >= IMA_ATTESTATION_BATCH_ENTRIES)
+		return ima_attestation_reseek(file);
+	return attestation_mr_log_iter_next(entry, file->end_generation);
+}
+
+static bool
+ima_attestation_entry_selected(struct ima_attestation_file *file,
+			       const struct attestation_mr_log_entry *entry)
+{
+	return attestation_mr_log_entry_selected(file->target, entry) &&
+	       attestation_mr_log_entry_event(entry) ==
+		       CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND;
+}
+
+static const struct attestation_mr_log_entry *
+ima_attestation_find_selected(struct ima_attestation_file *file,
+			      const struct attestation_mr_log_entry *entry)
+{
+	while (!IS_ERR_OR_NULL(entry)) {
+		file->visited++;
+		if (ima_attestation_entry_selected(file, entry))
+			return entry;
+		file->generation =
+			attestation_mr_log_entry_generation(entry);
+		entry = ima_attestation_after(file, entry);
+	}
+	if (IS_ERR(entry))
+		ima_attestation_srcu_unlock(file);
+	return entry;
+}
+
+static void *ima_attestation_measurements_start(struct seq_file *seq,
+						loff_t *pos)
+{
+	struct ima_attestation_file *file = seq->private;
+	const struct attestation_mr_log_entry *entry;
+	loff_t position;
+
+	ima_attestation_srcu_unlock(file);
+	if (*pos == file->position) {
+		position = file->position;
+	} else {
+		file->generation = 0;
+		position = 0;
+	}
+
+	ima_attestation_srcu_lock(file);
+	entry = attestation_mr_log_iter_seek(file->target, file->generation,
+					     file->end_generation);
+	entry = ima_attestation_find_selected(file, entry);
+	while (!IS_ERR_OR_NULL(entry) && position < *pos) {
+		file->generation =
+			attestation_mr_log_entry_generation(entry);
+		position++;
+		entry = ima_attestation_after(file, entry);
+		entry = ima_attestation_find_selected(file, entry);
+	}
+	file->position = position;
+	if (!entry)
+		ima_attestation_srcu_unlock(file);
+	return (void *)entry;
+}
+
+static void *ima_attestation_measurements_next(struct seq_file *seq, void *v,
+					       loff_t *pos)
+{
+	struct ima_attestation_file *file = seq->private;
+	const struct attestation_mr_log_entry *entry = v;
+
+	file->generation = attestation_mr_log_entry_generation(entry);
+	(*pos)++;
+	file->position = *pos;
+	entry = ima_attestation_after(file, entry);
+	entry = ima_attestation_find_selected(file, entry);
+	if (!entry)
+		ima_attestation_srcu_unlock(file);
+	return (void *)entry;
+}
+
+static void ima_attestation_measurements_stop(struct seq_file *seq, void *v)
+{
+	struct ima_attestation_file *file = seq->private;
+
+	ima_attestation_srcu_unlock(file);
+}
+
+static const struct attestation_digest *
+ima_attestation_entry_value(struct ima_attestation_file *file,
+			    const struct attestation_mr_log_entry *entry)
+{
+	const struct attestation_digest *values;
+	size_t values_count;
+	size_t index;
+
+	values = attestation_mr_log_entry_values(entry, &values_count);
+	for (index = 0; index < values_count; index++)
+		if (values[index].algorithm == file->algorithm)
+			return &values[index];
+	return NULL;
+}
+
+static void ima_attestation_put_u32(struct seq_file *seq, u32 value)
+{
+	if (ima_canonical_fmt)
+		value = (__force u32)cpu_to_le32(value);
+	ima_putc(seq, &value, sizeof(value));
+}
+
+static int
+ima_attestation_record_encode(struct ima_attestation_file *file,
+			      const struct attestation_mr_log_entry *entry,
+			      size_t *encoded_length)
+{
+	const char *format =
+		attestation_mr_log_entry_record_format(entry);
+	const u8 *data;
+	size_t format_length;
+	size_t data_length;
+	size_t length;
+	size_t offset = 0;
+	__le32 encoded;
+
+	if (!format) {
+		*encoded_length = 0;
+		return 0;
+	}
+	data = attestation_mr_log_entry_record_data(entry, &data_length);
+	format_length = strlen(format);
+	length = sizeof(ima_attestation_record_prefix) + sizeof(encoded) +
+		 format_length + sizeof(encoded) + data_length;
+	if (format_length > IMA_ATTESTATION_RECORD_FORMAT_MAX ||
+	    data_length > IMA_ATTESTATION_RECORD_DATA_MAX ||
+	    length > IMA_ATTESTATION_TEMPLATE_MAX)
+		return -EINVAL;
+
+	memcpy(file->scratch + offset, ima_attestation_record_prefix,
+	       sizeof(ima_attestation_record_prefix));
+	offset += sizeof(ima_attestation_record_prefix);
+	encoded = cpu_to_le32(format_length);
+	memcpy(file->scratch + offset, &encoded, sizeof(encoded));
+	offset += sizeof(encoded);
+	memcpy(file->scratch + offset, format, format_length);
+	offset += format_length;
+	encoded = cpu_to_le32(data_length);
+	memcpy(file->scratch + offset, &encoded, sizeof(encoded));
+	offset += sizeof(encoded);
+	if (data_length)
+		memcpy(file->scratch + offset, data, data_length);
+	*encoded_length = length;
+	return 0;
+}
+
+static int
+ima_attestation_fields_show(struct seq_file *seq,
+			    struct ima_attestation_file *file,
+			    const char *template_name,
+			    const u8 *data, size_t data_length)
+{
+	struct ima_template_desc *desc = lookup_template_desc(template_name);
+	bool legacy = !strcmp(template_name, IMA_TEMPLATE_IMA_NAME);
+	size_t offset = 0;
+	int index;
+
+	if (!desc || !desc->fields || !desc->num_fields)
+		return -EINVAL;
+	for (index = 0; index < desc->num_fields; index++) {
+		const struct ima_template_field *field = desc->fields[index];
+		struct ima_field_data field_data;
+		u32 field_length;
+
+		if (legacy && !strcmp(field->field_id, "d")) {
+			field_length = IMA_DIGEST_SIZE;
+		} else {
+			u32 encoded_length;
+
+			if (data_length - offset < sizeof(encoded_length))
+				return -EINVAL;
+			memcpy(&encoded_length, data + offset,
+			       sizeof(encoded_length));
+			offset += sizeof(encoded_length);
+			field_length = ima_canonical_fmt ?
+				le32_to_cpu((__force __le32)encoded_length) :
+				encoded_length;
+		}
+		if (field_length > data_length - offset ||
+		    field_length >= IMA_ATTESTATION_TEMPLATE_MAX)
+			return -EINVAL;
+		memcpy(file->scratch, data + offset, field_length);
+		file->scratch[field_length] = '\0';
+		field_data.data = file->scratch;
+		field_data.len = field_length;
+		seq_puts(seq, " ");
+		if (field_length)
+			field->field_show(seq, IMA_SHOW_ASCII, &field_data);
+		offset += field_length;
+	}
+	return offset == data_length ? 0 : -EINVAL;
+}
+
+static int ima_attestation_binary_show(struct seq_file *seq, void *v)
+{
+	struct ima_attestation_file *file = seq->private;
+	const struct attestation_mr_log_entry *entry = v;
+	const struct attestation_digest *value;
+	const char *template_name;
+	const u8 *template_data;
+	size_t data_length;
+	size_t record_length;
+	u8 zero_digest[HASH_MAX_DIGESTSIZE] = {};
+	u8 *digest;
+	int ret;
+
+	value = ima_attestation_entry_value(file, entry);
+	if (!value)
+		return -EINVAL;
+	template_name =
+		attestation_mr_log_entry_template_name(entry);
+	if (template_name) {
+		template_data =
+			attestation_mr_log_entry_template_data(entry,
+							       &data_length);
+		digest = attestation_mr_log_entry_violation(entry) ?
+			zero_digest : (u8 *)value->data;
+	} else {
+		template_name = "ima-mr-extend";
+		digest = (u8 *)value->data;
+		ret = ima_attestation_record_encode(file, entry,
+						    &record_length);
+		if (ret)
+			return ret;
+		template_data = file->scratch;
+		data_length = record_length;
+	}
+
+	ima_attestation_put_u32(seq, file->mr_id);
+	ima_putc(seq, digest, hash_digest_size[file->algorithm]);
+	ima_attestation_put_u32(seq, strlen(template_name));
+	ima_putc(seq, (void *)template_name, strlen(template_name));
+	if (strcmp(template_name, IMA_TEMPLATE_IMA_NAME)) {
+		ima_attestation_put_u32(seq, data_length);
+		ima_putc(seq, (void *)template_data, data_length);
+	}
+	return 0;
+}
+
+static int ima_attestation_ascii_show(struct seq_file *seq, void *v)
+{
+	struct ima_attestation_file *file = seq->private;
+	const struct attestation_mr_log_entry *entry = v;
+	const struct attestation_digest *value;
+	const char *template_name;
+	const u8 *template_data;
+	size_t data_length;
+	size_t record_length;
+	u8 zero_digest[HASH_MAX_DIGESTSIZE] = {};
+	u8 *digest;
+	int ret;
+
+	value = ima_attestation_entry_value(file, entry);
+	if (!value)
+		return -EINVAL;
+	template_name =
+		attestation_mr_log_entry_template_name(entry);
+	digest = (u8 *)value->data;
+	if (template_name) {
+		template_data =
+			attestation_mr_log_entry_template_data(entry,
+							       &data_length);
+		if (attestation_mr_log_entry_violation(entry))
+			digest = zero_digest;
+	} else {
+		template_name = "ima-mr-extend";
+		ret = ima_attestation_record_encode(file, entry,
+						    &record_length);
+		if (ret)
+			return ret;
+		template_data = file->scratch;
+		data_length = record_length;
+	}
+
+	seq_printf(seq, "%2u ", file->mr_id);
+	ima_print_digest(seq, digest, hash_digest_size[file->algorithm]);
+	seq_printf(seq, " %s", template_name);
+	if (!strcmp(template_name, "ima-mr-extend")) {
+		if (data_length) {
+			seq_puts(seq, " ");
+			ima_print_digest(seq, (u8 *)template_data,
+					 data_length);
+		}
+	} else {
+		ret = ima_attestation_fields_show(seq, file, template_name,
+						  template_data, data_length);
+		if (ret)
+			return ret;
+	}
+	seq_puts(seq, "\n");
+	return 0;
+}
+
+static const struct seq_operations ima_attestation_binary_seq_ops = {
+	.start = ima_attestation_measurements_start,
+	.next = ima_attestation_measurements_next,
+	.stop = ima_attestation_measurements_stop,
+	.show = ima_attestation_binary_show,
+};
+
+static const struct seq_operations ima_attestation_ascii_seq_ops = {
+	.start = ima_attestation_measurements_start,
+	.next = ima_attestation_measurements_next,
+	.stop = ima_attestation_measurements_stop,
+	.show = ima_attestation_ascii_show,
+};
+
+static int
+ima_attestation_measurements_open(struct inode *inode, struct file *filp,
+				  const struct seq_operations *seq_ops)
+{
+	struct ima_attestation_file *file;
+	struct attestation_mr_target *projection;
+	struct seq_file *seq;
+	uintptr_t index = (uintptr_t)inode->i_private;
+	int ret;
+
+	if (index >= ima_algo_count)
+		return -EINVAL;
+	file = kzalloc_obj(*file);
+	if (!file)
+		return -ENOMEM;
+	mutex_init(&file->lock);
+	file->scratch = kmalloc(IMA_ATTESTATION_TEMPLATE_MAX + 1,
+				GFP_KERNEL);
+	if (!file->scratch) {
+		ret = -ENOMEM;
+		goto err_file;
+	}
+	projection = ima_attestation_target->projection_target;
+	file->target = attestation_mr_target_clone(projection);
+	if (IS_ERR(file->target)) {
+		ret = PTR_ERR(file->target);
+		goto err_scratch;
+	}
+	file->algorithm = ima_algo_array[index].algo;
+	file->mr_id = ima_attestation_target->mr_id;
+	ret = seq_open(filp, seq_ops);
+	if (ret)
+		goto err_target;
+	seq = filp->private_data;
+	seq->private = file;
+	return 0;
+
+err_target:
+	attestation_mr_target_put(file->target);
+err_scratch:
+	kfree(file->scratch);
+err_file:
+	kfree(file);
+	return ret;
+}
+
+static int ima_attestation_binary_open(struct inode *inode, struct file *filp)
+{
+	return ima_attestation_measurements_open(inode, filp,
+					&ima_attestation_binary_seq_ops);
+}
+
+static int ima_attestation_ascii_open(struct inode *inode, struct file *filp)
+{
+	return ima_attestation_measurements_open(inode, filp,
+					&ima_attestation_ascii_seq_ops);
+}
+
+static ssize_t
+ima_attestation_measurements_read(struct file *filp, char __user *buf,
+				  size_t count, loff_t *ppos)
+{
+	struct seq_file *seq = filp->private_data;
+	struct ima_attestation_file *file = seq->private;
+	ssize_t ret;
+
+	ret = mutex_lock_interruptible(&file->lock);
+	if (ret)
+		return ret;
+	ret = attestation_mr_log_end_generation(file->target,
+						&file->end_generation);
+	if (!ret)
+		ret = seq_read(filp, buf, count, ppos);
+	mutex_unlock(&file->lock);
+	return ret;
+}
+
+static loff_t ima_attestation_measurements_lseek(struct file *filp,
+						 loff_t offset, int whence)
+{
+	struct seq_file *seq = filp->private_data;
+	struct ima_attestation_file *file = seq->private;
+	loff_t ret;
+
+	ret = mutex_lock_interruptible(&file->lock);
+	if (ret)
+		return ret;
+	ret = attestation_mr_log_end_generation(file->target,
+						&file->end_generation);
+	if (!ret)
+		ret = seq_lseek(filp, offset, whence);
+	mutex_unlock(&file->lock);
+	return ret;
+}
+
+static int ima_attestation_measurements_release(struct inode *inode,
+						struct file *filp)
+{
+	struct seq_file *seq = filp->private_data;
+	struct ima_attestation_file *file = seq->private;
+	int ret;
+
+	ima_attestation_srcu_unlock(file);
+	ret = seq_release(inode, filp);
+	attestation_mr_target_put(file->target);
+	kfree(file->scratch);
+	kfree(file);
+	return ret;
+}
+
+const struct file_operations ima_attestation_binary_ops = {
+	.open = ima_attestation_binary_open,
+	.read = ima_attestation_measurements_read,
+	.llseek = ima_attestation_measurements_lseek,
+	.release = ima_attestation_measurements_release,
+};
+
+const struct file_operations ima_attestation_ascii_ops = {
+	.open = ima_attestation_ascii_open,
+	.read = ima_attestation_measurements_read,
+	.llseek = ima_attestation_measurements_lseek,
+	.release = ima_attestation_measurements_release,
+};
+
+int ima_attestation_measurements_count(unsigned long *count)
+{
+	struct ima_attestation_file file = {
+		.target = ima_attestation_target->projection_target,
+	};
+	const struct attestation_mr_log_entry *entry;
+	int ret;
+
+	*count = 0;
+	ret = attestation_mr_log_end_generation(file.target,
+						&file.end_generation);
+	if (ret)
+		return ret;
+	ima_attestation_srcu_lock(&file);
+	entry = attestation_mr_log_iter_seek(file.target, 0,
+					     file.end_generation);
+	entry = ima_attestation_find_selected(&file, entry);
+	while (!IS_ERR_OR_NULL(entry)) {
+		if (*count == ULONG_MAX) {
+			ret = -EOVERFLOW;
+			goto out;
+		}
+		(*count)++;
+		file.generation =
+			attestation_mr_log_entry_generation(entry);
+		entry = ima_attestation_after(&file, entry);
+		entry = ima_attestation_find_selected(&file, entry);
+	}
+	ret = IS_ERR(entry) ? PTR_ERR(entry) : 0;
+out:
+	ima_attestation_srcu_unlock(&file);
 	return ret;
 }
 

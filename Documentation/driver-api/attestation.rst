@@ -59,6 +59,14 @@ extends those values and records the template fields and violation state.
 Successful measurements are not also added to IMA's legacy list or extended
 through its TPM path.
 
+The existing IMA binary and ASCII runtime-measurement files project that MR
+lifetime from the attestation journal.  IMA entries retain their original
+template records; userspace extensions appear as ``ima-mr-extend`` records
+carrying the exact submitted value and optional canonical record envelope.
+Each open file owns a log-only target clone and traverses fixed journal ends in
+bounded SRCU batches.  Targets without SHA-1 do not create the unsuffixed
+SHA-1 aliases.
+
 Teardown
 ========
 

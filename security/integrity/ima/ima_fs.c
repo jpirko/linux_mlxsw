@@ -77,6 +77,19 @@ static ssize_t ima_show_measurements_count(struct file *filp,
 					   char __user *buf,
 					   size_t count, loff_t *ppos)
 {
+	char tmpbuf[32];
+	unsigned long measurements;
+	ssize_t len;
+	int ret;
+
+	if (ima_attestation_mode()) {
+		ret = ima_attestation_measurements_count(&measurements);
+		if (ret)
+			return ret;
+		len = scnprintf(tmpbuf, sizeof(tmpbuf), "%lu\n",
+				measurements);
+		return simple_read_from_buffer(buf, count, ppos, tmpbuf, len);
+	}
 	return ima_show_counter(buf, count, ppos, &ima_num_records[BINARY]);
 }
 
@@ -635,23 +648,34 @@ static int __init create_securityfs_measurement_lists(bool staging)
 	const struct file_operations *binary_ops = &ima_measurements_ops;
 	umode_t permissions = (S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP);
 	const char *file_suffix = "";
-	int count = NR_BANKS(ima_tpm_chip);
+	size_t count = NR_BANKS(ima_tpm_chip);
 
+#ifdef CONFIG_IMA_ATTESTATION
+	if (ima_attestation_mode()) {
+		if (staging)
+			return -EOPNOTSUPP;
+		ascii_ops = &ima_attestation_ascii_ops;
+		binary_ops = &ima_attestation_binary_ops;
+		permissions = 0440;
+		count = ima_algo_count;
+	}
+#endif
 	if (staging) {
 		ascii_ops = &ima_ascii_measurements_staged_ops;
 		binary_ops = &ima_measurements_staged_ops;
 		file_suffix = "_staged";
 	}
 
-	if (ima_sha1_idx >= NR_BANKS(ima_tpm_chip))
+	if (!ima_attestation_mode() &&
+	    ima_sha1_idx >= NR_BANKS(ima_tpm_chip))
 		count++;
 
-	for (int i = 0; i < count; i++) {
+	for (size_t i = 0; i < count; i++) {
 		u16 algo = ima_algo_array[i].algo;
 		char file_name[NAME_MAX + 1];
 		struct dentry *dentry;
 
-		if (algo == HASH_ALGO__LAST)
+		if (!ima_attestation_mode() && algo == HASH_ALGO__LAST)
 			snprintf(file_name, sizeof(file_name),
 				 "ascii_runtime_measurements_tpm_alg_%x%s",
 				 ima_tpm_chip->allocated_banks[i].alg_id,
@@ -666,7 +690,7 @@ static int __init create_securityfs_measurement_lists(bool staging)
 		if (IS_ERR(dentry))
 			return PTR_ERR(dentry);
 
-		if (algo == HASH_ALGO__LAST)
+		if (!ima_attestation_mode() && algo == HASH_ALGO__LAST)
 			snprintf(file_name, sizeof(file_name),
 				 "binary_runtime_measurements_tpm_alg_%x%s",
 				 ima_tpm_chip->allocated_banks[i].alg_id,
@@ -800,7 +824,8 @@ int __init ima_fs_init(void)
 	}
 
 	ret = create_securityfs_measurement_lists(false);
-	if (ret == 0 && IS_ENABLED(CONFIG_IMA_STAGING)) {
+	if (ret == 0 && IS_ENABLED(CONFIG_IMA_STAGING) &&
+	    !ima_attestation_mode()) {
 		ret = create_securityfs_measurement_lists(true);
 		if (ret == 0)
 			ret = create_securityfs_staging_links();
@@ -809,18 +834,25 @@ int __init ima_fs_init(void)
 	if (ret != 0)
 		goto out;
 
-	dentry = securityfs_create_symlink("binary_runtime_measurements", ima_dir,
-				      "binary_runtime_measurements_sha1", NULL);
-	if (IS_ERR(dentry)) {
-		ret = PTR_ERR(dentry);
-		goto out;
-	}
+	if (ima_sha1_idx >= 0) {
+		const char *binary_name = "binary_runtime_measurements";
+		const char *binary_target = "binary_runtime_measurements_sha1";
+		const char *ascii_name = "ascii_runtime_measurements";
+		const char *ascii_target = "ascii_runtime_measurements_sha1";
 
-	dentry = securityfs_create_symlink("ascii_runtime_measurements", ima_dir,
-				      "ascii_runtime_measurements_sha1", NULL);
-	if (IS_ERR(dentry)) {
-		ret = PTR_ERR(dentry);
-		goto out;
+		dentry = securityfs_create_symlink(binary_name, ima_dir,
+						   binary_target, NULL);
+		if (IS_ERR(dentry)) {
+			ret = PTR_ERR(dentry);
+			goto out;
+		}
+
+		dentry = securityfs_create_symlink(ascii_name, ima_dir,
+						   ascii_target, NULL);
+		if (IS_ERR(dentry)) {
+			ret = PTR_ERR(dentry);
+			goto out;
+		}
 	}
 
 	dentry = securityfs_create_file("runtime_measurements_count",

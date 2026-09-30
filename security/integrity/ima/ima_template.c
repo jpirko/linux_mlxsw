@@ -322,6 +322,23 @@ int __init ima_init_template(void)
 	return result;
 }
 
+int __init ima_init_template_fields_all(void)
+{
+	struct ima_template_desc *template;
+	int ret;
+
+	list_for_each_entry(template, &defined_templates, list) {
+		if (!template->fmt[0])
+			continue;
+		ret = template_desc_init_fields(template->fmt,
+						&template->fields,
+						&template->num_fields);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
 static struct ima_template_desc *restore_template_fmt(char *template_name)
 {
 	struct ima_template_desc *template_desc = NULL;
