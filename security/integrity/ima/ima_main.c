@@ -373,7 +373,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	action &= ~((iint->flags & (IMA_DONE_MASK ^ IMA_MEASURED)) >> 1);
 
 	/* If target pcr is already measured, unset IMA_MEASURE action */
-	if ((action & IMA_MEASURE) && (iint->measured_pcrs & (0x1 << pcr)))
+	if ((action & IMA_MEASURE) &&
+	    (iint->measured_pcrs & ima_measurement_target_mask(pcr)))
 		action ^= IMA_MEASURE;
 
 	/* HASH sets the digital signature and update flags, nothing else */

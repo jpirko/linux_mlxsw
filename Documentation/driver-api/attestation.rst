@@ -53,6 +53,12 @@ section.
 the returned ``mr.generation`` is the journal boundary at which the values
 were read.
 
+With ``CONFIG_IMA_ATTESTATION``, IMA hashes each completed template record
+with every algorithm advertised by the selected MR.  One core transaction
+extends those values and records the template fields and violation state.
+Successful measurements are not also added to IMA's legacy list or extended
+through its TPM path.
+
 Teardown
 ========
 

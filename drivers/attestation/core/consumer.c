@@ -306,6 +306,9 @@ int attestation_mr_target_extend(const struct attestation_mr_target *target,
 		ret = -ENODEV;
 		goto out_unlock;
 	}
+	ret = attestation_mr_values_validate(mr, values);
+	if (ret)
+		goto out_unlock;
 	change = attestation_mr_ima_change_prepare(
 		att, mr, values, template_name, template_data,
 		template_data_length, violation);

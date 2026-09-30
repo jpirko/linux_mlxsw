@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/attestation/ima.h>
+#include <linux/hashtable.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/overflow.h>
 #include <linux/slab.h>
 
 #include "ima.h"
@@ -23,6 +25,13 @@ static char ima_attestation_boot_bus[256];
 static char ima_attestation_boot_device[256];
 
 struct ima_attestation_target *ima_attestation_target;
+
+struct ima_attestation_digest {
+	struct hlist_node node;
+	struct attestation_digest values[];
+};
+
+static DEFINE_HASHTABLE(ima_attestation_digests, IMA_HASH_BITS);
 
 static void __init ima_attestation_set_error(int error)
 {
@@ -203,8 +212,15 @@ err_free_target:
 void __init ima_attestation_destroy(void)
 {
 	struct ima_attestation_target *target = ima_attestation_target;
+	struct ima_attestation_digest *digest;
+	struct hlist_node *tmp;
+	unsigned int bucket;
 
 	ima_attestation_target = NULL;
+	hash_for_each_safe(ima_attestation_digests, bucket, tmp, digest, node) {
+		hash_del(&digest->node);
+		kfree(digest);
+	}
 	if (target) {
 		kfree(target->algorithms);
 		attestation_mr_target_put(target->mr_target);
@@ -216,6 +232,170 @@ void __init ima_attestation_destroy(void)
 	ima_selector.family_name = NULL;
 	ima_selector.bus_name = NULL;
 	ima_selector.device_name = NULL;
+}
+
+unsigned int ima_attestation_mr_id(void)
+{
+	return ima_attestation_target->mr_id;
+}
+
+static bool
+ima_attestation_digest_exists(const struct attestation_digest_set *values)
+{
+	struct ima_attestation_digest *digest;
+	unsigned int key = ima_hash_key(values->values[0].data);
+
+	hash_for_each_possible(ima_attestation_digests, digest, node, key)
+		if (!memcmp(digest->values, values->values,
+			    sizeof(*values->values) * values->values_count))
+			return true;
+	return false;
+}
+
+static int
+ima_attestation_values_alloc(const struct ima_template_entry *entry,
+			     bool violation,
+			     struct attestation_digest_set *values)
+{
+	size_t index;
+
+	values->values_count = ima_attestation_target->algorithms_count;
+	values->values = kcalloc(values->values_count, sizeof(*values->values),
+				 GFP_NOFS);
+	if (!values->values)
+		return -ENOMEM;
+	for (index = 0; index < values->values_count; index++) {
+		enum hash_algo algorithm =
+			ima_attestation_target->algorithms[index];
+
+		values->values[index].algorithm = algorithm;
+		if (violation)
+			memset(values->values[index].data, 0xff,
+			       hash_digest_size[algorithm]);
+		else
+			memcpy(values->values[index].data,
+			       entry->digests[index].digest,
+			       hash_digest_size[algorithm]);
+	}
+	return 0;
+}
+
+static int
+ima_attestation_template_copy(const struct ima_template_entry *entry,
+			      u8 **data, size_t *data_length)
+{
+	const struct ima_template_desc *desc = entry->template_desc;
+	bool legacy = !strcmp(desc->name, IMA_TEMPLATE_IMA_NAME);
+	size_t length = 0;
+	size_t offset = 0;
+	int index;
+
+	for (index = 0; index < desc->num_fields; index++) {
+		const struct ima_template_field *field = desc->fields[index];
+		const struct ima_field_data *field_data =
+			&entry->template_data[index];
+		size_t field_length = field_data->len;
+		bool length_prefix = true;
+
+		if (legacy && !strcmp(field->field_id, "d"))
+			length_prefix = false;
+		else if (legacy && !strcmp(field->field_id, "n"))
+			field_length = strlen((char *)field_data->data);
+		if ((length_prefix &&
+		     check_add_overflow(length, sizeof(u32), &length)) ||
+		    check_add_overflow(length, field_length, &length) ||
+		    length > 65536)
+			return -EINVAL;
+	}
+
+	*data = length ? kmalloc(length, GFP_NOFS) : NULL;
+	if (length && !*data)
+		return -ENOMEM;
+	for (index = 0; index < desc->num_fields; index++) {
+		const struct ima_template_field *field = desc->fields[index];
+		const struct ima_field_data *field_data =
+			&entry->template_data[index];
+		size_t field_length = field_data->len;
+		bool length_prefix = true;
+
+		if (legacy && !strcmp(field->field_id, "d"))
+			length_prefix = false;
+		else if (legacy && !strcmp(field->field_id, "n"))
+			field_length = strlen((char *)field_data->data);
+		if (length_prefix) {
+			u32 encoded_length = (u32)field_length;
+
+			if (ima_canonical_fmt)
+				encoded_length = cpu_to_le32(encoded_length);
+			memcpy(*data + offset, &encoded_length,
+			       sizeof(encoded_length));
+			offset += sizeof(encoded_length);
+		}
+		memcpy(*data + offset, field_data->data, field_length);
+		offset += field_length;
+	}
+	*data_length = length;
+	return 0;
+}
+
+int ima_attestation_store(struct ima_template_entry *entry, bool violation)
+{
+	struct ima_attestation_digest *digest = NULL;
+	struct attestation_digest_set values = {};
+	struct attestation_mr_target *target;
+	const char *template_name;
+	size_t template_data_length;
+	u8 *template_data;
+	size_t allocation_size;
+	unsigned int key;
+	int ret;
+
+	ret = ima_attestation_values_alloc(entry, violation, &values);
+	if (ret)
+		return ret;
+	if (!violation && !IS_ENABLED(CONFIG_IMA_DISABLE_HTABLE)) {
+		if (ima_attestation_digest_exists(&values)) {
+			ret = -EEXIST;
+			goto out_values;
+		}
+		allocation_size =
+			struct_size(digest, values, values.values_count);
+		digest = kmalloc(allocation_size, GFP_NOFS);
+		if (!digest) {
+			ret = -ENOMEM;
+			goto out_values;
+		}
+		memcpy(digest->values, values.values,
+		       sizeof(*values.values) * values.values_count);
+	}
+	ret = ima_attestation_template_copy(entry, &template_data,
+					    &template_data_length);
+	if (ret)
+		goto out_digest;
+	template_name = entry->template_desc->name[0] ?
+		entry->template_desc->name : entry->template_desc->fmt;
+	target = ima_attestation_target->mr_target;
+	ret = attestation_mr_target_extend(target, &values, template_name,
+					   template_data, template_data_length,
+					   violation);
+	kfree(template_data);
+	if (ret)
+		goto out_digest;
+	if (digest) {
+		key = ima_hash_key(values.values[0].data);
+		hash_add(ima_attestation_digests, &digest->node, key);
+	}
+	atomic_long_inc(&ima_num_records[BINARY]);
+	atomic_long_inc(&ima_num_records[BINARY_FULL]);
+	ima_free_template_entry(entry);
+	kfree(values.values);
+	return 0;
+
+out_digest:
+	kfree(digest);
+out_values:
+	kfree(values.values);
+	return ret;
 }
 
 int ima_attestation_policy_check(const char *family_name,
