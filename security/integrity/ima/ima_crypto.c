@@ -29,6 +29,7 @@ int ima_hash_algo_idx __ro_after_init;
  */
 int ima_extra_slots __ro_after_init;
 
+size_t ima_algo_count __ro_after_init;
 struct ima_algo_desc *ima_algo_array __ro_after_init;
 
 static int __init ima_init_ima_crypto(void)
@@ -50,7 +51,8 @@ static int __init ima_init_ima_crypto(void)
 static struct crypto_shash *ima_alloc_tfm(enum hash_algo algo)
 {
 	struct crypto_shash *tfm = ima_shash_tfm;
-	int rc, i;
+	size_t i;
+	int rc;
 
 	if (algo < 0 || algo >= HASH_ALGO__LAST)
 		algo = ima_hash_algo;
@@ -58,7 +60,7 @@ static struct crypto_shash *ima_alloc_tfm(enum hash_algo algo)
 	if (algo == ima_hash_algo)
 		return tfm;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++)
+	for (i = 0; i < ima_algo_count; i++)
 		if (ima_algo_array[i].tfm && ima_algo_array[i].algo == algo)
 			return ima_algo_array[i].tfm;
 
@@ -75,8 +77,8 @@ int __init ima_init_crypto(void)
 {
 	unsigned int digest_size;
 	enum hash_algo algo;
+	size_t i;
 	long rc;
-	int i;
 
 	rc = ima_init_ima_crypto();
 	if (rc)
@@ -84,6 +86,44 @@ int __init ima_init_crypto(void)
 
 	ima_sha1_idx = -1;
 	ima_hash_algo_idx = -1;
+
+#ifdef CONFIG_IMA_ATTESTATION
+	if (ima_attestation_mode()) {
+		if (!ima_attestation_target->algorithms_count ||
+		    ima_attestation_target->algorithms_count > INT_MAX) {
+			rc = -EINVAL;
+			goto out;
+		}
+		ima_algo_count = ima_attestation_target->algorithms_count;
+		ima_algo_array = kzalloc_objs(*ima_algo_array, ima_algo_count);
+		if (!ima_algo_array) {
+			rc = -ENOMEM;
+			goto out;
+		}
+		for (i = 0; i < ima_algo_count; i++) {
+			algo = ima_attestation_target->algorithms[i];
+			if (algo >= HASH_ALGO__LAST ||
+			    !hash_digest_size[algo]) {
+				rc = -EINVAL;
+				goto out_array;
+			}
+			ima_algo_array[i].algo = algo;
+			ima_algo_array[i].digest_size =
+				hash_digest_size[algo];
+			ima_algo_array[i].tfm = ima_alloc_tfm(algo);
+			if (IS_ERR(ima_algo_array[i].tfm)) {
+				rc = PTR_ERR(ima_algo_array[i].tfm);
+				ima_algo_array[i].tfm = NULL;
+				goto out_array;
+			}
+			if (algo == HASH_ALGO_SHA1)
+				ima_sha1_idx = i;
+			if (algo == ima_hash_algo)
+				ima_hash_algo_idx = i;
+		}
+		return 0;
+	}
+#endif
 
 	for (i = 0; i < NR_BANKS(ima_tpm_chip); i++) {
 		algo = ima_tpm_chip->allocated_banks[i].crypto_id;
@@ -103,8 +143,8 @@ int __init ima_init_crypto(void)
 	if (ima_hash_algo_idx < 0)
 		ima_hash_algo_idx = NR_BANKS(ima_tpm_chip) + ima_extra_slots++;
 
-	ima_algo_array = kzalloc_objs(*ima_algo_array,
-				      NR_BANKS(ima_tpm_chip) + ima_extra_slots);
+	ima_algo_count = NR_BANKS(ima_tpm_chip) + ima_extra_slots;
+	ima_algo_array = kzalloc_objs(*ima_algo_array, ima_algo_count);
 	if (!ima_algo_array) {
 		rc = -ENOMEM;
 		goto out;
@@ -163,7 +203,7 @@ int __init ima_init_crypto(void)
 
 	return 0;
 out_array:
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++) {
+	for (i = 0; i < ima_algo_count; i++) {
 		if (!ima_algo_array[i].tfm ||
 		    ima_algo_array[i].tfm == ima_shash_tfm)
 			continue;
@@ -178,12 +218,12 @@ out:
 
 static void ima_free_tfm(struct crypto_shash *tfm)
 {
-	int i;
+	size_t i;
 
 	if (tfm == ima_shash_tfm)
 		return;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++)
+	for (i = 0; i < ima_algo_count; i++)
 		if (ima_algo_array[i].tfm == tfm)
 			return;
 
@@ -290,7 +330,7 @@ int ima_calc_file_hash(struct file *file, struct ima_digest_data *hash)
  */
 static int ima_calc_field_array_hash_tfm(struct ima_field_data *field_data,
 					 struct ima_template_entry *entry,
-					 int tfm_idx)
+					 size_t tfm_idx)
 {
 	SHASH_DESC_ON_STACK(shash, ima_algo_array[tfm_idx].tfm);
 	struct ima_template_desc *td = entry->template_desc;
@@ -336,7 +376,18 @@ int ima_calc_field_array_hash(struct ima_field_data *field_data,
 			      struct ima_template_entry *entry)
 {
 	u16 alg_id;
+	size_t index;
 	int rc, i;
+
+	if (ima_attestation_mode()) {
+		for (index = 0; index < ima_algo_count; index++) {
+			rc = ima_calc_field_array_hash_tfm(field_data, entry,
+							   index);
+			if (rc)
+				return rc;
+		}
+		return 0;
+	}
 
 	rc = ima_calc_field_array_hash_tfm(field_data, entry, ima_sha1_idx);
 	if (rc)

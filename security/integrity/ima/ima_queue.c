@@ -242,10 +242,10 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 			   const char *op, struct inode *inode,
 			   const unsigned char *filename)
 {
-	u8 *digest = entry->digests[ima_hash_algo_idx].digest;
-	struct tpm_digest *digests_arg = entry->digests;
+	struct tpm_digest *digests_arg;
 	const char *audit_cause = "hash_added";
 	char tpm_audit_cause[AUDIT_CAUSE_LEN_MAX];
+	u8 *digest;
 	int audit_info = 1;
 	int result = 0, tpmresult = 0;
 
@@ -262,6 +262,19 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 		goto out;
 	}
 
+	if (ima_attestation_mode()) {
+		result = ima_attestation_store(entry, violation);
+		if (result == -EEXIST) {
+			audit_cause = "hash_exists";
+		} else if (result) {
+			audit_cause = "attestation_error";
+			audit_info = 0;
+		}
+		goto out;
+	}
+
+	digest = entry->digests[ima_hash_algo_idx].digest;
+	digests_arg = entry->digests;
 	if (!violation && !IS_ENABLED(CONFIG_IMA_DISABLE_HTABLE)) {
 		if (ima_lookup_digest_entry(digest, entry->pcr)) {
 			audit_cause = "hash_exists";
@@ -552,7 +565,7 @@ int __init ima_init_digests(void)
 	u16 crypto_id;
 	int i;
 
-	if (!ima_tpm_chip)
+	if (ima_attestation_mode() || !ima_tpm_chip)
 		return 0;
 
 	digests = kzalloc_objs(*digests, ima_tpm_chip->nr_allocated_banks,

@@ -72,6 +72,7 @@ extern int ima_hash_algo __ro_after_init;
 extern int ima_sha1_idx __ro_after_init;
 extern int ima_hash_algo_idx __ro_after_init;
 extern int ima_extra_slots __ro_after_init;
+extern size_t ima_algo_count __ro_after_init;
 extern struct ima_algo_desc *ima_algo_array __ro_after_init;
 
 extern int ima_appraise;
@@ -79,8 +80,11 @@ extern struct tpm_chip *ima_tpm_chip;
 extern const char boot_aggregate_name[];
 extern const char boot_aggregate_late_name[];
 
+struct ima_template_entry;
+
 #ifdef CONFIG_IMA_ATTESTATION
 struct attestation_mr_target;
+struct ima_template_entry;
 
 struct ima_attestation_target {
 	struct attestation_mr_target *mr_target;
@@ -95,6 +99,8 @@ bool ima_attestation_requested(void);
 bool ima_attestation_mode(void);
 int __init ima_attestation_init(void);
 void __init ima_attestation_destroy(void);
+unsigned int ima_attestation_mr_id(void);
+int ima_attestation_store(struct ima_template_entry *entry, bool violation);
 int ima_attestation_policy_check(const char *family_name,
 				 const char *bus_name,
 				 const char *device_name,
@@ -120,6 +126,17 @@ static inline void ima_attestation_destroy(void)
 {
 }
 
+static inline unsigned int ima_attestation_mr_id(void)
+{
+	return 0;
+}
+
+static inline int ima_attestation_store(struct ima_template_entry *entry,
+					bool violation)
+{
+	return -EOPNOTSUPP;
+}
+
 static inline int
 ima_attestation_policy_check(const char *family_name, const char *bus_name,
 			     const char *device_name, bool mr_id_present,
@@ -129,6 +146,13 @@ ima_attestation_policy_check(const char *family_name, const char *bus_name,
 		-EINVAL : 0;
 }
 #endif
+
+static inline unsigned long ima_measurement_target_mask(int pcr)
+{
+	if (ima_attestation_mode())
+		return 1;
+	return 1UL << pcr;
+}
 
 /* IMA event related data */
 struct ima_event_data {
