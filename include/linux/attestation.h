@@ -208,6 +208,7 @@ struct attestation_dev {
 
 	struct xarray mrs;
 	struct attestation_mr_log *log;
+	bool kexec_restored;
 };
 
 /* What a CTLV callback of a family inheriting ctlv-attestation was handed. */

@@ -92,6 +92,10 @@ struct ima_attestation_target {
 	enum hash_algo *algorithms;
 	size_t algorithms_count;
 	unsigned int mr_id;
+	char *resolved_family;
+	char *resolved_bus;
+	char *resolved_device;
+	bool handover_restored;
 };
 
 extern struct ima_attestation_target *ima_attestation_target;
@@ -100,7 +104,9 @@ bool ima_attestation_requested(void);
 bool ima_attestation_mode(void);
 int __init ima_attestation_init(void);
 int __init ima_attestation_projection_init(void);
-void __init ima_attestation_destroy(void);
+int __init ima_attestation_kexec_restore(void);
+void ima_attestation_destroy(void);
+void ima_attestation_measure_kexec_event(const char *event_name);
 unsigned int ima_attestation_mr_id(void);
 int ima_attestation_store(struct ima_template_entry *entry, bool violation);
 int ima_attestation_measurements_count(unsigned long *count);
@@ -134,6 +140,16 @@ static inline void ima_attestation_destroy(void)
 static inline int ima_attestation_projection_init(void)
 {
 	return 0;
+}
+
+static inline int ima_attestation_kexec_restore(void)
+{
+	return 0;
+}
+
+static inline void
+ima_attestation_measure_kexec_event(const char *event_name)
+{
 }
 
 static inline unsigned int ima_attestation_mr_id(void)
@@ -414,6 +430,7 @@ bool ima_template_has_modsig(const struct ima_template_desc *ima_template);
 int ima_queue_stage(void);
 int ima_queue_staged_delete_all(void);
 int ima_queue_delete_partial(unsigned long req_value);
+void ima_count_violation(void);
 int ima_restore_measurement_entry(struct ima_template_entry *entry);
 int ima_restore_measurement_list(loff_t bufsize, void *buf);
 int ima_measurements_show(struct seq_file *m, void *v);

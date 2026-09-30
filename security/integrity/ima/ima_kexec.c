@@ -166,6 +166,8 @@ void ima_add_kexec_buffer(struct kimage *image)
 	void *kexec_buffer = NULL;
 	int ret;
 
+	if (ima_attestation_mode())
+		return;
 	if (image->type == KEXEC_TYPE_CRASH)
 		return;
 

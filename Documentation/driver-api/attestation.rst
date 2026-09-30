@@ -150,6 +150,13 @@ family and backing device exactly, validates topology and native values, then
 reconstructs the journal without re-extending any MR or duplicating INFO
 entries.
 
+Attestation-backed IMA adds a small handover record containing the exact parsed
+boot selector, target lifetime, captured journal end and violation count.  It
+is published after IMA measurement suspension and the core journal capture.
+The next kernel requires the same selector and restored lifetime, rebuilds
+deduplication from committed IMA journal entries, and never imports the legacy
+IMA measurement-list buffer for this mode.
+
 Kernel API
 ==========
 

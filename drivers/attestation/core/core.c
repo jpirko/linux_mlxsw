@@ -478,6 +478,7 @@ int attestation_register(struct attestation_dev *att)
 	ret = attestation_kexec_restore(att);
 	if (ret < 0)
 		goto err_withdraw;
+	att->kexec_restored = ret > 0;
 	if (!ret) {
 		ret = attestation_mr_log_init(att);
 		if (ret)

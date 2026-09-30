@@ -69,6 +69,14 @@ static DEFINE_MUTEX(ima_extend_list_mutex);
  */
 static bool ima_measurements_suspended;
 
+void ima_count_violation(void)
+{
+	mutex_lock(&ima_extend_list_mutex);
+	if (!ima_measurements_suspended)
+		atomic_long_inc(&ima_num_violations);
+	mutex_unlock(&ima_extend_list_mutex);
+}
+
 /* Callers must call synchronize_rcu() and free the hash table. */
 static struct hlist_head *ima_alloc_replace_htable(void)
 {
@@ -266,6 +274,7 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 		result = ima_attestation_store(entry, violation);
 		if (result == -EEXIST) {
 			audit_cause = "hash_exists";
+			result = 0;
 		} else if (result) {
 			audit_cause = "attestation_error";
 			audit_info = 0;
@@ -540,10 +549,12 @@ static int ima_reboot_notifier(struct notifier_block *nb,
 			       unsigned long action,
 			       void *data)
 {
-#ifdef CONFIG_IMA_KEXEC
-	if (action == SYS_RESTART && data && !strcmp(data, "kexec reboot"))
-		ima_measure_kexec_event("kexec_execute");
-#endif
+	if (action == SYS_RESTART && data && !strcmp(data, "kexec reboot")) {
+		if (ima_attestation_mode())
+			ima_attestation_measure_kexec_event("kexec_execute");
+		else
+			ima_measure_kexec_event("kexec_execute");
+	}
 
 	ima_measurements_suspend();
 
