@@ -22,3 +22,10 @@ families:
       uapi-header: include/uapi/linux/ctlv_attestation_gen.h
       kernel-header: drivers/attestation/generated/ctlv_attestation_gen.h
       kernel-source: drivers/attestation/generated/ctlv_attestation_gen.c
+
+  - name: ctlv-attestation-tdx
+    source: Documentation/ctlv/specs/ctlv-attestation-tdx.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_attestation_tdx_gen.h
+      kernel-header: drivers/attestation/generated/ctlv_attestation_tdx_gen.h
+      kernel-source: drivers/attestation/generated/ctlv_attestation_tdx_gen.c

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+family:
+  name: ctlv-attestation-tdx
+  inherits: ctlv-attestation
+  pre-init: true
+
+attr-groups:
+  - name: info
+    attrs:
+      - name: mrconfigid
+        type: binary
+        min-length: 48
+        max-length: 48
+      - name: mrowner
+        type: binary
+        min-length: 48
+        max-length: 48
+      - name: mrownerconfig
+        type: binary
+        min-length: 48
+        max-length: 48
+
+attr-sets:
+  - name: device-info
+    attrs:
+      - info.mrconfigid
+      - info.mrowner
+      - info.mrownerconfig
