@@ -5,3 +5,4 @@
 # Written by "make -C tools/ctlv regen".
 families:
   - ctlv
+  - ctlv-attestation

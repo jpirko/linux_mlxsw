@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+/*
+ * Generated from Documentation/ctlv/specs/ctlv-attestation.yaml by
+ * tools/ctlv/ctlv-regen.sh. Do not edit.
+ */
+/* CTLV-GEN kernel source */
+
+#define _CTLV_GENERATED_METADATA_ONLY
+#include <linux/array_size.h>
+#include <linux/bits.h>
+#include <linux/build_bug.h>
+#include <linux/ctlv_family.h>
+#include <linux/export.h>
+#include <linux/limits.h>
+#include <linux/sizes.h>
+
+#include <uapi/ctlv/ctlv_gen.h>
+#include <uapi/ctlv/ctlv_attestation_gen.h>
+
+#include "ctlv_attestation_gen.h"
+
+static const struct ctlv_node_schema device_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
+};
+
+static const struct ctlv_node_schema device_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_CAPS, 1, 3, 2, 0),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_INFO, 1, 0, 0, 0),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_CAPS_EVIDENCE, 1, 5, 1, 1),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_CAPS_MR, 1, 6, 1, 1),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_EVIDENCE_OBJECTS, 16, 7, 6, 3),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_T_DEVICE_GET_MR_FLAGS, 1,
+			       CTLV_ATTESTATION_MR_DEVICE_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_ID, 1, 0, 15),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_CLASS, 1, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_MAX_LENGTH, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_FORMATS, 4, 1),
+	CTLV_NODE_SCHEMA_ENUM_EXT(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_VENDOR_FORMATS, 4,
+				  CTLV_FAMILY_ATTESTATION,
+				  CTLV_ATTESTATION_ENUM_EXT_EVIDENCE_VENDOR_FORMAT),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_CHALLENGE_LENGTHS, 8, 13, 3,
+				0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_ATTESTATION_T_DEVICE_GET_CHALLENGE_LENGTHS_LENGTH, 1, 1,
+				   4096, CTLV_UNIT_BYTES, 0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_ATTESTATION_T_DEVICE_GET_CHALLENGE_LENGTHS_MIN_LENGTH, 1, 1,
+				   4096, CTLV_UNIT_BYTES, 0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_ATTESTATION_T_DEVICE_GET_CHALLENGE_LENGTHS_MAX_LENGTH, 1, 1,
+				   4096, CTLV_UNIT_BYTES, 0),
+};
+
+/* Extension points selected by this tree. */
+static const struct ctlv_ext_schema device_get_reply_ext_schemas[] = {
+	CTLV_EXT_SCHEMA(CTLV_FAMILY_ATTESTATION, CTLV_ATTESTATION_EXT_DEVICE_INFO, 2),
+};
+
+static const struct ctlv_node_schema evidence_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_EVIDENCE_GET_OBJECTS, 16, 3, 2, 2),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_T_EVIDENCE_GET_CHALLENGE, 1, 1, SZ_4K),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_EVIDENCE_GET_OBJECTS_ID, 1, 0, 15),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_ATTESTATION_T_EVIDENCE_GET_OBJECTS_DATA, 1, U32_MAX, 1,
+			      BIT(CTLV_BLOB_TYPE_VA),
+			      CTLV_BLOB_DIRECTION_OUTPUT),
+};
+
+static const struct ctlv_node_schema evidence_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS, 16, 3, 3, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_LENGTH, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_FORMAT, 1, 1),
+	CTLV_NODE_SCHEMA_ENUM_EXT(CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_VENDOR_FORMAT, 1,
+				  CTLV_FAMILY_ATTESTATION,
+				  CTLV_ATTESTATION_ENUM_EXT_EVIDENCE_VENDOR_FORMAT),
+};
+
+static const struct ctlv_node_schema mr_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 0),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_GET_ID, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_MR_GET_ITEMS, CTLV_NODE_SCHEMA_UNLIMITED, 2, 5,
+				4),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_GET_ITEMS_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_T_MR_DESC_NAME, 1, 1, 128),
+	CTLV_NODE_SCHEMA_ENUM_RANGE(CTLV_ATTESTATION_T_MR_DESC_SUPPORTED_HASH_ALGORITHMS, 23,
+				    HASH_ALGO_MD4, HASH_ALGO__LAST - 1),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_T_MR_DESC_CAPS, 1, CTLV_ATTESTATION_MR_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_DESC_REGISTER_INDEX, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_read_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_READ_ID, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_read_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_MR_VALUES, 23, 3, 2, 2),
+	CTLV_NODE_SCHEMA_ENUM_RANGE(CTLV_ATTESTATION_T_MR_VALUE_HASH_ALGO, 1, HASH_ALGO_MD4,
+				    HASH_ALGO__LAST - 1),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_T_MR_VALUE_DATA, 1, 16, 64),
+};
+
+static const struct ctlv_node_schema mr_extend_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_EXTEND_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_ATTESTATION_T_MR_VALUES, 23, 3, 2, 2),
+	CTLV_NODE_SCHEMA_ENUM_RANGE(CTLV_ATTESTATION_T_MR_VALUE_HASH_ALGO, 1, HASH_ALGO_MD4,
+				    HASH_ALGO__LAST - 1),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_T_MR_VALUE_DATA, 1, 16, 64),
+};
+
+static const struct ctlv_node_schema mr_extend_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_MR_GENERATION, 1, 0, U32_MAX),
+};
+
+/* The ops this family declares, in declaration order. */
+const struct ctlv_op_schema ctlv_attestation_op_schemas[] = {
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_DEVICE_GET, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 16, 15848,
+			      CTLV_SCHEMA_TREE(device_get_request),
+			      CTLV_SCHEMA_TREE_EXTS(device_get_reply)),
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_EVIDENCE_GET, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_DYNAMIC, 6176, 1448,
+			      CTLV_SCHEMA_TREE(evidence_get_request),
+			      CTLV_SCHEMA_TREE(evidence_get_reply), .optional = true),
+	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_GET, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 40, 184, 4096,
+			     CTLV_SCHEMA_TREE(mr_get_request), CTLV_SCHEMA_TREE(mr_get_reply),
+			     .optional = true),
+	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_READ, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 40, 112, 4096,
+			     CTLV_SCHEMA_TREE(mr_read_request), CTLV_SCHEMA_TREE(mr_read_reply),
+			     .optional = true),
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_MR_EXTEND, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_FIXED, 2800, 40,
+			      CTLV_SCHEMA_TREE(mr_extend_request),
+			      CTLV_SCHEMA_TREE(mr_extend_reply), .optional = true),
+};
+
+/* The family ID is its position in the central registry. */
+const struct ctlv_family_schema ctlv_attestation_schema = {
+	.name = "ctlv-attestation",
+	.family_id = 1,
+	.ops = ctlv_attestation_op_schemas,
+	.ops_count = ARRAY_SIZE(ctlv_attestation_op_schemas),
+};
+
+/* Maximum uevent cost for this family chain. */
+static_assert(107 <= CTLV_UEVENT_MAX_LEN);
+static_assert(4 <= CTLV_UEVENT_MAX_VARS);
+
+/* Guards for generated maxima. */
+static_assert(15848 <= CTLV_MAX_INLINE_MESSAGE_LEN);
+static_assert(4 <= CTLV_MAX_DECLARED_RECORD_DEPTH);
+
+/* Local action and query bindings in declaration order. */
+static const struct ctlv_op ctlv_attestation_ops[] = {
+	CTLV_OP_ACTION(ctlv_attestation_device_get),
+	CTLV_OP_ACTION(ctlv_attestation_evidence_get),
+	CTLV_OP_QUERY(ctlv_attestation_mr_get),
+	CTLV_OP_QUERY(ctlv_attestation_mr_read),
+	CTLV_OP_ACTION(ctlv_attestation_mr_extend),
+};
+
+/* Family descriptor used by ctlv_init(). */
+const struct ctlv_family ctlv_attestation_family = {
+	.schema = &ctlv_attestation_schema,
+	.parent = &ctlv_family,
+	.ops = ctlv_attestation_ops,
+	.ops_count = ARRAY_SIZE(ctlv_attestation_ops),
+};
+EXPORT_SYMBOL_NS_GPL(ctlv_attestation_family, "CTLV");

@@ -1,0 +1,181 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Attestation devices: evidence and measurement registers (MRs). The device's
+# family inherits this one, fills device-info and gives evidence-vendor-format
+# the formats its vendor defines.
+family: ctlv-attestation
+inherits: ctlv
+
+enums:
+  # What an evidence object is.
+  evidence-class:
+    # Made by evidence-get over its challenge, and signed by the root of
+    # trust.
+    - signed
+    # The platform's log of what firmware and the boot chain measured into
+    # the MRs. Later extends, through mr-extend or otherwise, are not in it.
+    - event-log
+  # A layout of an evidence object that a standard defines.
+  evidence-format:
+    # The log area of an ACPI CCEL table, a TCG crypto-agile event log.
+    - ccel
+  # A layout of an evidence object that one vendor defines, given by the
+  # device's family.
+  evidence-vendor-format: extension
+  # The kernel's hash algorithms.
+  hash-algo:
+    $header: linux/hash_info.h
+    $enum: hash_algo
+    $end: HASH_ALGO__LAST
+
+flags:
+  # What a device offers for its MRs.
+  mr-device-caps:
+    # mr-extend is provided.
+    - extend
+  # What one MR allows.
+  mr-caps:
+    # The MR may be extended.
+    - extend
+
+records:
+  # One MR, as mr-get describes it.
+  mr-desc:
+    # The platform's name for the MR, such as rtmr0.
+    name: string(1..128)
+    # Its banks, each once, in the provider's order.
+    supported-hash-algorithms[hash-algo]: hash-algo
+    # What it allows.
+    caps: mr-caps
+    # The hardware's number for the MR, where it has one: 0 for rtmr0.
+    register-index?: uint(..u32-max)
+
+  # One bank of an MR.
+  mr-value:
+    # The bank's algorithm.
+    hash-algo: hash-algo
+    # The digest, as long as hash-algo's.
+    data: binary(16..64)
+
+  # The device's MR generation, which each extend bumps.
+  mr-generation: uint(..u32-max)
+
+  # Values for banks of the MR, each bank once.
+  mr-values[hash-algo]: record mr-value
+
+ops:
+  # What the device can do, and its family's fields.
+  device-get:
+    type: action
+    fd-access: read
+    reply:
+      # What the device supports, fixed for its life.
+      caps:
+        # Present when the device produces evidence.
+        evidence?:
+          # One per object evidence-get can produce.
+          objects[16]:
+            # The device's handle for the object in requests.
+            id: uint(..15)
+            # What the object is.
+            class: evidence-class
+            # The layouts a standard defines that the object may have. At
+            # least one of formats and vendor-formats is present.
+            formats[4]?: evidence-format
+            # The layouts its vendor defines that the object may have.
+            vendor-formats[4]?: evidence-vendor-format
+            # The longest the object gets; a blob this long always holds it.
+            max-length: uint
+            # A signed object's challenge lengths: each entry is one length,
+            # or a range from min-length to max-length.
+            challenge-lengths[8]?:
+              # A single length.
+              length?: uint(1..4K, bytes)
+              # The shortest of a range.
+              min-length?: uint(1..4K, bytes)
+              # The longest of a range.
+              max-length?: uint(1..4K, bytes)
+        # Present when the device has MRs.
+        mr?:
+          # The MR operations the device provides.
+          flags: mr-device-caps
+      # The device's family's fields.
+      info: extension device-info
+
+  # Evidence objects, written into the caller's blobs. A signed object is made
+  # by the call, over the challenge, and never reused; the others are read as
+  # they stand at the call.
+  evidence-get:
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      # Bound into each signed object named: pass a verifier's nonce, or a hash
+      # binding one to your context, never data a peer chose. Present exactly
+      # when a signed object is named, and of a length each of them takes.
+      challenge?: binary(1..4K)
+      # The objects to produce, each named once.
+      objects[16]:
+        # The object, by the ID device-get lists.
+        id: uint(..15)
+        # Where the object is written. One too short for it fails the op with
+        # EMSGSIZE, and error-info's required-length says how long it has to
+        # be.
+        data: blob(out, va)
+    reply:
+      # One per object, in request order.
+      results[16]:
+        # The layout it came in, where a standard defines it. Exactly one of
+        # format and vendor-format is present.
+        format?: evidence-format
+        # The layout it came in, where its vendor defines it.
+        vendor-format?: evidence-vendor-format
+        # The bytes written to its blob.
+        length: uint
+      # Present when the evidence depends on the MRs.
+      mr-generation?: record
+
+  # The MRs' IDs and descriptions, which do not change; mr-read returns
+  # values, which change with every extension and are read from the hardware.
+  mr-get:
+    type: query
+    fd-access: read
+    optional: true
+    suggested-reply-length: 4K
+    request:
+      # Only this MR; every MR without it.
+      id?: uint(..u32-max)
+    reply:
+      # One per MR, ordered by ID.
+      items[]:
+        # The device's handle for the MR in requests.
+        id: uint(..u32-max)
+        $include: mr-desc
+
+  # One MR's values, and the MR generation they belong to.
+  mr-read:
+    type: query
+    fd-access: read
+    optional: true
+    suggested-reply-length: 4K
+    request:
+      # The MR to read, by the ID mr-get lists.
+      id: uint(..u32-max)
+    reply:
+      mr-generation: record
+      mr-values: record
+
+  # Extends banks of the MR by digests, as TPM2_PCR_Extend.
+  mr-extend:
+    type: action
+    fd-access: read-write
+    optional: true
+    request:
+      # The MR to extend, by the ID mr-get lists.
+      id: uint(..u32-max)
+      # For the banks to extend, each once, in any order.
+      mr-values: record
+    reply:
+      mr-generation: record

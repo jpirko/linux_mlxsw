@@ -16,3 +16,10 @@ families:
       kernel-header: include/linux/ctlv_gen.h
       kernel-source: lib/ctlv/ctlv_gen.c
       user-source: tools/ctlv/libctlv/ctlv_user_gen.c
+
+  - name: ctlv-attestation
+    source: Documentation/ctlv/specs/ctlv-attestation.yaml
+    outputs:
+      uapi-header: include/uapi/ctlv/ctlv_attestation_gen.h
+      kernel-header: drivers/attestation/generated/ctlv_attestation_gen.h
+      kernel-source: drivers/attestation/generated/ctlv_attestation_gen.c

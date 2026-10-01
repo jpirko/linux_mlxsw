@@ -12,6 +12,7 @@
 
 enum _ctlv_family {
 	CTLV_FAMILY_ROOT = 0,
+	CTLV_FAMILY_ATTESTATION = 1,
 };
 
 #endif /* _UAPI_CTLV_CTLV_FAMILIES_GEN_H */

@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-attestation family, from
+# Documentation/ctlv/specs/ctlv-attestation.yaml, written by
+# "make -C tools/ctlv regen".
+#
+# Updating the file is how a UAPI change gets reviewed; an update that
+# removes or renumbers anything, narrows a bound, or makes a member required
+# is an ABI break, whatever the file says afterwards.
+family: {name: ctlv-attestation, id: 1, inherits: ctlv}
+enums:
+  evidence-class: {signed: 1, event-log: 2}
+  evidence-format: {ccel: 1}
+  hash-algo: {$header: linux/hash_info.h, $enum: hash_algo,
+              $end: HASH_ALGO__LAST}
+flags:
+  mr-device-caps: {extend: 0}
+  mr-caps: {extend: 0}
+records:
+  mr-desc:
+    id: 0x00010000
+    fields:
+      name: {number: 1, type: string, min-length: 1, max-length: 128}
+      supported-hash-algorithms: {number: 2, enum: hash-algo,
+                                  max-occurrences: hash-algo}
+      caps: {number: 3, flags: mr-caps}
+      register-index: {number: 4, type: uint, max: u32-max, optional: true}
+  mr-value:
+    id: 0x00020000
+    fields:
+      hash-algo: {number: 1, enum: hash-algo}
+      data: {number: 2, type: binary, min-length: 16, max-length: 64}
+  mr-generation:
+    id: 0x00030000
+    fields:
+      mr-generation: {number: 1, type: uint, max: u32-max}
+  mr-values:
+    id: 0x00040000
+    fields:
+      mr-values: {number: 1, record: mr-value, max-occurrences: hash-algo}
+  device-get request:
+    id: 0x80010000
+  device-get reply:
+    id: 0xc0010000
+    fields:
+      caps: {number: 1, record: device-get caps}
+      info: {number: 2, extension: device-info}
+  device-get caps:
+    id: 0xc0011000
+    fields:
+      evidence: {number: 1, record: device-get caps.evidence, optional: true}
+      mr: {number: 2, record: device-get caps.mr, optional: true}
+  device-get caps.evidence:
+    id: 0xc0011100
+    fields:
+      objects: {number: 1, record: device-get caps.evidence.objects,
+                max-occurrences: 16}
+  device-get caps.evidence.objects:
+    id: 0xc0011110
+    fields:
+      id: {number: 1, type: uint, max: 15}
+      class: {number: 2, enum: evidence-class}
+      formats: {number: 3, enum: evidence-format, max-occurrences: 4,
+                optional: true}
+      vendor-formats: {number: 4, enum: evidence-vendor-format,
+                       max-occurrences: 4, optional: true}
+      max-length: {number: 5, type: uint}
+      challenge-lengths:
+        {number: 6, record: device-get caps.evidence.objects.challenge-lengths,
+         max-occurrences: 8, optional: true}
+  device-get caps.evidence.objects.challenge-lengths:
+    id: 0xc0011111
+    fields:
+      length: {number: 1, type: uint, min: 1, max: 4K, unit: bytes,
+               optional: true}
+      min-length: {number: 2, type: uint, min: 1, max: 4K, unit: bytes,
+                   optional: true}
+      max-length: {number: 3, type: uint, min: 1, max: 4K, unit: bytes,
+                   optional: true}
+  device-get caps.mr:
+    id: 0xc0011200
+    fields:
+      flags: {number: 1, flags: mr-device-caps}
+  evidence-get request:
+    id: 0x80020000
+    fields:
+      challenge: {number: 1, type: binary, min-length: 1, max-length: 4K,
+                  optional: true}
+      objects: {number: 2, record: evidence-get objects, max-occurrences: 16}
+  evidence-get objects:
+    id: 0x80021000
+    fields:
+      id: {number: 1, type: uint, max: 15}
+      data: {number: 2, blob: output, backings: [va], max-length: u32-max}
+  evidence-get reply:
+    id: 0xc0020000
+    fields:
+      results: {number: 1, record: evidence-get results, max-occurrences: 16}
+    members: ['record mr-generation?']
+  evidence-get results:
+    id: 0xc0021000
+    fields:
+      format: {number: 1, enum: evidence-format, optional: true}
+      vendor-format: {number: 2, enum: evidence-vendor-format, optional: true}
+      length: {number: 3, type: uint}
+  mr-get request:
+    id: 0x80030000
+    fields:
+      id: {number: 1, type: uint, max: u32-max, optional: true}
+  mr-get reply:
+    id: 0xc0030000
+    fields:
+      items: {number: 1, record: mr-get items, max-occurrences: unlimited}
+  mr-get items:
+    id: 0xc0031000
+    fields:
+      id: {number: 1, type: uint, max: u32-max}
+    members: [$include mr-desc]
+  mr-read request:
+    id: 0x80040000
+    fields:
+      id: {number: 1, type: uint, max: u32-max}
+  mr-read reply:
+    id: 0xc0040000
+    members: [record mr-generation, record mr-values]
+  mr-extend request:
+    id: 0x80050000
+    fields:
+      id: {number: 1, type: uint, max: u32-max}
+    members: [record mr-values]
+  mr-extend reply:
+    id: 0xc0050000
+    members: [record mr-generation]
+extensions: {device-info: 1}
+enum-extensions: {evidence-vendor-format: 1}
+ops:
+  device-get: {id: 1, type: action, fd-access: read,
+               request: device-get request, reply: device-get reply}
+  evidence-get: {id: 2, type: action, availability: dynamic, optional: true,
+                 request: evidence-get request, reply: evidence-get reply}
+  mr-get: {id: 3, type: query, fd-access: read, optional: true,
+           request: mr-get request, reply: mr-get reply}
+  mr-read: {id: 4, type: query, fd-access: read, optional: true,
+            request: mr-read request, reply: mr-read reply}
+  mr-extend: {id: 5, type: action, optional: true, request: mr-extend request,
+              reply: mr-extend reply}
