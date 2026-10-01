@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <kunit/visibility.h>
 #include <linux/attestation/ima.h>
 #include <linux/bitmap.h>
 #include <linux/cleanup.h>

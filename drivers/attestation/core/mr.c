@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <kunit/static_stub.h>
+#include <kunit/visibility.h>
 #include <linux/bitmap.h>
 #include <linux/cleanup.h>
 #include <linux/err.h>
@@ -26,6 +28,7 @@ int attestation_mr_values_validate(const struct attestation_mr_props *props,
 	}
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_values_validate);
 
 static int attestation_digest_set_copy(struct attestation_digest_set *dst,
 				       const struct attestation_digest_set *src)
@@ -76,6 +79,8 @@ struct attestation_mr_log_entry_info *attestation_mr_info_alloc(const struct att
 	enum hash_algo *algorithms;
 	char *name;
 
+	KUNIT_STATIC_STUB_REDIRECT(attestation_mr_info_alloc, mr);
+
 	info = kzalloc_obj(*info, GFP_KERNEL);
 	if (!info)
 		return ERR_PTR(-ENOMEM);
@@ -99,6 +104,7 @@ err_info:
 	kfree(info);
 	return ERR_PTR(-ENOMEM);
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_info_alloc);
 
 void attestation_mr_log_entry_free(struct attestation_mr_log_entry *entry)
 {
@@ -313,6 +319,7 @@ err_change:
 	kfree(change);
 	return ERR_PTR(ret);
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_change_prepare);
 
 struct attestation_mr_change *
 attestation_mr_ima_change_prepare(struct attestation_dev *att, struct attestation_mr *mr,
@@ -398,6 +405,7 @@ attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_
 	change->entry = NULL;
 	return entry;
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_extend_locked);
 
 void attestation_mr_change_free(struct attestation_mr_change *change)
 {
@@ -408,6 +416,7 @@ void attestation_mr_change_free(struct attestation_mr_change *change)
 		attestation_mr_log_entry_free(&change->entry->entry);
 	kfree(change);
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_change_free);
 
 int attestation_mr_props_encode(struct ctlv_cursor *reply, const struct attestation_mr *mr)
 {

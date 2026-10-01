@@ -155,4 +155,8 @@ void attestation_kexec_invalidate(struct attestation_dev *att);
 int attestation_kexec_init(void);
 void attestation_kexec_exit(void);
 
+#if IS_ENABLED(CONFIG_KUNIT)
+int attestation_kexec_test_roundtrip(struct attestation_dev *att);
+#endif
+
 #endif /* _ATTESTATION_INTERNAL_H */
