@@ -3,6 +3,8 @@
  * Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES
  */
 #define pr_fmt(fmt) "ctlv: " fmt
+#include <kunit/static_stub.h>
+#include <kunit/visibility.h>
 #include <linux/anon_inodes.h>
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
@@ -89,6 +91,25 @@ static int ctlv_family_claim_add(const struct ctlv_family_schema *schema)
 	list_add_tail(&claim->entry, &ctlv_family_claims);
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_KUNIT)
+void ctlv_family_claim_remove(u16 family_id, const char *name)
+{
+	struct ctlv_family_claim *claim, *next;
+
+	guard(mutex)(&ctlv_family_claims_lock);
+	list_for_each_entry_safe(claim, next, &ctlv_family_claims, entry) {
+		if (claim->family_id != family_id ||
+		    strcmp(claim->name, name))
+			continue;
+		list_del(&claim->entry);
+		kfree(claim->name);
+		kfree(claim);
+		return;
+	}
+}
+EXPORT_SYMBOL_IF_KUNIT(ctlv_family_claim_remove);
+#endif
 
 static void ctlv_family_claims_free(void)
 {
@@ -337,7 +358,7 @@ static int ctlv_op_resolution_add(struct ctlv_op_resolution *state, const struct
 	return 0;
 }
 
-static int ctlv_op_resolution_init(struct ctlv *ctlv, const struct ctlv_family *family)
+int ctlv_op_resolution_init(struct ctlv *ctlv, const struct ctlv_family *family)
 {
 	struct ctlv_op_resolution state = {
 		.target = family,
@@ -381,6 +402,7 @@ static int ctlv_op_resolution_init(struct ctlv *ctlv, const struct ctlv_family *
 	ctlv->events_count = state.events;
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_resolution_init);
 
 /**
  * ctlv_family_of - Get the device family.
@@ -420,6 +442,8 @@ struct ctlv_op_entry *ctlv_op_find(struct ctlv *ctlv, u64 op_id)
 {
 	u32 index;
 
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_op_find, ctlv, op_id);
+
 	/* The index ascends by op ID, so a miss stops early. */
 	for (index = 0; index < ctlv->ops_count; index++) {
 		if (ctlv->ops[index].schema->op_id == op_id)
@@ -429,6 +453,7 @@ struct ctlv_op_entry *ctlv_op_find(struct ctlv *ctlv, u64 op_id)
 	}
 	return NULL;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_find);
 
 static bool ctlv_op_disabled(struct ctlv *ctlv, const struct ctlv_op_entry *op)
 {
@@ -438,7 +463,7 @@ static bool ctlv_op_disabled(struct ctlv *ctlv, const struct ctlv_op_entry *op)
 	return test_bit_acquire(op->state_index, ctlv->disabled);
 }
 
-static void ctlv_op_publish_all(struct ctlv *ctlv)
+void ctlv_op_publish_all(struct ctlv *ctlv)
 {
 	u32 published = 0;
 	u32 index;
@@ -453,6 +478,7 @@ static void ctlv_op_publish_all(struct ctlv *ctlv)
 	ctlv->ops_count = published;
 	ctlv->published = true;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_publish_all);
 
 void ctlv_op_provide(struct ctlv *ctlv, u64 op_id)
 {
@@ -916,14 +942,12 @@ void ctlv_ext_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *record)
 		ext_ops = ctlv_ext_ops_find(ctx->ctlv, ext_schema);
 		if (!ext_ops || !ext_ops->read)
 			continue;
-		fill_schema = ctlv_schema_fill(ctx->family,
-					       ext_schema->family_id,
-					       ext_schema->ext_id);
+		fill_schema =
+			ctlv_schema_fill(ctx->family, ext_schema->family_id, ext_schema->ext_id);
 		if (WARN_ON_ONCE(!fill_schema))
 			continue;
 		filled = *record;
-		if (!ctlv_message_input_rebind(&filled, &fill_schema->members,
-					       0))
+		if (!ctlv_message_input_rebind(&filled, &fill_schema->members, 0))
 			continue;
 		ext_ops->read(ctx->ctlv, ctx, &filled);
 	}
@@ -1170,7 +1194,7 @@ static int ctlv_uevent_families(struct kobj_uevent_env *env,
 	return add_uevent_var(env, "CTLV_COMPATIBLE_N=%u", levels);
 }
 
-static int ctlv_uevent_check(const struct ctlv_family *family)
+int ctlv_uevent_check(const struct ctlv_family *family)
 {
 	struct kobj_uevent_env *env;
 	int ret;
@@ -1188,6 +1212,7 @@ static int ctlv_uevent_check(const struct ctlv_family *family)
 	kfree(env);
 	return ret;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_uevent_check);
 
 /**
  * ctlv_uevent - Add the family variables to a device uevent.

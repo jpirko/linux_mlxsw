@@ -89,9 +89,17 @@ struct ctlv_op_ctx {
 	struct ctlv_error error;
 };
 
+int ctlv_op_resolution_init(struct ctlv *ctlv,
+			    const struct ctlv_family *family);
+void ctlv_op_publish_all(struct ctlv *ctlv);
+int ctlv_uevent_check(const struct ctlv_family *family);
 struct ctlv_op_entry *ctlv_op_find(struct ctlv *ctlv, u64 op_id);
 int ctlv_uevent(const struct ctlv *ctlv, struct kobj_uevent_env *env);
 ssize_t ctlv_fops_read(struct file *filp, char __user *buf, size_t len, loff_t *pos);
 __poll_t ctlv_fops_poll(struct file *filp, struct poll_table_struct *wait);
+
+#if IS_ENABLED(CONFIG_KUNIT)
+void ctlv_family_claim_remove(u16 family_id, const char *name);
+#endif
 
 #endif /* _CTLV_INTERNAL_H */

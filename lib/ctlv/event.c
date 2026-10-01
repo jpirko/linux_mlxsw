@@ -5,6 +5,8 @@
  * Per-open event queues and loss reporting.
  */
 
+#include <kunit/static_stub.h>
+#include <kunit/visibility.h>
 #include <linux/bitmap.h>
 #include <linux/build_bug.h>
 #include <linux/cleanup.h>
@@ -68,6 +70,7 @@ int ctlv_event_sizes(struct ctlv *ctlv)
 		clamp(max(SZ_256K, 4 * largest), ctlv->queue_min, CTLV_MAX_EVENT_QUEUE_LEN);
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_sizes);
 
 void ctlv_event_device_init(struct ctlv *ctlv)
 {
@@ -75,6 +78,7 @@ void ctlv_event_device_init(struct ctlv *ctlv)
 	INIT_LIST_HEAD(&ctlv->files);
 	init_waitqueue_head(&ctlv->event_context_wait);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_device_init);
 
 void ctlv_event_contexts_start(struct ctlv *ctlv)
 {
@@ -83,12 +87,14 @@ void ctlv_event_contexts_start(struct ctlv *ctlv)
 		return;
 	ctlv->events_live = true;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_contexts_start);
 
 void ctlv_event_contexts_stop(struct ctlv *ctlv)
 {
 	guard(spinlock)(&ctlv->events_lock);
 	ctlv->events_live = false;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_contexts_stop);
 
 static bool ctlv_event_contexts_idle(struct ctlv *ctlv)
 {
@@ -100,11 +106,15 @@ void ctlv_event_contexts_wait(struct ctlv *ctlv)
 {
 	wait_event(ctlv->event_context_wait, ctlv_event_contexts_idle(ctlv));
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_contexts_wait);
 
 /* @room bounds storage from the header through the root. */
-static struct ctlv_event *ctlv_event_alloc(u32 room, gfp_t gfp)
+VISIBLE_IF_KUNIT
+struct ctlv_event *ctlv_event_alloc(u32 room, gfp_t gfp)
 {
 	struct ctlv_event *event;
+
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_event_alloc, room, gfp);
 
 	event = kmalloc(struct_size(event, root, room - sizeof(event->hdr)), gfp);
 	if (!event)
@@ -115,6 +125,7 @@ static struct ctlv_event *ctlv_event_alloc(u32 room, gfp_t gfp)
 	event->reserved = false;
 	return event;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_alloc);
 
 /* Core events use root schemas and may outlive the device family. */
 static void ctlv_event_build(struct ctlv_op_ctx *ctx, struct ctlv_event *event,
@@ -178,6 +189,7 @@ int ctlv_event_file_init(struct ctlv_file *cfile)
 	list_add_tail(&cfile->node, &ctlv->files);
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_file_init);
 
 void ctlv_event_file_exit(struct ctlv_file *cfile)
 {
@@ -195,6 +207,7 @@ void ctlv_event_file_exit(struct ctlv_file *cfile)
 	bitmap_free(cfile->subscribed);
 	mutex_destroy(&cfile->reading);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_file_exit);
 
 static void ctlv_event_queue_add(struct ctlv_file *cfile, struct ctlv_event *event)
 {
@@ -268,6 +281,8 @@ struct ctlv_op_ctx *ctlv_event_create(struct ctlv *ctlv, u64 op_id,
 	const struct ctlv_op_entry *op;
 	u32 room;
 	int ret;
+
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_event_create, ctlv, op_id, payload, gfp);
 
 	op = ctlv_op_find(ctlv, op_id);
 	if (WARN_ON_ONCE(!op) || WARN_ON_ONCE(op->schema->type != CTLV_OP_TYPE_EVENT))
@@ -481,6 +496,7 @@ void ctlv_event_op_changed(struct ctlv *ctlv, const struct ctlv_op_entry *op,
 	ctlv_op_changed_state_generation_put(payload, generation);
 	ctlv_event_emit(ctx);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_op_changed);
 
 void ctlv_event_device_dead(struct ctlv *ctlv)
 {
@@ -496,6 +512,7 @@ void ctlv_event_device_dead(struct ctlv *ctlv)
 	list_for_each_entry(cfile, &ctlv->files, node)
 		wake_up_interruptible(&cfile->readers);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_event_device_dead);
 
 /* Materialize the final loss count when taking the marker. */
 static void ctlv_event_overflow_fill(struct ctlv_file *cfile)

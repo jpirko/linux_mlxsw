@@ -68,4 +68,8 @@ void ctlv_event_op_changed(struct ctlv *ctlv,
 			   const struct ctlv_op_entry *op, bool disabled,
 			   u64 generation);
 
+#if IS_ENABLED(CONFIG_KUNIT)
+struct ctlv_event *ctlv_event_alloc(u32 room, gfp_t gfp);
+#endif
+
 #endif /* _CTLV_EVENT_H */
