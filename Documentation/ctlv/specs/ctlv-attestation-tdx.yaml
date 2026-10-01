@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# The attestation device of an Intel TDX guest: Quotes of its TDREPORT, the
+# CCEL event log, MRTD and RTMR0 to RTMR3.
+family: ctlv-attestation-tdx
+inherits: ctlv-attestation
+
+enums:
+  # Fills ctlv-attestation's evidence-vendor-format.
+  evidence-vendor-format:
+    # An Intel TDX DCAP Quote, from the host's quoting enclave.
+    - quote
+    # A DICE-based TDX Quote, an EAT in a CBOR Web Token.
+    - quote-dice
+
+records:
+  # Fills ctlv-attestation's device-info.
+  device-info:
+    # MRCONFIGID of the TD, the ID of its non-owner configuration.
+    mrconfigid: binary(48)
+    # MROWNER of the TD, the ID of its owner.
+    mrowner: binary(48)
+    # MROWNERCONFIG of the TD, the ID of its owner's configuration.
+    mrownerconfig: binary(48)

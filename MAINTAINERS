@@ -4442,6 +4442,7 @@ F:	Documentation/ctlv/specs/ctlv-attestation*
 F:	Documentation/driver-api/attestation.rst
 F:	Documentation/userspace-api/attestation*.rst
 F:	drivers/attestation/
+F:	drivers/virt/coco/tdx-guest/*attestation*
 F:	include/linux/attestation*
 F:	include/uapi/ctlv/ctlv_attestation*
 

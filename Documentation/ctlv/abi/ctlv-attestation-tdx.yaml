@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# Checked-in ABI snapshot of the ctlv-attestation-tdx family, from
+# Documentation/ctlv/specs/ctlv-attestation-tdx.yaml, written by
+# "make -C tools/ctlv regen".
+#
+# Updating the file is how a UAPI change gets reviewed; an update that
+# removes or renumbers anything, narrows a bound, or makes a member required
+# is an ABI break, whatever the file says afterwards.
+family: {name: ctlv-attestation-tdx, id: 2, inherits: ctlv-attestation}
+enums:
+  evidence-vendor-format: {quote: 1, quote-dice: 2}
+records:
+  device-info:
+    id: 0x00010000
+    fields:
+      mrconfigid: {number: 1, type: binary, length: 48}
+      mrowner: {number: 2, type: binary, length: 48}
+      mrownerconfig: {number: 3, type: binary, length: 48}
+fills: {device-info: device-info}
