@@ -1,0 +1,234 @@
+// SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+/* Do not edit, regenerate with tools/ctlv/ctlv-regen.sh, from: */
+/*	Documentation/ctlv/specs/ctlv-attestation.yaml */
+/* CTLV-GEN kernel source */
+
+#define _CTLV_GENERATED_METADATA_ONLY
+#include <linux/array_size.h>
+#include <linux/bits.h>
+#include <linux/build_bug.h>
+#include <linux/ctlv_family.h>
+#include <linux/export.h>
+#include <linux/limits.h>
+
+#include <uapi/linux/ctlv_gen.h>
+#include <uapi/linux/ctlv_attestation_gen.h>
+
+#include "ctlv_attestation_gen.h"
+
+static const struct ctlv_node_schema device_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
+};
+
+static const struct ctlv_node_schema device_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_DEVICE_CAPS, 1, 3, 2, 0),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_DEVICE_INFO, 1, 0, 0, 0),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_CAP_EVIDENCE, 1, 5, 4, 4),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_CAP_MR, 1, 9, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_CAP_MIN_CHALLENGE_LENGTH, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_CAP_MAX_CHALLENGE_LENGTH, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_CAP_MAX_TOTAL_OUTPUT_LENGTH, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_CAP_OBJECT, 16, 10, 4, 4),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_ATTR_CAP_MR_FLAGS, 1,
+			       CTLV_ATTESTATION_MR_DEVICE_CAPS_MASK),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_CAP_BLOB_CLASS, 1, 1),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_CAP_FORMAT, 1, 1, 128),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_CAP_REPRESENTATION, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_CAP_MAX_LENGTH, 1, 0, U64_MAX),
+};
+
+/* Extension points selected by this tree. */
+static const struct ctlv_stub_schema device_get_reply_stub_schemas[] = {
+	CTLV_STUB_SCHEMA(CTLV_FAMILY_ATTESTATION, CTLV_ATTESTATION_SET_DEVICE_INFO, 2),
+};
+
+static const struct ctlv_node_schema evidence_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_ATTR_EVIDENCE_CHALLENGE, 1, 0, 4096),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_EVIDENCE_OBJECT, 16, 3, 4, 4),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_EVIDENCE_BLOB_CLASS, 1, 1),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_EVIDENCE_FORMAT, 1, 1, 128),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_EVIDENCE_REPRESENTATION, 1, 1),
+	CTLV_NODE_SCHEMA_BLOB(CTLV_ATTESTATION_ATTR_EVIDENCE_DATA, 1, U32_MAX, 1,
+			      BIT(CTLV_BLOB_TYPE_VA),
+			      CTLV_BLOB_DIRECTION_OUTPUT),
+};
+
+static const struct ctlv_node_schema evidence_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_EVIDENCE_OBJECT_LENGTH, 16, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_GENERATION, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 4, 3),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_MR_NAME, 1, 1, 128),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_SUPPORTED_HASH_ALGO, 21, 0, 20),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_ATTR_MR_CAPS, 1, CTLV_ATTESTATION_MR_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_REGISTER_INDEX, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_dump_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
+};
+
+static const struct ctlv_node_schema mr_dump_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_ITEM, CTLV_NODE_SCHEMA_UNLIMITED, 2, 5, 4),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_MR_NAME, 1, 1, 128),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_SUPPORTED_HASH_ALGO, 21, 0, 20),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_ATTR_MR_CAPS, 1, CTLV_ATTESTATION_MR_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_REGISTER_INDEX, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_read_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_read_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_VALUE, 21, 3, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, 1, 0, 20),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_ATTR_MR_DATA, 1, 16, 64),
+};
+
+static const struct ctlv_node_schema mr_extend_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_VALUE, 21, 3, 2, 2),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, 1, 0, 20),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_ATTR_MR_DATA, 1, 16, 64),
+};
+
+static const struct ctlv_node_schema mr_extend_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_GENERATION, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_log_entry_appended_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_NOTIFICATION_ENTRY, 1, 2, 5, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_LOG_EVENT, 1, 2),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_VALUE, 21, 7, 2, 2),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_LOG_MR, 1, 9, 4, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, 1, 0, 20),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_ATTR_MR_DATA, 1, 16, 64),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_MR_NAME, 1, 1, 128),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_SUPPORTED_HASH_ALGO, 21, 0, 20),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_ATTR_MR_CAPS, 1, CTLV_ATTESTATION_MR_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_REGISTER_INDEX, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_log_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 3, 0),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_SELECTION, 256, 4, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_START_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_END_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+};
+
+static const struct ctlv_node_schema mr_log_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 3, 0),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_START_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_END_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_LOG_ENTRY, CTLV_NODE_SCHEMA_UNLIMITED, 4, 5, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_GENERATION, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_ID, 1, 0, U32_MAX),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_ATTESTATION_ATTR_LOG_EVENT, 1, 2),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_MR_VALUE, 21, 9, 2, 2),
+	CTLV_NODE_SCHEMA_NEST(CTLV_ATTESTATION_ATTR_LOG_MR, 1, 11, 4, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, 1, 0, 20),
+	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_ATTR_MR_DATA, 1, 16, 64),
+	CTLV_NODE_SCHEMA_STRING(CTLV_ATTESTATION_ATTR_MR_NAME, 1, 1, 128),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_SUPPORTED_HASH_ALGO, 21, 0, 20),
+	CTLV_NODE_SCHEMA_FLAGS(CTLV_ATTESTATION_ATTR_MR_CAPS, 1, CTLV_ATTESTATION_MR_CAPS_MASK),
+	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_ATTR_MR_REGISTER_INDEX, 1, 0, U32_MAX),
+};
+
+/* The ops this family declares, in declaration order. */
+const struct ctlv_op_schema ctlv_attestation_op_schemas[] = {
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_DEVICE_GET, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 16, 4016,
+			      CTLV_SCHEMA_TREE(device_get_request),
+			      CTLV_SCHEMA_TREE_STUBS(device_get_reply)),
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_EVIDENCE_GET, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_DYNAMIC, 8992, 424,
+			      CTLV_SCHEMA_TREE(evidence_get_request),
+			      CTLV_SCHEMA_TREE(evidence_get_reply), .optional = true),
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_MR_GET, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 40, 720, CTLV_SCHEMA_TREE(mr_get_request),
+			      CTLV_SCHEMA_TREE(mr_get_reply), .optional = true),
+	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_DUMP, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 16, 184, 4096,
+			     CTLV_SCHEMA_TREE(mr_dump_request), CTLV_SCHEMA_TREE(mr_dump_reply),
+			     .optional = true),
+	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_READ, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 40, 112, 4096,
+			     CTLV_SCHEMA_TREE(mr_read_request), CTLV_SCHEMA_TREE(mr_read_reply),
+			     .optional = true),
+	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_MR_EXTEND, CTLV_OP_FD_ACCESS_READ_WRITE,
+			      CTLV_OP_AVAILABILITY_FIXED, 2560, 40,
+			      CTLV_SCHEMA_TREE(mr_extend_request),
+			      CTLV_SCHEMA_TREE(mr_extend_reply), .optional = true),
+	CTLV_OP_SCHEMA_EVENT(CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED, 3368,
+			     CTLV_SCHEMA_TREE(mr_log_entry_appended_reply)),
+	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_LOG_GET, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 10304, 200, 131072,
+			     CTLV_SCHEMA_TREE(mr_log_get_request),
+			     CTLV_SCHEMA_TREE(mr_log_get_reply), .optional = true),
+};
+
+/* The family ID is its position in the central registry. */
+const struct ctlv_family_schema ctlv_attestation_schema = {
+	.name = "ctlv-attestation",
+	.family_id = 1,
+	.ops = ctlv_attestation_op_schemas,
+	.ops_count = ARRAY_SIZE(ctlv_attestation_op_schemas),
+};
+
+/* Maximum uevent cost for this family chain. */
+static_assert(107 <= CTLV_UEVENT_MAX_LEN);
+static_assert(4 <= CTLV_UEVENT_MAX_VARS);
+
+/* Guards for generated maxima. */
+static_assert(131072 <= CTLV_MAX_INLINE_MESSAGE_LEN);
+static_assert(3368 <= CTLV_MAX_EVENT_QUEUE_LEN);
+static_assert(3 <= CTLV_MAX_DECLARED_NEST_DEPTH);
+
+/* Local action and query bindings in declaration order. */
+static const struct ctlv_op ctlv_attestation_ops[] = {
+	CTLV_OP_ACTION(ctlv_attestation_device_get),
+	CTLV_OP_ACTION(ctlv_attestation_evidence_get),
+	CTLV_OP_ACTION(ctlv_attestation_mr_get),
+	CTLV_OP_QUERY(ctlv_attestation_mr_dump),
+	CTLV_OP_QUERY(ctlv_attestation_mr_read),
+	CTLV_OP_ACTION(ctlv_attestation_mr_extend),
+	CTLV_OP_QUERY(ctlv_attestation_mr_log_get),
+};
+
+/* Family descriptor used by ctlv_create(). */
+const struct ctlv_family ctlv_attestation_family = {
+	.schema = &ctlv_attestation_schema,
+	.parent = &ctlv_family,
+	.ops = ctlv_attestation_ops,
+	.ops_count = ARRAY_SIZE(ctlv_attestation_ops),
+	.pre = ctlv_attestation_op_pre,
+	.post = ctlv_attestation_op_post,
+	.priv_size = ctlv_attestation_priv_size,
+	.init = ctlv_attestation_init,
+	.post_init = ctlv_attestation_post_init,
+	.pre_fini = ctlv_attestation_pre_fini,
+	.fini = ctlv_attestation_fini,
+};
+EXPORT_SYMBOL_NS_GPL(ctlv_attestation_family, "CTLV");

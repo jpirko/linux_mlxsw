@@ -5,3 +5,4 @@
 # Updated deliberately by "make -C tools/ctlv abi-update".
 families:
   - ctlv
+  - ctlv-attestation

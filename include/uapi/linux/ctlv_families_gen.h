@@ -10,6 +10,7 @@
 
 enum _ctlv_family {
 	CTLV_FAMILY_ROOT,
+	CTLV_FAMILY_ATTESTATION,
 };
 
 #endif /* _UAPI_LINUX_CTLV_FAMILIES_GEN_H */

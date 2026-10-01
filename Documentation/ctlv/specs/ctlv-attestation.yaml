@@ -1,0 +1,347 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+family:
+  name: ctlv-attestation
+  inherits: ctlv
+  post-init: true
+  pre-fini: true
+
+enums:
+  - name: evidence-representation
+    values:
+      - raw
+
+  - name: evidence-blob-class
+    values:
+      - primary
+
+  - name: mr-log-event
+    values:
+      - info
+      - extend
+
+flags:
+  - name: mr-device-caps
+    values:
+      - read
+      - extend
+
+  - name: mr-caps
+    values:
+      - read
+      - extend
+
+attr-groups:
+  - name: device
+    attrs:
+      # Reserved until provider-driven state changes are introduced.
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: caps
+        attrs: device-caps
+      - name: info
+        attrs: device-info
+
+  - name: cap
+    attrs:
+      - name: evidence
+        attrs: evidence-cap
+      - name: mr
+        attrs: mr-device-cap
+      - name: min-challenge-length
+        type: uint
+      - name: max-challenge-length
+        type: uint
+      - name: max-total-output-length
+        type: uint
+      - name: mr-flags
+        flags: mr-device-caps
+      - name: object
+        attrs: evidence-object-cap
+        max-occurrences: 16
+      - name: blob-class
+        enum: evidence-blob-class
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: representation
+        enum: evidence-representation
+      - name: max-length
+        type: uint
+
+  - name: evidence
+    attrs:
+      - name: challenge
+        type: binary
+        max-length: 4096
+      - name: object
+        attrs: evidence-object-request
+        max-occurrences: 16
+      - name: blob-class
+        enum: evidence-blob-class
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: representation
+        enum: evidence-representation
+      - name: data
+        blob:
+          direction: output
+          allowed-backings: [ va ]
+          max-length: 4294967295
+          alignment: 1
+      - name: object-length
+        type: uint
+        max-occurrences: 16
+
+  - name: mr
+    attrs:
+      - name: id
+        type: uint
+        max: 4294967295
+      - name: name
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: hash-algo
+        type: uint
+        max: 20
+      - name: supported-hash-algo
+        type: uint
+        max: 20
+        max-occurrences: 21
+      - name: register-index
+        type: uint
+        max: 4294967295
+      - name: caps
+        flags: mr-caps
+      - name: item
+        attrs: mr-dump-entry
+        max-occurrences: unlimited
+      - name: value
+        attrs: mr-value
+        max-occurrences: 21
+      - name: data
+        type: binary
+        min-length: 16
+        max-length: 64
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: selection
+        attrs: mr-log-selection
+        max-occurrences: 256
+      - name: start-generation
+        type: uint
+        max: 4294967295
+      - name: end-generation
+        type: uint
+        max: 4294967295
+
+  - name: log
+    attrs:
+      - name: entry
+        attrs: mr-log-entry
+        max-occurrences: unlimited
+      - name: event
+        enum: mr-log-event
+      - name: mr
+        attrs: mr-log-info
+
+  - name: notification
+    attrs:
+      - name: entry
+        attrs: mr-log-entry
+
+attr-sets:
+  - name: device-info
+    stub: true
+
+  - name: evidence-object-cap
+    attrs:
+      - cap.blob-class
+      - cap.format
+      - cap.representation
+      - cap.max-length
+
+  - name: evidence-cap
+    attrs:
+      - cap.min-challenge-length
+      - cap.max-challenge-length
+      - cap.max-total-output-length
+      - cap.object
+
+  - name: mr-device-cap
+    attrs: cap.mr-flags
+
+  - name: device-caps
+    optional-attrs:
+      - cap.evidence
+      - cap.mr
+
+  - name: device-reply
+    attrs:
+      - device.caps
+      - device.info
+
+  - name: evidence-object-request
+    attrs:
+      - evidence.blob-class
+      - evidence.format
+      - evidence.representation
+      - evidence.data
+
+  - name: evidence-request
+    attrs:
+      - evidence.challenge
+      - evidence.object
+
+  - name: evidence-reply
+    attrs: evidence.object-length
+    optional-attrs:
+      - mr.generation
+
+  - name: mr-props
+    attrs:
+      - mr.name
+      - mr.supported-hash-algo
+      - mr.caps
+    optional-attrs: mr.register-index
+
+  - name: mr-dump-entry
+    attrs:
+      - mr.id
+      - mr.name
+      - mr.supported-hash-algo
+      - mr.caps
+    optional-attrs: mr.register-index
+
+  - name: mr-id-request
+    attrs: mr.id
+
+  - name: mr-read-request
+    attrs: mr.id
+
+  - name: mr-value
+    attrs:
+      - mr.hash-algo
+      - mr.data
+
+  - name: mr-read-reply
+    attrs:
+      - mr.generation
+      - mr.value
+
+  - name: mr-extend-request
+    attrs:
+      - mr.id
+      - mr.value
+
+  - name: mr-change-reply
+    attrs: mr.generation
+
+  - name: mr-log-info
+    attrs:
+      - mr.name
+      - mr.supported-hash-algo
+      - mr.caps
+    optional-attrs: mr.register-index
+
+  - name: mr-log-entry
+    attrs:
+      - mr.generation
+      - mr.id
+      - log.event
+    optional-attrs:
+      - mr.value
+      - log.mr
+
+  - name: mr-log-event
+    attrs: notification.entry
+
+  - name: mr-log-selection
+    attrs: mr.id
+
+  - name: mr-log-request
+    optional-attrs:
+      - mr.selection
+      - mr.start-generation
+      - mr.end-generation
+
+  - name: mr-log-reply
+    optional-attrs:
+      - mr.start-generation
+      - mr.end-generation
+      - log.entry
+
+ops:
+  - name: device-get
+    type: action
+    fd-access: read
+    reply:
+      attrs: device-reply
+
+  - name: evidence-get
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      attrs: evidence-request
+    reply:
+      attrs: evidence-reply
+
+  - name: mr-get
+    type: action
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-id-request
+    reply:
+      attrs: mr-props
+
+  - name: mr-dump
+    type: query
+    fd-access: read
+    optional: true
+    reply:
+      attrs: mr.item
+    suggested-reply-length: 4096
+
+  - name: mr-read
+    type: query
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-read-request
+    reply:
+      attrs: mr-read-reply
+    suggested-reply-length: 4096
+
+  - name: mr-extend
+    type: action
+    fd-access: read-write
+    optional: true
+    request:
+      attrs: mr-extend-request
+    reply:
+      attrs: mr-change-reply
+
+  - name: mr-log-entry-appended
+    type: event
+    reply:
+      attrs: mr-log-event
+
+  - name: mr-log-get
+    type: query
+    fd-access: read
+    optional: true
+    request:
+      attrs: mr-log-request
+    reply:
+      attrs: mr-log-reply
+    suggested-reply-length: 131072

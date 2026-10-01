@@ -4331,6 +4331,15 @@ F:	rust/kernel/sync/atomic.rs
 F:	rust/kernel/sync/atomic/
 F:	rust/kernel/sync/refcount.rs
 
+ATTESTATION SUBSYSTEM
+M:	Jiri Pirko <jiri@nvidia.com>
+L:	linux-security-module@vger.kernel.org
+S:	Supported
+F:	Documentation/ctlv/abi/ctlv-attestation*
+F:	Documentation/ctlv/specs/ctlv-attestation*
+F:	drivers/attestation/
+F:	include/uapi/linux/ctlv_attestation*
+
 ATTO EXPRESSSAS SAS/SATA RAID SCSI DRIVER
 M:	Bradley Grove <linuxdrivers@attotech.com>
 L:	linux-scsi@vger.kernel.org
