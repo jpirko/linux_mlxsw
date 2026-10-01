@@ -78,6 +78,23 @@ struct ctlv_op_ctx {
 	struct ctlv_error error;
 };
 
+int ctlv_op_resolution_init(struct ctlv_device *ctlvdev,
+			    const struct ctlv_family *family);
+void ctlv_op_publish_all(struct ctlv_device *ctlvdev);
+int ctlv_device_uevent_check(const struct ctlv_family *family);
 struct ctlv_op_entry *ctlv_op_find(struct ctlv_device *ctlvdev, u64 op_id);
+
+struct file;
+struct inode;
+
+#if IS_ENABLED(CONFIG_KUNIT)
+int ctlv_file_open(struct inode *inode, struct file *filp);
+void ctlv_file_open_pinned(struct ctlv_device *ctlvdev);
+int ctlv_device_add(struct ctlv_device *ctlvdev);
+void ctlv_device_del(struct ctlv_device *ctlvdev);
+void *ctlv_device_priv(struct ctlv_device *ctlvdev, u32 index);
+bool ctlv_device_priv_aligned(struct ctlv_device *ctlvdev, u32 index);
+void ctlv_family_claim_remove(u16 family_id, const char *name);
+#endif
 
 #endif /* _CTLV_INTERNAL_H */

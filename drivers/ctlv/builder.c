@@ -4,6 +4,7 @@
  *
  * Schema-aware reply construction and operation completion.
  */
+#include <kunit/visibility.h>
 #include <linux/align.h>
 #include <linux/bug.h>
 #include <linux/ctlv.h>
@@ -39,6 +40,7 @@ void ctlv_message_output_init(struct ctlv_msg *msg, struct ctlv_op_ctx *ctx, voi
 		.attr_id = CTLV_ATTR_ROOT,
 	};
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_message_output_init);
 
 /* The first thing that went wrong is what the op ends up failing with. */
 static bool ctlv_message_output_poison(struct ctlv_cursor *nest, int error)

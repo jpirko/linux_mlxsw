@@ -3,6 +3,8 @@
  * Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES
  */
 #define pr_fmt(fmt) "ctlv: " fmt
+#include <kunit/static_stub.h>
+#include <kunit/visibility.h>
 #include <linux/align.h>
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
@@ -122,6 +124,24 @@ static int ctlv_family_claim_add(const struct ctlv_family_schema *schema)
 	list_add_tail(&claim->entry, &ctlv_family_claims);
 	return 0;
 }
+
+VISIBLE_IF_KUNIT
+void ctlv_family_claim_remove(u16 family_id, const char *name)
+{
+	struct ctlv_family_claim *claim, *next;
+
+	guard(mutex)(&ctlv_family_claims_lock);
+	list_for_each_entry_safe(claim, next, &ctlv_family_claims, entry) {
+		if (claim->family_id != family_id ||
+		    strcmp(claim->name, name))
+			continue;
+		list_del(&claim->entry);
+		kfree(claim->name);
+		kfree(claim);
+		return;
+	}
+}
+EXPORT_SYMBOL_IF_KUNIT(ctlv_family_claim_remove);
 
 static void ctlv_family_claims_free(void)
 {
@@ -563,7 +583,7 @@ static int ctlv_op_resolution_add(struct ctlv_op_resolution *state, const struct
 	return 0;
 }
 
-static int ctlv_op_resolution_init(struct ctlv_device *ctlvdev, const struct ctlv_family *family)
+int ctlv_op_resolution_init(struct ctlv_device *ctlvdev, const struct ctlv_family *family)
 {
 	struct ctlv_op_resolution state = {
 		.ctlvdev = ctlvdev,
@@ -611,6 +631,22 @@ static int ctlv_op_resolution_init(struct ctlv_device *ctlvdev, const struct ctl
 	ctlvdev->events_count = state.events;
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_resolution_init);
+
+VISIBLE_IF_KUNIT
+void *ctlv_device_priv(struct ctlv_device *ctlvdev, u32 index)
+{
+	return ctlvdev->privs[index].priv;
+}
+EXPORT_SYMBOL_IF_KUNIT(ctlv_device_priv);
+
+VISIBLE_IF_KUNIT
+bool ctlv_device_priv_aligned(struct ctlv_device *ctlvdev, u32 index)
+{
+	return IS_ALIGNED((unsigned long)ctlvdev->privs[index].priv,
+			  CTLV_PRIV_ALIGN);
+}
+EXPORT_SYMBOL_IF_KUNIT(ctlv_device_priv_aligned);
 
 void *ctlv_priv_parent(const void *priv)
 {
@@ -649,6 +685,8 @@ struct ctlv_op_entry *ctlv_op_find(struct ctlv_device *ctlvdev, u64 op_id)
 {
 	u32 index;
 
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_op_find, ctlvdev, op_id);
+
 	/* The index ascends by op ID, so a miss stops early. */
 	for (index = 0; index < ctlvdev->ops_count; index++) {
 		if (ctlvdev->ops[index].schema->op_id == op_id)
@@ -658,6 +696,7 @@ struct ctlv_op_entry *ctlv_op_find(struct ctlv_device *ctlvdev, u64 op_id)
 	}
 	return NULL;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_find);
 
 static bool ctlv_op_disabled(struct ctlv_device *ctlvdev, const struct ctlv_op_entry *op)
 {
@@ -667,7 +706,7 @@ static bool ctlv_op_disabled(struct ctlv_device *ctlvdev, const struct ctlv_op_e
 	return test_bit_acquire(op->state_index, ctlvdev->disabled);
 }
 
-static void ctlv_op_publish_all(struct ctlv_device *ctlvdev)
+void ctlv_op_publish_all(struct ctlv_device *ctlvdev)
 {
 	u32 published = 0;
 	u32 index;
@@ -683,6 +722,7 @@ static void ctlv_op_publish_all(struct ctlv_device *ctlvdev)
 	ctlvdev->ops_count = published;
 	ctlvdev->published = true;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_op_publish_all);
 
 void ctlv_device_op_provide(struct ctlv_device *ctlvdev, u64 op_id)
 {
@@ -1137,8 +1177,7 @@ void ctlv_stub_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *nest)
 		return;
 	tree = nest->tree;
 	for (index = 0; index < tree->stub_schemas_count; index++) {
-		const struct ctlv_stub_schema *stub_schema =
-			&tree->stub_schemas[index];
+		const struct ctlv_stub_schema *stub_schema = &tree->stub_schemas[index];
 		const struct ctlv_stub_fill_schema *fill_schema;
 		const struct ctlv_stub_ops *stub_ops;
 		struct ctlv_cursor filled;
@@ -1149,14 +1188,12 @@ void ctlv_stub_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *nest)
 		stub_ops = ctlv_stub_ops_find(ctx->ctlvdev, stub_schema, &priv);
 		if (!stub_ops || !stub_ops->read)
 			continue;
-		fill_schema = ctlv_schema_fill(ctx->family,
-					       stub_schema->family_id,
-					       stub_schema->set_id);
+		fill_schema =
+			ctlv_schema_fill(ctx->family, stub_schema->family_id, stub_schema->set_id);
 		if (WARN_ON_ONCE(!fill_schema))
 			continue;
 		filled = *nest;
-		if (!ctlv_message_input_rebind(&filled, &fill_schema->members,
-					       0))
+		if (!ctlv_message_input_rebind(&filled, &fill_schema->members, 0))
 			continue;
 		stub_ops->read(priv, ctx, &filled);
 	}
@@ -1253,11 +1290,15 @@ static bool ctlv_file_open_allowed(struct ctlv_device *ctlvdev)
 	return ctlvdev->registered && ctlvdev->family;
 }
 
-static void ctlv_file_open_pinned(struct ctlv_device *ctlvdev)
+VISIBLE_IF_KUNIT
+void ctlv_file_open_pinned(struct ctlv_device *ctlvdev)
 {
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_file_open_pinned, ctlvdev);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_file_open_pinned);
 
-static int ctlv_file_open(struct inode *inode, struct file *filp)
+VISIBLE_IF_KUNIT
+int ctlv_file_open(struct inode *inode, struct file *filp)
 {
 	struct ctlv_device *ctlvdev = container_of(inode->i_cdev, struct ctlv_device, cdev);
 	struct ctlv_file *cfile;
@@ -1302,6 +1343,7 @@ static int ctlv_file_open(struct inode *inode, struct file *filp)
 	put_device(&ctlvdev->dev);
 	return ret;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_file_open);
 
 static int ctlv_file_release(struct inode *inode, struct file *filp)
 {
@@ -1347,7 +1389,7 @@ static int ctlv_device_uevent_families(struct kobj_uevent_env *env,
 	return add_uevent_var(env, "CTLV_COMPATIBLE_N=%u", levels);
 }
 
-static int ctlv_device_uevent_check(const struct ctlv_family *family)
+int ctlv_device_uevent_check(const struct ctlv_family *family)
 {
 	struct kobj_uevent_env *env;
 	int ret;
@@ -1365,6 +1407,7 @@ static int ctlv_device_uevent_check(const struct ctlv_family *family)
 	kfree(env);
 	return ret;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_device_uevent_check);
 
 /* Read unlocked: a uevent may be asked for under the registration lock. */
 static int ctlv_device_uevent(const struct device *dev, struct kobj_uevent_env *env)
@@ -1394,17 +1437,24 @@ static struct class ctlv_device_class = {
 	.dev_uevent = ctlv_device_uevent,
 };
 
-static int ctlv_device_add(struct ctlv_device *ctlvdev)
+VISIBLE_IF_KUNIT
+int ctlv_device_add(struct ctlv_device *ctlvdev)
 {
 	lockdep_assert_held_write(&ctlvdev->registration_lock);
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_device_add, ctlvdev);
 
 	return cdev_device_add(&ctlvdev->cdev, &ctlvdev->dev);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_device_add);
 
-static void ctlv_device_del(struct ctlv_device *ctlvdev)
+VISIBLE_IF_KUNIT
+void ctlv_device_del(struct ctlv_device *ctlvdev)
 {
+	KUNIT_STATIC_STUB_REDIRECT(ctlv_device_del, ctlvdev);
+
 	cdev_device_del(&ctlvdev->cdev, &ctlvdev->dev);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_device_del);
 
 struct ctlv_device *ctlv_create(struct device *parent_dev, const struct ctlv_family *family,
 				const void *init_info)

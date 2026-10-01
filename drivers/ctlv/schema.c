@@ -4,6 +4,7 @@
  *
  * Generated metadata remains owner-local; effective schemas walk the chain.
  */
+#include <kunit/visibility.h>
 #include <linux/align.h>
 #include <linux/bits.h>
 #include <linux/ctlv.h>
@@ -39,6 +40,7 @@ const struct ctlv_family *ctlv_family_ancestor(const struct ctlv_family *family,
 		family = family->parent;
 	return family;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_family_ancestor);
 
 u32 ctlv_family_levels(const struct ctlv_family *family)
 {
@@ -49,6 +51,7 @@ u32 ctlv_family_levels(const struct ctlv_family *family)
 		levels++;
 	return levels;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_family_levels);
 
 void ctlv_schema_cursor_init(struct ctlv_schema_cursor *cursor, const struct ctlv_family *family)
 {
@@ -57,6 +60,7 @@ void ctlv_schema_cursor_init(struct ctlv_schema_cursor *cursor, const struct ctl
 	cursor->family = NULL;
 	cursor->index = 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_schema_cursor_init);
 
 const struct ctlv_op_schema *ctlv_schema_next_op(struct ctlv_schema_cursor *cursor,
 						 const struct ctlv_family **family)
@@ -77,6 +81,7 @@ const struct ctlv_op_schema *ctlv_schema_next_op(struct ctlv_schema_cursor *curs
 	}
 	return NULL;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_schema_next_op);
 
 bool ctlv_schema_member(const struct ctlv_family *family, const struct ctlv_schema_tree *tree,
 			u32 node, u64 attr_id, struct ctlv_schema_pos *member)
@@ -130,6 +135,7 @@ const struct ctlv_stub_fill_schema *ctlv_schema_fill(const struct ctlv_family *f
 	}
 	return NULL;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_schema_fill);
 
 /*
  * The same arithmetic the generator did, over the tree it emitted plus this
@@ -372,6 +378,7 @@ int ctlv_schema_op_sizes(const struct ctlv_family *family, const struct ctlv_op_
 	}
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_schema_op_sizes);
 
 /*
  * Only a completely valid request reaches family code; nothing is repaired or
@@ -396,6 +403,7 @@ void ctlv_message_index_free(struct ctlv_msg *msg)
 	kfree(index);
 	msg->index = NULL;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_message_index_free);
 
 static void *ctlv_schema_index_grow(void *items, u32 *capacity, u32 needed, size_t item_size)
 {
@@ -1045,3 +1053,4 @@ int ctlv_schema_validate(struct ctlv_msg *msg, struct ctlv_error *error)
 	}
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_schema_validate);

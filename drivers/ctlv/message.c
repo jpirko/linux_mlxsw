@@ -4,6 +4,7 @@
  *
  * Message walking, indexing, and generated-accessor primitives.
  */
+#include <kunit/visibility.h>
 #include <linux/align.h>
 #include <linux/bits.h>
 #include <linux/bug.h>
@@ -50,11 +51,13 @@ enum ctlv_message_step ctlv_message_next(const struct ctlv_attr *nest,
 		return CTLV_MESSAGE_STEP_BAD;
 	return CTLV_MESSAGE_STEP_ATTR;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_message_next);
 
 u32 ctlv_message_offset(const struct ctlv_msg *msg, const struct ctlv_attr *attr)
 {
 	return (const u8 *)attr - (const u8 *)msg->root;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_message_offset);
 
 void ctlv_message_root(struct ctlv_cursor *cursor, struct ctlv_msg *msg)
 {
@@ -68,6 +71,7 @@ void ctlv_message_root(struct ctlv_cursor *cursor, struct ctlv_msg *msg)
 	if (msg->request && msg->index)
 		cursor->index_nest_scope = msg->index->nests[0].first_scope;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_message_root);
 
 static bool ctlv_message_nest_index_ok(const struct ctlv_cursor *nest)
 {

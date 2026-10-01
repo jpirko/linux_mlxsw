@@ -4,6 +4,7 @@
  *
  * Blob backing is acquired lazily in the submitting task and held until put.
  */
+#include <kunit/visibility.h>
 #include <linux/align.h>
 #include <linux/atomic.h>
 #include <linux/bits.h>
@@ -106,8 +107,7 @@ static int ctlv_blob_pin_charge(struct mm_struct *mm, unsigned long pages_count)
 	return 0;
 }
 
-static int ctlv_blob_va_range(u64 address, u64 len, unsigned long *first_page,
-			      unsigned long *pages_count)
+int ctlv_blob_va_range(u64 address, u64 len, unsigned long *first_page, unsigned long *pages_count)
 {
 	unsigned long first, last, span, count;
 	size_t bytes;
@@ -130,6 +130,7 @@ static int ctlv_blob_va_range(u64 address, u64 len, unsigned long *first_page,
 	*pages_count = count;
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_va_range);
 
 static int ctlv_blob_va_acquire(struct ctlv_blob *blob, u64 address)
 {
@@ -213,7 +214,7 @@ static void ctlv_blob_va_copy(struct ctlv_blob *blob, u64 offset, void *buf, siz
 	}
 }
 
-static int ctlv_blob_memfd_access(u8 direction, fmode_t mode, int seals)
+int ctlv_blob_memfd_access(u8 direction, fmode_t mode, int seals)
 {
 	fmode_t access = 0;
 	fmode_t operations = 0;
@@ -242,6 +243,7 @@ static int ctlv_blob_memfd_access(u8 direction, fmode_t mode, int seals)
 		return -EINVAL;
 	return 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_memfd_access);
 
 static int ctlv_blob_memfd_acquire(struct ctlv_blob *blob, int fd, u64 offset)
 {
@@ -342,8 +344,7 @@ static int ctlv_blob_resv_prepare(struct ctlv_blob *blob)
 	ret = dma_resv_lock_interruptible(resv, NULL);
 	if (ret)
 		return ret;
-	remaining = dma_resv_wait_timeout(resv, usage, true,
-					  MAX_SCHEDULE_TIMEOUT);
+	remaining = dma_resv_wait_timeout(resv, usage, true, MAX_SCHEDULE_TIMEOUT);
 	if (remaining <= 0) {
 		ret = remaining ? (int)remaining : -EBUSY;
 		goto err_unlock;
@@ -358,16 +359,14 @@ err_unlock:
 	return ret;
 }
 
-static void ctlv_blob_fence_publish(struct ctlv_blob *blob,
-				    struct dma_fence *fence)
+static void ctlv_blob_fence_publish(struct ctlv_blob *blob, struct dma_fence *fence)
 {
 	dma_resv_add_fence(blob->dma_buf.dmabuf->resv, fence,
-			   ctlv_blob_writable(blob) ? DMA_RESV_USAGE_WRITE :
-						      DMA_RESV_USAGE_READ);
+			   ctlv_blob_writable(blob) ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ);
 }
 
-static struct ctlv_blob *ctlv_blob_dma_buf_acquire(struct dma_buf *dmabuf, u64 offset,
-					    u64 len, u8 direction)
+struct ctlv_blob *ctlv_blob_dma_buf_acquire(struct dma_buf *dmabuf, u64 offset, u64 len,
+					    u8 direction)
 {
 	struct ctlv_blob *blob;
 	u64 end;
@@ -391,14 +390,15 @@ static struct ctlv_blob *ctlv_blob_dma_buf_acquire(struct dma_buf *dmabuf, u64 o
 		blob->dma_buf.cpu_dir = DMA_BIDIRECTIONAL;
 
 	if (!len || direction < CTLV_BLOB_DIRECTION_INPUT ||
-	    direction > CTLV_BLOB_DIRECTION_INOUT ||
-	    check_add_overflow(offset, len, &end) || end > dmabuf->size) {
+	    direction > CTLV_BLOB_DIRECTION_INOUT || check_add_overflow(offset, len, &end) ||
+	    end > dmabuf->size) {
 		kfree(blob);
 		dma_buf_put(dmabuf);
 		return ERR_PTR(-EINVAL);
 	}
 	return blob;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_dma_buf_acquire);
 
 static int ctlv_blob_dma_buf_cpu_begin(struct ctlv_blob *blob)
 {
@@ -442,8 +442,7 @@ static int ctlv_blob_dma_buf_cpu_end(struct ctlv_blob *blob)
 	return ret;
 }
 
-static enum dma_data_direction
-ctlv_blob_device_direction(const struct ctlv_blob *blob)
+static enum dma_data_direction ctlv_blob_device_direction(const struct ctlv_blob *blob)
 {
 	if (!ctlv_blob_writable(blob))
 		return DMA_TO_DEVICE;
@@ -452,8 +451,7 @@ ctlv_blob_device_direction(const struct ctlv_blob *blob)
 	return DMA_BIDIRECTIONAL;
 }
 
-static bool ctlv_blob_sgt_covers(const struct ctlv_blob *blob,
-				 const struct sg_table *sgt)
+static bool ctlv_blob_sgt_covers(const struct ctlv_blob *blob, const struct sg_table *sgt)
 {
 	struct scatterlist *sg;
 	u64 mapped = 0;
@@ -471,8 +469,7 @@ static bool ctlv_blob_sgt_covers(const struct ctlv_blob *blob,
 	return false;
 }
 
-struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
-					struct device *dev,
+struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob, struct device *dev,
 					struct sg_table **sgt, u64 *dma_skip)
 {
 	struct ctlv_blob_dma *dma;
@@ -497,8 +494,7 @@ struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
 		ret = PTR_ERR(dma->attach);
 		goto err_free_dma;
 	}
-	dma->sgt = dma_buf_map_attachment_unlocked(dma->attach,
-						   dma->direction);
+	dma->sgt = dma_buf_map_attachment_unlocked(dma->attach, dma->direction);
 	if (IS_ERR(dma->sgt)) {
 		ret = PTR_ERR(dma->sgt);
 		goto err_detach;
@@ -516,8 +512,7 @@ struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
 	return dma;
 
 err_unmap:
-	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt,
-					  dma->direction);
+	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt, dma->direction);
 err_detach:
 	dma_buf_detach(blob->dma_buf.dmabuf, dma->attach);
 err_free_dma:
@@ -532,13 +527,11 @@ int ctlv_blob_dma_begin(struct ctlv_blob_dma *dma, struct dma_fence *fence)
 	int ret;
 
 	blob = dma->blob;
-	if (WARN_ON_ONCE(!ctlv_blob_access_live(blob) ||
-			 blob->dma_buf.dma != dma))
+	if (WARN_ON_ONCE(!ctlv_blob_access_live(blob) || blob->dma_buf.dma != dma))
 		return -EINVAL;
 	if (WARN_ON_ONCE(dma->fence))
 		return -EBUSY;
-	if (WARN_ON_ONCE(dma_fence_is_signaled(fence) ||
-			 dma_fence_is_container(fence)))
+	if (WARN_ON_ONCE(dma_fence_is_signaled(fence) || dma_fence_is_container(fence)))
 		return -EINVAL;
 	ret = ctlv_blob_resv_prepare(blob);
 	if (ret)
@@ -599,8 +592,7 @@ void ctlv_blob_dma_unmap(struct ctlv_blob_dma *dma, int status)
 	}
 	blob->dma_buf.dma = NULL;
 	ctlv_blob_record_error(blob, status);
-	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt,
-					  dma->direction);
+	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt, dma->direction);
 	dma_buf_detach(blob->dma_buf.dmabuf, dma->attach);
 	if (blob->ctx)
 		blob->ctx->dma_maps--;
@@ -625,8 +617,8 @@ static int ctlv_blob_dma_buf_release(struct ctlv_blob *blob)
 	return ret;
 }
 
-static int ctlv_blob_dma_buf_copy(struct ctlv_blob *blob, u64 offset,
-				  void *buf, size_t len, bool write)
+static int ctlv_blob_dma_buf_copy(struct ctlv_blob *blob, u64 offset, void *buf, size_t len,
+				  bool write)
 {
 	u64 at = blob->dma_buf.offset + offset;
 	int ret;
@@ -734,12 +726,14 @@ void ctlv_blob_context_init(struct ctlv_op_ctx *ctx)
 	ctx->cpu_blobs = 0;
 	ctx->dma_maps = 0;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_context_init);
 
 void ctlv_blob_context_track(struct ctlv_blob *blob, struct ctlv_op_ctx *ctx)
 {
 	blob->ctx = ctx;
 	list_add_tail(&blob->entry, &ctx->blobs);
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_context_track);
 
 int ctlv_blob_context_finish(struct ctlv_op_ctx *ctx)
 {
@@ -755,6 +749,7 @@ int ctlv_blob_context_finish(struct ctlv_op_ctx *ctx)
 	WARN_ON_ONCE(ctx->dma_maps);
 	return ctx->blob_error;
 }
+EXPORT_SYMBOL_IF_KUNIT(ctlv_blob_context_finish);
 
 /*
  * Which of an op's blobs was the unusable one, in the shape validation would
@@ -785,8 +780,7 @@ static struct ctlv_blob *ctlv_blob_acquire(const struct ctlv_blob_desc *desc, u8
 		dmabuf = dma_buf_get(fd);
 		if (IS_ERR(dmabuf))
 			return ERR_CAST(dmabuf);
-		return ctlv_blob_dma_buf_acquire(dmabuf, offset, len,
-						 direction);
+		return ctlv_blob_dma_buf_acquire(dmabuf, offset, len, direction);
 	}
 
 	blob = kzalloc_obj(*blob, GFP_KERNEL_ACCOUNT);
