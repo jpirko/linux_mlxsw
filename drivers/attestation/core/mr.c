@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <kunit/static_stub.h>
+#include <kunit/visibility.h>
 #include <linux/cleanup.h>
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -68,6 +70,8 @@ struct attestation_mr_log_entry_info *attestation_mr_info_alloc(const struct att
 	enum hash_algo *algorithms;
 	char *name;
 
+	KUNIT_STATIC_STUB_REDIRECT(attestation_mr_info_alloc, mr);
+
 	info = kzalloc_obj(*info, GFP_KERNEL);
 	if (!info)
 		return ERR_PTR(-ENOMEM);
@@ -91,6 +95,7 @@ err_info:
 	kfree(info);
 	return ERR_PTR(-ENOMEM);
 }
+EXPORT_SYMBOL_IF_KUNIT(attestation_mr_info_alloc);
 
 void attestation_mr_log_entry_free(struct attestation_mr_log_entry *entry)
 {

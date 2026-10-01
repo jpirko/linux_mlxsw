@@ -183,4 +183,10 @@ void attestation_kexec_invalidate(struct attestation *att);
 int attestation_kexec_init(void);
 void attestation_kexec_exit(void);
 
+#if IS_ENABLED(CONFIG_KUNIT)
+struct attestation *
+attestation_test_find_device(const struct ctlv_device *ctlvdev);
+int attestation_kexec_test_roundtrip(struct attestation *att);
+#endif
+
 #endif /* _ATTESTATION_INTERNAL_H */

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <kunit/visibility.h>
 #include <linux/attestation/ima.h>
 #include <linux/cleanup.h>
 #include <linux/ctlv.h>
@@ -223,6 +224,21 @@ void attestation_instance_unlock(struct attestation *att)
 {
 	mutex_unlock(&att->lock);
 }
+
+#if IS_ENABLED(CONFIG_KUNIT)
+struct attestation *
+attestation_test_find_device(const struct ctlv_device *ctlvdev)
+{
+	struct attestation *att;
+	unsigned long index;
+
+	xa_for_each(&attestation_instances, index, att)
+		if (att->ctlvdev == ctlvdev)
+			return att;
+	return NULL;
+}
+EXPORT_SYMBOL_IF_KUNIT(attestation_test_find_device);
+#endif
 
 void attestation_evidence_accept_clear_locked(struct attestation *att)
 {
