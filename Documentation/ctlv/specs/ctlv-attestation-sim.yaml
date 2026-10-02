@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+# The attestation simulator, for tests: synthetic evidence and RAM-backed MRs,
+# no security boundary.
+family: ctlv-attestation-sim
+inherits: ctlv-attestation
+
+enums:
+  # Fills ctlv-attestation's evidence-vendor-format.
+  evidence-vendor-format:
+    # The simulator's report of its MRs.
+    - report
+    # The simulator's token, which carries the challenge.
+    - token
+    # The simulator's manifest, which names its fixture.
+    - manifest
+
+records:
+  # Fills ctlv-attestation's device-info.
+  device-info:
+    # The name of the fixture the device belongs to.
+    name: string(1..63)
