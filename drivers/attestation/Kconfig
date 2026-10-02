@@ -13,6 +13,20 @@ menuconfig ATTESTATION
 
 if ATTESTATION
 
+config ATTESTATION_SIM
+	tristate "Simulated attestation provider"
+	depends on DEBUG_FS
+	select CRYPTO_SHA256
+	select CRYPTO_SHA512
+	help
+	  Provides synthetic evidence, measurement registers and device-security
+	  state for the attestation selftests. Fixtures are created through
+	  debugfs or, when built in, with the early_fixture module parameter.
+
+	  This provider offers no hardware security.
+
+	  If you are unsure, say N.
+
 config ATTESTATION_TDX
 	tristate "TDX attestation provider"
 	depends on TDX_GUEST_DRIVER

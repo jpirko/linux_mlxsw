@@ -67,9 +67,9 @@ class TestGeneratedOutputs(unittest.TestCase):
     def test_manifest_is_complete_and_unique(self):
         plan = outputs.load(self.paths)
 
-        self.assertEqual(26, len(plan))
-        self.assertEqual(26, len({item.path for item in plan}))
-        self.assertEqual(26, len({(item.family, item.flavour)
+        self.assertEqual(29, len(plan))
+        self.assertEqual(29, len({item.path for item in plan}))
+        self.assertEqual(29, len({(item.family, item.flavour)
                                  for item in plan}))
         registry_outputs = [item for item in plan if item.family is None]
         self.assertEqual(

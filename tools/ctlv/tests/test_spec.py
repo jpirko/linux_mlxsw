@@ -346,6 +346,7 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(2, registry.family_id('ctlv-attestation-tdx'))
         self.assertEqual(3, registry.family_id('ctlv-test'))
         self.assertEqual(4, registry.family_id('ctlv-test-child'))
+        self.assertEqual(5, registry.family_id('ctlv-attestation-sim'))
 
     def test_the_fixture_registry_numbers_the_fixture_families(self):
         registry = spec.load_registry(
