@@ -15,3 +15,4 @@ families:
   - ctlv-attestation-tdx
   - ctlv-test
   - ctlv-test-child
+  - ctlv-attestation-sim

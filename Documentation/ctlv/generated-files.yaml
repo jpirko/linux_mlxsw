@@ -48,3 +48,10 @@ families:
       kernel-source: drivers/ctlv/tests/ctlv_test_child_gen.c
       user-header: tools/testing/selftests/ctlv/ctlv_test_child_user_gen.h
       user-source: tools/testing/selftests/ctlv/ctlv_test_child_user_gen.c
+
+  - name: ctlv-attestation-sim
+    source: Documentation/ctlv/specs/ctlv-attestation-sim.yaml
+    outputs:
+      uapi-header: include/uapi/linux/ctlv_attestation_sim_gen.h
+      kernel-header: drivers/attestation/generated/ctlv_attestation_sim_gen.h
+      kernel-source: drivers/attestation/generated/ctlv_attestation_sim_gen.c

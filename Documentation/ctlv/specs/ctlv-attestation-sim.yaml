@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
+%YAML 1.2
+---
+family:
+  name: ctlv-attestation-sim
+  inherits: ctlv-attestation
+  pre-init: true
+
+attr-groups:
+  - name: sim
+    attrs:
+      - name: name
+        type: string
+        min-length: 1
+        max-length: 63
+
+attr-sets:
+  - name: device-info
+    attrs: sim.name
