@@ -567,3 +567,4 @@ What each provider's family adds, and what its device produces:
    :maxdepth: 1
 
    attestation-tdx
+   attestation-sim
