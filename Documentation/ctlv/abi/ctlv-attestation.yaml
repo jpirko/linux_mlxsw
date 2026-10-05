@@ -14,10 +14,14 @@ enums:
   evidence-representation: {raw: 1}
   evidence-blob-class: {primary: 1}
   mr-log-event: {info: 1, extend: 2}
+  tdisp-state: {unlocked: 1, locked: 2, run: 3, error: 4}
+  device-trust-state: {unset: 1, none: 2, adversary: 3, auto: 4, tcb: 5}
 flags:
   mr-device-caps: {read: 0, extend: 1}
   mr-caps: {read: 0, extend: 1}
   mr-state-flags: {ima-active: 0}
+  evidence-caps: {evidence-accept: 0}
+  devsec-caps: {run: 0}
 attr-groups:
   device:
     id: 1
@@ -39,6 +43,9 @@ attr-groups:
       format: {id: 9, type: string, min-length: 1, max-length: 128}
       representation: {id: 10, enum: evidence-representation}
       max-length: {id: 11, type: uint}
+      evidence-flags: {id: 12, flags: evidence-caps}
+      devsec: {id: 13, type: nested}
+      devsec-flags: {id: 14, flags: devsec-caps}
   evidence:
     id: 3
     attrs:
@@ -50,6 +57,8 @@ attr-groups:
       data: {id: 6, blob: output, backings: [va, memfd, dma-buf],
              max-length: 4294967295}
       object-length: {id: 7, type: uint, max-occurrences: 16}
+      generation: {id: 8, type: uint, max: 4294967295}
+      accepted-generation: {id: 9, type: uint, max: 4294967295}
   mr:
     id: 4
     attrs:
@@ -81,6 +90,11 @@ attr-groups:
     id: 6
     attrs:
       entry: {id: 1, type: nested}
+  devsec:
+    id: 7
+    attrs:
+      tdisp-state: {id: 1, enum: tdisp-state}
+      device-trust: {id: 2, enum: device-trust-state}
 attr-sets:
   device-info: {id: 1, stub: true}
   evidence-object-cap: {id: 2}
@@ -101,16 +115,23 @@ attr-sets:
   mr-change-reply: {id: 17}
   mr-log-info: {id: 18}
   mr-log-entry: {id: 19}
-  mr-log-event: {id: 20}
-  mr-log-ima: {id: 21}
-  mr-log-selection: {id: 22}
-  mr-log-request: {id: 23}
-  mr-log-reply: {id: 24}
+  device-state-event: {id: 20}
+  mr-log-event: {id: 21}
+  mr-log-ima: {id: 22}
+  devsec-cap: {id: 23}
+  evidence-generation-request: {id: 24}
+  devsec-state-reply: {id: 25}
+  devsec-run-reply: {id: 26}
+  evidence-state-event: {id: 27}
+  mr-log-selection: {id: 28}
+  mr-log-request: {id: 29}
+  mr-log-reply: {id: 30}
 ops:
   device-get:
     abi: {id: 1, type: action, fd-access: read}
     reply:
       attrs:
+        - device.generation
         - device.caps:
             optional-attrs:
               - cap.evidence:
@@ -121,7 +142,9 @@ ops:
                     - cap.object:
                         attrs: [cap.blob-class, cap.format, cap.representation,
                                 cap.max-length]
+                  optional-attrs: [cap.evidence-flags]
               - cap.mr: {attrs: [cap.mr-flags]}
+              - cap.devsec: {attrs: [cap.devsec-flags]}
         - device.info: {attrs: [device-info]}
   evidence-get:
     abi: {id: 2, type: action, availability: dynamic, optional: true}
@@ -131,9 +154,10 @@ ops:
         - evidence.object:
             attrs: [evidence.blob-class, evidence.format,
                     evidence.representation, evidence.data]
+      optional-attrs: [device.generation]
     reply:
-      attrs: [evidence.object-length]
-      optional-attrs: [mr.generation]
+      attrs: [device.generation, evidence.object-length]
+      optional-attrs: [mr.generation, evidence.generation]
   mr-get:
     abi: {id: 3, type: action, fd-access: read, optional: true}
     request: {attrs: [mr.id]}
@@ -149,9 +173,12 @@ ops:
             optional-attrs: [mr.register-index]
   mr-read:
     abi: {id: 5, type: query, fd-access: read, optional: true}
-    request: {attrs: [mr.id]}
+    request:
+      attrs: [mr.id]
+      optional-attrs: [device.generation]
     reply:
       attrs:
+        - device.generation
         - mr.generation
         - mr.value: {attrs: [mr.hash-algo, mr.data]}
   mr-extend:
@@ -160,13 +187,17 @@ ops:
       attrs:
         - mr.id
         - mr.value: {attrs: [mr.hash-algo, mr.data]}
-    reply: {attrs: [mr.generation]}
-  mr-log-entry-appended:
+      optional-attrs: [device.generation]
+    reply: {attrs: [device.generation, mr.generation]}
+  device-state-changed:
     abi: {id: 7, type: event}
+    reply: {attrs: [device.generation]}
+  mr-log-entry-appended:
+    abi: {id: 8, type: event}
     reply:
       attrs:
         - notification.entry:
-            attrs: [mr.generation, mr.id, log.event]
+            attrs: [mr.generation, device.generation, mr.id, log.event]
             optional-attrs:
               - mr.value: {attrs: [mr.hash-algo, mr.data]}
               - log.mr:
@@ -174,8 +205,28 @@ ops:
                   optional-attrs: [mr.register-index]
               - log.ima:
                   attrs: [log.template-name, log.template-data, log.violation]
+  evidence-accept:
+    abi: {id: 9, type: action, optional: true}
+    request: {attrs: [device.generation, evidence.generation]}
+  evidence-accept-clear:
+    abi: {id: 10, type: action, optional: true}
+  devsec-state-get:
+    abi: {id: 11, type: query, fd-access: read, optional: true}
+    reply:
+      attrs: [device.generation]
+      optional-attrs: [evidence.generation, evidence.accepted-generation,
+                       devsec.tdisp-state, devsec.device-trust]
+  devsec-run:
+    abi: {id: 12, type: action, availability: dynamic, optional: true}
+    request: {attrs: [device.generation, evidence.generation]}
+    reply: {attrs: [device.generation]}
+  evidence-state-changed:
+    abi: {id: 13, type: event}
+    reply:
+      attrs: [device.generation]
+      optional-attrs: [evidence.generation, evidence.accepted-generation]
   mr-log-get:
-    abi: {id: 8, type: query, fd-access: read, optional: true}
+    abi: {id: 14, type: query, fd-access: read, optional: true}
     request:
       optional-attrs:
         - mr.selection: {attrs: [mr.id]}
@@ -186,7 +237,7 @@ ops:
         - mr.start-generation
         - mr.end-generation
         - log.entry:
-            attrs: [mr.generation, mr.id, log.event]
+            attrs: [mr.generation, device.generation, mr.id, log.event]
             optional-attrs:
               - mr.value: {attrs: [mr.hash-algo, mr.data]}
               - log.mr:

@@ -21,6 +21,21 @@ enums:
       - info
       - extend
 
+  - name: tdisp-state
+    values:
+      - unlocked
+      - locked
+      - run
+      - error
+
+  - name: device-trust-state
+    values:
+      - unset
+      - none
+      - adversary
+      - auto
+      - tcb
+
 flags:
   - name: mr-device-caps
     values:
@@ -35,6 +50,14 @@ flags:
   - name: mr-state-flags
     values:
       - ima-active
+
+  - name: evidence-caps
+    values:
+      - evidence-accept
+
+  - name: devsec-caps
+    values:
+      - run
 
 attr-groups:
   - name: device
@@ -75,6 +98,12 @@ attr-groups:
         enum: evidence-representation
       - name: max-length
         type: uint
+      - name: evidence-flags
+        flags: evidence-caps
+      - name: devsec
+        attrs: devsec-cap
+      - name: devsec-flags
+        flags: devsec-caps
 
   - name: evidence
     attrs:
@@ -101,6 +130,12 @@ attr-groups:
       - name: object-length
         type: uint
         max-occurrences: 16
+      - name: generation
+        type: uint
+        max: 4294967295
+      - name: accepted-generation
+        type: uint
+        max: 4294967295
 
   - name: mr
     attrs:
@@ -174,6 +209,13 @@ attr-groups:
       - name: entry
         attrs: mr-log-entry
 
+  - name: devsec
+    attrs:
+      - name: tdisp-state
+        enum: tdisp-state
+      - name: device-trust
+        enum: device-trust-state
+
 attr-sets:
   - name: device-info
     stub: true
@@ -191,6 +233,7 @@ attr-sets:
       - cap.max-challenge-length
       - cap.max-total-output-length
       - cap.object
+    optional-attrs: cap.evidence-flags
 
   - name: mr-device-cap
     attrs: cap.mr-flags
@@ -199,9 +242,11 @@ attr-sets:
     optional-attrs:
       - cap.evidence
       - cap.mr
+      - cap.devsec
 
   - name: device-reply
     attrs:
+      - device.generation
       - device.caps
       - device.info
 
@@ -216,11 +261,15 @@ attr-sets:
     attrs:
       - evidence.challenge
       - evidence.object
+    optional-attrs: device.generation
 
   - name: evidence-reply
-    attrs: evidence.object-length
+    attrs:
+      - device.generation
+      - evidence.object-length
     optional-attrs:
       - mr.generation
+      - evidence.generation
 
   - name: mr-props
     attrs:
@@ -242,6 +291,7 @@ attr-sets:
 
   - name: mr-read-request
     attrs: mr.id
+    optional-attrs: device.generation
 
   - name: mr-value
     attrs:
@@ -250,6 +300,7 @@ attr-sets:
 
   - name: mr-read-reply
     attrs:
+      - device.generation
       - mr.generation
       - mr.value
 
@@ -257,9 +308,12 @@ attr-sets:
     attrs:
       - mr.id
       - mr.value
+    optional-attrs: device.generation
 
   - name: mr-change-reply
-    attrs: mr.generation
+    attrs:
+      - device.generation
+      - mr.generation
 
   - name: mr-log-info
     attrs:
@@ -271,12 +325,16 @@ attr-sets:
   - name: mr-log-entry
     attrs:
       - mr.generation
+      - device.generation
       - mr.id
       - log.event
     optional-attrs:
       - mr.value
       - log.mr
       - log.ima
+
+  - name: device-state-event
+    attrs: device.generation
 
   - name: mr-log-event
     attrs: notification.entry
@@ -286,6 +344,31 @@ attr-sets:
       - log.template-name
       - log.template-data
       - log.violation
+
+  - name: devsec-cap
+    attrs: cap.devsec-flags
+
+  - name: evidence-generation-request
+    attrs:
+      - device.generation
+      - evidence.generation
+
+  - name: devsec-state-reply
+    attrs: device.generation
+    optional-attrs:
+      - evidence.generation
+      - evidence.accepted-generation
+      - devsec.tdisp-state
+      - devsec.device-trust
+
+  - name: devsec-run-reply
+    attrs: device.generation
+
+  - name: evidence-state-event
+    attrs: device.generation
+    optional-attrs:
+      - evidence.generation
+      - evidence.accepted-generation
 
   - name: mr-log-selection
     attrs: mr.id
@@ -355,10 +438,50 @@ ops:
     reply:
       attrs: mr-change-reply
 
+  - name: device-state-changed
+    type: event
+    reply:
+      attrs: device-state-event
+
   - name: mr-log-entry-appended
     type: event
     reply:
       attrs: mr-log-event
+
+  - name: evidence-accept
+    type: action
+    fd-access: read-write
+    optional: true
+    request:
+      attrs: evidence-generation-request
+
+  - name: evidence-accept-clear
+    type: action
+    fd-access: read-write
+    optional: true
+
+  - name: devsec-state-get
+    type: query
+    fd-access: read
+    optional: true
+    reply:
+      attrs: devsec-state-reply
+    suggested-reply-length: 1024
+
+  - name: devsec-run
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      attrs: evidence-generation-request
+    reply:
+      attrs: devsec-run-reply
+
+  - name: evidence-state-changed
+    type: event
+    reply:
+      attrs: evidence-state-event
 
   - name: mr-log-get
     type: query
