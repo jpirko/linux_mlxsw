@@ -86,9 +86,14 @@ int attestation_provider_validate(const struct attestation_provider *provider)
 
 	if (!provider)
 		return -EINVAL;
+	if (!!provider->evidence_accept != !!provider->evidence_accept_clear)
+		return -EINVAL;
 	ret = attestation_evidence_caps_validate(provider);
 	if (ret)
 		return ret;
+	if ((provider->evidence_accept || provider->evidence_accept_clear) &&
+	    !provider->evidence_caps)
+		return -EINVAL;
 	if (!!provider->mrs != !!provider->mrs_count)
 		return -EINVAL;
 	if ((provider->mr_read || provider->mr_extend) && !provider->mrs_count)
@@ -98,6 +103,9 @@ int attestation_provider_validate(const struct attestation_provider *provider)
 		if (ret)
 			return ret;
 	}
+	if (provider->devsec_run && (!provider->evidence_accept ||
+				     (!provider->tdisp_state_get && !provider->device_trust_get)))
+		return -EINVAL;
 	return 0;
 }
 
@@ -165,8 +173,7 @@ struct attestation *attestation_instance_lock(unsigned int index)
 	struct attestation *att;
 
 	xa_lock(&attestation_instances);
-	if (!xa_get_mark(&attestation_instances, index,
-			 ATTESTATION_REGISTERED)) {
+	if (!xa_get_mark(&attestation_instances, index, ATTESTATION_REGISTERED)) {
 		xa_unlock(&attestation_instances);
 		return ERR_PTR(-ENODEV);
 	}
@@ -188,11 +195,51 @@ void attestation_instance_unlock(struct attestation *att)
 	mutex_unlock(&att->lock);
 }
 
+void attestation_evidence_accept_clear_locked(struct attestation *att)
+{
+	lockdep_assert_held(&att->lock);
+	if (!att->verdict_recorded)
+		return;
+	att->provider->evidence_accept_clear(att);
+	att->verdict_recorded = false;
+}
+
+static void attestation_evidence_ranges_clear(struct attestation *att, bool dependent_only)
+{
+	struct attestation_evidence_range *range;
+	unsigned long index;
+
+	xa_for_each(&att->evidence_ranges, index, range) {
+		if (dependent_only && !range->mr_dependent)
+			continue;
+		xa_erase(&att->evidence_ranges, index);
+		kfree(range);
+	}
+}
+
+void attestation_device_changed(struct attestation *att)
+{
+	lockdep_assert_held(&att->lock);
+	attestation_evidence_accept_clear_locked(att);
+	attestation_evidence_ranges_clear(att, false);
+	att->device_generation++;
+	att->evidence_floor = att->evidence_generation;
+	att->mr_read_generation++;
+	att->devsec_version++;
+}
+
 void attestation_mr_changed(struct attestation *att)
 {
 	lockdep_assert_held(&att->lock);
 	att->log->generation++;
 	att->mr_read_generation++;
+	attestation_evidence_ranges_clear(att, true);
+}
+
+void attestation_evidence_verdict_changed(struct attestation *att)
+{
+	lockdep_assert_held(&att->lock);
+	att->devsec_version++;
 }
 
 void attestation_stop(struct attestation *att)
@@ -201,7 +248,20 @@ void attestation_stop(struct attestation *att)
 	xa_lock(&attestation_instances);
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
+	attestation_evidence_accept_clear_locked(att);
 	attestation_kexec_invalidate(att);
+}
+
+int attestation_preflight(struct attestation *att, bool device, bool evidence, bool mr)
+{
+	lockdep_assert_held(&att->lock);
+	if ((device && att->device_generation == UINT_MAX) ||
+	    (evidence && att->evidence_generation == UINT_MAX) ||
+	    (mr && att->log && att->log->generation == UINT_MAX)) {
+		attestation_stop(att);
+		return -EOVERFLOW;
+	}
+	return 0;
 }
 
 static struct attestation_mr *attestation_mr_alloc(struct attestation *att,
@@ -236,6 +296,36 @@ struct attestation_mr *attestation_mr_lookup_live(struct attestation *att, unsig
 	return mr ? mr : ERR_PTR(-ENOENT);
 }
 
+void attestation_state_changed(struct attestation *att)
+{
+	struct attestation_event_batch events = {};
+	bool evidence;
+	int ret;
+
+	guard(mutex)
+		(&att->lock);
+	if (!attestation_registered(att))
+		return;
+	evidence = att->evidence_generation > att->evidence_floor || att->verdict_recorded;
+	attestation_kexec_invalidate(att);
+	ret = attestation_preflight(att, true, false, false);
+	if (ret)
+		return;
+	ret = attestation_events_prepare(att, &events, true, evidence, false);
+	attestation_device_changed(att);
+	if (ret) {
+		ctlv_event_lost(att->ctlvdev, CTLV_ATTESTATION_OP_DEVICE_STATE_CHANGED);
+		if (evidence)
+			ctlv_event_lost(att->ctlvdev, CTLV_ATTESTATION_OP_EVIDENCE_STATE_CHANGED);
+		return;
+	}
+	attestation_device_event_emit(&events, att->device_generation);
+	if (evidence)
+		attestation_evidence_event_emit(&events, att);
+	attestation_events_abort(&events);
+}
+EXPORT_SYMBOL_NS_GPL(attestation_state_changed, "ATTESTATION");
+
 void attestation_provide_ops(struct attestation *att)
 {
 	const struct attestation_provider *provider = att->provider;
@@ -244,6 +334,10 @@ void attestation_provide_ops(struct attestation *att)
 	if (provider->evidence_caps) {
 		ctlv_attestation_evidence_get_provide(ctlvdev);
 		ctlv_attestation_evidence_get_enable(ctlvdev);
+		if (provider->evidence_accept) {
+			ctlv_attestation_evidence_accept_provide(ctlvdev);
+			ctlv_attestation_evidence_accept_clear_provide(ctlvdev);
+		}
 	}
 	if (provider->mrs_count) {
 		ctlv_attestation_mr_get_provide(ctlvdev);
@@ -253,6 +347,12 @@ void attestation_provide_ops(struct attestation *att)
 			ctlv_attestation_mr_read_provide(ctlvdev);
 		if (provider->mr_extend)
 			ctlv_attestation_mr_extend_provide(ctlvdev);
+	}
+	if (provider->tdisp_state_get || provider->device_trust_get || provider->evidence_accept)
+		ctlv_attestation_devsec_state_get_provide(ctlvdev);
+	if (provider->devsec_run) {
+		ctlv_attestation_devsec_run_provide(ctlvdev);
+		ctlv_attestation_devsec_run_enable(ctlvdev);
 	}
 }
 
@@ -266,6 +366,7 @@ int attestation_core_init(struct attestation *att, struct ctlv_device *ctlvdev,
 	if (ret)
 		return ret;
 	mutex_init(&att->lock);
+	xa_init(&att->evidence_ranges);
 	xa_init(&att->mrs);
 	att->ctlvdev = ctlvdev;
 	att->provider = provider;
@@ -292,6 +393,7 @@ err_mrs:
 
 void attestation_core_fini(struct attestation *att)
 {
+	struct attestation_evidence_range *range;
 	struct attestation_mr *mr;
 	unsigned long index;
 
@@ -299,12 +401,17 @@ void attestation_core_fini(struct attestation *att)
 		return;
 	if (att->initialized)
 		attestation_registry_remove(att);
+	xa_for_each(&att->evidence_ranges, index, range) {
+		xa_erase(&att->evidence_ranges, index);
+		kfree(range);
+	}
 	xa_for_each(&att->mrs, index, mr) {
 		xa_erase(&att->mrs, index);
 		kfree(mr);
 	}
 	attestation_mr_log_free(att->log);
 	xa_destroy(&att->mrs);
+	xa_destroy(&att->evidence_ranges);
 	mutex_destroy(&att->lock);
 	att->ctlvdev = NULL;
 }

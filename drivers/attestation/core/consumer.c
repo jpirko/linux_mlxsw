@@ -16,8 +16,8 @@ static bool attestation_family_matches(const struct attestation *att,
 
 	if (!name)
 		return true;
-	for (family = ctlv_device_family(att->ctlvdev);
-	     family; family = family->parent)
+	for (family = ctlv_device_family(att->ctlvdev); family;
+	     family = family->parent)
 		if (!strcmp(family->schema->name, name))
 			return true;
 	return false;
@@ -52,12 +52,10 @@ static int attestation_selector_validate(const char *family_name,
 	return 0;
 }
 
-static bool attestation_target_matches(struct attestation *att,
-				       const char *family_name,
-				       const char *bus_name,
-				       const char *device_name,
-				       unsigned int mr_id,
-				       struct attestation_mr **mr_out)
+static bool
+attestation_target_matches(struct attestation *att, const char *family_name,
+			   const char *bus_name, const char *device_name,
+			   unsigned int mr_id, struct attestation_mr **mr_out)
 {
 	struct attestation_mr *mr;
 
@@ -71,9 +69,10 @@ static bool attestation_target_matches(struct attestation *att,
 	return true;
 }
 
-struct attestation_mr_target *
-attestation_mr_target_get(const char *family_name, const char *bus_name,
-			  const char *device_name, unsigned int mr_id)
+struct attestation_mr_target *attestation_mr_target_get(const char *family_name,
+							const char *bus_name,
+							const char *device_name,
+							unsigned int mr_id)
 {
 	struct attestation_mr_target *target;
 	struct attestation_mr *mr;
@@ -101,8 +100,9 @@ attestation_mr_target_get(const char *family_name, const char *bus_name,
 			break;
 		att = attestation_instance_lock(index);
 		if (!IS_ERR(att)) {
-			if (attestation_target_matches(att, family_name, bus_name,
-						       device_name, mr_id, &mr)) {
+			if (attestation_target_matches(att, family_name,
+						       bus_name, device_name,
+						       mr_id, &mr)) {
 				if (match != UINT_MAX) {
 					attestation_instance_unlock(att);
 					ret = -ENOTUNIQ;
@@ -134,7 +134,7 @@ attestation_mr_target_get(const char *family_name, const char *bus_name,
 		ret = -EBUSY;
 		goto out_unlock;
 	}
-	ret = attestation_preflight(att, false, true);
+	ret = attestation_preflight(att, false, false, true);
 	if (ret)
 		goto out_unlock;
 	attestation_kexec_invalidate(att);
@@ -175,9 +175,8 @@ void attestation_mr_target_put(struct attestation_mr_target *target)
 	if (mr && mr->start_generation == target->start_generation &&
 	    (mr->state_flags & CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE)) {
 		attestation_kexec_invalidate(att);
-		mr->state_flags &=
-			~CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE;
-		if (!attestation_preflight(att, false, true))
+		mr->state_flags &= ~CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE;
+		if (!attestation_preflight(att, false, false, true))
 			attestation_mr_changed(att);
 	}
 	attestation_instance_unlock(att);
@@ -238,8 +237,8 @@ attestation_mr_target_clone(const struct attestation_mr_target *target)
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_target_clone, "ATTESTATION");
 
-unsigned int
-attestation_mr_target_start_generation(const struct attestation_mr_target *target)
+unsigned int attestation_mr_target_start_generation(
+	const struct attestation_mr_target *target)
 {
 	return target->start_generation;
 }
@@ -339,7 +338,8 @@ out:
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_target_identity, "ATTESTATION");
 
-int attestation_mr_target_handover_restored(const struct attestation_mr_target *target)
+int attestation_mr_target_handover_restored(
+	const struct attestation_mr_target *target)
 {
 	struct attestation_mr *mr;
 	struct attestation *att;
@@ -395,9 +395,10 @@ int attestation_mr_target_extend(const struct attestation_mr_target *target,
 	ret = attestation_mr_values_validate(mr, values);
 	if (ret)
 		goto out_unlock;
-	change = attestation_mr_ima_change_prepare(
-		att, mr, values, template_name, template_data,
-		template_data_length, violation);
+	change = attestation_mr_ima_change_prepare(att, mr, values,
+						   template_name, template_data,
+						   template_data_length,
+						   violation);
 	if (IS_ERR(change)) {
 		ret = PTR_ERR(change);
 		goto out_unlock;
@@ -501,8 +502,9 @@ attestation_mr_log_iter_next(const struct attestation_mr_log_entry *entry,
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_iter_next, "ATTESTATION");
 
-bool attestation_mr_log_entry_selected(const struct attestation_mr_target *target,
-				       const struct attestation_mr_log_entry *entry)
+bool attestation_mr_log_entry_selected(
+	const struct attestation_mr_target *target,
+	const struct attestation_mr_log_entry *entry)
 {
 	return target->mr_id == entry->mr_id &&
 	       entry->mr_generation >= target->start_generation;
@@ -513,13 +515,13 @@ enum _ctlv_attestation_mr_log_event
 attestation_mr_log_entry_event(const struct attestation_mr_log_entry *entry)
 {
 	return entry->type == ATTESTATION_MR_LOG_ENTRY_INFO ?
-		CTLV_ATTESTATION_MR_LOG_EVENT_INFO :
-		CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND;
+		       CTLV_ATTESTATION_MR_LOG_EVENT_INFO :
+		       CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND;
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_event, "ATTESTATION");
 
-unsigned int
-attestation_mr_log_entry_generation(const struct attestation_mr_log_entry *entry)
+unsigned int attestation_mr_log_entry_generation(
+	const struct attestation_mr_log_entry *entry)
 {
 	return entry->mr_generation;
 }
@@ -541,8 +543,8 @@ attestation_mr_log_entry_values(const struct attestation_mr_log_entry *entry,
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_values, "ATTESTATION");
 
-const char *
-attestation_mr_log_entry_template_name(const struct attestation_mr_log_entry *entry)
+const char *attestation_mr_log_entry_template_name(
+	const struct attestation_mr_log_entry *entry)
 {
 	const struct attestation_mr_log_entry_ima_extend *ima;
 
@@ -553,9 +555,8 @@ attestation_mr_log_entry_template_name(const struct attestation_mr_log_entry *en
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_template_name, "ATTESTATION");
 
-const u8 *
-attestation_mr_log_entry_template_data(const struct attestation_mr_log_entry *entry,
-				       size_t *length)
+const u8 *attestation_mr_log_entry_template_data(
+	const struct attestation_mr_log_entry *entry, size_t *length)
 {
 	const struct attestation_mr_log_entry_ima_extend *ima;
 
@@ -569,8 +570,8 @@ attestation_mr_log_entry_template_data(const struct attestation_mr_log_entry *en
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_template_data, "ATTESTATION");
 
-bool
-attestation_mr_log_entry_violation(const struct attestation_mr_log_entry *entry)
+bool attestation_mr_log_entry_violation(
+	const struct attestation_mr_log_entry *entry)
 {
 	const struct attestation_mr_log_entry_ima_extend *ima;
 

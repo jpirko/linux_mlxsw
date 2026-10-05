@@ -5,8 +5,8 @@ Attestation
 ===========
 
 The attestation subsystem publishes provider devices as descendants of the
-``ctlv-attestation`` family.  It owns common evidence retrieval,
-measurement-register topology and an append-only extension journal.
+``ctlv-attestation`` family.  It owns common evidence generations, userspace
+verdicts, measurement-register topology and an append-only extension journal.
 Providers retain ownership of native hardware access and immutable capability
 descriptions.
 
@@ -26,6 +26,15 @@ callback, journal commit and event emission with one instance mutex.
 
 Fixed MRs are listed in the provider descriptor.  Their property storage
 remains valid until ``ctlv_destroy()`` or failed-creation unwind completes.
+
+State changes
+=============
+
+``attestation_state_changed()`` is called after releasing conflicting native
+locks.  It advances the device generation, retires evidence created for the
+previous state, clears a recorded verdict and emits state events.  The caller
+keeps the provider instance alive and serializes notifications with native
+state changes.
 
 MR journal
 ==========

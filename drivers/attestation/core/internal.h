@@ -19,9 +19,17 @@ enum attestation_mr_log_entry_type {
 	ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND,
 };
 
+struct attestation_evidence_range {
+	unsigned int start_generation;
+	unsigned int end_generation;
+	bool mr_dependent;
+	unsigned int mr_generation;
+};
+
 struct attestation_mr_log_entry {
 	struct attestation_mr_log_entry __rcu *next;
 	unsigned int mr_generation;
+	unsigned int device_generation;
 	unsigned int mr_id;
 	enum attestation_mr_log_entry_type type;
 };
@@ -56,9 +64,17 @@ struct attestation {
 	const struct attestation_provider *provider;
 	unsigned int index;
 
-	/* Mutable instance, MR, and journal state. */
+	/* Mutable instance, MR, verdict, and journal state. */
 	struct mutex lock;
+	unsigned int device_generation;
+	unsigned int evidence_generation;
+	unsigned int evidence_floor;
+	struct xarray evidence_ranges;
+	bool verdict_recorded;
+	unsigned int accepted_device_generation;
+	unsigned int accepted_evidence_generation;
 	unsigned int mr_read_generation;
+	unsigned int devsec_version;
 
 	struct xarray mrs;
 	struct attestation_mr_log *log;
@@ -85,6 +101,8 @@ struct attestation_event {
 };
 
 struct attestation_event_batch {
+	struct attestation_event device;
+	struct attestation_event evidence;
 	struct attestation_event mr_log;
 };
 
@@ -104,7 +122,11 @@ bool attestation_registered(struct attestation *att);
 struct attestation *attestation_instance_lock(unsigned int index);
 void attestation_instance_unlock(struct attestation *att);
 void attestation_stop(struct attestation *att);
+int attestation_preflight(struct attestation *att, bool device, bool evidence, bool mr);
+void attestation_device_changed(struct attestation *att);
 void attestation_mr_changed(struct attestation *att);
+void attestation_evidence_verdict_changed(struct attestation *att);
+void attestation_evidence_accept_clear_locked(struct attestation *att);
 
 int attestation_provider_validate(const struct attestation_provider *provider);
 void attestation_provide_ops(struct attestation *att);
@@ -129,8 +151,12 @@ const struct attestation_mr_log_entry *
 attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_change *change);
 void attestation_mr_change_free(struct attestation_mr_change *change);
 
-int attestation_events_prepare(struct attestation *att, struct attestation_event_batch *events);
+int attestation_events_prepare(struct attestation *att, struct attestation_event_batch *events,
+			       bool device, bool evidence, bool mr_log);
 void attestation_events_abort(struct attestation_event_batch *events);
+void attestation_device_event_emit(struct attestation_event_batch *events, unsigned int generation);
+void attestation_evidence_event_emit(struct attestation_event_batch *events,
+				     const struct attestation *att);
 void attestation_mr_log_event_emit(struct attestation_event_batch *events,
 				   const struct attestation_mr_log_entry *entry);
 

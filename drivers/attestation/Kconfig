@@ -4,7 +4,7 @@ menuconfig ATTESTATION
 	depends on CTLV
 	help
 	  Provides a CTLV family for evidence, measurement registers,
-	  and an append-only measurement journal.
+	  device-security transitions, and an append-only measurement journal.
 
 	  Providers register one instance for a physical or logical device and
 	  translate the common operations to their native service.

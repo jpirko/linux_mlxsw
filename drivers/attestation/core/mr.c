@@ -192,6 +192,7 @@ int attestation_mr_log_init(struct attestation *att)
 			goto err_attached;
 		}
 		entry->mr_generation = ++log->generation;
+		entry->device_generation = att->device_generation;
 		ret = xa_insert(&log->entries, entry->mr_generation, entry, GFP_KERNEL);
 		if (ret)
 			goto err_attached;
@@ -256,7 +257,7 @@ attestation_mr_change_prepare(struct attestation *att, struct attestation_mr *mr
 		ret = PTR_ERR(change->entry);
 		goto err_change;
 	}
-	ret = attestation_events_prepare(att, &change->events);
+	ret = attestation_events_prepare(att, &change->events, false, false, true);
 	if (ret)
 		goto err_entry;
 	return change;
@@ -303,7 +304,7 @@ attestation_mr_ima_change_prepare(struct attestation *att, struct attestation_mr
 	}
 	change->mr = mr;
 	change->entry = &ima->extend;
-	ret = attestation_events_prepare(att, &change->events, false, true);
+	ret = attestation_events_prepare(att, &change->events, false, false, true);
 	if (ret)
 		goto err_entry;
 	return change;
@@ -325,10 +326,9 @@ attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_chan
 	lockdep_assert_held(&att->lock);
 	if (att->log->frozen)
 		return ERR_PTR(-EBUSY);
-	if (att->log->generation == UINT_MAX) {
-		attestation_stop(att);
-		return ERR_PTR(-EOVERFLOW);
-	}
+	ret = attestation_preflight(att, false, false, true);
+	if (ret)
+		return ERR_PTR(ret);
 	entry->mr_generation = att->log->generation + 1;
 	ret = xa_reserve(&att->log->entries, entry->mr_generation, GFP_KERNEL);
 	if (ret)
@@ -339,6 +339,7 @@ attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_chan
 		return ERR_PTR(ret);
 	}
 	attestation_mr_changed(att);
+	entry->device_generation = att->device_generation;
 	attestation_mr_log_append(att, entry);
 	attestation_mr_log_event_emit(&change->events, entry);
 	change->entry = NULL;
@@ -428,6 +429,7 @@ int attestation_mr_log_entry_encode(struct ctlv_cursor *reply,
 	int ret;
 
 	ok = ctlv_attestation_mr_generation_put(reply, entry->mr_generation);
+	ok &= ctlv_attestation_device_generation_put(reply, entry->device_generation);
 	ok &= ctlv_attestation_mr_id_put(reply, entry->mr_id);
 	ok &= ctlv_attestation_log_event_put(reply, entry->type == ATTESTATION_MR_LOG_ENTRY_INFO ?
 							    CTLV_ATTESTATION_MR_LOG_EVENT_INFO :

@@ -11,6 +11,26 @@
 struct attestation;
 struct ctlv_blob;
 
+enum attestation_tdisp_state {
+	ATTESTATION_TDISP_STATE_UNLOCKED =
+		CTLV_ATTESTATION_TDISP_STATE_UNLOCKED,
+	ATTESTATION_TDISP_STATE_LOCKED = CTLV_ATTESTATION_TDISP_STATE_LOCKED,
+	ATTESTATION_TDISP_STATE_RUN = CTLV_ATTESTATION_TDISP_STATE_RUN,
+	ATTESTATION_TDISP_STATE_ERROR = CTLV_ATTESTATION_TDISP_STATE_ERROR,
+};
+
+enum attestation_device_trust_state {
+	ATTESTATION_DEVICE_TRUST_UNSET =
+		CTLV_ATTESTATION_DEVICE_TRUST_STATE_UNSET,
+	ATTESTATION_DEVICE_TRUST_NONE =
+		CTLV_ATTESTATION_DEVICE_TRUST_STATE_NONE,
+	ATTESTATION_DEVICE_TRUST_ADVERSARY =
+		CTLV_ATTESTATION_DEVICE_TRUST_STATE_ADVERSARY,
+	ATTESTATION_DEVICE_TRUST_AUTO =
+		CTLV_ATTESTATION_DEVICE_TRUST_STATE_AUTO,
+	ATTESTATION_DEVICE_TRUST_TCB = CTLV_ATTESTATION_DEVICE_TRUST_STATE_TCB,
+};
+
 /**
  * struct attestation_digest - One MR digest.
  * @algorithm: hash algorithm
@@ -116,8 +136,13 @@ struct attestation_evidence_result {
 /**
  * struct attestation_provider - Immutable provider operations and properties.
  * @evidence_get: produce requested evidence
+ * @evidence_accept: record acceptance of the current evidence
+ * @evidence_accept_clear: clear a recorded acceptance
  * @mr_read: read one MR
  * @mr_extend: extend one MR
+ * @tdisp_state_get: get the TDISP state
+ * @device_trust_get: get the provider trust state
+ * @devsec_run: enter the provider's secure state
  * @evidence_caps: evidence capabilities, or NULL
  * @mrs: fixed MR properties
  * @mrs_count: number of fixed MRs
@@ -126,13 +151,28 @@ struct attestation_provider {
 	int (*evidence_get)(struct attestation *att,
 			    const struct attestation_evidence_request *request,
 			    struct attestation_evidence_result *result);
+	int (*evidence_accept)(struct attestation *att);
+	void (*evidence_accept_clear)(struct attestation *att);
 	int (*mr_read)(struct attestation *att, unsigned int mr_id,
 		       struct attestation_digest_set *values);
 	int (*mr_extend)(struct attestation *att, unsigned int mr_id,
 			 const struct attestation_digest_set *values);
+	int (*tdisp_state_get)(struct attestation *att,
+			       enum attestation_tdisp_state *state);
+	int (*device_trust_get)(struct attestation *att,
+				enum attestation_device_trust_state *trust);
+	int (*devsec_run)(struct attestation *att);
 	const struct attestation_evidence_caps *evidence_caps;
 	const struct attestation_mr_props *mrs;
 	size_t mrs_count;
 };
+
+/**
+ * attestation_state_changed - Report a native provider state change.
+ * @att: provider instance
+ *
+ * Call without conflicting native locks held.
+ */
+void attestation_state_changed(struct attestation *att);
 
 #endif /* _LINUX_ATTESTATION_H */

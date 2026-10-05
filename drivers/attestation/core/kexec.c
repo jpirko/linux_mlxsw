@@ -145,6 +145,7 @@ attestation_kexec_entry_write(struct attestation_kexec_writer *writer,
 
 	ret = attestation_kexec_put_u32(writer, entry->type);
 	ret |= attestation_kexec_put_u32(writer, entry->mr_generation);
+	ret |= attestation_kexec_put_u32(writer, entry->device_generation);
 	ret |= attestation_kexec_put_u32(writer, entry->mr_id);
 	if (ret)
 		return ret;
@@ -580,12 +581,13 @@ static int attestation_kexec_entry_read(
 	struct attestation_mr_log_entry **entry_out)
 {
 	struct attestation_mr_log_entry *entry;
-	u32 type, generation, mr_id;
+	u32 type, generation, device_generation, mr_id;
 	u32 name_len, data_len, violation;
 	int ret;
 
 	ret = attestation_kexec_get_u32(reader, &type);
 	ret |= attestation_kexec_get_u32(reader, &generation);
+	ret |= attestation_kexec_get_u32(reader, &device_generation);
 	ret |= attestation_kexec_get_u32(reader, &mr_id);
 	if (ret || type > ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND ||
 	    !generation)
@@ -669,6 +671,7 @@ err_ima:
 	}
 	entry->type = type;
 	entry->mr_generation = generation;
+	entry->device_generation = device_generation;
 	entry->mr_id = mr_id;
 	*entry_out = entry;
 	return 0;
