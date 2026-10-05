@@ -40,6 +40,12 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				   const struct ctlv_cursor *request, struct ctlv_cursor *reply);
 int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				      const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_attestation_evidence_accept_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+					    const struct ctlv_cursor *request,
+					    struct ctlv_cursor *reply);
+int ctlv_attestation_devsec_state_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+					    const struct ctlv_cursor *request,
+					    struct ctlv_cursor *reply);
 int ctlv_attestation_mr_log_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				      const struct ctlv_cursor *request, struct ctlv_cursor *reply);
 
@@ -54,6 +60,10 @@ CTLV_OP_DISABLE(ctlv_attestation_evidence_get, CTLV_ATTESTATION_OP_EVIDENCE_GET)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_get, CTLV_ATTESTATION_OP_MR_GET)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_read, CTLV_ATTESTATION_OP_MR_READ)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_extend, CTLV_ATTESTATION_OP_MR_EXTEND)
+CTLV_OP_PROVIDE(ctlv_attestation_evidence_accept, CTLV_ATTESTATION_OP_EVIDENCE_ACCEPT)
+CTLV_OP_ENABLE(ctlv_attestation_evidence_accept, CTLV_ATTESTATION_OP_EVIDENCE_ACCEPT)
+CTLV_OP_DISABLE(ctlv_attestation_evidence_accept, CTLV_ATTESTATION_OP_EVIDENCE_ACCEPT)
+CTLV_OP_PROVIDE(ctlv_attestation_devsec_state_get, CTLV_ATTESTATION_OP_DEVSEC_STATE_GET)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_log_get, CTLV_ATTESTATION_OP_MR_LOG_GET)
 
 /* Reading a validated message. A blob has a resolver instead of a getter. */
@@ -84,6 +94,11 @@ CTLV_IN_REF(ctlv_attestation_evidence_get_challenge, CTLV_ATTESTATION_T_EVIDENCE
 	    CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_evidence_get_challenge)
 CTLV_IN_BINARY(ctlv_attestation_evidence_get_challenge)
+/* Advances with each change of the device's state. */
+CTLV_IN_REF(ctlv_attestation_device_generation, CTLV_ATTESTATION_T_DEVICE_GENERATION,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_device_generation)
+CTLV_IN_U64(ctlv_attestation_device_generation)
 /* Only this MR; every MR without it. */
 CTLV_IN_REF(ctlv_attestation_mr_get_id, CTLV_ATTESTATION_T_MR_GET_ID, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_get_id)
@@ -109,6 +124,11 @@ CTLV_IN_U64(ctlv_attestation_mr_value_hash_algo)
 CTLV_IN_REF(ctlv_attestation_mr_value_data, CTLV_ATTESTATION_T_MR_VALUE_DATA, CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_mr_value_data)
 CTLV_IN_BINARY(ctlv_attestation_mr_value_data)
+/* The evidence the verifier accepted, as evidence-get numbered it. */
+CTLV_IN_REF(ctlv_attestation_evidence_accept_evidence_generation,
+	    CTLV_ATTESTATION_T_EVIDENCE_ACCEPT_EVIDENCE_GENERATION, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_accept_evidence_generation)
+CTLV_IN_U64(ctlv_attestation_evidence_accept_evidence_generation)
 /* Only these MRs' entries; every MR's without it. */
 CTLV_IN_REF(ctlv_attestation_mr_log_get_selection, CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION,
 	    CTLV_SCHEMA_RECORD)
@@ -131,6 +151,9 @@ CTLV_IN_HAS(ctlv_attestation_mr_end_generation)
 CTLV_IN_U64(ctlv_attestation_mr_end_generation)
 
 /* Writing a reply. An append is atomic; a record ends with ctlv_record_end(). */
+/* Advances with each change of the device's state. */
+CTLV_PUT_U64(ctlv_attestation_device_generation, CTLV_ATTESTATION_T_DEVICE_GENERATION,
+	     CTLV_SCHEMA_UINT)
 /* What the device supports, fixed for its life. */
 CTLV_RECORD_START(ctlv_attestation_device_get_caps, CTLV_ATTESTATION_T_DEVICE_GET_CAPS,
 		  CTLV_SCHEMA_RECORD)
@@ -173,6 +196,9 @@ CTLV_PUT_U64(ctlv_attestation_device_get_challenge_lengths_min_length,
 /* The longest of a range. */
 CTLV_PUT_U64(ctlv_attestation_device_get_challenge_lengths_max_length,
 	     CTLV_ATTESTATION_T_DEVICE_GET_CHALLENGE_LENGTHS_MAX_LENGTH, CTLV_SCHEMA_UINT)
+/* The optional evidence features the device provides. */
+CTLV_PUT_U64(ctlv_attestation_device_get_evidence_flags,
+	     CTLV_ATTESTATION_T_DEVICE_GET_EVIDENCE_FLAGS, CTLV_SCHEMA_FLAGS)
 /* Present when the device has MRs. */
 CTLV_RECORD_START(ctlv_attestation_device_get_caps_mr, CTLV_ATTESTATION_T_DEVICE_GET_CAPS_MR,
 		  CTLV_SCHEMA_RECORD)
@@ -199,6 +225,9 @@ CTLV_PUT_U64(ctlv_attestation_evidence_get_results_vendor_format,
 	     CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_VENDOR_FORMAT, CTLV_SCHEMA_ENUM)
 /* The device's MR generation, which each extend bumps. */
 CTLV_PUT_U64(ctlv_attestation_mr_generation, CTLV_ATTESTATION_T_MR_GENERATION, CTLV_SCHEMA_UINT)
+/* On a device with evidence-accept, numbers this evidence for it. */
+CTLV_PUT_U64(ctlv_attestation_evidence_get_evidence_generation,
+	     CTLV_ATTESTATION_T_EVIDENCE_GET_EVIDENCE_GENERATION, CTLV_SCHEMA_UINT)
 /* One per MR, ordered by ID. */
 CTLV_RECORD_START(ctlv_attestation_mr_get_items, CTLV_ATTESTATION_T_MR_GET_ITEMS,
 		  CTLV_SCHEMA_RECORD)
@@ -258,6 +287,12 @@ CTLV_PUT_BINARY(ctlv_attestation_mr_log_entry_ima_template_data,
 /* The entry records an IMA violation, not a measurement. */
 CTLV_PUT_BOOL(ctlv_attestation_mr_log_entry_ima_violation,
 	      CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_VIOLATION, CTLV_SCHEMA_BOOL)
+/* The device interface's TDISP state, where the provider reports one. */
+CTLV_PUT_U64(ctlv_attestation_devsec_state_get_tdisp_state,
+	     CTLV_ATTESTATION_T_DEVSEC_STATE_GET_TDISP_STATE, CTLV_SCHEMA_ENUM)
+/* The latest evidence, once evidence of this device state exists. */
+CTLV_PUT_U64(ctlv_attestation_evidence_state_changed_evidence_generation,
+	     CTLV_ATTESTATION_T_EVIDENCE_STATE_CHANGED_EVIDENCE_GENERATION, CTLV_SCHEMA_UINT)
 /* The first MR generation of the range mr-log-get selects and reports. */
 CTLV_PUT_U64(ctlv_attestation_mr_start_generation, CTLV_ATTESTATION_T_MR_START_GENERATION,
 	     CTLV_SCHEMA_UINT)
@@ -269,7 +304,10 @@ CTLV_RECORD_START(ctlv_attestation_mr_log_get_entries, CTLV_ATTESTATION_T_MR_LOG
 		  CTLV_SCHEMA_RECORD)
 
 /* Building one event, passed to ctlv_event_emit() or ctlv_event_abort() once. */
+CTLV_EVENT_CREATE(ctlv_attestation_device_state_changed, CTLV_ATTESTATION_OP_DEVICE_STATE_CHANGED)
 CTLV_EVENT_CREATE(ctlv_attestation_mr_log_entry_appended, CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED)
+CTLV_EVENT_CREATE(ctlv_attestation_evidence_state_changed,
+		  CTLV_ATTESTATION_OP_EVIDENCE_STATE_CHANGED)
 #endif /* _CTLV_GENERATED_METADATA_ONLY */
 
 #endif /* _LINUX_CTLV_ATTESTATION_GEN_H */

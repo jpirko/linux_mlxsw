@@ -13,12 +13,14 @@ enums:
   evidence-class: {signed: 1, event-log: 2}
   evidence-format: {ccel: 1}
   mr-log-event: {info: 1, extend: 2}
+  tdisp-state: {unlocked: 1, locked: 2, run: 3, error: 4}
   hash-algo: {$header: linux/hash_info.h, $enum: hash_algo,
               $end: HASH_ALGO__LAST}
 flags:
   mr-device-caps: {extend: 0}
   mr-caps: {extend: 0}
   mr-state-flags: {ima-active: 0}
+  evidence-caps: {evidence-accept: 0}
 records:
   mr-desc:
     id: 0x00010000
@@ -48,7 +50,8 @@ records:
       event: {number: 2, enum: mr-log-event}
       mr: {number: 3, record: mr-log-entry.mr, optional: true}
       ima: {number: 4, record: mr-log-entry.ima, optional: true}
-    members: [record mr-generation, 'record mr-values?']
+    members: [record mr-generation, record device-generation,
+              'record mr-values?']
   mr-log-entry.mr:
     id: 0x00051000
     fields:
@@ -71,6 +74,10 @@ records:
     id: 0x00070000
     fields:
       mr-end-generation: {number: 1, type: uint, max: u32-max}
+  device-generation:
+    id: 0x00080000
+    fields:
+      device-generation: {number: 1, type: uint, max: u32-max}
   device-get request:
     id: 0x80010000
   device-get reply:
@@ -78,6 +85,7 @@ records:
     fields:
       caps: {number: 1, record: device-get caps}
       info: {number: 2, extension: device-info}
+    members: [record device-generation]
   device-get caps:
     id: 0xc0011000
     fields:
@@ -88,6 +96,7 @@ records:
     fields:
       objects: {number: 1, record: device-get caps.evidence.objects,
                 max-occurrences: 16}
+      flags: {number: 2, flags: evidence-caps, optional: true}
   device-get caps.evidence.objects:
     id: 0xc0011110
     fields:
@@ -120,6 +129,7 @@ records:
       challenge: {number: 1, type: binary, min-length: 1, max-length: 4K,
                   optional: true}
       objects: {number: 2, record: evidence-get objects, max-occurrences: 16}
+    members: ['record device-generation?']
   evidence-get objects:
     id: 0x80021000
     fields:
@@ -130,7 +140,8 @@ records:
     id: 0xc0020000
     fields:
       results: {number: 1, record: evidence-get results, max-occurrences: 16}
-    members: ['record mr-generation?']
+      evidence-generation: {number: 2, type: uint, max: u32-max, optional: true}
+    members: [record device-generation, 'record mr-generation?']
   evidence-get results:
     id: 0xc0021000
     fields:
@@ -154,33 +165,57 @@ records:
     id: 0x80040000
     fields:
       id: {number: 1, type: uint, max: u32-max}
+    members: ['record device-generation?']
   mr-read reply:
     id: 0xc0040000
-    members: [record mr-generation, record mr-values]
+    members: [record device-generation, record mr-generation, record mr-values]
   mr-extend request:
     id: 0x80050000
     fields:
       id: {number: 1, type: uint, max: u32-max}
-    members: [record mr-values]
+    members: [record mr-values, 'record device-generation?']
   mr-extend reply:
     id: 0xc0050000
-    members: [record mr-generation]
-  mr-log-entry-appended payload:
+    members: [record device-generation, record mr-generation]
+  device-state-changed payload:
     id: 0xc0060000
+    members: [record device-generation]
+  mr-log-entry-appended payload:
+    id: 0xc0070000
     fields:
       entry: {number: 1, record: mr-log-entry}
+  evidence-accept request:
+    id: 0x80080000
+    fields:
+      evidence-generation: {number: 1, type: uint, max: u32-max}
+    members: [record device-generation]
+  evidence-accept reply:
+    id: 0xc0080000
+    members: [record device-generation]
+  devsec-state-get request:
+    id: 0x80090000
+  devsec-state-get reply:
+    id: 0xc0090000
+    fields:
+      tdisp-state: {number: 1, enum: tdisp-state, optional: true}
+    members: [record device-generation]
+  evidence-state-changed payload:
+    id: 0xc00a0000
+    fields:
+      evidence-generation: {number: 1, type: uint, max: u32-max, optional: true}
+    members: [record device-generation]
   mr-log-get request:
-    id: 0x80070000
+    id: 0x800b0000
     fields:
       selection: {number: 1, record: mr-log-get selection, max-occurrences: 256,
                   optional: true}
     members: ['record mr-start-generation?', 'record mr-end-generation?']
   mr-log-get selection:
-    id: 0x80071000
+    id: 0x800b1000
     fields:
       id: {number: 1, type: uint, max: u32-max}
   mr-log-get reply:
-    id: 0xc0070000
+    id: 0xc00b0000
     fields:
       entries: {number: 1, record: mr-log-entry, max-occurrences: unlimited,
                 optional: true}
@@ -198,7 +233,17 @@ ops:
             request: mr-read request, reply: mr-read reply}
   mr-extend: {id: 5, type: action, optional: true, request: mr-extend request,
               reply: mr-extend reply}
-  mr-log-entry-appended: {id: 6, type: event,
+  device-state-changed: {id: 6, type: event,
+                         payload: device-state-changed payload}
+  mr-log-entry-appended: {id: 7, type: event,
                           payload: mr-log-entry-appended payload}
-  mr-log-get: {id: 7, type: query, fd-access: read, optional: true,
+  evidence-accept: {id: 8, type: action, availability: dynamic, optional: true,
+                    request: evidence-accept request,
+                    reply: evidence-accept reply}
+  devsec-state-get: {id: 9, type: query, fd-access: read, optional: true,
+                     request: devsec-state-get request,
+                     reply: devsec-state-get reply}
+  evidence-state-changed: {id: 10, type: event,
+                           payload: evidence-state-changed payload}
+  mr-log-get: {id: 11, type: query, fd-access: read, optional: true,
                request: mr-log-get request, reply: mr-log-get reply}

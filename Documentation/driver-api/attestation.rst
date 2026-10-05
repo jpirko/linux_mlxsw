@@ -9,7 +9,7 @@ The attestation subsystem gives each provider device a node of the
 descendant of the ``ctlv-attestation`` family, one family per provider.  A
 program tells providers apart by the last entry of ``family-get`` on the
 open device, and generic tools use the ``ctlv-attestation`` operations on any
-of them.  The subsystem owns common evidence retrieval, measurement-register
+of them.  The subsystem owns common evidence generations, measurement-register
 topology and an append-only extension journal.  Providers retain ownership of
 native hardware access and immutable capability descriptions.
 

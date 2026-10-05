@@ -29,6 +29,16 @@ enums:
     - info
     # Records an extension of an MR.
     - extend
+  # The TDISP state of a device interface.
+  tdisp-state:
+    # TDISP's CONFIG_UNLOCKED.
+    - unlocked
+    # TDISP's CONFIG_LOCKED.
+    - locked
+    # TDISP's RUN.
+    - run
+    # TDISP's ERROR.
+    - error
   # The kernel's hash algorithms.
   hash-algo:
     $header: linux/hash_info.h
@@ -48,6 +58,10 @@ flags:
   mr-state-flags:
     # IMA extends this MR.
     - ima-active
+  # What a device offers for its evidence.
+  evidence-caps:
+    # evidence-accept is provided.
+    - evidence-accept
 
 records:
   # One MR, as mr-get describes it.
@@ -77,6 +91,7 @@ records:
   # One journal entry, as mr-log-get and mr-log-entry-appended carry it.
   mr-log-entry:
     mr-generation: record
+    device-generation: record
     # The ID of the MR the entry is about.
     mr-id: uint(..u32-max)
     # What the entry records.
@@ -106,12 +121,16 @@ records:
   # The last MR generation of that range.
   mr-end-generation: uint(..u32-max)
 
+  # Advances with each change of the device's state.
+  device-generation: uint(..u32-max)
+
 ops:
   # What the device can do, and its family's fields.
   device-get:
     type: action
     fd-access: read
     reply:
+      device-generation: record
       # What the device supports, fixed for its life.
       caps:
         # Present when the device produces evidence.
@@ -138,6 +157,8 @@ ops:
               min-length?: uint(1..4K, bytes)
               # The longest of a range.
               max-length?: uint(1..4K, bytes)
+          # The optional evidence features the device provides.
+          flags?: evidence-caps
         # Present when the device has MRs.
         mr?:
           # The MR operations the device provides.
@@ -166,7 +187,9 @@ ops:
         # EMSGSIZE, and error-info's required-length says how long it has to
         # be.
         data: blob(out, va memfd dma-buf)
+      device-generation?: record
     reply:
+      device-generation: record
       # One per object, in request order.
       results[16]:
         # The layout it came in, where a standard defines it. Exactly one of
@@ -178,6 +201,8 @@ ops:
         length: uint
       # Present when the evidence depends on the MRs.
       mr-generation?: record
+      # On a device with evidence-accept, numbers this evidence for it.
+      evidence-generation?: uint(..u32-max)
 
   # The MRs' IDs and descriptions, which do not change; mr-read returns
   # values, which change with every extension and are read from the hardware.
@@ -205,7 +230,9 @@ ops:
     request:
       # The MR to read, by the ID mr-get lists.
       id: uint(..u32-max)
+      device-generation?: record
     reply:
+      device-generation: record
       mr-generation: record
       mr-values: record
 
@@ -219,8 +246,16 @@ ops:
       id: uint(..u32-max)
       # For the banks to extend, each once, in any order.
       mr-values: record
+      device-generation?: record
     reply:
+      device-generation: record
       mr-generation: record
+
+  # The device generation advanced.
+  device-state-changed:
+    type: event
+    payload:
+      device-generation: record
 
   # A journal entry was added.
   mr-log-entry-appended:
@@ -228,6 +263,39 @@ ops:
     payload:
       # The entry, as mr-log-get returns it.
       entry: record mr-log-entry
+
+  # The verifier accepted the evidence of evidence-generation, so the provider
+  # runs the device, as TDISP's RUN. That advances the device generation.
+  evidence-accept:
+    type: action
+    fd-access: read-write
+    availability: dynamic
+    optional: true
+    request:
+      device-generation: record
+      # The evidence the verifier accepted, as evidence-get numbered it.
+      evidence-generation: uint(..u32-max)
+    reply:
+      device-generation: record
+
+  # The device's security state.
+  devsec-state-get:
+    type: query
+    fd-access: read
+    optional: true
+    suggested-reply-length: 1K
+    reply:
+      device-generation: record
+      # The device interface's TDISP state, where the provider reports one.
+      tdisp-state?: tdisp-state
+
+  # Evidence was produced, or a device state change retired it.
+  evidence-state-changed:
+    type: event
+    payload:
+      device-generation: record
+      # The latest evidence, once evidence of this device state exists.
+      evidence-generation?: uint(..u32-max)
 
   # Entries of the MR journal, of the MRs and the generations the request
   # selects.

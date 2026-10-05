@@ -9,8 +9,9 @@ statement of its measurements, signed by its root of trust and carrying a
 challenge the verifier chose, and the logs behind those measurements. An
 attestation provider gives its device a node, ``/dev/attestation/attestationN``.
 Through it a program asks for evidence, reads and extends the measurement
-registers (MRs) the evidence reports, and follows a journal of every
-extension.
+registers (MRs) the evidence reports, follows a journal of every extension
+and, where the provider gates a device on it, runs the device once a verifier
+accepts its evidence.
 
 The node speaks CTLV, described in :doc:`ctlv`, as a descendant of the
 ``ctlv-attestation`` family, one family per provider. Every operation below
@@ -25,10 +26,14 @@ Operation               Type    Access      Purpose
 ======================  ======  ==========  ================================
 device-get              action  read        what the device supports
 evidence-get            action  read-write  evidence objects
+evidence-accept         action  read-write  accept evidence, run the device
+devsec-state-get        query   read        the device's security state
 mr-get                  query   read        describe the MRs
 mr-read                 query   read        one MR's values
 mr-extend               action  read-write  extend one MR
 mr-log-get              query   read        entries of the MR journal
+device-state-changed    event               the device generation advanced
+evidence-state-changed  event               evidence produced or retired
 mr-log-entry-appended   event               a journal entry was added
 ======================  ======  ==========  ================================
 
@@ -43,9 +48,21 @@ such as ``EIO``.
 Generations
 ===========
 
-A counter tells a program whether what it holds is still current. It is 32
-bits wide. An operation that would advance it past its maximum fails with
+Three counters tell a program whether what it holds is still current. Each is
+32 bits wide. An operation that would advance one past its maximum fails with
 ``EOVERFLOW`` and stops the device.
+
+``device-generation``
+    The state of the device. It advances when the provider reports a change to
+    its native state and when ``evidence-accept`` runs the device. Evidence of
+    the previous state is retired with it. A request that carries it fails
+    with ``ESTALE`` unless it is current.
+
+``evidence-generation``
+    The evidence ``evidence-get`` returned, on a device with
+    ``evidence-accept``. Every call returns a new one, which
+    ``evidence-accept`` then names. Evidence stays acceptable until the device
+    generation advances and, if it binds MRs, until an MR changes.
 
 ``mr-generation``
     A position in the MR journal. Every journal entry has its own, and a reply
@@ -57,15 +74,19 @@ Evidence
 ``device-get``
 --------------
 
-Describes the device: what it supports and the provider's own information. It
-takes no request. The reply carries:
+Describes the device: its generation, what it supports and the provider's own
+information. It takes no request. The reply carries:
+
+``device-generation``
+    The current device generation.
 
 ``caps``
     A record for each part the device has:
 
     ``caps.evidence``
-        With ``evidence-get``: one of ``objects`` for each object the device
-        produces, up to 16, as `Objects`_ describes.
+        With ``evidence-get``: ``flags``, and one of ``objects`` for each
+        object the device produces, up to 16, as `Objects`_ describes.
+        ``flags`` has ``evidence-accept`` where the device records verdicts.
 
     ``caps.mr``
         With MRs: ``flags``, which has ``extend`` where ``mr-extend`` is
@@ -91,7 +112,13 @@ returns signed evidence with the log needed to check it. The request carries:
     ``device-get`` by its ``id`` and giving ``data``, the output blob it is
     written to, sized as described below.
 
+``device-generation``
+    Optional, to refuse a device that has changed since.
+
 The reply carries:
+
+``device-generation``
+    The device generation the evidence was produced in.
 
 ``results``
     One per object, in request order, each giving the object's format in
@@ -100,6 +127,10 @@ The reply carries:
 
 ``mr-generation``
     Where an object binds MRs, the journal position the evidence reflects.
+
+``evidence-generation``
+    On a device with ``evidence-accept``, the number of this evidence, which
+    ``evidence-state-changed`` reports.
 
 ``EINVAL``
     A signed object is named without a challenge, a challenge is given
@@ -116,6 +147,9 @@ The reply carries:
 ``EPROTO``
     The root of trust returned an object in a format the device does not
     list for it.
+
+``ESTALE``
+    ``device-generation`` is not current.
 
 Access is read-write. Availability is dynamic: a device may switch the
 operation off for a time, ``op-changed`` reports it, and meanwhile it fails
@@ -188,6 +222,47 @@ may have, from either enum, in ``formats`` and ``vendor-formats``, and the
 reply names the one written in exactly one of ``format`` and
 ``vendor-format``. A new layout is a new value.
 
+Accepting evidence and device security
+======================================
+
+A device with ``evidence-accept`` in ``caps.evidence.flags`` runs once a
+verifier accepts its evidence, as a TDISP device interface enters RUN.
+
+``evidence-accept``
+-------------------
+
+Tells the provider that a verifier accepted the evidence named by the
+request's ``device-generation`` and ``evidence-generation``, which need not be
+the latest, and has it run the device. Running is a new device state, so the
+device generation advances, retiring all evidence of the previous one. The
+reply carries the new ``device-generation``, which ``device-state-changed``
+and ``evidence-state-changed`` report too. Nothing is recorded: a provider's
+failure leaves the evidence acceptable unless the device changed, which then
+advances the device generation as any change does.
+
+``ESTALE``
+    The generations do not name evidence that is still acceptable.
+
+Access is read-write. Availability is dynamic, as for ``evidence-get``: the
+operation is on only while the device can run, as in TDISP's CONFIG_LOCKED.
+
+``devsec-state-get``
+--------------------
+
+Reports the device's security state. It takes no request. The reply carries:
+
+``device-generation``
+    The current device generation.
+
+``tdisp-state``
+    Where the provider reports it, the TDISP state of the device interface:
+    ``unlocked``, ``locked``, ``run`` or ``error``, for TDISP's
+    CONFIG_UNLOCKED, CONFIG_LOCKED, RUN and ERROR.
+
+The query's generation changes whenever either does.
+
+Access is read.
+
 Measurement registers
 =====================
 
@@ -248,7 +323,10 @@ Access is read.
 -----------
 
 Returns the current values of the MR whose ``id`` the request carries. The
-reply carries:
+request may also carry ``device-generation``. The reply carries:
+
+``device-generation``
+    The current device generation.
 
 ``mr-generation``
     The journal position of the values.
@@ -260,6 +338,9 @@ reply carries:
 ``ENOENT``
     No MR has that ID.
 
+``ESTALE``
+    ``device-generation`` is not current.
+
 Access is read.
 
 ``mr-extend``
@@ -269,10 +350,13 @@ Extends the MR whose ``id`` the request carries, and appends the extension
 to the journal. The request carries one of ``mr-values`` for each bank of the
 MR to extend, in any order, each a ``hash-algo`` and a ``data`` of exactly
 that algorithm's digest size. The banks left out keep their values. The device
-hashes nothing for the caller.
+hashes nothing for the caller. Optionally, the request may also carry:
 
-The reply carries the ``mr-generation`` of the new entry, which
-``mr-log-entry-appended`` reports.
+``device-generation``
+    To refuse a device that has changed since.
+
+The reply carries ``device-generation`` and the ``mr-generation`` of the new
+entry, which ``mr-log-entry-appended`` reports.
 
 ``ENOENT``
     No MR has that ID.
@@ -288,6 +372,9 @@ The reply carries the ``mr-generation`` of the new entry, which
     The request carries no ``mr-values``, a value is for a bank the MR does not
     have or repeats one, or a digest has the wrong length.
 
+``ESTALE``
+    ``device-generation`` is not current.
+
 ``EBUSY``
     The journal is frozen for a kexec handover.
 
@@ -300,8 +387,8 @@ The device keeps an append-only journal of its MRs, numbered by
 ``mr-generation`` from 1. It starts with an ``info`` entry for each MR,
 describing it as ``mr-get`` does. Every extension then appends an ``extend``
 entry with the digests of the banks it extended, and with IMA's template for
-IMA's measurements. After an orderly kexec, the device continues the previous
-kernel's journal.
+IMA's measurements. Every entry carries the device generation it was made in.
+After an orderly kexec, the device continues the previous kernel's journal.
 
 A bank is replayed from the entries with a digest for it; an entry without one
 did not extend that bank. So evidence reporting a bank vouches only for the
@@ -327,6 +414,9 @@ each an ``mr-log-entry`` with:
 
 ``mr-generation``
     The entry's position in the journal.
+
+``device-generation``
+    The device generation the entry was made in.
 
 ``mr-id``
     The MR the entry is about.
@@ -355,6 +445,15 @@ Events
 
 Events are read as :doc:`ctlv` describes. An event that cannot be built shows
 as a gap in the sequence, as a dropped one does.
+
+``device-state-changed``
+    The device generation advanced, which the event carries in
+    ``device-generation``.
+
+``evidence-state-changed``
+    Evidence was produced, or a device state change retired it. The event
+    carries ``device-generation`` and, once evidence of that device state
+    exists, ``evidence-generation``, the latest.
 
 ``mr-log-entry-appended``
     An entry was appended to the journal, carried in ``entry`` as

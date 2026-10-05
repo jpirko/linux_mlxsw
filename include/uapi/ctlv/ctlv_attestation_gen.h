@@ -46,6 +46,18 @@ enum _ctlv_attestation_mr_log_event {
 	CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND = 2,
 };
 
+/* enum tdisp-state */
+enum _ctlv_attestation_tdisp_state {
+	/* TDISP's CONFIG_UNLOCKED. */
+	CTLV_ATTESTATION_TDISP_STATE_UNLOCKED = 1,
+	/* TDISP's CONFIG_LOCKED. */
+	CTLV_ATTESTATION_TDISP_STATE_LOCKED = 2,
+	/* TDISP's RUN. */
+	CTLV_ATTESTATION_TDISP_STATE_RUN = 3,
+	/* TDISP's ERROR. */
+	CTLV_ATTESTATION_TDISP_STATE_ERROR = 4,
+};
+
 /* flags mr-device-caps */
 enum _ctlv_attestation_mr_device_caps_bit {
 	CTLV_ATTESTATION_MR_DEVICE_CAPS_EXTEND_BIT = 0,
@@ -73,6 +85,16 @@ enum _ctlv_attestation_mr_state_flags_bit {
 #define CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE \
 	_BITULL(CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE_BIT)
 #define CTLV_ATTESTATION_MR_STATE_FLAGS_MASK CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE
+
+/* flags evidence-caps */
+enum _ctlv_attestation_evidence_caps_bit {
+	CTLV_ATTESTATION_EVIDENCE_CAPS_EVIDENCE_ACCEPT_BIT = 0,
+};
+
+/* evidence-accept is provided. */
+#define CTLV_ATTESTATION_EVIDENCE_CAPS_EVIDENCE_ACCEPT \
+	_BITULL(CTLV_ATTESTATION_EVIDENCE_CAPS_EVIDENCE_ACCEPT_BIT)
+#define CTLV_ATTESTATION_EVIDENCE_CAPS_MASK CTLV_ATTESTATION_EVIDENCE_CAPS_EVIDENCE_ACCEPT
 
 /* mr-desc */
 /* The platform's name for the MR, such as rtmr0. */
@@ -155,6 +177,11 @@ enum _ctlv_attestation_mr_state_flags_bit {
 #define CTLV_ATTESTATION_T_MR_END_GENERATION \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00070000, 1)
 
+/* device-generation */
+/* Advances with each change of the device's state. */
+#define CTLV_ATTESTATION_T_DEVICE_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00080000, 1)
+
 /* device-get reply */
 /* What the device supports, fixed for its life. */
 #define CTLV_ATTESTATION_T_DEVICE_GET_CAPS \
@@ -175,6 +202,9 @@ enum _ctlv_attestation_mr_state_flags_bit {
 /* One per object evidence-get can produce. */
 #define CTLV_ATTESTATION_T_DEVICE_GET_EVIDENCE_OBJECTS \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0011100, 1)
+/* The optional evidence features the device provides. */
+#define CTLV_ATTESTATION_T_DEVICE_GET_EVIDENCE_FLAGS \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0011100, 2)
 
 /* device-get caps.evidence.objects */
 /* The device's handle for the object in requests. */
@@ -251,6 +281,9 @@ enum _ctlv_attestation_mr_state_flags_bit {
 /* One per object, in request order. */
 #define CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0020000, 1)
+/* On a device with evidence-accept, numbers this evidence for it. */
+#define CTLV_ATTESTATION_T_EVIDENCE_GET_EVIDENCE_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0020000, 2)
 
 /* evidence-get results */
 /*
@@ -294,22 +327,37 @@ enum _ctlv_attestation_mr_state_flags_bit {
 /* mr-log-entry-appended payload */
 /* The entry, as mr-log-get returns it. */
 #define CTLV_ATTESTATION_T_MR_LOG_ENTRY_APPENDED_ENTRY \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0060000, 1)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0070000, 1)
+
+/* evidence-accept request */
+/* The evidence the verifier accepted, as evidence-get numbered it. */
+#define CTLV_ATTESTATION_T_EVIDENCE_ACCEPT_EVIDENCE_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80080000, 1)
+
+/* devsec-state-get reply */
+/* The device interface's TDISP state, where the provider reports one. */
+#define CTLV_ATTESTATION_T_DEVSEC_STATE_GET_TDISP_STATE \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0090000, 1)
+
+/* evidence-state-changed payload */
+/* The latest evidence, once evidence of this device state exists. */
+#define CTLV_ATTESTATION_T_EVIDENCE_STATE_CHANGED_EVIDENCE_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc00a0000, 1)
 
 /* mr-log-get request */
 /* Only these MRs' entries; every MR's without it. */
 #define CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80070000, 1)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x800b0000, 1)
 
 /* mr-log-get selection */
 /* An MR's ID. */
 #define CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION_ID \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80071000, 1)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x800b1000, 1)
 
 /* mr-log-get reply */
 /* The entries, in journal order. */
 #define CTLV_ATTESTATION_T_MR_LOG_GET_ENTRIES \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0070000, 1)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc00b0000, 1)
 
 /* ops */
 #define CTLV_ATTESTATION_OP_DEVICE_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 1)
@@ -317,7 +365,11 @@ enum _ctlv_attestation_mr_state_flags_bit {
 #define CTLV_ATTESTATION_OP_MR_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 3)
 #define CTLV_ATTESTATION_OP_MR_READ CTLV_OP(CTLV_FAMILY_ATTESTATION, 4)
 #define CTLV_ATTESTATION_OP_MR_EXTEND CTLV_OP(CTLV_FAMILY_ATTESTATION, 5)
-#define CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED CTLV_OP(CTLV_FAMILY_ATTESTATION, 6)
-#define CTLV_ATTESTATION_OP_MR_LOG_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 7)
+#define CTLV_ATTESTATION_OP_DEVICE_STATE_CHANGED CTLV_OP(CTLV_FAMILY_ATTESTATION, 6)
+#define CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED CTLV_OP(CTLV_FAMILY_ATTESTATION, 7)
+#define CTLV_ATTESTATION_OP_EVIDENCE_ACCEPT CTLV_OP(CTLV_FAMILY_ATTESTATION, 8)
+#define CTLV_ATTESTATION_OP_DEVSEC_STATE_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 9)
+#define CTLV_ATTESTATION_OP_EVIDENCE_STATE_CHANGED CTLV_OP(CTLV_FAMILY_ATTESTATION, 10)
+#define CTLV_ATTESTATION_OP_MR_LOG_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 11)
 
 #endif /* _UAPI_CTLV_CTLV_ATTESTATION_GEN_H */

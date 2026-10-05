@@ -329,6 +329,13 @@ out:
 	return ret;
 }
 
+int ctlv_attestation_evidence_accept_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+					    const struct ctlv_cursor *request,
+					    struct ctlv_cursor *reply)
+{
+	return -EOPNOTSUPP;
+}
+
 int ctlv_attestation_mr_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				  const struct ctlv_cursor *request, struct ctlv_cursor *reply)
 {
@@ -597,4 +604,11 @@ int ctlv_attestation_mr_log_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	if (!progress)
 		return -EMSGSIZE;
 	return ctlv_op_query_more(ctx, boundary, entry->mr_generation);
+}
+
+int ctlv_attestation_devsec_state_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+					    const struct ctlv_cursor *request,
+					    struct ctlv_cursor *reply)
+{
+	return -EOPNOTSUPP;
 }

@@ -54,6 +54,8 @@ call returns it with the Quote.
 The TDREPORT is MAC'd for the platform, not signed, so it is no object;
 ``TDX_CMD_GET_REPORT0`` of ``/dev/tdx_guest`` returns it.
 
+The device provides neither ``evidence-accept`` nor ``devsec-state-get``.
+
 A guest has one TDX device, which a udev rule can give a stable name::
 
     ENV{CTLV_FAMILY}=="ctlv-attestation-tdx", SYMLINK+="attestation/tdx"
