@@ -68,6 +68,22 @@ short, and tells the caller how long it has to be.  It fills in each object's
 result: the format written and its length.  A format the object does not list
 fails the call with ``-EPROTO``.
 
+State changes
+=============
+
+``attestation_state_changed()`` is called after releasing conflicting native
+locks.  It advances the device generation, retires evidence created for the
+previous state and emits state events.  The caller keeps the provider instance
+alive and serializes notifications with native state changes.  A provider
+callback runs under the instance mutex, so one that finds the state changed
+reports it with ``attestation_state_changed_locked()`` instead.
+
+A provider with ``evidence_accept`` keeps ``evidence-accept`` available only
+while its native transition is possible, through
+``attestation_evidence_accept_enable()``.  A successful ``evidence_accept`` is
+a device state change the subsystem reports itself, so the callback does not
+report it.
+
 Other writers
 =============
 

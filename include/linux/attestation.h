@@ -24,6 +24,14 @@ enum attestation_evidence_class {
 	ATTESTATION_EVIDENCE_EVENT_LOG = CTLV_ATTESTATION_EVIDENCE_CLASS_EVENT_LOG,
 };
 
+enum attestation_tdisp_state {
+	ATTESTATION_TDISP_STATE_UNLOCKED =
+		CTLV_ATTESTATION_TDISP_STATE_UNLOCKED,
+	ATTESTATION_TDISP_STATE_LOCKED = CTLV_ATTESTATION_TDISP_STATE_LOCKED,
+	ATTESTATION_TDISP_STATE_RUN = CTLV_ATTESTATION_TDISP_STATE_RUN,
+	ATTESTATION_TDISP_STATE_ERROR = CTLV_ATTESTATION_TDISP_STATE_ERROR,
+};
+
 /**
  * struct attestation_digest - One MR digest.
  * @algorithm: hash algorithm
@@ -167,9 +175,11 @@ struct attestation_evidence_result {
  * struct attestation_provider - Immutable provider operations and properties.
  * @evidence_get: produce requested evidence, each object written with
  *	attestation_evidence_write() and its result filled in
+ * @evidence_accept: run a device whose evidence was accepted, as TDISP's RUN
  * @mr_read: read one MR; every MR can be read, so required with @mrs
  * @mr_extend: extend the banks of one MR it gets digests for, leaving the
  *	others, or fail with -EOPNOTSUPP before changing any if it cannot
+ * @tdisp_state_get: get the TDISP state
  * @evidence_caps: evidence capabilities, or NULL
  * @mrs: fixed MR properties
  * @mrs_count: number of fixed MRs
@@ -178,10 +188,13 @@ struct attestation_provider {
 	int (*evidence_get)(struct attestation_dev *att,
 			    const struct attestation_evidence_request *request,
 			    struct attestation_evidence_result *result);
+	int (*evidence_accept)(struct attestation_dev *att);
 	int (*mr_read)(struct attestation_dev *att, unsigned int mr_id,
 		       struct attestation_digest_set *values);
 	int (*mr_extend)(struct attestation_dev *att, unsigned int mr_id,
 			 const struct attestation_digest_set *values);
+	int (*tdisp_state_get)(struct attestation_dev *att,
+			       enum attestation_tdisp_state *state);
 	const struct attestation_evidence_caps *evidence_caps;
 	const struct attestation_mr_props *mrs;
 	size_t mrs_count;
@@ -204,7 +217,12 @@ struct attestation_dev {
 
 	/* Mutable instance, MR, and journal state. */
 	struct mutex lock;
+	unsigned int device_generation;
+	unsigned int evidence_generation;
+	unsigned int evidence_floor;
+	struct xarray evidence_ranges;
 	unsigned int mr_read_generation;
+	unsigned int devsec_version;
 
 	struct xarray mrs;
 	struct attestation_mr_log *log;
@@ -241,6 +259,10 @@ int attestation_register(struct attestation_dev *att);
 void attestation_unregister(struct attestation_dev *att);
 void attestation_put(struct attestation_dev *att);
 
+void attestation_state_changed(struct attestation_dev *att);
+void attestation_state_changed_locked(struct attestation_dev *att);
+void attestation_evidence_accept_enable(struct attestation_dev *att, bool enable);
 int attestation_evidence_write(const struct attestation_evidence_object_request *object,
 			       const void *data, size_t length);
+
 #endif /* _LINUX_ATTESTATION_H */

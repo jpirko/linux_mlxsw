@@ -66,6 +66,11 @@ static int attestation_device_caps_put(struct attestation_dev *att, struct ctlv_
 		if (!ctlv_attestation_device_get_caps_evidence_start(&caps_record, &group))
 			return -EMSGSIZE;
 
+		flags = 0;
+		if (provider->evidence_accept)
+			flags |= CTLV_ATTESTATION_EVIDENCE_CAPS_EVIDENCE_ACCEPT;
+		ok &= ctlv_attestation_device_get_evidence_flags_put(&group, flags);
+
 		for (index = 0; index < caps->objects_count; index++) {
 			if (!ctlv_attestation_device_get_evidence_objects_start(&group, &object)) {
 				ok = false;
@@ -88,6 +93,7 @@ static int attestation_device_caps_put(struct attestation_dev *att, struct ctlv_
 		ok &= ctlv_attestation_device_get_mr_flags_put(&group, flags);
 		ctlv_record_end(&group);
 	}
+
 	ctlv_record_end(&caps_record);
 	return ok ? 0 : -EMSGSIZE;
 }
@@ -99,7 +105,9 @@ int ctlv_attestation_device_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *ct
 	struct ctlv_cursor info;
 	int ret;
 
-	ret = attestation_device_caps_put(att, reply);
+	ret = ctlv_attestation_device_generation_put(reply, att->device_generation) ? 0 : -EMSGSIZE;
+	if (!ret)
+		ret = attestation_device_caps_put(att, reply);
 	if (ret)
 		return ret;
 	if (!ctlv_attestation_device_get_info_start(reply, &info))
@@ -173,6 +181,34 @@ attestation_evidence_decode_objects(struct attestation_dev *att, struct ctlv_op_
 err_free:
 	attestation_evidence_request_free(objects, count);
 	return ret;
+}
+
+static bool attestation_ranges_required(const struct attestation_dev *att)
+{
+	const struct attestation_evidence_caps *caps = att->provider->evidence_caps;
+	size_t index;
+
+	for (index = 0; index < caps->objects_count; index++)
+		if (caps->objects[index].binds_mrs)
+			return true;
+	return false;
+}
+
+static struct attestation_evidence_range *
+attestation_evidence_range_tail(struct attestation_dev *att, bool mr_dependent)
+{
+	struct attestation_evidence_range *range;
+	unsigned long index;
+
+	xa_for_each(&att->evidence_ranges, index, range) {
+		if (range->end_generation != att->evidence_generation ||
+		    range->mr_dependent != mr_dependent)
+			continue;
+		if (mr_dependent && range->mr_generation != att->log->generation)
+			continue;
+		return range;
+	}
+	return NULL;
 }
 
 static bool
@@ -268,11 +304,18 @@ int ctlv_attestation_evidence_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *
 	struct attestation_evidence_object_request *objects = NULL;
 	struct attestation_evidence_request decoded = {};
 	struct attestation_evidence_result result = {};
+	struct attestation_evidence_range *range = NULL;
+	struct attestation_evidence_range *new_range = NULL;
+	struct attestation_event_batch events = {};
 	struct attestation_dev *att = attestation_from_ctlv(ctlv);
 	bool mr_dependent = false;
 	size_t index;
 	int put_ret;
 	int ret;
+
+	if (ctlv_attestation_device_generation_present(request) &&
+	    ctlv_attestation_device_generation_get(request) != att->device_generation)
+		return -ESTALE;
 
 	ret = attestation_evidence_request_decode(att, ctx, request, &decoded, &objects);
 	if (ret)
@@ -286,6 +329,36 @@ int ctlv_attestation_evidence_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *
 
 	for (index = 0; index < decoded.objects_count; index++)
 		mr_dependent |= decoded.objects[index].supported_object->binds_mrs;
+	if (att->provider->evidence_accept) {
+		ret = attestation_preflight(att, false, true, false);
+		if (ret)
+			goto out;
+
+		if (attestation_ranges_required(att)) {
+			range = attestation_evidence_range_tail(att, mr_dependent);
+			if (!range) {
+				range = kzalloc_obj(*range, GFP_KERNEL);
+				if (!range) {
+					ret = -ENOMEM;
+					goto out;
+				}
+				range->start_generation = att->evidence_generation + 1;
+				range->end_generation = range->start_generation;
+				range->mr_dependent = mr_dependent;
+				range->mr_generation = att->log ? att->log->generation : 0;
+				new_range = range;
+				ret = xa_reserve(&att->evidence_ranges, range->start_generation,
+						 GFP_KERNEL);
+				if (ret)
+					goto out;
+			}
+		}
+
+		ret = attestation_events_prepare(att, &events, false, true, false);
+		if (ret)
+			goto out;
+	}
+
 	ret = att->provider->evidence_get(att, &decoded, &result);
 	if (ret)
 		goto out;
@@ -313,6 +386,18 @@ int ctlv_attestation_evidence_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *
 	}
 	if (ret)
 		goto out;
+
+	if (!ctlv_attestation_device_generation_put(reply, att->device_generation)) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+	if (att->provider->evidence_accept) {
+		if (!ctlv_attestation_evidence_get_evidence_generation_put(
+			    reply, att->evidence_generation + 1)) {
+			ret = -EMSGSIZE;
+			goto out;
+		}
+	}
 	if (mr_dependent && !ctlv_attestation_mr_generation_put(reply, att->log->generation)) {
 		ret = -EMSGSIZE;
 		goto out;
@@ -323,17 +408,94 @@ int ctlv_attestation_evidence_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *
 			ret = -EMSGSIZE;
 			goto out;
 		}
+
+	if (att->provider->evidence_accept) {
+		att->evidence_generation++;
+		if (range)
+			range->end_generation = att->evidence_generation;
+		if (new_range) {
+			xa_store(&att->evidence_ranges, new_range->start_generation, new_range,
+				 GFP_NOWAIT);
+			new_range = NULL;
+		}
+		attestation_evidence_event_emit(&events, att);
+	}
+
 out:
+	if (new_range) {
+		xa_release(&att->evidence_ranges, new_range->start_generation);
+		kfree(new_range);
+	}
+	attestation_events_abort(&events);
 	kfree(result.objects);
 	attestation_evidence_request_free(objects, decoded.objects_count);
 	return ret;
+}
+
+static int attestation_evidence_validate(struct attestation_dev *att,
+					 unsigned int device_generation,
+					 unsigned int evidence_generation)
+{
+	struct attestation_evidence_range *range;
+	unsigned long index;
+
+	if (device_generation != att->device_generation ||
+	    evidence_generation <= att->evidence_floor ||
+	    evidence_generation > att->evidence_generation)
+		return -ESTALE;
+	if (!attestation_ranges_required(att))
+		return 0;
+	xa_for_each(&att->evidence_ranges, index, range) {
+		if (evidence_generation < range->start_generation)
+			break;
+		if (evidence_generation > range->end_generation)
+			continue;
+		if (range->mr_dependent &&
+		    (!att->log || range->mr_generation != att->log->generation))
+			return -ESTALE;
+		return 0;
+	}
+	return -ESTALE;
 }
 
 int ctlv_attestation_evidence_accept_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 					    const struct ctlv_cursor *request,
 					    struct ctlv_cursor *reply)
 {
-	return -EOPNOTSUPP;
+	struct attestation_event_batch events = {};
+	struct attestation_dev *att = attestation_from_ctlv(ctlv);
+	u64 device, evidence;
+	int ret;
+
+	device = ctlv_attestation_device_generation_get(request);
+	evidence = ctlv_attestation_evidence_accept_evidence_generation_get(request);
+	ret = attestation_evidence_validate(att, device, evidence);
+	if (ret)
+		return ret;
+
+	ret = attestation_preflight(att, true, false, false);
+	if (ret)
+		return ret;
+	ret = attestation_events_prepare(att, &events, true, true, false);
+	if (ret)
+		return ret;
+
+	/* Before the callback, so nothing after a device runs can fail. */
+	if (!ctlv_attestation_device_generation_put(reply, att->device_generation + 1)) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+
+	ret = att->provider->evidence_accept(att);
+	if (ret)
+		goto out;
+	attestation_device_changed(att);
+	attestation_device_event_emit(&events, att->device_generation);
+	attestation_evidence_event_emit(&events, att);
+
+out:
+	attestation_events_abort(&events);
+	return ret;
 }
 
 int ctlv_attestation_mr_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
@@ -384,19 +546,18 @@ int ctlv_attestation_mr_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 static int attestation_mr_values_put(struct ctlv_cursor *reply,
 				     const struct attestation_digest_set *values)
 {
+	const struct attestation_digest *value;
 	struct ctlv_cursor inner;
 	size_t index;
 	bool ok;
 
 	for (index = 0; index < values->values_count; index++) {
-		const struct attestation_digest *value = &values->values[index];
-		enum hash_algo algorithm = value->algorithm;
-		size_t length = hash_digest_size[algorithm];
-
+		value = &values->values[index];
 		if (!ctlv_attestation_mr_values_start(reply, &inner))
 			return -EMSGSIZE;
-		ok = ctlv_attestation_mr_value_hash_algo_put(&inner, algorithm);
-		ok &= ctlv_attestation_mr_value_data_put(&inner, value->data, length);
+		ok = ctlv_attestation_mr_value_hash_algo_put(&inner, value->algorithm);
+		ok &= ctlv_attestation_mr_value_data_put(&inner, value->data,
+							 hash_digest_size[value->algorithm]);
 		ctlv_record_end(&inner);
 		if (!ok)
 			return -EMSGSIZE;
@@ -416,6 +577,10 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	if (ctlv_op_query_cursor(ctx) &&
 	    ctlv_op_query_generation(ctx) != att->mr_read_generation)
 		return -ESTALE;
+	if (ctlv_attestation_device_generation_present(request) &&
+	    ctlv_attestation_device_generation_get(request) != att->device_generation)
+		return -ESTALE;
+
 	id = ctlv_attestation_mr_read_id_get(request);
 	mr = attestation_mr_lookup_live(att, id);
 	if (IS_ERR(mr))
@@ -430,7 +595,8 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	ret = att->provider->mr_read(att, mr->props->id, &values);
 	if (!ret)
 		ret = attestation_mr_values_validate(mr->props, &values, true);
-	if (!ret && !ctlv_attestation_mr_generation_put(reply, att->log->generation))
+	if (!ret && (!ctlv_attestation_device_generation_put(reply, att->device_generation) ||
+		     !ctlv_attestation_mr_generation_put(reply, att->log->generation)))
 		ret = -EMSGSIZE;
 	if (!ret)
 		ret = attestation_mr_values_put(reply, &values);
@@ -486,6 +652,9 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	u64 id;
 	int ret;
 
+	if (ctlv_attestation_device_generation_present(request) &&
+	    ctlv_attestation_device_generation_get(request) != att->device_generation)
+		return -ESTALE;
 	id = ctlv_attestation_mr_extend_id_get(request);
 	mr = attestation_mr_lookup_live(att, id);
 	if (IS_ERR(mr))
@@ -508,7 +677,8 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	entry = attestation_mr_extend_locked(att, change);
 	if (IS_ERR(entry))
 		ret = PTR_ERR(entry);
-	else if (!ctlv_attestation_mr_generation_put(reply, entry->mr_generation))
+	else if (!ctlv_attestation_device_generation_put(reply, att->device_generation) ||
+		 !ctlv_attestation_mr_generation_put(reply, entry->mr_generation))
 		ret = -EMSGSIZE;
 	attestation_mr_change_free(change);
 
@@ -610,5 +780,22 @@ int ctlv_attestation_devsec_state_get_query(struct ctlv *ctlv, struct ctlv_op_ct
 					    const struct ctlv_cursor *request,
 					    struct ctlv_cursor *reply)
 {
-	return -EOPNOTSUPP;
+	struct attestation_dev *att = attestation_from_ctlv(ctlv);
+	enum attestation_tdisp_state state;
+	u64 version = att->devsec_version;
+	int ret;
+	bool ok;
+
+	if (ctlv_op_query_cursor(ctx) && ctlv_op_query_generation(ctx) != version)
+		return -ESTALE;
+	ok = ctlv_attestation_device_generation_put(reply, att->device_generation);
+	if (att->provider->tdisp_state_get) {
+		ret = att->provider->tdisp_state_get(att, &state);
+		if (ret)
+			return ret;
+		ok &= ctlv_attestation_devsec_state_get_tdisp_state_put(reply, state);
+	}
+	if (!ok)
+		return -EMSGSIZE;
+	return ctlv_op_query_done(ctx, version);
 }

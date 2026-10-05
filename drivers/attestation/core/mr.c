@@ -2,7 +2,6 @@
 #include <crypto/hash_info.h>
 #include <linux/bitmap.h>
 #include <linux/cleanup.h>
-#include <linux/device.h>
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -201,6 +200,7 @@ int attestation_mr_log_init(struct attestation_dev *att)
 			goto err_attached;
 		}
 		entry->mr_generation = ++log->generation;
+		entry->device_generation = att->device_generation;
 		ret = xa_insert(&log->entries, entry->mr_generation, entry, GFP_KERNEL);
 		if (ret)
 			goto err_attached;
@@ -267,7 +267,7 @@ attestation_mr_change_prepare(struct attestation_dev *att, struct attestation_mr
 		goto err_change;
 	}
 
-	ret = attestation_events_prepare(att, &change->events);
+	ret = attestation_events_prepare(att, &change->events, false, false, true);
 	if (ret)
 		goto err_entry;
 	return change;
@@ -318,7 +318,7 @@ attestation_mr_ima_change_prepare(struct attestation_dev *att, struct attestatio
 
 	change->mr = mr;
 	change->entry = &ima->extend;
-	ret = attestation_events_prepare(att, &change->events);
+	ret = attestation_events_prepare(att, &change->events, false, false, true);
 	if (ret)
 		goto err_entry;
 	return change;
@@ -340,14 +340,10 @@ attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_
 	lockdep_assert_held(&att->lock);
 	if (att->log->frozen)
 		return ERR_PTR(-EBUSY);
-	if (att->log->generation == UINT_MAX) {
-		dev_warn(att->node.dev.parent,
-			 "attestation instance %u stopped: mr generation exhausted\n",
-			 att->index);
-		attestation_stop(att);
-		return ERR_PTR(-EOVERFLOW);
+	ret = attestation_preflight(att, false, false, true);
+	if (ret)
+		return ERR_PTR(ret);
 
-	}
 	entry->mr_generation = att->log->generation + 1;
 	ret = xa_reserve(&att->log->entries, entry->mr_generation, GFP_KERNEL);
 	if (ret)
@@ -360,6 +356,7 @@ attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_
 	}
 
 	attestation_mr_changed(att);
+	entry->device_generation = att->device_generation;
 	attestation_mr_log_append(att, entry);
 	attestation_mr_log_event_emit(&change->events, entry);
 	change->entry = NULL;
@@ -446,6 +443,7 @@ int attestation_mr_log_entry_encode(struct ctlv_cursor *reply,
 	event = entry->type == ATTESTATION_MR_LOG_ENTRY_INFO ?
 		CTLV_ATTESTATION_MR_LOG_EVENT_INFO : CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND;
 	ok = ctlv_attestation_mr_generation_put(reply, entry->mr_generation);
+	ok &= ctlv_attestation_device_generation_put(reply, entry->device_generation);
 	ok &= ctlv_attestation_mr_log_entry_mr_id_put(reply, entry->mr_id);
 	ok &= ctlv_attestation_mr_log_entry_event_put(reply, event);
 	if (!ok)

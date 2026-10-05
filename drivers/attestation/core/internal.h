@@ -19,9 +19,17 @@ enum attestation_mr_log_entry_type {
 	ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND = 2,
 };
 
+struct attestation_evidence_range {
+	unsigned int start_generation;
+	unsigned int end_generation;
+	bool mr_dependent;
+	unsigned int mr_generation;
+};
+
 struct attestation_mr_log_entry {
 	struct attestation_mr_log_entry __rcu *next;
 	unsigned int mr_generation;
+	unsigned int device_generation;
 	unsigned int mr_id;
 	enum attestation_mr_log_entry_type type;
 };
@@ -70,6 +78,8 @@ struct attestation_event {
 };
 
 struct attestation_event_batch {
+	struct attestation_event device;
+	struct attestation_event evidence;
 	struct attestation_event mr_log;
 };
 
@@ -86,6 +96,8 @@ bool attestation_registered(struct attestation_dev *att);
 struct attestation_dev *attestation_instance_lock(unsigned int index);
 void attestation_instance_unlock(struct attestation_dev *att);
 void attestation_stop(struct attestation_dev *att);
+int attestation_preflight(struct attestation_dev *att, bool device, bool evidence, bool mr);
+void attestation_device_changed(struct attestation_dev *att);
 void attestation_mr_changed(struct attestation_dev *att);
 
 int attestation_provider_validate(const struct attestation_provider *provider,
@@ -112,8 +124,12 @@ const struct attestation_mr_log_entry *
 attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_change *change);
 void attestation_mr_change_free(struct attestation_mr_change *change);
 
-int attestation_events_prepare(struct attestation_dev *att, struct attestation_event_batch *events);
+int attestation_events_prepare(struct attestation_dev *att, struct attestation_event_batch *events,
+			       bool device, bool evidence, bool mr_log);
 void attestation_events_abort(struct attestation_event_batch *events);
+void attestation_device_event_emit(struct attestation_event_batch *events, unsigned int generation);
+void attestation_evidence_event_emit(struct attestation_event_batch *events,
+				     const struct attestation_dev *att);
 void attestation_mr_log_event_emit(struct attestation_event_batch *events,
 				   const struct attestation_mr_log_entry *entry);
 

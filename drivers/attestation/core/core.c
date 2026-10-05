@@ -145,6 +145,8 @@ int attestation_provider_validate(const struct attestation_provider *provider,
 	ret = attestation_evidence_caps_validate(provider, family);
 	if (ret)
 		return ret;
+	if (provider->evidence_accept && !provider->evidence_caps)
+		return -EINVAL;
 	if (!!provider->mrs != !!provider->mrs_count)
 		return -EINVAL;
 	if (provider->mrs_count && !provider->mr_read)
@@ -221,8 +223,7 @@ struct attestation_dev *attestation_instance_lock(unsigned int index)
 	struct attestation_dev *att;
 
 	xa_lock(&attestation_instances);
-	if (!xa_get_mark(&attestation_instances, index,
-			 ATTESTATION_REGISTERED)) {
+	if (!xa_get_mark(&attestation_instances, index, ATTESTATION_REGISTERED)) {
 		xa_unlock(&attestation_instances);
 		return ERR_PTR(-ENODEV);
 	}
@@ -244,11 +245,35 @@ void attestation_instance_unlock(struct attestation_dev *att)
 	mutex_unlock(&att->lock);
 }
 
+static void attestation_evidence_ranges_clear(struct attestation_dev *att, bool dependent_only)
+{
+	struct attestation_evidence_range *range;
+	unsigned long index;
+
+	xa_for_each(&att->evidence_ranges, index, range) {
+		if (dependent_only && !range->mr_dependent)
+			continue;
+		xa_erase(&att->evidence_ranges, index);
+		kfree(range);
+	}
+}
+
+void attestation_device_changed(struct attestation_dev *att)
+{
+	lockdep_assert_held(&att->lock);
+	attestation_evidence_ranges_clear(att, false);
+	att->device_generation++;
+	att->evidence_floor = att->evidence_generation;
+	att->mr_read_generation++;
+	att->devsec_version++;
+}
+
 void attestation_mr_changed(struct attestation_dev *att)
 {
 	lockdep_assert_held(&att->lock);
 	att->log->generation++;
 	att->mr_read_generation++;
+	attestation_evidence_ranges_clear(att, true);
 }
 
 void attestation_stop(struct attestation_dev *att)
@@ -258,6 +283,28 @@ void attestation_stop(struct attestation_dev *att)
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
 	attestation_kexec_invalidate(att);
+}
+
+int attestation_preflight(struct attestation_dev *att, bool device, bool evidence, bool mr)
+{
+	const char *exhausted;
+
+	lockdep_assert_held(&att->lock);
+	if (device && att->device_generation == UINT_MAX)
+		exhausted = "device";
+	else if (evidence && att->evidence_generation == UINT_MAX)
+		exhausted = "evidence";
+	else if (mr && att->log && att->log->generation == UINT_MAX)
+		exhausted = "mr";
+	else
+		return 0;
+	/* A stopped instance can still be asked, so only the stop itself warns. */
+	if (attestation_registered(att))
+		dev_warn(att->node.dev.parent,
+			 "attestation instance %u stopped: %s generation exhausted\n",
+			 att->index, exhausted);
+	attestation_stop(att);
+	return -EOVERFLOW;
 }
 
 static struct attestation_mr *attestation_mr_alloc(struct attestation_dev *att,
@@ -293,6 +340,75 @@ struct attestation_mr *attestation_mr_lookup_live(struct attestation_dev *att, u
 }
 
 /**
+ * attestation_state_changed_locked - Report a native provider state change.
+ * @att: provider instance
+ *
+ * Call with the instance mutex held, as from a provider callback that finds
+ * the state changed.
+ */
+void attestation_state_changed_locked(struct attestation_dev *att)
+{
+	struct attestation_event_batch events = {};
+	bool evidence;
+	int ret;
+
+	lockdep_assert_held(&att->lock);
+	if (!attestation_registered(att))
+		return;
+
+	evidence = att->evidence_generation > att->evidence_floor;
+	attestation_kexec_invalidate(att);
+	ret = attestation_preflight(att, true, false, false);
+	if (ret)
+		return;
+
+	ret = attestation_events_prepare(att, &events, true, evidence, false);
+	attestation_device_changed(att);
+	if (ret) {
+		ctlv_event_lost(&att->ctlv, CTLV_ATTESTATION_OP_DEVICE_STATE_CHANGED);
+		if (evidence)
+			ctlv_event_lost(&att->ctlv, CTLV_ATTESTATION_OP_EVIDENCE_STATE_CHANGED);
+		return;
+	}
+
+	attestation_device_event_emit(&events, att->device_generation);
+	if (evidence)
+		attestation_evidence_event_emit(&events, att);
+	attestation_events_abort(&events);
+}
+EXPORT_SYMBOL_NS_GPL(attestation_state_changed_locked, "ATTESTATION");
+
+/**
+ * attestation_state_changed - Report a native provider state change.
+ * @att: provider instance
+ *
+ * Call without the instance mutex or conflicting native locks held.
+ */
+void attestation_state_changed(struct attestation_dev *att)
+{
+	guard(mutex)(&att->lock);
+	attestation_state_changed_locked(att);
+}
+EXPORT_SYMBOL_NS_GPL(attestation_state_changed, "ATTESTATION");
+
+/**
+ * attestation_evidence_accept_enable - Set whether evidence-accept can run.
+ * @att: device of a provider with evidence_accept
+ * @enable: whether its native transition is possible now
+ *
+ * The operation starts enabled. Call this before attestation_register() and on
+ * every native change that decides it, from evidence_accept too.
+ */
+void attestation_evidence_accept_enable(struct attestation_dev *att, bool enable)
+{
+	if (enable)
+		ctlv_attestation_evidence_accept_enable(&att->ctlv);
+	else
+		ctlv_attestation_evidence_accept_disable(&att->ctlv);
+}
+EXPORT_SYMBOL_NS_GPL(attestation_evidence_accept_enable, "ATTESTATION");
+
+/**
  * attestation_evidence_write - Write an evidence object to its blob.
  * @object: the requested object
  * @data: the object's bytes
@@ -322,6 +438,10 @@ void attestation_provide_ops(struct attestation_dev *att)
 	if (provider->evidence_caps) {
 		ctlv_attestation_evidence_get_provide(ctlv);
 		ctlv_attestation_evidence_get_enable(ctlv);
+		if (provider->evidence_accept) {
+			ctlv_attestation_evidence_accept_provide(ctlv);
+			ctlv_attestation_evidence_accept_enable(ctlv);
+		}
 	}
 
 	if (provider->mrs_count) {
@@ -331,6 +451,9 @@ void attestation_provide_ops(struct attestation_dev *att)
 		if (provider->mr_extend)
 			ctlv_attestation_mr_extend_provide(ctlv);
 	}
+
+	if (provider->tdisp_state_get)
+		ctlv_attestation_devsec_state_get_provide(ctlv);
 }
 
 static int attestation_mrs_create(struct attestation_dev *att)
@@ -351,15 +474,21 @@ static int attestation_mrs_create(struct attestation_dev *att)
 /* Runs from the release, so it must not reach the provider's module. */
 static void attestation_state_free(struct attestation_dev *att)
 {
+	struct attestation_evidence_range *range;
 	struct attestation_mr *mr;
 	unsigned long index;
 
+	xa_for_each(&att->evidence_ranges, index, range) {
+		xa_erase(&att->evidence_ranges, index);
+		kfree(range);
+	}
 	xa_for_each(&att->mrs, index, mr) {
 		xa_erase(&att->mrs, index);
 		kfree(mr);
 	}
 	attestation_mr_log_free(att->log);
 	xa_destroy(&att->mrs);
+	xa_destroy(&att->evidence_ranges);
 	mutex_destroy(&att->lock);
 }
 
@@ -443,6 +572,7 @@ struct attestation_dev *_attestation_alloc(struct device *parent,
 		return ERR_PTR(-ENOMEM);
 	att->provider = provider;
 	mutex_init(&att->lock);
+	xa_init(&att->evidence_ranges);
 	xa_init(&att->mrs);
 
 	/* From here on, the release frees whatever was set up. */
