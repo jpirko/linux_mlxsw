@@ -628,8 +628,7 @@ void *ctlv_priv_child(const void *priv)
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_priv_child, "CTLV");
 
-const struct ctlv_family *
-ctlv_device_family(const struct ctlv_device *ctlvdev)
+const struct ctlv_family *ctlv_device_family(const struct ctlv_device *ctlvdev)
 {
 	return READ_ONCE(ctlvdev->family);
 }
@@ -1126,6 +1125,43 @@ int ctlv_stub_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
 	return 0;
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_stub_fill, "CTLV");
+
+void ctlv_stub_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *nest)
+{
+	const struct ctlv_schema_tree *tree;
+	u32 index;
+
+	if (WARN_ON_ONCE(!nest->tree))
+		return;
+	if (!nest->attr)
+		return;
+	tree = nest->tree;
+	for (index = 0; index < tree->stub_schemas_count; index++) {
+		const struct ctlv_stub_schema *stub_schema =
+			&tree->stub_schemas[index];
+		const struct ctlv_stub_fill_schema *fill_schema;
+		const struct ctlv_stub_ops *stub_ops;
+		struct ctlv_cursor filled;
+		void *priv;
+
+		if (stub_schema->node != nest->node)
+			continue;
+		stub_ops = ctlv_stub_ops_find(ctx->ctlvdev, stub_schema, &priv);
+		if (!stub_ops || !stub_ops->read)
+			continue;
+		fill_schema = ctlv_schema_fill(ctx->family,
+					       stub_schema->family_id,
+					       stub_schema->set_id);
+		if (WARN_ON_ONCE(!fill_schema))
+			continue;
+		filled = *nest;
+		if (!ctlv_message_input_rebind(&filled, &fill_schema->members,
+					       0))
+			continue;
+		stub_ops->read(priv, ctx, &filled);
+	}
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_stub_read, "CTLV");
 
 /*
  * The core answers the root family through the same generated descriptor a

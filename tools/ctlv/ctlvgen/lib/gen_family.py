@@ -35,11 +35,13 @@ LIFECYCLE_HOOKS = (
 )
 OPTIONAL_LIFECYCLE_HOOKS = ('pre_init', 'post_init', 'pre_fini')
 
-# The reply-side callback for an extension point.
+# The two halves of one extension point, entered from the message that has it.
 STUB_HOOKS = (
     ('fill', 'int', ('void *priv', 'struct ctlv_op_ctx *ctx',
                      'const struct ctlv_cursor *request',
                      'struct ctlv_cursor *nest')),
+    ('read', 'void', ('void *priv', 'struct ctlv_op_ctx *ctx',
+                      'const struct ctlv_cursor *nest')),
 )
 
 # The state helpers of a dynamically available op.
@@ -162,13 +164,13 @@ def _lifecycle_hooks(writer, names, family):
 
 
 def _stub_hooks(writer, names, family):
-    """What this family puts into each stub it fills."""
+    """What this family puts into and takes out of each stub it fills."""
     if not family.fills:
         return
     for fill in family.fills:
         owner = family.owners[fill.family_id]
         writer.line()
-        writer.comment(f'{fill.name} of {owner}: fill callback.')
+        writer.comment(f'{fill.name} of {owner}: fill and read callbacks.')
         for which, returns, params in STUB_HOOKS:
             writer.signature(returns, names.stub_callback(fill, which),
                              params)

@@ -281,17 +281,21 @@ typedef void (*ctlv_family_fini_fn)(struct ctlv_device *ctlvdev, void *priv);
 typedef int (*ctlv_stub_fill_fn)(void *priv, struct ctlv_op_ctx *ctx,
 				 const struct ctlv_cursor *request,
 				 struct ctlv_cursor *nest);
+typedef void (*ctlv_stub_read_fn)(void *priv, struct ctlv_op_ctx *ctx,
+				  const struct ctlv_cursor *nest);
 
 struct ctlv_stub_ops {
 	u16 family_id;
 	u32 set_id;
 	ctlv_stub_fill_fn fill;
+	ctlv_stub_read_fn read;
 };
 
 #define CTLV_STUB_OPS(_family, _set, _name) {			\
 	.family_id = (_family),					\
 	.set_id = (_set),					\
 	.fill = _name##_fill,					\
+	.read = _name##_read,					\
 }
 
 struct ctlv_family {

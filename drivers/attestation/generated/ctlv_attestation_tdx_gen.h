@@ -28,10 +28,12 @@ const void *ctlv_attestation_tdx_pre_init(const void *init_info);
 int ctlv_attestation_tdx_init(struct ctlv_device *ctlvdev, const void *init_info, void *priv);
 void ctlv_attestation_tdx_fini(struct ctlv_device *ctlvdev, void *priv);
 
-/* device-info of ctlv-attestation: fill callback. */
+/* device-info of ctlv-attestation: fill and read callbacks. */
 int ctlv_attestation_tdx_device_info_fill(void *priv, struct ctlv_op_ctx *ctx,
 					  const struct ctlv_cursor *request,
 					  struct ctlv_cursor *nest);
+void ctlv_attestation_tdx_device_info_read(void *priv, struct ctlv_op_ctx *ctx,
+					   const struct ctlv_cursor *nest);
 
 extern const struct ctlv_family ctlv_attestation_tdx_family;
 

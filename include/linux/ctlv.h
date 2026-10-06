@@ -123,6 +123,13 @@ int ctlv_stub_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
 		   struct ctlv_cursor *nest);
 
 /**
+ * ctlv_stub_read - Pass an extension-point input nest to its filling family.
+ * @ctx: operation context
+ * @nest: validated extension-point nest
+ */
+void ctlv_stub_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *nest);
+
+/**
  * ctlv_op_error - Record an operation error message.
  * @ctx: operation context
  * @error: negative error to return
