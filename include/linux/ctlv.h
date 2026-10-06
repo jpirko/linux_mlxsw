@@ -122,6 +122,8 @@ int ctlv_init(struct ctlv *ctlv, struct device *dev,
 void ctlv_publish(struct ctlv *ctlv);
 void ctlv_unpublish(struct ctlv *ctlv);
 void ctlv_fini(struct ctlv *ctlv);
+const struct ctlv_family *ctlv_family_of(const struct ctlv *ctlv);
+
 bool ctlv_family_inherits(const struct ctlv_family *family,
 			  const struct ctlv_family *ancestor);
 

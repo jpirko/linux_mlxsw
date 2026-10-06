@@ -87,8 +87,27 @@ MR journal
 
 MR extension is transactional.  The core allocates the complete journal entry
 and event before invoking ``mr_extend``.  A successful callback is followed
-only by infallible publication, so userspace observes the same ordered
-journal.
+only by infallible publication, so userspace and kernel consumers observe the
+same ordered journal.
+
+``mr-extend`` may extend only some of an MR's banks.  ``mr_extend`` then gets
+the digests of just those, in the MR's order, and leaves the other banks as
+they are.  A provider that can only extend every bank at once fails it with
+``-EOPNOTSUPP`` before changing any.  IMA always extends every bank.
+
+Kernel consumers
+================
+
+The interfaces in ``<linux/attestation/ima.h>`` select one live extendable MR
+by family lineage and/or parent device.  A routing target owns the
+``IMA_ACTIVE`` state; log-only clones retain only copied identity fields.
+Each operation enters the shared registry SRCU domain, resolves the original
+instance and MR lifetime, and then takes the instance mutex.
+
+Journal entries are immutable.  A reader captures an end generation, enters
+SRCU for one bounded batch, seeks by generation and follows the append-only
+``next`` chain.  No borrowed entry or payload pointer may cross the SRCU
+section.
 
 ``MR_READ`` uses ``mr_read_generation`` only to validate query continuation;
 the returned ``mr-generation`` is the journal boundary at which the values
@@ -99,8 +118,9 @@ Teardown
 
 ``attestation_unregister()`` first removes the node, so nothing opens the
 device again.  It then withdraws the device from the kernel registry, refusing
-the operations of files still open.  Only then does it unpublish the CTLV
-instance, which drains the operations and events in flight and queues
+the operations of files still open, and waits for registry SRCU readers, which
+may still call the provider and emit events.  Only then does it unpublish the
+CTLV instance, which drains the operations and events in flight and queues
 ``DEVICE_REMOVED``.  No provider callback runs once it returns, so the
 provider may release its native state before ``attestation_put()``.  Open
 files keep the structure until they close, and its release frees the journal.

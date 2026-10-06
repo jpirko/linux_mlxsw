@@ -58,6 +58,19 @@ static void attestation_digest_set_free(struct attestation_digest_set *set)
 	set->values_count = 0;
 }
 
+static bool attestation_identifier_valid(const char *value, size_t max_length)
+{
+	const unsigned char *at = (const unsigned char *)value;
+	size_t length = 0;
+
+	if (!value || !*value)
+		return false;
+	for (; *at; at++, length++)
+		if (*at < 0x21 || *at > 0x7e || length == max_length)
+			return false;
+	return true;
+}
+
 struct attestation_mr_log_entry_info *attestation_mr_info_alloc(const struct attestation_mr *mr)
 {
 	struct attestation_mr_log_entry_info *info;
@@ -110,6 +123,16 @@ void attestation_mr_log_entry_free(struct attestation_mr_log_entry *entry)
 		kfree(extend);
 		break;
 	}
+	case ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND: {
+		struct attestation_mr_log_entry_ima_extend *ima =
+			container_of(entry, typeof(*ima), extend.entry);
+
+		attestation_digest_set_free(&ima->extend.values);
+		kfree(ima->template_data);
+		kfree(ima->template_name);
+		kfree(ima);
+		break;
+	}
 	}
 }
 
@@ -132,7 +155,11 @@ void attestation_mr_log_append(struct attestation_dev *att, struct attestation_m
 {
 	struct attestation_mr_log *log = att->log;
 
+	RCU_INIT_POINTER(entry->next, NULL);
 	xa_store(&log->entries, entry->mr_generation, entry, GFP_NOWAIT);
+	if (log->tail)
+		rcu_assign_pointer(log->tail->next, entry);
+	log->tail = entry;
 }
 
 int attestation_mr_log_init(struct attestation_dev *att)
@@ -177,6 +204,10 @@ int attestation_mr_log_init(struct attestation_dev *att)
 		ret = xa_insert(&log->entries, entry->mr_generation, entry, GFP_KERNEL);
 		if (ret)
 			goto err_attached;
+		if (log->tail)
+			rcu_assign_pointer(log->tail->next, entry);
+		log->tail = entry;
+		mr->start_generation = entry->mr_generation;
 		infos[index++] = NULL;
 	}
 	kfree(infos);
@@ -236,6 +267,57 @@ attestation_mr_change_prepare(struct attestation_dev *att, struct attestation_mr
 		goto err_change;
 	}
 
+	ret = attestation_events_prepare(att, &change->events);
+	if (ret)
+		goto err_entry;
+	return change;
+
+err_entry:
+	attestation_mr_log_entry_free(&change->entry->entry);
+err_change:
+	kfree(change);
+	return ERR_PTR(ret);
+}
+
+struct attestation_mr_change *
+attestation_mr_ima_change_prepare(struct attestation_dev *att, struct attestation_mr *mr,
+				  const struct attestation_digest_set *values,
+				  const char *template_name, const u8 *template_data,
+				  size_t template_data_length, bool violation)
+{
+	struct attestation_mr_log_entry_extend *extend;
+	struct attestation_mr_log_entry_ima_extend *ima;
+	struct attestation_mr_change *change;
+	int ret;
+
+	lockdep_assert_held(&att->lock);
+	if (!attestation_identifier_valid(template_name, 128) || template_data_length > 65536)
+		return ERR_PTR(-EINVAL);
+
+	change = kzalloc_obj(*change, GFP_KERNEL);
+	if (!change)
+		return ERR_PTR(-ENOMEM);
+
+	extend = attestation_extend_alloc(ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND, sizeof(*ima), mr,
+					  values);
+	if (IS_ERR(extend)) {
+		ret = PTR_ERR(extend);
+		goto err_change;
+	}
+
+	ima = container_of(extend, typeof(*ima), extend);
+	ima->template_name = kstrdup(template_name, GFP_KERNEL);
+	ima->template_data = kmemdup(template_data, template_data_length, GFP_KERNEL);
+	ima->template_data_length = template_data_length;
+	ima->violation = violation;
+	if (!ima->template_name || (template_data_length && !ima->template_data)) {
+		attestation_mr_log_entry_free(&ima->extend.entry);
+		ret = -ENOMEM;
+		goto err_change;
+	}
+
+	change->mr = mr;
+	change->entry = &ima->extend;
 	ret = attestation_events_prepare(att, &change->events);
 	if (ret)
 		goto err_entry;
@@ -385,5 +467,19 @@ int attestation_mr_log_entry_encode(struct ctlv_cursor *reply,
 						 ->values);
 	if (ret)
 		return ret;
+	if (entry->type == ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND) {
+		const struct attestation_mr_log_entry_ima_extend *ima =
+			container_of(entry, typeof(*ima), extend.entry);
+
+		if (!ctlv_attestation_mr_log_entry_ima_start(reply, &inner))
+			return -EMSGSIZE;
+		ok = ctlv_attestation_mr_log_entry_ima_template_name_put(&inner,
+									 ima->template_name);
+		ok &= ctlv_attestation_mr_log_entry_ima_template_data_put(
+			&inner, ima->template_data, ima->template_data_length);
+		ok &= ctlv_attestation_mr_log_entry_ima_violation_put(&inner, ima->violation);
+		ctlv_record_end(&inner);
+		return ok ? 0 : -EMSGSIZE;
+	}
 	return 0;
 }

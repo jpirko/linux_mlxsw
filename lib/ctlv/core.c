@@ -383,6 +383,18 @@ static int ctlv_op_resolution_init(struct ctlv *ctlv, const struct ctlv_family *
 }
 
 /**
+ * ctlv_family_of - Get the device family.
+ * @ctlv: instance
+ *
+ * Return: family passed to ctlv_init(), NULL once unpublished.
+ */
+const struct ctlv_family *ctlv_family_of(const struct ctlv *ctlv)
+{
+	return READ_ONCE(ctlv->family);
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_family_of, "CTLV");
+
+/**
  * ctlv_family_inherits - Check a family's ancestry.
  * @family: family
  * @ancestor: family that may be @family or one of its ancestors
