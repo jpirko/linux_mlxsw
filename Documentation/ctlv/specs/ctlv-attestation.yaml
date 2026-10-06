@@ -44,6 +44,10 @@ flags:
   mr-caps:
     # The MR may be extended.
     - extend
+  # The state of one MR.
+  mr-state-flags:
+    # IMA extends this MR.
+    - ima-active
 
 records:
   # One MR, as mr-get describes it.
@@ -88,6 +92,14 @@ records:
       caps: mr-caps
       # The hardware's number for the MR, where it has one.
       register-index?: uint(..u32-max)
+    # IMA's measurement, on an extend entry IMA made.
+    ima?:
+      # The IMA template, such as ima-ng.
+      template-name: string(1..128)
+      # The template's fields, as IMA's binary measurement list has them.
+      template-data: binary(..64K)
+      # The entry records an IMA violation, not a measurement.
+      violation: bool
 
   # The first MR generation of the range mr-log-get selects and reports.
   mr-start-generation: uint(..u32-max)
@@ -223,7 +235,7 @@ ops:
     type: query
     fd-access: read
     optional: true
-    suggested-reply-length: 64K
+    suggested-reply-length: 128K
     request:
       # Only these MRs' entries; every MR's without it.
       selection[256]?:

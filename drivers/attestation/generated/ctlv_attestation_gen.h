@@ -246,6 +246,18 @@ CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_caps, CTLV_ATTESTATION_T_MR_LOG_EN
 /* The hardware's number for the MR, where it has one. */
 CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_register_index,
 	     CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_REGISTER_INDEX, CTLV_SCHEMA_UINT)
+/* IMA's measurement, on an extend entry IMA made. */
+CTLV_RECORD_START(ctlv_attestation_mr_log_entry_ima, CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA,
+		  CTLV_SCHEMA_RECORD)
+/* The IMA template, such as ima-ng. */
+CTLV_PUT_STRING(ctlv_attestation_mr_log_entry_ima_template_name,
+		CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_TEMPLATE_NAME, CTLV_SCHEMA_STRING)
+/* The template's fields, as IMA's binary measurement list has them. */
+CTLV_PUT_BINARY(ctlv_attestation_mr_log_entry_ima_template_data,
+		CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_TEMPLATE_DATA, CTLV_SCHEMA_BINARY)
+/* The entry records an IMA violation, not a measurement. */
+CTLV_PUT_BOOL(ctlv_attestation_mr_log_entry_ima_violation,
+	      CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_VIOLATION, CTLV_SCHEMA_BOOL)
 /* The first MR generation of the range mr-log-get selects and reports. */
 CTLV_PUT_U64(ctlv_attestation_mr_start_generation, CTLV_ATTESTATION_T_MR_START_GENERATION,
 	     CTLV_SCHEMA_UINT)

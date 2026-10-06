@@ -64,6 +64,16 @@ enum _ctlv_attestation_mr_caps_bit {
 #define CTLV_ATTESTATION_MR_CAPS_EXTEND _BITULL(CTLV_ATTESTATION_MR_CAPS_EXTEND_BIT)
 #define CTLV_ATTESTATION_MR_CAPS_MASK CTLV_ATTESTATION_MR_CAPS_EXTEND
 
+/* flags mr-state-flags */
+enum _ctlv_attestation_mr_state_flags_bit {
+	CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE_BIT = 0,
+};
+
+/* IMA extends this MR. */
+#define CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE \
+	_BITULL(CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE_BIT)
+#define CTLV_ATTESTATION_MR_STATE_FLAGS_MASK CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE
+
 /* mr-desc */
 /* The platform's name for the MR, such as rtmr0. */
 #define CTLV_ATTESTATION_T_MR_DESC_NAME \
@@ -106,6 +116,9 @@ enum _ctlv_attestation_mr_caps_bit {
 /* The MR an info entry describes. */
 #define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00050000, 3)
+/* IMA's measurement, on an extend entry IMA made. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00050000, 4)
 
 /* mr-log-entry.mr */
 /* The platform's name for the MR. */
@@ -120,6 +133,17 @@ enum _ctlv_attestation_mr_caps_bit {
 /* The hardware's number for the MR, where it has one. */
 #define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_REGISTER_INDEX \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00051000, 4)
+
+/* mr-log-entry.ima */
+/* The IMA template, such as ima-ng. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_TEMPLATE_NAME \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00052000, 1)
+/* The template's fields, as IMA's binary measurement list has them. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_TEMPLATE_DATA \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00052000, 2)
+/* The entry records an IMA violation, not a measurement. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_VIOLATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00052000, 3)
 
 /* mr-start-generation */
 /* The first MR generation of the range mr-log-get selects and reports. */

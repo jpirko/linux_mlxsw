@@ -219,7 +219,7 @@ enum written as ``extension`` has no values of its own; see
 `Inheritance and HW driver fields`_.
 
 No message outgrows the core's inline limit, ``CTLV_MAX_INLINE_MESSAGE_LEN``
-(64 KiB): the generator refuses an operation whose request, action reply or
+(128 KiB): the generator refuses an operation whose request, action reply or
 event could be longer, or a query whose longest field could not fit in one
 fragment. Larger data goes in a blob.
 

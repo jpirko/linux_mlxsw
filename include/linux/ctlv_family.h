@@ -20,7 +20,7 @@
  */
 
 /* Request roots, action replies, query reply fragments and event roots. */
-#define CTLV_MAX_INLINE_MESSAGE_LEN	0x10000		/* 64 KiB */
+#define CTLV_MAX_INLINE_MESSAGE_LEN	0x20000		/* 128 KiB */
 /* Includes the error information root. */
 #define CTLV_MAX_ERROR_LEN		0x4000		/* 16 KiB */
 /* The root is at depth zero. Validation recurses once per level. */

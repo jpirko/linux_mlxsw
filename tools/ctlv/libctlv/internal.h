@@ -32,7 +32,7 @@
 #define CTLV_DEPTH_MAX (CTLV_RECORD_DEPTH_MAX + 1)
 
 /* Stops a runaway builder: no device today takes a longer request. */
-#define CTLV_REQUEST_LEN_MAX 0x10000
+#define CTLV_REQUEST_LEN_MAX 0x20000
 
 /*
  * Reassembly needs a bound of its own, a query reply not being held to the

@@ -296,7 +296,8 @@ The journal
 The device keeps an append-only journal of its MRs, numbered by
 ``mr-generation`` from 1. It starts with an ``info`` entry for each MR,
 describing it as ``mr-get`` does. Every extension then appends an ``extend``
-entry with the digests of the banks it extended.
+entry with the digests of the banks it extended, and with IMA's template for
+IMA's measurements.
 
 A bank is replayed from the entries with a digest for it; an entry without one
 did not extend that bank. So evidence reporting a bank vouches only for the
@@ -335,6 +336,10 @@ each an ``mr-log-entry`` with:
 
 ``mr-values``
     In an ``extend`` entry, the digests the extension folded in.
+
+``ima``
+    In an ``extend`` entry that has one, IMA's ``template-name``,
+    ``template-data`` and ``violation``.
 
 ``EINVAL``
     The selection names an MR twice, or the start is past the end.

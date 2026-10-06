@@ -18,6 +18,7 @@ enums:
 flags:
   mr-device-caps: {extend: 0}
   mr-caps: {extend: 0}
+  mr-state-flags: {ima-active: 0}
 records:
   mr-desc:
     id: 0x00010000
@@ -46,6 +47,7 @@ records:
       mr-id: {number: 1, type: uint, max: u32-max}
       event: {number: 2, enum: mr-log-event}
       mr: {number: 3, record: mr-log-entry.mr, optional: true}
+      ima: {number: 4, record: mr-log-entry.ima, optional: true}
     members: [record mr-generation, 'record mr-values?']
   mr-log-entry.mr:
     id: 0x00051000
@@ -55,6 +57,12 @@ records:
                                   max-occurrences: hash-algo}
       caps: {number: 3, flags: mr-caps}
       register-index: {number: 4, type: uint, max: u32-max, optional: true}
+  mr-log-entry.ima:
+    id: 0x00052000
+    fields:
+      template-name: {number: 1, type: string, min-length: 1, max-length: 128}
+      template-data: {number: 2, type: binary, max-length: 64K}
+      violation: {number: 3, type: bool}
   mr-start-generation:
     id: 0x00060000
     fields:
