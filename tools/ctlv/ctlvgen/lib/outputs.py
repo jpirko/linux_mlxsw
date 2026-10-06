@@ -37,9 +37,8 @@ IDENTITIES: dict[str, tuple[str, str, str]] = {
     'user-source': ('user', 'source', '.c'),
 }
 
-USER_FLAVOURS = frozenset({'user-header', 'user-source'})
-ROOT_FLAVOURS = frozenset(FLAVOURS) - {'user-header'}
-FAMILY_FLAVOURS: frozenset[str] = frozenset(FLAVOURS) - USER_FLAVOURS
+FAMILY_FLAVOURS: frozenset[str] = frozenset(FLAVOURS)
+ROOT_FLAVOURS: frozenset[str] = FAMILY_FLAVOURS - {'user-header'}
 FIXTURE_FLAVOURS: frozenset[str] = frozenset({
     'uapi-header', 'kernel-header', 'kernel-source',
 })
@@ -149,8 +148,6 @@ def load(paths: spec.Paths) -> tuple[Output, ...]:
             if not fixture and name == spec.CORE_FAMILY_NAME:
                 required = ROOT_FLAVOURS
             flavours = frozenset(record['outputs'])
-            if required == FAMILY_FLAVOURS and flavours & USER_FLAVOURS:
-                required |= USER_FLAVOURS
             if flavours != required:
                 missing = sorted(required - flavours)
                 extra = sorted(flavours - required)
