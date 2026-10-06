@@ -32,8 +32,22 @@ MR journal
 
 MR extension is transactional.  The core allocates the complete journal entry
 and event before invoking ``mr_extend``.  A successful callback is followed
-only by infallible publication, so userspace observes the same ordered
-journal.
+only by infallible publication, so userspace and kernel consumers observe the
+same ordered journal.
+
+Kernel consumers
+================
+
+The interfaces in ``<linux/attestation/ima.h>`` select one live extendable MR
+by family lineage and/or parent device.  A routing target owns the
+``IMA_ACTIVE`` state; log-only clones retain only copied identity fields.
+Each operation enters the shared registry SRCU domain, resolves the original
+instance and MR lifetime, and then takes the instance mutex.
+
+Journal entries are immutable.  A reader captures an end generation, enters
+SRCU for one bounded batch, seeks by generation and follows the append-only
+``next`` chain.  No borrowed entry or payload pointer may cross the SRCU
+section.
 
 ``MR_READ`` uses ``mr_read_generation`` only to validate query continuation;
 the returned ``mr.generation`` is the journal boundary at which the values
@@ -43,9 +57,10 @@ Teardown
 ========
 
 CTLV first drains userspace operations.  The base ``pre_fini`` callback then
-withdraws the instance from the kernel registry while provider state and CTLV
-event emission remain available.  CTLV stops events only after that callback
-returns; provider and base ``fini`` callbacks may then release native storage.
+withdraws the instance from the kernel registry and waits for registry SRCU
+readers while provider state and CTLV event emission remain available.  CTLV
+stops events only after that callback returns; provider and base ``fini``
+callbacks may then release native and journal storage.
 
 TDX provider
 ============

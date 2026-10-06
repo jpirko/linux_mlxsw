@@ -628,6 +628,13 @@ void *ctlv_priv_child(const void *priv)
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_priv_child, "CTLV");
 
+const struct ctlv_family *
+ctlv_device_family(const struct ctlv_device *ctlvdev)
+{
+	return READ_ONCE(ctlvdev->family);
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_device_family, "CTLV");
+
 struct device *ctlv_device_parent(const struct ctlv_device *ctlvdev)
 {
 	return ctlvdev->dev.parent;

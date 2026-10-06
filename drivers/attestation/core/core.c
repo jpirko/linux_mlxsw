@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <linux/attestation/ima.h>
 #include <linux/cleanup.h>
 #include <linux/ctlv.h>
 #include <linux/device.h>
@@ -12,7 +13,9 @@
 
 #include "internal.h"
 
-static DEFINE_XARRAY(attestation_instances);
+DEFINE_XARRAY(attestation_instances);
+DEFINE_SRCU(attestation_instances_srcu);
+EXPORT_SYMBOL_NS_GPL(attestation_instances_srcu, "ATTESTATION");
 
 static DEFINE_MUTEX(attestation_registry_lock);
 static unsigned long attestation_next_index;
@@ -155,6 +158,34 @@ bool attestation_registered(struct attestation *att)
 	registered = xa_get_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
 	return registered;
+}
+
+struct attestation *attestation_instance_lock(unsigned int index)
+{
+	struct attestation *att;
+
+	xa_lock(&attestation_instances);
+	if (!xa_get_mark(&attestation_instances, index,
+			 ATTESTATION_REGISTERED)) {
+		xa_unlock(&attestation_instances);
+		return ERR_PTR(-ENODEV);
+	}
+	att = xa_load(&attestation_instances, index);
+	xa_unlock(&attestation_instances);
+	if (!att)
+		return ERR_PTR(-ENODEV);
+
+	mutex_lock(&att->lock);
+	if (!attestation_registered(att)) {
+		mutex_unlock(&att->lock);
+		return ERR_PTR(-ENODEV);
+	}
+	return att;
+}
+
+void attestation_instance_unlock(struct attestation *att)
+{
+	mutex_unlock(&att->lock);
 }
 
 void attestation_mr_changed(struct attestation *att)
@@ -308,6 +339,7 @@ void ctlv_attestation_pre_fini(struct ctlv_device *ctlvdev, void *priv)
 	xa_lock(&attestation_instances);
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
+	synchronize_srcu(&attestation_instances_srcu);
 }
 
 void ctlv_attestation_fini(struct ctlv_device *ctlvdev, void *priv)

@@ -71,6 +71,15 @@ void *ctlv_priv_child(const void *priv);
 struct device;
 
 /**
+ * ctlv_device_family - Get the device family.
+ * @ctlvdev: CTLV device
+ *
+ * Return: family used to create the device.
+ */
+const struct ctlv_family *
+ctlv_device_family(const struct ctlv_device *ctlvdev);
+
+/**
  * ctlv_device_parent - Get the backing device.
  * @ctlvdev: CTLV device
  *
