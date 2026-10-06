@@ -260,6 +260,12 @@ int ctlv_attestation_tdx_device_info_fill(struct ctlv *ctlv,
 	return ok ? 0 : -EMSGSIZE;
 }
 
+void ctlv_attestation_tdx_device_info_read(struct ctlv *ctlv,
+					   struct ctlv_op_ctx *ctx,
+					   const struct ctlv_cursor *record)
+{
+}
+
 int tdx_attestation_register(struct device *parent,
 			     const struct tdx_guest_info *info)
 {

@@ -421,14 +421,17 @@ struct ctlv_ext_ops {
 	int (*fill)(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 		    const struct ctlv_cursor *request,
 		    struct ctlv_cursor *record);
+	void (*read)(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+		     const struct ctlv_cursor *record);
 };
 
-/* How a family fills an ancestor's extension point. */
+/* How a family fills an ancestor's extension point and reads it back. */
 #define CTLV_EXT_OPS(_family, _ext, _name)				\
 	((struct ctlv_ext_ops){						\
 		.family_id = (_family),					\
 		.ext_id = (_ext),					\
 		.fill = _name##_fill,					\
+		.read = _name##_read,					\
 	})
 
 struct ctlv_family {

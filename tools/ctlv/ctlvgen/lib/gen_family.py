@@ -26,11 +26,13 @@ HOOK_PARAMS: tuple[str, ...] = ('struct ctlv *ctlv',
                                 'struct ctlv_op_ctx *ctx')
 HOOK_RETURNS: tuple[tuple[str, str], ...] = (('pre', 'int'), ('post', 'void'))
 
-# The reply-side callback for an extension point.
+# The two halves of one extension point, entered from the message that has it.
 EXT_HOOKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ('fill', 'int', ('struct ctlv *ctlv', 'struct ctlv_op_ctx *ctx',
                      'const struct ctlv_cursor *request',
                      'struct ctlv_cursor *record')),
+    ('read', 'void', ('struct ctlv *ctlv', 'struct ctlv_op_ctx *ctx',
+                      'const struct ctlv_cursor *record')),
 )
 
 # The state helpers of a dynamically available op.
@@ -124,7 +126,7 @@ def _ext_hooks(writer: cgen.Writer, names: cgen.Names,
     """The fill and read callbacks of each extension point the family fills."""
     for fill in family.fills:
         owner = family.owners[fill.family_id]
-        writer.comment(f'{fill.name} of {owner}: fill callback.')
+        writer.comment(f'{fill.name} of {owner}: fill and read callbacks.')
         for which, returns, params in EXT_HOOKS:
             writer.signature(returns, names.ext_callback(fill, which),
                              params)

@@ -662,6 +662,10 @@ extension point no family fills adds no record and no length. ``ctlv-example``
 never names ``ctlv-example-foo``, and the foo family names nothing of
 ``ctlv-example`` beyond the extension point it fills.
 
+For an extension point in a request, the parent passes the record to
+``ctlv_ext_read()``, and each family that fills it gets the fields it
+declared through its generated ``_read`` callback.
+
 A program knows whose fields it is reading without looking at them. A
 device's family chain runs from the root to the family of its instance,
 here ``ctlv``, ``ctlv-example`` and ``ctlv-example-foo``, and that last one,

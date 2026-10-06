@@ -890,6 +890,46 @@ int ctlv_ext_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_ext_fill, "CTLV");
 
+/**
+ * ctlv_ext_read - Pass an extension-point input record to its filling family.
+ * @ctx: operation context
+ * @record: validated extension-point record
+ */
+void ctlv_ext_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *record)
+{
+	const struct ctlv_schema_tree *tree;
+	u32 index;
+
+	if (WARN_ON_ONCE(!record->tree))
+		return;
+	if (!record->hdr)
+		return;
+	tree = record->tree;
+	for (index = 0; index < tree->ext_schemas_count; index++) {
+		const struct ctlv_ext_schema *ext_schema = &tree->ext_schemas[index];
+		const struct ctlv_ext_fill_schema *fill_schema;
+		const struct ctlv_ext_ops *ext_ops;
+		struct ctlv_cursor filled;
+
+		if (ext_schema->node != record->node)
+			continue;
+		ext_ops = ctlv_ext_ops_find(ctx->ctlv, ext_schema);
+		if (!ext_ops || !ext_ops->read)
+			continue;
+		fill_schema = ctlv_schema_fill(ctx->family,
+					       ext_schema->family_id,
+					       ext_schema->ext_id);
+		if (WARN_ON_ONCE(!fill_schema))
+			continue;
+		filled = *record;
+		if (!ctlv_message_input_rebind(&filled, &fill_schema->members,
+					       0))
+			continue;
+		ext_ops->read(ctx->ctlv, ctx, &filled);
+	}
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_ext_read, "CTLV");
+
 static long ctlv_op_exec_ioctl(struct ctlv_file *cfile, unsigned long arg)
 {
 	struct ctlv_op_exec __user *uexec = (struct ctlv_op_exec __user *)arg;

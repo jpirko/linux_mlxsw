@@ -137,6 +137,8 @@ void ctlv_record_cancel(struct ctlv_cursor *child);
 
 int ctlv_ext_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
 		  struct ctlv_cursor *record);
+void ctlv_ext_read(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *record);
+
 int ctlv_op_error(struct ctlv_op_ctx *ctx, int error, const char *message);
 __printf(3, 4)
 int ctlv_op_errorf(struct ctlv_op_ctx *ctx, int error, const char *fmt, ...);

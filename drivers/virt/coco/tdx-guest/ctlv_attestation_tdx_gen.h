@@ -20,10 +20,12 @@
 
 extern const struct ctlv_family_schema ctlv_attestation_tdx_schema;
 
-/* device-info of ctlv-attestation: fill callback. */
+/* device-info of ctlv-attestation: fill and read callbacks. */
 int ctlv_attestation_tdx_device_info_fill(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 					  const struct ctlv_cursor *request,
 					  struct ctlv_cursor *record);
+void ctlv_attestation_tdx_device_info_read(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+					   const struct ctlv_cursor *record);
 
 extern const struct ctlv_family ctlv_attestation_tdx_family;
 
