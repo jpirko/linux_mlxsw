@@ -4341,6 +4341,7 @@ F:	Documentation/driver-api/attestation.rst
 F:	drivers/attestation/
 F:	include/linux/attestation*
 F:	include/uapi/linux/ctlv_attestation*
+F:	tools/testing/selftests/attestation/
 
 ATTO EXPRESSSAS SAS/SATA RAID SCSI DRIVER
 M:	Bradley Grove <linuxdrivers@attotech.com>

@@ -23,6 +23,10 @@ families:
       uapi-header: include/uapi/linux/ctlv_attestation_gen.h
       kernel-header: drivers/attestation/generated/ctlv_attestation_gen.h
       kernel-source: drivers/attestation/generated/ctlv_attestation_gen.c
+      user-header: >-
+        tools/testing/selftests/attestation/ctlv_attestation_user_gen.h
+      user-source: >-
+        tools/testing/selftests/attestation/ctlv_attestation_user_gen.c
 
   - name: ctlv-attestation-tdx
     source: Documentation/ctlv/specs/ctlv-attestation-tdx.yaml
@@ -30,6 +34,10 @@ families:
       uapi-header: include/uapi/linux/ctlv_attestation_tdx_gen.h
       kernel-header: drivers/attestation/generated/ctlv_attestation_tdx_gen.h
       kernel-source: drivers/attestation/generated/ctlv_attestation_tdx_gen.c
+      user-header: >-
+        tools/testing/selftests/attestation/ctlv_attestation_tdx_user_gen.h
+      user-source: >-
+        tools/testing/selftests/attestation/ctlv_attestation_tdx_user_gen.c
 
   - name: ctlv-test
     source: Documentation/ctlv/specs/ctlv-test.yaml
@@ -55,3 +63,7 @@ families:
       uapi-header: include/uapi/linux/ctlv_attestation_sim_gen.h
       kernel-header: drivers/attestation/generated/ctlv_attestation_sim_gen.h
       kernel-source: drivers/attestation/generated/ctlv_attestation_sim_gen.c
+      user-header: >-
+        tools/testing/selftests/attestation/ctlv_attestation_sim_user_gen.h
+      user-source: >-
+        tools/testing/selftests/attestation/ctlv_attestation_sim_user_gen.c

@@ -34,9 +34,8 @@ IDENTITIES = {
     'user-source': ('user', 'source', '.c'),
 }
 
-USER_FLAVOURS = frozenset({'user-header', 'user-source'})
-ROOT_FLAVOURS = frozenset(FLAVOURS) - {'user-header'}
-FAMILY_FLAVOURS = frozenset(FLAVOURS) - USER_FLAVOURS
+FAMILY_FLAVOURS = frozenset(FLAVOURS)
+ROOT_FLAVOURS = FAMILY_FLAVOURS - {'user-header'}
 FIXTURE_FLAVOURS = frozenset({
     'uapi-header', 'kernel-header', 'kernel-source',
 })
@@ -140,8 +139,6 @@ def load(paths):
             if not fixture and name == spec.CORE_FAMILY_NAME:
                 required = ROOT_FLAVOURS
             flavours = frozenset(record['outputs'])
-            if required == FAMILY_FLAVOURS and flavours & USER_FLAVOURS:
-                required |= USER_FLAVOURS
             if flavours != required:
                 missing = sorted(required - flavours)
                 extra = sorted(flavours - required)
