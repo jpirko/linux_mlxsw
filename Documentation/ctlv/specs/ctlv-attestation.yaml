@@ -32,6 +32,10 @@ flags:
       - read
       - extend
 
+  - name: mr-state-flags
+    values:
+      - ima-active
+
 attr-groups:
   - name: device
     attrs:
@@ -132,6 +136,8 @@ attr-groups:
       - name: generation
         type: uint
         max: 4294967295
+      - name: state-flags
+        flags: mr-state-flags
       - name: selection
         attrs: mr-log-selection
         max-occurrences: 256
@@ -151,6 +157,17 @@ attr-groups:
         enum: mr-log-event
       - name: mr
         attrs: mr-log-info
+      - name: ima
+        attrs: mr-log-ima
+      - name: template-name
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: template-data
+        type: binary
+        max-length: 65536
+      - name: violation
+        type: bool
 
   - name: notification
     attrs:
@@ -259,9 +276,16 @@ attr-sets:
     optional-attrs:
       - mr.value
       - log.mr
+      - log.ima
 
   - name: mr-log-event
     attrs: notification.entry
+
+  - name: mr-log-ima
+    attrs:
+      - log.template-name
+      - log.template-data
+      - log.violation
 
   - name: mr-log-selection
     attrs: mr.id

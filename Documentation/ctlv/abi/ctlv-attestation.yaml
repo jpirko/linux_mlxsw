@@ -17,6 +17,7 @@ enums:
 flags:
   mr-device-caps: {read: 0, extend: 1}
   mr-caps: {read: 0, extend: 1}
+  mr-state-flags: {ima-active: 0}
 attr-groups:
   device:
     id: 1
@@ -61,15 +62,20 @@ attr-groups:
       value: {id: 8, type: nested, max-occurrences: 21}
       data: {id: 9, type: binary, min-length: 16, max-length: 64}
       generation: {id: 10, type: uint, max: 4294967295}
-      selection: {id: 11, type: nested, max-occurrences: 256}
-      start-generation: {id: 12, type: uint, max: 4294967295}
-      end-generation: {id: 13, type: uint, max: 4294967295}
+      state-flags: {id: 11, flags: mr-state-flags}
+      selection: {id: 12, type: nested, max-occurrences: 256}
+      start-generation: {id: 13, type: uint, max: 4294967295}
+      end-generation: {id: 14, type: uint, max: 4294967295}
   log:
     id: 5
     attrs:
       entry: {id: 1, type: nested, max-occurrences: unlimited}
       event: {id: 2, enum: mr-log-event}
       mr: {id: 3, type: nested}
+      ima: {id: 4, type: nested}
+      template-name: {id: 5, type: string, min-length: 1, max-length: 128}
+      template-data: {id: 6, type: binary, max-length: 65536}
+      violation: {id: 7, type: bool}
   notification:
     id: 6
     attrs:
@@ -95,9 +101,10 @@ attr-sets:
   mr-log-info: {id: 18}
   mr-log-entry: {id: 19}
   mr-log-event: {id: 20}
-  mr-log-selection: {id: 21}
-  mr-log-request: {id: 22}
-  mr-log-reply: {id: 23}
+  mr-log-ima: {id: 21}
+  mr-log-selection: {id: 22}
+  mr-log-request: {id: 23}
+  mr-log-reply: {id: 24}
 ops:
   device-get:
     abi: {id: 1, type: action, fd-access: read}
@@ -164,6 +171,8 @@ ops:
               - log.mr:
                   attrs: [mr.name, mr.supported-hash-algo, mr.caps]
                   optional-attrs: [mr.register-index]
+              - log.ima:
+                  attrs: [log.template-name, log.template-data, log.violation]
   mr-log-get:
     abi: {id: 8, type: query, fd-access: read, optional: true}
     request:
@@ -182,3 +191,5 @@ ops:
               - log.mr:
                   attrs: [mr.name, mr.supported-hash-algo, mr.caps]
                   optional-attrs: [mr.register-index]
+              - log.ima:
+                  attrs: [log.template-name, log.template-data, log.violation]
