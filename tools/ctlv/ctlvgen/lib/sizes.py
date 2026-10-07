@@ -38,6 +38,7 @@ BOOL_PAYLOAD_LEN = 1
 BLOB_DESCRIPTOR_ATTRS = {
     'va': 3,
     'memfd': 4,
+    'dma-buf': 4,
 }
 
 # Attr sets of the root family that are message roots in their own right, each

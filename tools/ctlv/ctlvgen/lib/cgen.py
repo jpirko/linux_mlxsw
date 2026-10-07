@@ -596,6 +596,7 @@ def attr_writers(names, attr):
 BLOB_PUTTERS = {
     'va': ('va', ('const void *address', '__u64 length')),
     'memfd': ('memfd', ('int fd', '__u64 offset', '__u64 length')),
+    'dma-buf': ('dma_buf', ('int fd', '__u64 offset', '__u64 length')),
 }
 
 # What an event gets in the place of a wrapper.

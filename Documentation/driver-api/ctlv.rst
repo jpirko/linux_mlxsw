@@ -63,7 +63,7 @@ Write the specification
           - name: data
             blob:
               direction: input
-              allowed-backings: [ va, memfd ]
+              allowed-backings: [ va, memfd, dma-buf ]
               max-length: 1048576
               alignment: 8
       - name: list

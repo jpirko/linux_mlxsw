@@ -449,7 +449,7 @@ Blobs
 An operation that moves more data than a message should carry declares a blob
 attribute, and the caller passes a descriptor instead of the data: a nest
 carrying the backing type, the length, an offset and the identifier of the
-memory. Two backings are defined:
+memory. Three backings are defined:
 
 ``va``
     Anonymous userspace memory of the calling process, named by an address in
@@ -457,6 +457,10 @@ memory. Two backings are defined:
 
 ``memfd``
     A memfd, named by a file descriptor in ``blob.fd``, at ``blob.offset``.
+
+``dma-buf``
+    An exported dma-buf, named by a file descriptor in ``blob.fd``, at
+    ``blob.offset``.
 
 The backings an attribute accepts, the direction data may flow, the maximum
 length and the required alignment are declared by the family and reported by

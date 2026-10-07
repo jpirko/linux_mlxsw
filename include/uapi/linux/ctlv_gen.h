@@ -31,6 +31,7 @@ enum _ctlv_op_availability {
 enum _ctlv_blob_type {
 	CTLV_BLOB_TYPE_VA = 1,
 	CTLV_BLOB_TYPE_MEMFD,
+	CTLV_BLOB_TYPE_DMA_BUF,
 };
 
 /* enum blob-direction */
