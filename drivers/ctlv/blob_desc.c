@@ -74,6 +74,7 @@ static u32 ctlv_blob_variant(const struct ctlv_blob_desc *desc)
 		required |= BIT(CTLV_BLOB_MEMBER_ADDRESS);
 		break;
 	case CTLV_BLOB_TYPE_MEMFD:
+	case CTLV_BLOB_TYPE_DMA_BUF:
 		required |= BIT(CTLV_BLOB_MEMBER_FD);
 		optional |= BIT(CTLV_BLOB_MEMBER_OFFSET);
 		if (desc->member[CTLV_BLOB_MEMBER_FD] > INT_MAX)
@@ -108,4 +109,3 @@ u32 ctlv_blob_desc_check(const struct ctlv_blob_desc *desc, const struct ctlv_no
 		return CTLV_VALIDATION_REASON_BAD_BLOB_DESCRIPTOR;
 	return 0;
 }
-

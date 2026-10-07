@@ -9,11 +9,16 @@
 #include <linux/bits.h>
 #include <linux/capability.h>
 #include <linux/ctlv.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-direction.h>
+#include <linux/dma-fence.h>
+#include <linux/dma-resv.h>
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/highmem.h>
+#include <linux/iosys-map.h>
 #include <linux/limits.h>
 #include <linux/memfd.h>
 #include <linux/minmax.h>
@@ -23,6 +28,7 @@
 #include <linux/sched.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/signal.h>
+#include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 
@@ -34,6 +40,8 @@
 #include "blob_desc.h"
 #include "internal.h"
 #include "message.h"
+
+struct ctlv_blob_dma;
 
 struct ctlv_blob {
 	u64 len;
@@ -52,6 +60,14 @@ struct ctlv_blob {
 			struct file *file;
 			loff_t offset;
 		} memfd;
+		struct {
+			struct dma_buf *dmabuf;
+			struct iosys_map map;
+			struct ctlv_blob_dma *dma;
+			u64 offset;
+			enum dma_data_direction cpu_dir;
+			bool cpu_active;
+		} dma_buf;
 	};
 };
 
@@ -298,6 +314,333 @@ static int ctlv_blob_memfd_copy(struct ctlv_blob *blob, u64 offset, void *buf, s
 	return 0;
 }
 
+struct ctlv_blob_dma {
+	struct ctlv_blob *blob;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	struct dma_fence *fence;
+	enum dma_data_direction direction;
+	bool signalling;
+	bool submitting;
+};
+
+static void ctlv_blob_record_error(struct ctlv_blob *blob, int error)
+{
+	if (error && blob->ctx && !blob->ctx->blob_error)
+		blob->ctx->blob_error = error;
+}
+
+/* Returns with the reservation locked and one fence slot reserved. */
+static int ctlv_blob_resv_prepare(struct ctlv_blob *blob)
+{
+	struct dma_resv *resv = blob->dma_buf.dmabuf->resv;
+	enum dma_resv_usage usage;
+	signed long remaining;
+	int ret;
+
+	usage = dma_resv_usage_rw(ctlv_blob_writable(blob));
+	ret = dma_resv_lock_interruptible(resv, NULL);
+	if (ret)
+		return ret;
+	remaining = dma_resv_wait_timeout(resv, usage, true,
+					  MAX_SCHEDULE_TIMEOUT);
+	if (remaining <= 0) {
+		ret = remaining ? (int)remaining : -EBUSY;
+		goto err_unlock;
+	}
+	ret = dma_resv_reserve_fences(resv, 1);
+	if (ret)
+		goto err_unlock;
+	return 0;
+
+err_unlock:
+	dma_resv_unlock(resv);
+	return ret;
+}
+
+static void ctlv_blob_fence_publish(struct ctlv_blob *blob,
+				    struct dma_fence *fence)
+{
+	dma_resv_add_fence(blob->dma_buf.dmabuf->resv, fence,
+			   ctlv_blob_writable(blob) ? DMA_RESV_USAGE_WRITE :
+						      DMA_RESV_USAGE_READ);
+}
+
+static struct ctlv_blob *ctlv_blob_dma_buf_acquire(struct dma_buf *dmabuf, u64 offset,
+					    u64 len, u8 direction)
+{
+	struct ctlv_blob *blob;
+	u64 end;
+
+	blob = kzalloc_obj(*blob, GFP_KERNEL_ACCOUNT);
+	if (!blob) {
+		dma_buf_put(dmabuf);
+		return ERR_PTR(-ENOMEM);
+	}
+	INIT_LIST_HEAD(&blob->entry);
+	blob->len = len;
+	blob->direction = direction;
+	blob->type = CTLV_BLOB_TYPE_DMA_BUF;
+	blob->dma_buf.dmabuf = dmabuf;
+	blob->dma_buf.offset = offset;
+	if (!ctlv_blob_writable(blob))
+		blob->dma_buf.cpu_dir = DMA_FROM_DEVICE;
+	else if (!ctlv_blob_readable(blob))
+		blob->dma_buf.cpu_dir = DMA_TO_DEVICE;
+	else
+		blob->dma_buf.cpu_dir = DMA_BIDIRECTIONAL;
+
+	if (!len || direction < CTLV_BLOB_DIRECTION_INPUT ||
+	    direction > CTLV_BLOB_DIRECTION_INOUT ||
+	    check_add_overflow(offset, len, &end) || end > dmabuf->size) {
+		kfree(blob);
+		dma_buf_put(dmabuf);
+		return ERR_PTR(-EINVAL);
+	}
+	return blob;
+}
+
+static int ctlv_blob_dma_buf_cpu_begin(struct ctlv_blob *blob)
+{
+	struct dma_buf *dmabuf = blob->dma_buf.dmabuf;
+	int ret;
+
+	if (blob->dma_buf.cpu_active)
+		return 0;
+	if (WARN_ON_ONCE(blob->dma_buf.dma))
+		return -EBUSY;
+	if (blob->ctx && blob->ctx->dma_maps)
+		return -EBUSY;
+
+	ret = dma_buf_vmap_unlocked(dmabuf, &blob->dma_buf.map);
+	if (ret)
+		return ret;
+	ret = dma_buf_begin_cpu_access(dmabuf, blob->dma_buf.cpu_dir);
+	if (ret) {
+		dma_buf_vunmap_unlocked(dmabuf, &blob->dma_buf.map);
+		return ret;
+	}
+	blob->dma_buf.cpu_active = true;
+	if (blob->ctx)
+		blob->ctx->cpu_blobs++;
+	return 0;
+}
+
+static int ctlv_blob_dma_buf_cpu_end(struct ctlv_blob *blob)
+{
+	struct dma_buf *dmabuf = blob->dma_buf.dmabuf;
+	int ret;
+
+	if (!blob->dma_buf.cpu_active)
+		return 0;
+	ret = dma_buf_end_cpu_access(dmabuf, blob->dma_buf.cpu_dir);
+	dma_buf_vunmap_unlocked(dmabuf, &blob->dma_buf.map);
+	blob->dma_buf.cpu_active = false;
+	if (blob->ctx)
+		blob->ctx->cpu_blobs--;
+	ctlv_blob_record_error(blob, ret);
+	return ret;
+}
+
+static enum dma_data_direction
+ctlv_blob_device_direction(const struct ctlv_blob *blob)
+{
+	if (!ctlv_blob_writable(blob))
+		return DMA_TO_DEVICE;
+	if (!ctlv_blob_readable(blob))
+		return DMA_FROM_DEVICE;
+	return DMA_BIDIRECTIONAL;
+}
+
+static bool ctlv_blob_sgt_covers(const struct ctlv_blob *blob,
+				 const struct sg_table *sgt)
+{
+	struct scatterlist *sg;
+	u64 mapped = 0;
+	u64 needed;
+	int i;
+
+	if (check_add_overflow(blob->dma_buf.offset, blob->len, &needed))
+		return false;
+	for_each_sgtable_dma_sg(sgt, sg, i) {
+		if (check_add_overflow(mapped, (u64)sg_dma_len(sg), &mapped))
+			return false;
+		if (mapped >= needed)
+			return true;
+	}
+	return false;
+}
+
+struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
+					struct device *dev,
+					struct sg_table **sgt, u64 *dma_skip)
+{
+	struct ctlv_blob_dma *dma;
+	int ret;
+
+	if (WARN_ON_ONCE(!ctlv_blob_access_live(blob)))
+		return ERR_PTR(-EINVAL);
+	if (blob->type != CTLV_BLOB_TYPE_DMA_BUF)
+		return ERR_PTR(-EOPNOTSUPP);
+	if (WARN_ON_ONCE(blob->dma_buf.cpu_active || blob->dma_buf.dma))
+		return ERR_PTR(-EBUSY);
+	if (blob->ctx && (blob->ctx->cpu_blobs || blob->ctx->dma_maps))
+		return ERR_PTR(-EBUSY);
+
+	dma = kzalloc_obj(*dma, GFP_KERNEL_ACCOUNT);
+	if (!dma)
+		return ERR_PTR(-ENOMEM);
+	dma->blob = blob;
+	dma->direction = ctlv_blob_device_direction(blob);
+	dma->attach = dma_buf_attach(blob->dma_buf.dmabuf, dev);
+	if (IS_ERR(dma->attach)) {
+		ret = PTR_ERR(dma->attach);
+		goto err_free_dma;
+	}
+	dma->sgt = dma_buf_map_attachment_unlocked(dma->attach,
+						   dma->direction);
+	if (IS_ERR(dma->sgt)) {
+		ret = PTR_ERR(dma->sgt);
+		goto err_detach;
+	}
+	if (!ctlv_blob_sgt_covers(blob, dma->sgt)) {
+		ret = -EIO;
+		goto err_unmap;
+	}
+	blob->dma_buf.dma = dma;
+	if (blob->ctx)
+		blob->ctx->dma_maps++;
+
+	*sgt = dma->sgt;
+	*dma_skip = blob->dma_buf.offset;
+	return dma;
+
+err_unmap:
+	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt,
+					  dma->direction);
+err_detach:
+	dma_buf_detach(blob->dma_buf.dmabuf, dma->attach);
+err_free_dma:
+	kfree(dma);
+	return ERR_PTR(ret);
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_blob_dma_map, "CTLV");
+
+int ctlv_blob_dma_begin(struct ctlv_blob_dma *dma, struct dma_fence *fence)
+{
+	struct ctlv_blob *blob;
+	int ret;
+
+	blob = dma->blob;
+	if (WARN_ON_ONCE(!ctlv_blob_access_live(blob) ||
+			 blob->dma_buf.dma != dma))
+		return -EINVAL;
+	if (WARN_ON_ONCE(dma->fence))
+		return -EBUSY;
+	if (WARN_ON_ONCE(dma_fence_is_signaled(fence) ||
+			 dma_fence_is_container(fence)))
+		return -EINVAL;
+	ret = ctlv_blob_resv_prepare(blob);
+	if (ret)
+		return ret;
+	dma->fence = dma_fence_get(fence);
+	dma->signalling = dma_fence_begin_signalling();
+	dma->submitting = true;
+	ctlv_blob_fence_publish(blob, fence);
+	dma_resv_unlock(blob->dma_buf.dmabuf->resv);
+	return 0;
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_blob_dma_begin, "CTLV");
+
+void ctlv_blob_dma_submit_done(struct ctlv_blob_dma *dma, int status)
+{
+	if (WARN_ON_ONCE(!dma->submitting))
+		return;
+	if (WARN_ON_ONCE(!ctlv_blob_same_task(dma->blob)))
+		return;
+	if (WARN_ON_ONCE(status > 0 || status < -MAX_ERRNO))
+		status = -EINVAL;
+	if (status) {
+		dma_fence_set_error(dma->fence, status);
+		dma_fence_signal(dma->fence);
+	}
+	dma->submitting = false;
+	dma_fence_end_signalling(dma->signalling);
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_blob_dma_submit_done, "CTLV");
+
+void ctlv_blob_dma_unmap(struct ctlv_blob_dma *dma, int status)
+{
+	struct ctlv_blob *blob;
+	signed long wait_ret;
+	int fence_status;
+
+	blob = dma->blob;
+	if (WARN_ON_ONCE(!ctlv_blob_same_task(blob)))
+		return;
+	if (WARN_ON_ONCE(blob->dma_buf.dma != dma))
+		return;
+	if (WARN_ON_ONCE(status > 0 || status < -MAX_ERRNO))
+		status = -EINVAL;
+	if (WARN_ON_ONCE(dma->submitting))
+		ctlv_blob_dma_submit_done(dma, status);
+
+	if (dma->fence) {
+		do {
+			wait_ret = dma_fence_wait(dma->fence, false);
+			if (wait_ret < 0 && !status)
+				status = wait_ret;
+			if (wait_ret < 0)
+				cond_resched();
+		} while (!dma_fence_is_signaled(dma->fence));
+		fence_status = dma_fence_get_status(dma->fence);
+		if (!status && fence_status < 0)
+			status = fence_status;
+	}
+	blob->dma_buf.dma = NULL;
+	ctlv_blob_record_error(blob, status);
+	dma_buf_unmap_attachment_unlocked(dma->attach, dma->sgt,
+					  dma->direction);
+	dma_buf_detach(blob->dma_buf.dmabuf, dma->attach);
+	if (blob->ctx)
+		blob->ctx->dma_maps--;
+	dma_fence_put(dma->fence);
+	kfree(dma);
+}
+EXPORT_SYMBOL_NS_GPL(ctlv_blob_dma_unmap, "CTLV");
+
+static int ctlv_blob_dma_buf_release(struct ctlv_blob *blob)
+{
+	int ret = 0;
+
+	if (WARN_ON_ONCE(blob->dma_buf.dma)) {
+		ret = -ECANCELED;
+		ctlv_blob_dma_unmap(blob->dma_buf.dma, ret);
+	}
+	if (!ret)
+		ret = ctlv_blob_dma_buf_cpu_end(blob);
+	else
+		ctlv_blob_dma_buf_cpu_end(blob);
+	dma_buf_put(blob->dma_buf.dmabuf);
+	return ret;
+}
+
+static int ctlv_blob_dma_buf_copy(struct ctlv_blob *blob, u64 offset,
+				  void *buf, size_t len, bool write)
+{
+	u64 at = blob->dma_buf.offset + offset;
+	int ret;
+
+	ret = ctlv_blob_dma_buf_cpu_begin(blob);
+	if (ret)
+		return ret;
+	if (write)
+		iosys_map_memcpy_to(&blob->dma_buf.map, at, buf, len);
+	else
+		iosys_map_memcpy_from(buf, &blob->dma_buf.map, at, len);
+	return 0;
+}
+
 u64 ctlv_blob_len(const struct ctlv_blob *blob)
 {
 	return blob->len;
@@ -334,6 +677,8 @@ static int ctlv_blob_copy(struct ctlv_blob *blob, u64 offset, void *buf, size_t 
 		return 0;
 	case CTLV_BLOB_TYPE_MEMFD:
 		return ctlv_blob_memfd_copy(blob, offset, buf, len, write);
+	case CTLV_BLOB_TYPE_DMA_BUF:
+		return ctlv_blob_dma_buf_copy(blob, offset, buf, len, write);
 	default:
 		return -EINVAL;
 	}
@@ -353,6 +698,8 @@ EXPORT_SYMBOL_NS_GPL(ctlv_blob_write, "CTLV");
 
 int ctlv_blob_put(struct ctlv_blob *blob)
 {
+	int ret = 0;
+
 	if (!blob)
 		return 0;
 	if (WARN_ON_ONCE(!ctlv_blob_same_task(blob)))
@@ -365,13 +712,17 @@ int ctlv_blob_put(struct ctlv_blob *blob)
 	case CTLV_BLOB_TYPE_MEMFD:
 		fput(blob->memfd.file);
 		break;
+	case CTLV_BLOB_TYPE_DMA_BUF:
+		ret = ctlv_blob_dma_buf_release(blob);
+		break;
 	}
+	ctlv_blob_record_error(blob, ret);
 	if (blob->ctx) {
 		list_del(&blob->entry);
 		blob->ctx = NULL;
 	}
 	kfree(blob);
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_blob_put, "CTLV");
 
@@ -380,6 +731,8 @@ void ctlv_blob_context_init(struct ctlv_op_ctx *ctx)
 	INIT_LIST_HEAD(&ctx->blobs);
 	ctx->blobs_live = true;
 	ctx->blob_error = 0;
+	ctx->cpu_blobs = 0;
+	ctx->dma_maps = 0;
 }
 
 void ctlv_blob_context_track(struct ctlv_blob *blob, struct ctlv_op_ctx *ctx)
@@ -398,6 +751,8 @@ int ctlv_blob_context_finish(struct ctlv_op_ctx *ctx)
 
 		ctlv_blob_put(blob);
 	}
+	WARN_ON_ONCE(ctx->cpu_blobs);
+	WARN_ON_ONCE(ctx->dma_maps);
 	return ctx->blob_error;
 }
 
@@ -423,7 +778,16 @@ static struct ctlv_blob *ctlv_blob_acquire(const struct ctlv_blob_desc *desc, u8
 	u64 len = desc->member[CTLV_BLOB_MEMBER_LENGTH];
 	int fd = desc->member[CTLV_BLOB_MEMBER_FD];
 	struct ctlv_blob *blob;
+	struct dma_buf *dmabuf;
 	int ret;
+
+	if (desc->member[CTLV_BLOB_MEMBER_TYPE] == CTLV_BLOB_TYPE_DMA_BUF) {
+		dmabuf = dma_buf_get(fd);
+		if (IS_ERR(dmabuf))
+			return ERR_CAST(dmabuf);
+		return ctlv_blob_dma_buf_acquire(dmabuf, offset, len,
+						 direction);
+	}
 
 	blob = kzalloc_obj(*blob, GFP_KERNEL_ACCOUNT);
 	if (!blob)

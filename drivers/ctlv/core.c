@@ -1522,3 +1522,5 @@ subsys_initcall(ctlv_module_init);
 module_exit(ctlv_module_exit);
 MODULE_DESCRIPTION("CTLV character device TLV UAPI core");
 MODULE_LICENSE("GPL");
+/* A blob attr may name a dma-buf, so the core resolves one itself. */
+MODULE_IMPORT_NS("DMA_BUF");

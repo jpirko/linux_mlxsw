@@ -133,6 +133,8 @@ int ctlv_put_blob_va(struct ctlv_msg *msg, __u64 attr_id, const void *address,
 		     __u64 length);
 int ctlv_put_blob_memfd(struct ctlv_msg *msg, __u64 attr_id, int fd,
 			__u64 offset, __u64 length);
+int ctlv_put_blob_dma_buf(struct ctlv_msg *msg, __u64 attr_id, int fd,
+			  __u64 offset, __u64 length);
 
 /* Fails when framing, lengths or nesting are not self-consistent. */
 int ctlv_msg_check(const void *buf, __u32 len);

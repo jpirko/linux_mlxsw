@@ -357,7 +357,13 @@ that received its request and release every successful resolve before return:
     return ret ?: put_ret;
 
 The schema fixes direction, backing, length, and alignment. Resolution holds
-the backing for the ioctl.
+the backing for the ioctl; CPU mapping is lazy.
+
+For device DMA, ``ctlv_blob_dma_map()`` accepts dma-buf backing, returns a
+borrowed whole-buffer scatterlist and the blob offset in its DMA-length stream.
+Call ``ctlv_blob_dma_begin()``, submit the fenced work,
+``ctlv_blob_dma_submit_done()``, then ``ctlv_blob_dma_unmap()`` after hardware
+stops. An operation holds at most one device mapping.
 
 Events
 ======

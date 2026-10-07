@@ -302,6 +302,13 @@ int ctlv_put_blob_memfd(struct ctlv_msg *msg, __u64 attr_id, int fd,
 			   length);
 }
 
+int ctlv_put_blob_dma_buf(struct ctlv_msg *msg, __u64 attr_id, int fd,
+			  __u64 offset, __u64 length)
+{
+	return put_blob_fd(msg, attr_id, CTLV_BLOB_TYPE_DMA_BUF, fd, offset,
+			   length);
+}
+
 bool ctlv_attr_is_nest(const struct ctlv_attr *attr)
 {
 	return attr->flags & CTLV_ATTR_F_NESTED;

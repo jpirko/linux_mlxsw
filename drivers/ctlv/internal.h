@@ -73,6 +73,8 @@ struct ctlv_op_ctx {
 	struct list_head blobs;
 	bool blobs_live;
 	int blob_error;
+	unsigned int cpu_blobs;
+	unsigned int dma_maps;
 	struct ctlv_error error;
 };
 

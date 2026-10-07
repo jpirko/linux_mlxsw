@@ -188,6 +188,9 @@ int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
 int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
 
 struct ctlv_blob;
+struct ctlv_blob_dma;
+struct dma_fence;
+struct sg_table;
 
 /**
  * ctlv_blob_put - Release a resolved blob.
@@ -227,6 +230,42 @@ int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
  */
 int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
 		    size_t len);
+
+/**
+ * ctlv_blob_dma_map - Map a resolved dma-buf for a device.
+ * @blob: resolved dma-buf blob
+ * @dev: DMA device
+ * @sgt: returned scatterlist
+ * @dma_skip: returned offset into @sgt
+ *
+ * Return: DMA mapping, or an error pointer.
+ */
+struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
+					struct device *dev,
+					struct sg_table **sgt, u64 *dma_skip);
+
+/**
+ * ctlv_blob_dma_begin - Attach a completion fence to a DMA mapping.
+ * @dma: DMA mapping
+ * @fence: completion fence
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_blob_dma_begin(struct ctlv_blob_dma *dma, struct dma_fence *fence);
+
+/**
+ * ctlv_blob_dma_submit_done - Report DMA submission completion.
+ * @dma: DMA mapping
+ * @status: submission status
+ */
+void ctlv_blob_dma_submit_done(struct ctlv_blob_dma *dma, int status);
+
+/**
+ * ctlv_blob_dma_unmap - Finish and release a DMA mapping.
+ * @dma: DMA mapping
+ * @status: operation status
+ */
+void ctlv_blob_dma_unmap(struct ctlv_blob_dma *dma, int status);
 
 /**
  * ctlv_event_lost - Report an event that could not be created.
