@@ -95,6 +95,35 @@ CTLV_IN_REF(ctlv_attestation_evidence_get_device_generation,
 	    CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_evidence_get_device_generation)
 CTLV_IN_U64(ctlv_attestation_evidence_get_device_generation)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_selection,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_SELECTION, 0, 3,
+	    CTLV_SCHEMA_NEST)
+#define ctlv_attestation_evidence_get_evidence_selection_for_each(_attr, _nest) \
+	CTLV_IN_FOR_EACH(ctlv_attestation_evidence_get_evidence_selection, _attr, _nest)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_privlevel,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_PRIVLEVEL, 0, 4,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_evidence_privlevel)
+CTLV_IN_U64(ctlv_attestation_evidence_get_evidence_privlevel)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_service_provider,
+	    &ctlv_attestation_op_schemas[1].request,
+	    CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_PROVIDER, 0, 5, CTLV_SCHEMA_STRING)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_evidence_service_provider)
+CTLV_IN_STRING(ctlv_attestation_evidence_get_evidence_service_provider)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_service_guid,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_GUID, 0,
+	    6, CTLV_SCHEMA_BINARY)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_evidence_service_guid)
+CTLV_IN_BINARY(ctlv_attestation_evidence_get_evidence_service_guid)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_service_manifest_version,
+	    &ctlv_attestation_op_schemas[1].request,
+	    CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_MANIFEST_VERSION, 0, 7, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_evidence_service_manifest_version)
+CTLV_IN_U64(ctlv_attestation_evidence_get_evidence_service_manifest_version)
+CTLV_IN_REF(ctlv_attestation_evidence_get_evidence_options, &ctlv_attestation_op_schemas[1].request,
+	    CTLV_ATTESTATION_ATTR_EVIDENCE_OPTIONS, 0, 8, CTLV_SCHEMA_NEST)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_evidence_options)
+CTLV_IN_NEST(ctlv_attestation_evidence_get_evidence_options)
 CTLV_IN_REF(ctlv_attestation_evidence_get_object_evidence_blob_class,
 	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_BLOB_CLASS, 2,
 	    0, CTLV_SCHEMA_ENUM)
@@ -115,6 +144,25 @@ CTLV_IN_REF(ctlv_attestation_evidence_get_object_evidence_data,
 	    CTLV_SCHEMA_BLOB)
 CTLV_IN_HAS(ctlv_attestation_evidence_get_object_evidence_data)
 CTLV_IN_BLOB(ctlv_attestation_evidence_get_object_evidence_data)
+CTLV_IN_REF(ctlv_attestation_evidence_get_object_evidence_blob_instance,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_BLOB_INSTANCE,
+	    2, 4, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_object_evidence_blob_instance)
+CTLV_IN_U64(ctlv_attestation_evidence_get_object_evidence_blob_instance)
+CTLV_IN_REF(ctlv_attestation_evidence_get_object_evidence_hash_algo,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_HASH_ALGO, 2, 5,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_object_evidence_hash_algo)
+CTLV_IN_U64(ctlv_attestation_evidence_get_object_evidence_hash_algo)
+CTLV_IN_REF(ctlv_attestation_evidence_get_selection_mr_id, &ctlv_attestation_op_schemas[1].request,
+	    CTLV_ATTESTATION_ATTR_MR_ID, 4, 0, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_selection_mr_id)
+CTLV_IN_U64(ctlv_attestation_evidence_get_selection_mr_id)
+CTLV_IN_REF(ctlv_attestation_evidence_get_selection_evidence_hash_algo,
+	    &ctlv_attestation_op_schemas[1].request, CTLV_ATTESTATION_ATTR_EVIDENCE_HASH_ALGO, 4, 1,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_selection_evidence_hash_algo)
+CTLV_IN_U64(ctlv_attestation_evidence_get_selection_evidence_hash_algo)
 CTLV_IN_REF(ctlv_attestation_mr_get_mr_id, &ctlv_attestation_op_schemas[2].request,
 	    CTLV_ATTESTATION_ATTR_MR_ID, 0, 0, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_get_mr_id)
@@ -127,6 +175,10 @@ CTLV_IN_REF(ctlv_attestation_mr_read_device_generation, &ctlv_attestation_op_sch
 	    CTLV_ATTESTATION_ATTR_DEVICE_GENERATION, 0, 1, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_read_device_generation)
 CTLV_IN_U64(ctlv_attestation_mr_read_device_generation)
+CTLV_IN_REF(ctlv_attestation_mr_read_mr_options, &ctlv_attestation_op_schemas[4].request,
+	    CTLV_ATTESTATION_ATTR_MR_OPTIONS, 0, 2, CTLV_SCHEMA_NEST)
+CTLV_IN_HAS(ctlv_attestation_mr_read_mr_options)
+CTLV_IN_NEST(ctlv_attestation_mr_read_mr_options)
 CTLV_IN_REF(ctlv_attestation_mr_extend_mr_id, &ctlv_attestation_op_schemas[5].request,
 	    CTLV_ATTESTATION_ATTR_MR_ID, 0, 0, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_extend_mr_id)
@@ -139,6 +191,14 @@ CTLV_IN_REF(ctlv_attestation_mr_extend_device_generation, &ctlv_attestation_op_s
 	    CTLV_ATTESTATION_ATTR_DEVICE_GENERATION, 0, 2, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_extend_device_generation)
 CTLV_IN_U64(ctlv_attestation_mr_extend_device_generation)
+CTLV_IN_REF(ctlv_attestation_mr_extend_mr_options, &ctlv_attestation_op_schemas[5].request,
+	    CTLV_ATTESTATION_ATTR_MR_OPTIONS, 0, 3, CTLV_SCHEMA_NEST)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_mr_options)
+CTLV_IN_NEST(ctlv_attestation_mr_extend_mr_options)
+CTLV_IN_REF(ctlv_attestation_mr_extend_record_item, &ctlv_attestation_op_schemas[5].request,
+	    CTLV_ATTESTATION_ATTR_RECORD_ITEM, 0, 4, CTLV_SCHEMA_NEST)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_record_item)
+CTLV_IN_NEST(ctlv_attestation_mr_extend_record_item)
 CTLV_IN_REF(ctlv_attestation_mr_extend_value_mr_hash_algo, &ctlv_attestation_op_schemas[5].request,
 	    CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, 2, 0, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_extend_value_mr_hash_algo)
@@ -147,6 +207,14 @@ CTLV_IN_REF(ctlv_attestation_mr_extend_value_mr_data, &ctlv_attestation_op_schem
 	    CTLV_ATTESTATION_ATTR_MR_DATA, 2, 1, CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_mr_extend_value_mr_data)
 CTLV_IN_BINARY(ctlv_attestation_mr_extend_value_mr_data)
+CTLV_IN_REF(ctlv_attestation_mr_extend_item_record_format, &ctlv_attestation_op_schemas[5].request,
+	    CTLV_ATTESTATION_ATTR_RECORD_FORMAT, 5, 0, CTLV_SCHEMA_STRING)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_item_record_format)
+CTLV_IN_STRING(ctlv_attestation_mr_extend_item_record_format)
+CTLV_IN_REF(ctlv_attestation_mr_extend_item_record_data, &ctlv_attestation_op_schemas[5].request,
+	    CTLV_ATTESTATION_ATTR_RECORD_DATA, 5, 1, CTLV_SCHEMA_BINARY)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_item_record_data)
+CTLV_IN_BINARY(ctlv_attestation_mr_extend_item_record_data)
 CTLV_IN_REF(ctlv_attestation_evidence_accept_device_generation,
 	    &ctlv_attestation_op_schemas[8].request, CTLV_ATTESTATION_ATTR_DEVICE_GENERATION, 0, 0,
 	    CTLV_SCHEMA_UINT)
@@ -211,6 +279,9 @@ CTLV_PUT_U64(ctlv_attestation_cap_evidence_flags, CTLV_ATTESTATION_ATTR_CAP_EVID
 CTLV_NEST_START(ctlv_attestation_cap_devsec, CTLV_ATTESTATION_ATTR_CAP_DEVSEC, CTLV_SCHEMA_NEST)
 CTLV_PUT_U64(ctlv_attestation_cap_devsec_flags, CTLV_ATTESTATION_ATTR_CAP_DEVSEC_FLAGS,
 	     CTLV_SCHEMA_FLAGS)
+CTLV_PUT_U64(ctlv_attestation_cap_blob_instance, CTLV_ATTESTATION_ATTR_CAP_BLOB_INSTANCE,
+	     CTLV_SCHEMA_UINT)
+CTLV_PUT_U64(ctlv_attestation_cap_hash_algo, CTLV_ATTESTATION_ATTR_CAP_HASH_ALGO, CTLV_SCHEMA_UINT)
 CTLV_PUT_BINARY(ctlv_attestation_evidence_challenge, CTLV_ATTESTATION_ATTR_EVIDENCE_CHALLENGE,
 		CTLV_SCHEMA_BINARY)
 CTLV_NEST_START(ctlv_attestation_evidence_object, CTLV_ATTESTATION_ATTR_EVIDENCE_OBJECT,
@@ -227,6 +298,22 @@ CTLV_PUT_U64(ctlv_attestation_evidence_generation, CTLV_ATTESTATION_ATTR_EVIDENC
 	     CTLV_SCHEMA_UINT)
 CTLV_PUT_U64(ctlv_attestation_evidence_accepted_generation,
 	     CTLV_ATTESTATION_ATTR_EVIDENCE_ACCEPTED_GENERATION, CTLV_SCHEMA_UINT)
+CTLV_PUT_U64(ctlv_attestation_evidence_blob_instance, CTLV_ATTESTATION_ATTR_EVIDENCE_BLOB_INSTANCE,
+	     CTLV_SCHEMA_UINT)
+CTLV_PUT_U64(ctlv_attestation_evidence_hash_algo, CTLV_ATTESTATION_ATTR_EVIDENCE_HASH_ALGO,
+	     CTLV_SCHEMA_UINT)
+CTLV_NEST_START(ctlv_attestation_evidence_selection, CTLV_ATTESTATION_ATTR_EVIDENCE_SELECTION,
+		CTLV_SCHEMA_NEST)
+CTLV_PUT_U64(ctlv_attestation_evidence_privlevel, CTLV_ATTESTATION_ATTR_EVIDENCE_PRIVLEVEL,
+	     CTLV_SCHEMA_UINT)
+CTLV_PUT_STRING(ctlv_attestation_evidence_service_provider,
+		CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_PROVIDER, CTLV_SCHEMA_STRING)
+CTLV_PUT_BINARY(ctlv_attestation_evidence_service_guid, CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_GUID,
+		CTLV_SCHEMA_BINARY)
+CTLV_PUT_U64(ctlv_attestation_evidence_service_manifest_version,
+	     CTLV_ATTESTATION_ATTR_EVIDENCE_SERVICE_MANIFEST_VERSION, CTLV_SCHEMA_UINT)
+CTLV_NEST_START(ctlv_attestation_evidence_options, CTLV_ATTESTATION_ATTR_EVIDENCE_OPTIONS,
+		CTLV_SCHEMA_NEST)
 CTLV_PUT_U64(ctlv_attestation_mr_id, CTLV_ATTESTATION_ATTR_MR_ID, CTLV_SCHEMA_UINT)
 CTLV_PUT_STRING(ctlv_attestation_mr_name, CTLV_ATTESTATION_ATTR_MR_NAME, CTLV_SCHEMA_STRING)
 CTLV_PUT_U64(ctlv_attestation_mr_hash_algo, CTLV_ATTESTATION_ATTR_MR_HASH_ALGO, CTLV_SCHEMA_UINT)
@@ -241,6 +328,7 @@ CTLV_PUT_BINARY(ctlv_attestation_mr_data, CTLV_ATTESTATION_ATTR_MR_DATA, CTLV_SC
 CTLV_PUT_U64(ctlv_attestation_mr_generation, CTLV_ATTESTATION_ATTR_MR_GENERATION, CTLV_SCHEMA_UINT)
 CTLV_PUT_U64(ctlv_attestation_mr_state_flags, CTLV_ATTESTATION_ATTR_MR_STATE_FLAGS,
 	     CTLV_SCHEMA_FLAGS)
+CTLV_NEST_START(ctlv_attestation_mr_options, CTLV_ATTESTATION_ATTR_MR_OPTIONS, CTLV_SCHEMA_NEST)
 CTLV_NEST_START(ctlv_attestation_mr_selection, CTLV_ATTESTATION_ATTR_MR_SELECTION, CTLV_SCHEMA_NEST)
 CTLV_PUT_U64(ctlv_attestation_mr_start_generation, CTLV_ATTESTATION_ATTR_MR_START_GENERATION,
 	     CTLV_SCHEMA_UINT)
@@ -261,6 +349,10 @@ CTLV_PUT_U64(ctlv_attestation_devsec_tdisp_state, CTLV_ATTESTATION_ATTR_DEVSEC_T
 	     CTLV_SCHEMA_ENUM)
 CTLV_PUT_U64(ctlv_attestation_devsec_device_trust, CTLV_ATTESTATION_ATTR_DEVSEC_DEVICE_TRUST,
 	     CTLV_SCHEMA_ENUM)
+CTLV_NEST_START(ctlv_attestation_record_item, CTLV_ATTESTATION_ATTR_RECORD_ITEM, CTLV_SCHEMA_NEST)
+CTLV_PUT_STRING(ctlv_attestation_record_format, CTLV_ATTESTATION_ATTR_RECORD_FORMAT,
+		CTLV_SCHEMA_STRING)
+CTLV_PUT_BINARY(ctlv_attestation_record_data, CTLV_ATTESTATION_ATTR_RECORD_DATA, CTLV_SCHEMA_BINARY)
 
 /* Building one event, passed to ctlv_event_emit() or ctlv_event_abort() once. */
 CTLV_EVENT_CREATE(ctlv_attestation_device_state_changed, CTLV_ATTESTATION_OP_DEVICE_STATE_CHANGED)

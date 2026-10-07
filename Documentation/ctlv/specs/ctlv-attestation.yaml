@@ -11,10 +11,19 @@ enums:
   - name: evidence-representation
     values:
       - raw
+      - tcb-digest
 
   - name: evidence-blob-class
     values:
       - primary
+      - auxiliary
+      - manifest
+      - cert-chain
+      - spdm-vca
+      - spdm-measurements
+      - tdisp-report
+      - signature
+      - event-log
 
   - name: mr-log-event
     values:
@@ -41,23 +50,28 @@ flags:
     values:
       - read
       - extend
+      - dynamic-topology
 
   - name: mr-caps
     values:
       - read
       - extend
+      - removable
 
   - name: mr-state-flags
     values:
       - ima-active
 
-  - name: evidence-caps
-    values:
-      - evidence-accept
-
   - name: devsec-caps
     values:
       - run
+
+  - name: evidence-caps
+    values:
+      - evidence-accept
+      - mr-selection
+      - privlevel
+      - service
 
 attr-groups:
   - name: device
@@ -96,6 +110,7 @@ attr-groups:
         max-length: 128
       - name: representation
         enum: evidence-representation
+        max-occurrences: 2
       - name: max-length
         type: uint
       - name: evidence-flags
@@ -104,6 +119,13 @@ attr-groups:
         attrs: devsec-cap
       - name: devsec-flags
         flags: devsec-caps
+      - name: blob-instance
+        type: uint
+        max: 4294967295
+      - name: hash-algo
+        type: uint
+        max: 20
+        max-occurrences: 21
 
   - name: evidence
     attrs:
@@ -136,6 +158,31 @@ attr-groups:
       - name: accepted-generation
         type: uint
         max: 4294967295
+      - name: blob-instance
+        type: uint
+        max: 4294967295
+      - name: hash-algo
+        type: uint
+        max: 20
+      - name: selection
+        attrs: evidence-mr-selection
+        max-occurrences: 256
+      - name: privlevel
+        type: uint
+        max: 4294967295
+      - name: service-provider
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: service-guid
+        type: binary
+        min-length: 16
+        max-length: 16
+      - name: service-manifest-version
+        type: uint
+        max: 4294967295
+      - name: options
+        attrs: evidence-options
 
   - name: mr
     attrs:
@@ -173,6 +220,8 @@ attr-groups:
         max: 4294967295
       - name: state-flags
         flags: mr-state-flags
+      - name: options
+        attrs: mr-options
       - name: selection
         attrs: mr-log-selection
         max-occurrences: 256
@@ -216,6 +265,18 @@ attr-groups:
       - name: device-trust
         enum: device-trust-state
 
+  - name: record
+    attrs:
+      - name: item
+        attrs: record-data
+      - name: format
+        type: string
+        min-length: 1
+        max-length: 128
+      - name: data
+        type: binary
+        max-length: 4096
+
 attr-sets:
   - name: device-info
     stub: true
@@ -226,6 +287,9 @@ attr-sets:
       - cap.format
       - cap.representation
       - cap.max-length
+    optional-attrs:
+      - cap.blob-instance
+      - cap.hash-algo
 
   - name: evidence-cap
     attrs:
@@ -256,12 +320,22 @@ attr-sets:
       - evidence.format
       - evidence.representation
       - evidence.data
+    optional-attrs:
+      - evidence.blob-instance
+      - evidence.hash-algo
 
   - name: evidence-request
     attrs:
       - evidence.challenge
       - evidence.object
-    optional-attrs: device.generation
+    optional-attrs:
+      - device.generation
+      - evidence.selection
+      - evidence.privlevel
+      - evidence.service-provider
+      - evidence.service-guid
+      - evidence.service-manifest-version
+      - evidence.options
 
   - name: evidence-reply
     attrs:
@@ -276,7 +350,9 @@ attr-sets:
       - mr.name
       - mr.supported-hash-algo
       - mr.caps
-    optional-attrs: mr.register-index
+    optional-attrs:
+      - mr.register-index
+      - mr.state-flags
 
   - name: mr-dump-entry
     attrs:
@@ -284,14 +360,18 @@ attr-sets:
       - mr.name
       - mr.supported-hash-algo
       - mr.caps
-    optional-attrs: mr.register-index
+    optional-attrs:
+      - mr.register-index
+      - mr.state-flags
 
   - name: mr-id-request
     attrs: mr.id
 
   - name: mr-read-request
     attrs: mr.id
-    optional-attrs: device.generation
+    optional-attrs:
+      - device.generation
+      - mr.options
 
   - name: mr-value
     attrs:
@@ -308,7 +388,10 @@ attr-sets:
     attrs:
       - mr.id
       - mr.value
-    optional-attrs: device.generation
+    optional-attrs:
+      - device.generation
+      - mr.options
+      - record.item
 
   - name: mr-change-reply
     attrs:
@@ -332,6 +415,7 @@ attr-sets:
       - mr.value
       - log.mr
       - log.ima
+      - record.item
 
   - name: device-state-event
     attrs: device.generation
@@ -369,6 +453,22 @@ attr-sets:
     optional-attrs:
       - evidence.generation
       - evidence.accepted-generation
+
+  - name: evidence-options
+    stub: true
+
+  - name: mr-options
+    stub: true
+
+  - name: evidence-mr-selection
+    attrs:
+      - mr.id
+      - evidence.hash-algo
+
+  - name: record-data
+    attrs:
+      - record.format
+      - record.data
 
   - name: mr-log-selection
     attrs: mr.id

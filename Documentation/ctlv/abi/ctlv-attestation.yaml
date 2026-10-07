@@ -11,17 +11,19 @@
 family: {name: ctlv-attestation, id: 1, inherits: ctlv, post-init: true,
          pre-fini: true}
 enums:
-  evidence-representation: {raw: 1}
-  evidence-blob-class: {primary: 1}
+  evidence-representation: {raw: 1, tcb-digest: 2}
+  evidence-blob-class: {primary: 1, auxiliary: 2, manifest: 3, cert-chain: 4,
+                        spdm-vca: 5, spdm-measurements: 6, tdisp-report: 7,
+                        signature: 8, event-log: 9}
   mr-log-event: {info: 1, extend: 2}
   tdisp-state: {unlocked: 1, locked: 2, run: 3, error: 4}
   device-trust-state: {unset: 1, none: 2, adversary: 3, auto: 4, tcb: 5}
 flags:
-  mr-device-caps: {read: 0, extend: 1}
-  mr-caps: {read: 0, extend: 1}
+  mr-device-caps: {read: 0, extend: 1, dynamic-topology: 2}
+  mr-caps: {read: 0, extend: 1, removable: 2}
   mr-state-flags: {ima-active: 0}
-  evidence-caps: {evidence-accept: 0}
   devsec-caps: {run: 0}
+  evidence-caps: {evidence-accept: 0, mr-selection: 1, privlevel: 2, service: 3}
 attr-groups:
   device:
     id: 1
@@ -41,11 +43,14 @@ attr-groups:
       object: {id: 7, type: nested, max-occurrences: 16}
       blob-class: {id: 8, enum: evidence-blob-class}
       format: {id: 9, type: string, min-length: 1, max-length: 128}
-      representation: {id: 10, enum: evidence-representation}
+      representation: {id: 10, enum: evidence-representation,
+                       max-occurrences: 2}
       max-length: {id: 11, type: uint}
       evidence-flags: {id: 12, flags: evidence-caps}
       devsec: {id: 13, type: nested}
       devsec-flags: {id: 14, flags: devsec-caps}
+      blob-instance: {id: 15, type: uint, max: 4294967295}
+      hash-algo: {id: 16, type: uint, max: 20, max-occurrences: 21}
   evidence:
     id: 3
     attrs:
@@ -59,6 +64,14 @@ attr-groups:
       object-length: {id: 7, type: uint, max-occurrences: 16}
       generation: {id: 8, type: uint, max: 4294967295}
       accepted-generation: {id: 9, type: uint, max: 4294967295}
+      blob-instance: {id: 10, type: uint, max: 4294967295}
+      hash-algo: {id: 11, type: uint, max: 20}
+      selection: {id: 12, type: nested, max-occurrences: 256}
+      privlevel: {id: 13, type: uint, max: 4294967295}
+      service-provider: {id: 14, type: string, min-length: 1, max-length: 128}
+      service-guid: {id: 15, type: binary, length: 16}
+      service-manifest-version: {id: 16, type: uint, max: 4294967295}
+      options: {id: 17, type: nested}
   mr:
     id: 4
     attrs:
@@ -73,9 +86,10 @@ attr-groups:
       data: {id: 9, type: binary, min-length: 16, max-length: 64}
       generation: {id: 10, type: uint, max: 4294967295}
       state-flags: {id: 11, flags: mr-state-flags}
-      selection: {id: 12, type: nested, max-occurrences: 256}
-      start-generation: {id: 13, type: uint, max: 4294967295}
-      end-generation: {id: 14, type: uint, max: 4294967295}
+      options: {id: 12, type: nested}
+      selection: {id: 13, type: nested, max-occurrences: 256}
+      start-generation: {id: 14, type: uint, max: 4294967295}
+      end-generation: {id: 15, type: uint, max: 4294967295}
   log:
     id: 5
     attrs:
@@ -95,6 +109,12 @@ attr-groups:
     attrs:
       tdisp-state: {id: 1, enum: tdisp-state}
       device-trust: {id: 2, enum: device-trust-state}
+  record:
+    id: 8
+    attrs:
+      item: {id: 1, type: nested}
+      format: {id: 2, type: string, min-length: 1, max-length: 128}
+      data: {id: 3, type: binary, max-length: 4096}
 attr-sets:
   device-info: {id: 1, stub: true}
   evidence-object-cap: {id: 2}
@@ -123,9 +143,13 @@ attr-sets:
   devsec-state-reply: {id: 25}
   devsec-run-reply: {id: 26}
   evidence-state-event: {id: 27}
-  mr-log-selection: {id: 28}
-  mr-log-request: {id: 29}
-  mr-log-reply: {id: 30}
+  evidence-options: {id: 28, stub: true}
+  mr-options: {id: 29, stub: true}
+  evidence-mr-selection: {id: 30}
+  record-data: {id: 31}
+  mr-log-selection: {id: 32}
+  mr-log-request: {id: 33}
+  mr-log-reply: {id: 34}
 ops:
   device-get:
     abi: {id: 1, type: action, fd-access: read}
@@ -142,6 +166,7 @@ ops:
                     - cap.object:
                         attrs: [cap.blob-class, cap.format, cap.representation,
                                 cap.max-length]
+                        optional-attrs: [cap.blob-instance, cap.hash-algo]
                   optional-attrs: [cap.evidence-flags]
               - cap.mr: {attrs: [cap.mr-flags]}
               - cap.devsec: {attrs: [cap.devsec-flags]}
@@ -154,7 +179,15 @@ ops:
         - evidence.object:
             attrs: [evidence.blob-class, evidence.format,
                     evidence.representation, evidence.data]
-      optional-attrs: [device.generation]
+            optional-attrs: [evidence.blob-instance, evidence.hash-algo]
+      optional-attrs:
+        - device.generation
+        - evidence.selection: {attrs: [mr.id, evidence.hash-algo]}
+        - evidence.privlevel
+        - evidence.service-provider
+        - evidence.service-guid
+        - evidence.service-manifest-version
+        - evidence.options: {attrs: [evidence-options]}
     reply:
       attrs: [device.generation, evidence.object-length]
       optional-attrs: [mr.generation, evidence.generation]
@@ -163,19 +196,21 @@ ops:
     request: {attrs: [mr.id]}
     reply:
       attrs: [mr.name, mr.supported-hash-algo, mr.caps]
-      optional-attrs: [mr.register-index]
+      optional-attrs: [mr.register-index, mr.state-flags]
   mr-dump:
     abi: {id: 4, type: query, fd-access: read, optional: true}
     reply:
       attrs:
         - mr.item:
             attrs: [mr.id, mr.name, mr.supported-hash-algo, mr.caps]
-            optional-attrs: [mr.register-index]
+            optional-attrs: [mr.register-index, mr.state-flags]
   mr-read:
     abi: {id: 5, type: query, fd-access: read, optional: true}
     request:
       attrs: [mr.id]
-      optional-attrs: [device.generation]
+      optional-attrs:
+        - device.generation
+        - mr.options: {attrs: [mr-options]}
     reply:
       attrs:
         - device.generation
@@ -187,7 +222,10 @@ ops:
       attrs:
         - mr.id
         - mr.value: {attrs: [mr.hash-algo, mr.data]}
-      optional-attrs: [device.generation]
+      optional-attrs:
+        - device.generation
+        - mr.options: {attrs: [mr-options]}
+        - record.item: {attrs: [record.format, record.data]}
     reply: {attrs: [device.generation, mr.generation]}
   device-state-changed:
     abi: {id: 7, type: event}
@@ -205,6 +243,7 @@ ops:
                   optional-attrs: [mr.register-index]
               - log.ima:
                   attrs: [log.template-name, log.template-data, log.violation]
+              - record.item: {attrs: [record.format, record.data]}
   evidence-accept:
     abi: {id: 9, type: action, optional: true}
     request: {attrs: [device.generation, evidence.generation]}
@@ -245,3 +284,4 @@ ops:
                   optional-attrs: [mr.register-index]
               - log.ima:
                   attrs: [log.template-name, log.template-data, log.violation]
+              - record.item: {attrs: [record.format, record.data]}
