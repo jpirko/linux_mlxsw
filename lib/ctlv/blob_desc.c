@@ -7,6 +7,7 @@
 #include <linux/align.h>
 #include <linux/bits.h>
 #include <linux/errno.h>
+#include <linux/limits.h>
 #include <linux/overflow.h>
 #include <linux/types.h>
 
@@ -67,15 +68,22 @@ u32 ctlv_blob_desc_read(const struct ctlv_hdr *blob, struct ctlv_blob_desc *desc
 static bool ctlv_blob_variant_ok(const struct ctlv_blob_desc *desc)
 {
 	u32 required = BIT(CTLV_BLOB_MEMBER_TYPE) | BIT(CTLV_BLOB_MEMBER_LENGTH);
+	u32 optional = 0;
 
 	switch (desc->member[CTLV_BLOB_MEMBER_TYPE]) {
 	case CTLV_BLOB_TYPE_VA:
 		required |= BIT(CTLV_BLOB_MEMBER_ADDRESS);
 		break;
+	case CTLV_BLOB_TYPE_MEMFD:
+		required |= BIT(CTLV_BLOB_MEMBER_FD);
+		optional |= BIT(CTLV_BLOB_MEMBER_OFFSET);
+		if (desc->member[CTLV_BLOB_MEMBER_FD] > INT_MAX)
+			return false;
+		break;
 	default:
 		return false;
 	}
-	return desc->present == required;
+	return desc->present == required || desc->present == (required | optional);
 }
 
 /* Every failure is a bad descriptor; only a range that wraps is -EOVERFLOW. */

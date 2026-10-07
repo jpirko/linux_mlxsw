@@ -718,7 +718,8 @@ returns; a descriptor the operation may not use is refused before the callback.
 While the operation is in flight, userspace must not modify an ``input`` blob
 or access an ``output`` or ``inout`` blob. Whether two descriptors overlap is
 also the caller's responsibility. Keep every named VA mapping and file
-descriptor valid until the operation returns.
+descriptor valid until the operation returns; the generated library does this
+for descriptors it builds.
 
 A descriptor is checked with the rest of the request, before any memory is
 acquired. A malformed field fails like any other. A backing the blob field
@@ -735,6 +736,10 @@ has to be, so the caller can retry with one that long.
 Breaking the in-flight rules harms only the caller. The kernel copies blob
 data, so what such an operation reads or writes is unspecified and the
 operation may fail, but no kernel memory is at risk.
+
+A memfd always needs ``F_SEAL_SHRINK``. For ``output`` or ``inout`` it also
+needs ``F_SEAL_SEAL`` and neither write seal, so it remains writable for the
+whole operation.
 
 Introspection
 =============

@@ -282,6 +282,26 @@ int ctlv_put_blob_va(struct ctlv_msg *msg, __u64 type, const void *address,
 	return ctlv_record_end(msg);
 }
 
+static int put_blob_fd(struct ctlv_msg *msg, __u64 type, __u64 blob_type,
+		       int fd, __u64 offset, __u64 length)
+{
+	if (fd < 0)
+		return -EBADF;
+	ctlv_record_start(msg, type);
+	ctlv_put_u64(msg, CTLV_T_BLOB_TYPE, blob_type);
+	ctlv_put_u64(msg, CTLV_T_BLOB_FD, fd);
+	ctlv_put_u64(msg, CTLV_T_BLOB_OFFSET, offset);
+	ctlv_put_u64(msg, CTLV_T_BLOB_LENGTH, length);
+	return ctlv_record_end(msg);
+}
+
+int ctlv_put_blob_memfd(struct ctlv_msg *msg, __u64 type, int fd,
+			__u64 offset, __u64 length)
+{
+	return put_blob_fd(msg, type, CTLV_BLOB_TYPE_MEMFD, fd, offset,
+			   length);
+}
+
 bool ctlv_hdr_is_record(const struct ctlv_hdr *hdr)
 {
 	return hdr->flags & CTLV_HDR_F_RECORD;
