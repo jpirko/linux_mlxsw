@@ -403,7 +403,7 @@ int attestation_mr_target_extend(const struct attestation_mr_target *target,
 		ret = PTR_ERR(change);
 		goto out_unlock;
 	}
-	entry = attestation_mr_extend_locked(att, change);
+	entry = attestation_mr_extend_locked(att, change, NULL);
 	ret = IS_ERR(entry) ? PTR_ERR(entry) : 0;
 	attestation_mr_change_free(change);
 out_unlock:
@@ -542,6 +542,33 @@ attestation_mr_log_entry_values(const struct attestation_mr_log_entry *entry,
 	return extend->values.values;
 }
 EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_values, "ATTESTATION");
+
+const char *attestation_mr_log_entry_record_format(
+	const struct attestation_mr_log_entry *entry)
+{
+	const struct attestation_mr_log_entry_record_extend *record;
+
+	if (entry->type != ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND)
+		return NULL;
+	record = container_of(entry, typeof(*record), extend.entry);
+	return record->record_format;
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_record_format, "ATTESTATION");
+
+const u8 *attestation_mr_log_entry_record_data(
+	const struct attestation_mr_log_entry *entry, size_t *length)
+{
+	const struct attestation_mr_log_entry_record_extend *record;
+
+	if (entry->type != ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND) {
+		*length = 0;
+		return NULL;
+	}
+	record = container_of(entry, typeof(*record), extend.entry);
+	*length = record->record_data_length;
+	return record->record_data;
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_log_entry_record_data, "ATTESTATION");
 
 const char *attestation_mr_log_entry_template_name(
 	const struct attestation_mr_log_entry *entry)

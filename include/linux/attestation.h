@@ -9,19 +9,24 @@
 #include <linux/device.h>
 #include <linux/mutex.h>
 #include <linux/types.h>
+#include <linux/uuid.h>
 #include <linux/xarray.h>
 
 #include <uapi/ctlv/ctlv_attestation_gen.h>
 #include <uapi/linux/hash_info.h>
 
 struct attestation_dev;
+struct attestation_mr;
 struct attestation_mr_log;
 struct ctlv_blob;
+struct ctlv_cursor;
 struct ctlv_family;
 
 enum attestation_evidence_class {
 	ATTESTATION_EVIDENCE_SIGNED = CTLV_ATTESTATION_EVIDENCE_CLASS_SIGNED,
 	ATTESTATION_EVIDENCE_EVENT_LOG = CTLV_ATTESTATION_EVIDENCE_CLASS_EVENT_LOG,
+	ATTESTATION_EVIDENCE_CERT_CHAIN = CTLV_ATTESTATION_EVIDENCE_CLASS_CERT_CHAIN,
+	ATTESTATION_EVIDENCE_AUXILIARY = CTLV_ATTESTATION_EVIDENCE_CLASS_AUXILIARY,
 };
 
 enum attestation_tdisp_state {
@@ -30,6 +35,14 @@ enum attestation_tdisp_state {
 	ATTESTATION_TDISP_STATE_LOCKED = CTLV_ATTESTATION_TDISP_STATE_LOCKED,
 	ATTESTATION_TDISP_STATE_RUN = CTLV_ATTESTATION_TDISP_STATE_RUN,
 	ATTESTATION_TDISP_STATE_ERROR = CTLV_ATTESTATION_TDISP_STATE_ERROR,
+};
+
+/**
+ * struct attestation_mr_caps - Provider MR capabilities.
+ * @supports_dynamic_topology: MRs may be created and removed
+ */
+struct attestation_mr_caps {
+	bool supports_dynamic_topology;
 };
 
 /**
@@ -102,6 +115,10 @@ struct attestation_evidence_challenge_length {
  * @challenge_lengths: a signed object's challenge lengths, ascending and
  *	disjoint; none for any other object
  * @challenge_lengths_count: number of challenge lengths, at most 8
+ * @has_instance: whether @instance is valid
+ * @instance: tells apart the objects of one kind, such as an SPDM slot
+ * @has_tcb_digest: the TCB vouches for the object with a digest
+ * @tcb_digest_algorithm: the digest's algorithm, with @has_tcb_digest
  * @max_length: longest the object gets, in bytes
  * @binds_mrs: the object covers MR values, as they are or by a digest, so
  *	the reply carries mr-generation
@@ -114,16 +131,26 @@ struct attestation_evidence_supported_object {
 	size_t formats_count;
 	const struct attestation_evidence_challenge_length *challenge_lengths;
 	size_t challenge_lengths_count;
+	bool has_instance;
+	unsigned int instance;
+	bool has_tcb_digest;
+	enum hash_algo tcb_digest_algorithm;
 	size_t max_length;
 	bool binds_mrs;
 };
 
 /**
  * struct attestation_evidence_caps - Immutable evidence capabilities.
+ * @supports_mr_selection: requests may select MRs
+ * @supports_privlevel: requests may select a privilege level
+ * @supports_service_attestation: requests may identify a service
  * @objects: supported evidence objects, at most 16
  * @objects_count: number of objects
  */
 struct attestation_evidence_caps {
+	bool supports_mr_selection;
+	bool supports_privlevel;
+	bool supports_service_attestation;
 	const struct attestation_evidence_supported_object *objects;
 	size_t objects_count;
 };
@@ -139,28 +166,57 @@ struct attestation_evidence_object_request {
 };
 
 /**
+ * struct attestation_evidence_selection_mr - One selected MR.
+ * @mr_id: MR ID
+ * @hash_algorithm: selected hash algorithm
+ */
+struct attestation_evidence_selection_mr {
+	unsigned int mr_id;
+	enum hash_algo hash_algorithm;
+};
+
+/**
  * struct attestation_evidence_request - Validated evidence request.
  * @challenge: challenge bytes, of a length every signed object requested
  *	takes, or NULL where the request names no signed object
  * @challenge_length: challenge length, 0 without a challenge
+ * @evidence_options: family extension options
  * @objects: requested output objects
  * @objects_count: number of objects
+ * @selection_mrs: selected MRs
+ * @selection_mrs_count: number of selected MRs
+ * @has_privlevel: whether @privlevel is valid
+ * @privlevel: requested privilege level
+ * @service_provider: requested service provider
+ * @service_guid: requested service GUID
+ * @service_manifest_version: requested service manifest version
  */
 struct attestation_evidence_request {
 	const u8 *challenge;
 	size_t challenge_length;
+	const struct ctlv_cursor *evidence_options;
 	const struct attestation_evidence_object_request *objects;
 	size_t objects_count;
+	const struct attestation_evidence_selection_mr *selection_mrs;
+	size_t selection_mrs_count;
+	bool has_privlevel;
+	unsigned int privlevel;
+	const char *service_provider;
+	guid_t service_guid;
+	unsigned int service_manifest_version;
 };
 
 /**
  * struct attestation_evidence_object_result - What a provider made of one object.
  * @format: the layout it came in, one of the object's formats
  * @length: bytes written
+ * @tcb_digest: the digest the TCB vouches for the object with, as long as
+ *	the object's tcb_digest_algorithm, where it has one
  */
 struct attestation_evidence_object_result {
 	struct attestation_evidence_format format;
 	size_t length;
+	u8 tcb_digest[HASH_MAX_DIGESTSIZE];
 };
 
 /**
@@ -176,11 +232,12 @@ struct attestation_evidence_result {
  * @evidence_get: produce requested evidence, each object written with
  *	attestation_evidence_write() and its result filled in
  * @evidence_accept: run a device whose evidence was accepted, as TDISP's RUN
- * @mr_read: read one MR; every MR can be read, so required with @mrs
+ * @mr_read: read one MR; every MR can be read, so required with @mr_caps
  * @mr_extend: extend the banks of one MR it gets digests for, leaving the
  *	others, or fail with -EOPNOTSUPP before changing any if it cannot
  * @tdisp_state_get: get the TDISP state
  * @evidence_caps: evidence capabilities, or NULL
+ * @mr_caps: MR capabilities, or NULL
  * @mrs: fixed MR properties
  * @mrs_count: number of fixed MRs
  */
@@ -190,12 +247,15 @@ struct attestation_provider {
 			    struct attestation_evidence_result *result);
 	int (*evidence_accept)(struct attestation_dev *att);
 	int (*mr_read)(struct attestation_dev *att, unsigned int mr_id,
+		       const struct ctlv_cursor *mr_options,
 		       struct attestation_digest_set *values);
 	int (*mr_extend)(struct attestation_dev *att, unsigned int mr_id,
+			 const struct ctlv_cursor *mr_options,
 			 const struct attestation_digest_set *values);
 	int (*tdisp_state_get)(struct attestation_dev *att,
 			       enum attestation_tdisp_state *state);
 	const struct attestation_evidence_caps *evidence_caps;
+	const struct attestation_mr_caps *mr_caps;
 	const struct attestation_mr_props *mrs;
 	size_t mrs_count;
 };
@@ -258,6 +318,11 @@ struct attestation_dev *_attestation_alloc(struct device *parent,
 int attestation_register(struct attestation_dev *att);
 void attestation_unregister(struct attestation_dev *att);
 void attestation_put(struct attestation_dev *att);
+
+struct attestation_mr *
+attestation_mr_create(struct attestation_dev *att,
+		      const struct attestation_mr_props *props);
+void attestation_mr_destroy(struct attestation_mr *mr);
 
 void attestation_state_changed(struct attestation_dev *att);
 void attestation_state_changed_locked(struct attestation_dev *att);

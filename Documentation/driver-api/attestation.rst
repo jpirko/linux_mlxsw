@@ -52,9 +52,12 @@ those of the device's family included, under one instance mutex.  That
 serializes an operation, its native callback, journal commit and event
 emission.
 
-Every MR can be read, so a provider with MRs implements ``mr_read``.
-Fixed MRs are listed in the provider descriptor.  Their property storage
-remains valid until the last ``attestation_put()``.
+Every MR can be read, so a provider with ``mr_caps`` implements ``mr_read``.
+Fixed MRs are listed in the provider descriptor.  A provider advertising
+dynamic topology retains handles returned by ``attestation_mr_create()`` and
+passes each handle exactly once to ``attestation_mr_destroy()``.  Property
+storage remains valid for the handle's lifetime.  ``attestation_register()``
+refuses a device left with no MR and no dynamic topology to add one.
 
 The evidence capabilities list the objects ``evidence-get`` produces, each
 object's ID being its index.  An object gives its class and the formats it
@@ -65,8 +68,9 @@ may have, ``ctlv-attestation``'s ``evidence-format`` or its family's
 ``evidence_get`` writes each object with ``attestation_evidence_write()``,
 which fails the operation with ``-EMSGSIZE`` where the caller's blob is too
 short, and tells the caller how long it has to be.  It fills in each object's
-result: the format written and its length.  A format the object does not list
-fails the call with ``-EPROTO``.
+result: the format written, its length and, for an object with a TCB digest,
+the digest.  A format the object does not list fails the call with
+``-EPROTO``.
 
 State changes
 =============

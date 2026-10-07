@@ -116,6 +116,7 @@ tdx_attestation_evidence_objects[] = {
 
 /* The object count and the total length are set at init. */
 static struct attestation_evidence_caps tdx_attestation_evidence_caps = {
+	.supports_mr_selection = true,
 	.objects = tdx_attestation_evidence_objects,
 };
 
@@ -139,6 +140,8 @@ static int tdx_attestation_quote_label(const u8 *quote, size_t length,
 	}
 	return -EPROTO;
 }
+
+static const struct attestation_mr_caps tdx_attestation_mr_caps;
 
 static void __iomem *tdx_attestation_log_map(size_t *length)
 {
@@ -202,8 +205,10 @@ tdx_attestation_evidence_get(struct attestation_dev *att,
 	return ret;
 }
 
-static int tdx_attestation_mr_read(struct attestation_dev *att, unsigned int mr_id,
-				   struct attestation_digest_set *values)
+static int
+tdx_attestation_mr_read(struct attestation_dev *att, unsigned int mr_id,
+			const struct ctlv_cursor *mr_options,
+			struct attestation_digest_set *values)
 {
 	static const enum tdx_guest_mr native_mrs[] = {
 		TDX_GUEST_MR_MRTD,
@@ -222,6 +227,7 @@ static int tdx_attestation_mr_read(struct attestation_dev *att, unsigned int mr_
 
 static int
 tdx_attestation_mr_extend(struct attestation_dev *att, unsigned int mr_id,
+			  const struct ctlv_cursor *mr_options,
 			  const struct attestation_digest_set *values)
 {
 	if (mr_id < 1 || mr_id > 4)
@@ -237,6 +243,7 @@ static const struct attestation_provider tdx_attestation_provider = {
 	.mr_read = tdx_attestation_mr_read,
 	.mr_extend = tdx_attestation_mr_extend,
 	.evidence_caps = &tdx_attestation_evidence_caps,
+	.mr_caps = &tdx_attestation_mr_caps,
 	.mrs = tdx_attestation_mrs,
 	.mrs_count = ARRAY_SIZE(tdx_attestation_mrs),
 };

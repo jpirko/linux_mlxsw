@@ -122,6 +122,16 @@ void attestation_mr_log_entry_free(struct attestation_mr_log_entry *entry)
 		kfree(extend);
 		break;
 	}
+	case ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND: {
+		struct attestation_mr_log_entry_record_extend *record =
+			container_of(entry, typeof(*record), extend.entry);
+
+		attestation_digest_set_free(&record->extend.values);
+		kfree(record->record_data);
+		kfree(record->record_format);
+		kfree(record);
+		break;
+	}
 	case ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND: {
 		struct attestation_mr_log_entry_ima_extend *ima =
 			container_of(entry, typeof(*ima), extend.entry);
@@ -249,7 +259,9 @@ attestation_extend_alloc(enum attestation_mr_log_entry_type type, size_t size,
 
 struct attestation_mr_change *
 attestation_mr_change_prepare(struct attestation_dev *att, struct attestation_mr *mr,
-			      const struct attestation_digest_set *values)
+			      const struct attestation_digest_set *values,
+			      const char *record_format, const u8 *record_data,
+			      size_t record_data_length)
 {
 	struct attestation_mr_change *change;
 	int ret;
@@ -260,8 +272,31 @@ attestation_mr_change_prepare(struct attestation_dev *att, struct attestation_mr
 		return ERR_PTR(-ENOMEM);
 
 	change->mr = mr;
-	change->entry = attestation_extend_alloc(ATTESTATION_MR_LOG_ENTRY_EXTEND,
-						 sizeof(*change->entry), mr, values);
+	if (!record_format) {
+		change->entry = attestation_extend_alloc(ATTESTATION_MR_LOG_ENTRY_EXTEND,
+							 sizeof(*change->entry), mr, values);
+	} else {
+		struct attestation_mr_log_entry_extend *extend;
+		struct attestation_mr_log_entry_record_extend *record;
+
+		extend = attestation_extend_alloc(ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND,
+						  sizeof(*record), mr, values);
+		if (IS_ERR(extend)) {
+			ret = PTR_ERR(extend);
+			goto err_change;
+		}
+
+		record = container_of(extend, typeof(*record), extend);
+		record->record_format = kstrdup(record_format, GFP_KERNEL);
+		record->record_data = kmemdup(record_data, record_data_length, GFP_KERNEL);
+		record->record_data_length = record_data_length;
+		if (!record->record_format || (record_data_length && !record->record_data)) {
+			attestation_mr_log_entry_free(&record->extend.entry);
+			ret = -ENOMEM;
+			goto err_change;
+		}
+		change->entry = &record->extend;
+	}
 	if (IS_ERR(change->entry)) {
 		ret = PTR_ERR(change->entry);
 		goto err_change;
@@ -331,7 +366,8 @@ err_change:
 }
 
 const struct attestation_mr_log_entry *
-attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_change *change)
+attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_change *change,
+			     const struct ctlv_cursor *mr_options)
 {
 	struct attestation_mr_log_entry_extend *extend = change->entry;
 	struct attestation_mr_log_entry *entry = &extend->entry;
@@ -349,7 +385,7 @@ attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_
 	if (ret)
 		return ERR_PTR(ret);
 
-	ret = att->provider->mr_extend(att, change->mr->props->id, &extend->values);
+	ret = att->provider->mr_extend(att, change->mr->props->id, mr_options, &extend->values);
 	if (ret) {
 		xa_release(&att->log->entries, entry->mr_generation);
 		return ERR_PTR(ret);
@@ -388,7 +424,10 @@ int attestation_mr_props_encode(struct ctlv_cursor *reply, const struct attestat
 		ok &= ctlv_attestation_mr_desc_register_index_put(reply, mr->props->register_index);
 	if (mr->props->extendable)
 		caps |= CTLV_ATTESTATION_MR_CAPS_EXTEND;
+	if (mr->removable)
+		caps |= CTLV_ATTESTATION_MR_CAPS_REMOVABLE;
 	ok &= ctlv_attestation_mr_desc_caps_put(reply, caps);
+	ok &= ctlv_attestation_mr_desc_state_flags_put(reply, mr->state_flags);
 	return ok ? 0 : -EMSGSIZE;
 }
 
@@ -467,6 +506,19 @@ int attestation_mr_log_entry_encode(struct ctlv_cursor *reply,
 						 ->values);
 	if (ret)
 		return ret;
+	if (entry->type == ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND) {
+		const struct attestation_mr_log_entry_record_extend *record =
+			container_of(entry, typeof(*record), extend.entry);
+
+		if (!ctlv_attestation_mr_log_entry_record_start(reply, &inner))
+			return -EMSGSIZE;
+		ok = ctlv_attestation_mr_log_entry_record_format_put(&inner,
+								     record->record_format);
+		ok &= ctlv_attestation_mr_log_entry_record_data_put(&inner, record->record_data,
+								    record->record_data_length);
+		ctlv_record_end(&inner);
+		return ok ? 0 : -EMSGSIZE;
+	}
 	if (entry->type == ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND) {
 		const struct attestation_mr_log_entry_ima_extend *ima =
 			container_of(entry, typeof(*ima), extend.entry);
