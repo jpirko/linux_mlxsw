@@ -9,620 +9,562 @@
 
 /* Effective request and reply schemas. */
 
-static const struct ctlv_schema_node families_dump_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema families_dump_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
 };
 
 /* family.entry, attrs */
-static const struct ctlv_schema_node families_dump_reply_entry_attrs[] = {
-	/* family.id */
+static const struct ctlv_node_schema families_dump_reply_entry_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000100000001ULL,
+		.attr_id = CTLV_ATTR_FAMILY_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* family.name */
 	{
-		.attr_id = 0x0000000100000002ULL,
+		.attr_id = CTLV_ATTR_FAMILY_NAME,
 		.kind = CTLV_SCHEMA_STRING,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN_LENGTH |
-			   CTLV_SCHEMA_HAS_MAX_LENGTH,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN_LENGTH | CTLV_NODE_SCHEMA_HAS_MAX_LENGTH,
 		.min_length = 0,
 		.max_length = 63,
 	},
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node families_dump_reply_attrs[] = {
-	/* family.entry */
+static const struct ctlv_node_schema families_dump_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000100000003ULL,
+		.attr_id = CTLV_ATTR_FAMILY_ENTRY,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.attrs = families_dump_reply_entry_attrs,
+		.attrs = families_dump_reply_entry_attr_node_schemas,
 		.attrs_count = 2,
 	},
 };
 
-static const struct ctlv_schema_node families_dump_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema families_dump_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = families_dump_reply_attrs,
+	.attrs = families_dump_reply_attr_node_schemas,
 	.attrs_count = 1,
 };
 
-static const struct ctlv_schema_node ops_dump_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema ops_dump_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
 };
 
 /* op.entry, attrs */
-static const struct ctlv_schema_node ops_dump_reply_entry_attrs[] = {
-	/* op.id */
+static const struct ctlv_node_schema ops_dump_reply_entry_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000400000001ULL,
+		.attr_id = CTLV_ATTR_OP_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
-	/* op.type */
 	{
-		.attr_id = 0x0000000400000002ULL,
+		.attr_id = CTLV_ATTR_OP_TYPE,
 		.kind = CTLV_SCHEMA_ENUM,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = 3,
 	},
 };
 
 /* op.entry, optional attrs */
-static const struct ctlv_schema_node ops_dump_reply_entry_optional_attrs[] = {
-	/* op.availability */
+static const struct ctlv_node_schema ops_dump_reply_entry_optional_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000400000003ULL,
+		.attr_id = CTLV_ATTR_OP_AVAILABILITY,
 		.kind = CTLV_SCHEMA_ENUM,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = 2,
 	},
-	/* op.disabled */
 	{
-		.attr_id = 0x0000000400000004ULL,
+		.attr_id = CTLV_ATTR_OP_DISABLED,
 		.kind = CTLV_SCHEMA_BOOL,
 		.max_occurrences = 1,
 	},
-	/* op.request-max-len */
 	{
-		.attr_id = 0x0000000400000005ULL,
+		.attr_id = CTLV_ATTR_OP_REQUEST_MAX_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* op.action-reply-max-len */
 	{
-		.attr_id = 0x0000000400000006ULL,
+		.attr_id = CTLV_ATTR_OP_ACTION_REPLY_MAX_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* op.query-reply-min-len */
 	{
-		.attr_id = 0x0000000400000007ULL,
+		.attr_id = CTLV_ATTR_OP_QUERY_REPLY_MIN_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* op.query-reply-suggested-len */
 	{
-		.attr_id = 0x0000000400000008ULL,
+		.attr_id = CTLV_ATTR_OP_QUERY_REPLY_SUGGESTED_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* op.event-record-max-len */
 	{
-		.attr_id = 0x0000000400000009ULL,
+		.attr_id = CTLV_ATTR_OP_EVENT_RECORD_MAX_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* op.fd-access */
 	{
-		.attr_id = 0x000000040000000cULL,
+		.attr_id = CTLV_ATTR_OP_FD_ACCESS,
 		.kind = CTLV_SCHEMA_ENUM,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = 2,
 	},
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node ops_dump_reply_attrs[] = {
-	/* op.entry */
+static const struct ctlv_node_schema ops_dump_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x000000040000000bULL,
+		.attr_id = CTLV_ATTR_OP_ENTRY,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.attrs = ops_dump_reply_entry_attrs,
+		.attrs = ops_dump_reply_entry_attr_node_schemas,
 		.attrs_count = 2,
-		.optional_attrs = ops_dump_reply_entry_optional_attrs,
+		.optional_attrs = ops_dump_reply_entry_optional_attr_node_schemas,
 		.optional_attrs_count = 8,
 	},
 };
 
-static const struct ctlv_schema_node ops_dump_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema ops_dump_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = ops_dump_reply_attrs,
+	.attrs = ops_dump_reply_attr_node_schemas,
 	.attrs_count = 1,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node op_schema_get_request_attrs[] = {
-	/* op.id */
+static const struct ctlv_node_schema op_schema_get_request_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000400000001ULL,
+		.attr_id = CTLV_ATTR_OP_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
 };
 
-static const struct ctlv_schema_node op_schema_get_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema op_schema_get_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = op_schema_get_request_attrs,
+	.attrs = op_schema_get_request_attr_node_schemas,
 	.attrs_count = 1,
 };
 
 /* schema.request, attrs */
-static const struct ctlv_schema_node op_schema_get_reply_request_attrs[] = {
-	/* schema.attr-id */
+static const struct ctlv_node_schema op_schema_get_reply_request_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000500000001ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_ATTR_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.kind */
 	{
-		.attr_id = 0x0000000500000002ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_KIND,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max-occurrences */
 	{
-		.attr_id = 0x0000000500000003ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX_OCCURRENCES,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
 };
 
 /* schema.request, optional attrs */
-static const struct ctlv_schema_node
-	op_schema_get_reply_request_optional_attrs[] = {
-	/* schema.min */
+static const struct ctlv_node_schema op_schema_get_reply_request_optional_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000500000004ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MIN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max */
 	{
-		.attr_id = 0x0000000500000005ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.min-length */
 	{
-		.attr_id = 0x0000000500000006ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MIN_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max-length */
 	{
-		.attr_id = 0x0000000500000007ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.flags-mask */
 	{
-		.attr_id = 0x0000000500000008ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_FLAGS_MASK,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.unit */
 	{
-		.attr_id = 0x0000000500000009ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_UNIT,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.scale */
 	{
-		.attr_id = 0x000000050000000aULL,
+		.attr_id = CTLV_ATTR_SCHEMA_SCALE,
 		.kind = CTLV_SCHEMA_SINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = (__u64)INT64_MIN,
 		.max = INT64_MAX,
 	},
-	/* schema.blob-direction */
 	{
-		.attr_id = 0x000000050000000bULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_DIRECTION,
 		.kind = CTLV_SCHEMA_ENUM,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = 3,
 	},
-	/* schema.blob-backings */
 	{
-		.attr_id = 0x000000050000000cULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_BACKINGS,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.blob-max-length */
 	{
-		.attr_id = 0x000000050000000dULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_MAX_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.blob-alignment */
 	{
-		.attr_id = 0x000000050000000eULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_ALIGNMENT,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.reenters */
 	{
-		.attr_id = 0x000000050000000fULL,
+		.attr_id = CTLV_ATTR_SCHEMA_REENTERS,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
-	/* schema.attrs, again from schema-node */
 	{
-		.attr_id = 0x0000000500000010ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_ATTRS,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.present = CTLV_SCHEMA_HAS_REENTERS,
+		.present = CTLV_NODE_SCHEMA_HAS_REENTERS,
 		.reenters = 1,
 	},
-	/* schema.optional-attrs, again from schema-node */
 	{
-		.attr_id = 0x0000000500000011ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_OPTIONAL_ATTRS,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.present = CTLV_SCHEMA_HAS_REENTERS,
+		.present = CTLV_NODE_SCHEMA_HAS_REENTERS,
 		.reenters = 1,
 	},
 };
 
 /* schema.reply, attrs */
-static const struct ctlv_schema_node op_schema_get_reply_reply_attrs[] = {
-	/* schema.attr-id */
+static const struct ctlv_node_schema op_schema_get_reply_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000500000001ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_ATTR_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.kind */
 	{
-		.attr_id = 0x0000000500000002ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_KIND,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max-occurrences */
 	{
-		.attr_id = 0x0000000500000003ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX_OCCURRENCES,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
 };
 
 /* schema.reply, optional attrs */
-static const struct ctlv_schema_node
-	op_schema_get_reply_reply_optional_attrs[] = {
-	/* schema.min */
+static const struct ctlv_node_schema op_schema_get_reply_reply_optional_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000500000004ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MIN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max */
 	{
-		.attr_id = 0x0000000500000005ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.min-length */
 	{
-		.attr_id = 0x0000000500000006ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MIN_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.max-length */
 	{
-		.attr_id = 0x0000000500000007ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_MAX_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.flags-mask */
 	{
-		.attr_id = 0x0000000500000008ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_FLAGS_MASK,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.unit */
 	{
-		.attr_id = 0x0000000500000009ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_UNIT,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.scale */
 	{
-		.attr_id = 0x000000050000000aULL,
+		.attr_id = CTLV_ATTR_SCHEMA_SCALE,
 		.kind = CTLV_SCHEMA_SINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = (__u64)INT64_MIN,
 		.max = INT64_MAX,
 	},
-	/* schema.blob-direction */
 	{
-		.attr_id = 0x000000050000000bULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_DIRECTION,
 		.kind = CTLV_SCHEMA_ENUM,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = 3,
 	},
-	/* schema.blob-backings */
 	{
-		.attr_id = 0x000000050000000cULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_BACKINGS,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.blob-max-length */
 	{
-		.attr_id = 0x000000050000000dULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_MAX_LENGTH,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.blob-alignment */
 	{
-		.attr_id = 0x000000050000000eULL,
+		.attr_id = CTLV_ATTR_SCHEMA_BLOB_ALIGNMENT,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* schema.reenters */
 	{
-		.attr_id = 0x000000050000000fULL,
+		.attr_id = CTLV_ATTR_SCHEMA_REENTERS,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
-	/* schema.attrs, again from schema-node */
 	{
-		.attr_id = 0x0000000500000010ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_ATTRS,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.present = CTLV_SCHEMA_HAS_REENTERS,
+		.present = CTLV_NODE_SCHEMA_HAS_REENTERS,
 		.reenters = 1,
 	},
-	/* schema.optional-attrs, again from schema-node */
 	{
-		.attr_id = 0x0000000500000011ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_OPTIONAL_ATTRS,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 0, /* unlimited */
-		.present = CTLV_SCHEMA_HAS_REENTERS,
+		.present = CTLV_NODE_SCHEMA_HAS_REENTERS,
 		.reenters = 1,
 	},
 };
 
 /* root, optional attrs */
-static const struct ctlv_schema_node op_schema_get_reply_optional_attrs[] = {
-	/* schema.request */
+static const struct ctlv_node_schema op_schema_get_reply_optional_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000500000012ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_REQUEST,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 1,
-		.attrs = op_schema_get_reply_request_attrs,
+		.attrs = op_schema_get_reply_request_attr_node_schemas,
 		.attrs_count = 3,
-		.optional_attrs = op_schema_get_reply_request_optional_attrs,
+		.optional_attrs = op_schema_get_reply_request_optional_attr_node_schemas,
 		.optional_attrs_count = 14,
 	},
-	/* schema.reply */
 	{
-		.attr_id = 0x0000000500000013ULL,
+		.attr_id = CTLV_ATTR_SCHEMA_REPLY,
 		.kind = CTLV_SCHEMA_NEST,
 		.max_occurrences = 1,
-		.attrs = op_schema_get_reply_reply_attrs,
+		.attrs = op_schema_get_reply_reply_attr_node_schemas,
 		.attrs_count = 3,
-		.optional_attrs = op_schema_get_reply_reply_optional_attrs,
+		.optional_attrs = op_schema_get_reply_reply_optional_attr_node_schemas,
 		.optional_attrs_count = 14,
 	},
 };
 
-static const struct ctlv_schema_node op_schema_get_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema op_schema_get_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.optional_attrs = op_schema_get_reply_optional_attrs,
+	.optional_attrs = op_schema_get_reply_optional_attr_node_schemas,
 	.optional_attrs_count = 2,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node subscriptions_add_request_attrs[] = {
-	/* event.op-id */
+static const struct ctlv_node_schema subscriptions_add_request_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000600000001ULL,
+		.attr_id = CTLV_ATTR_EVENT_OP_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 256,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
 };
 
-static const struct ctlv_schema_node subscriptions_add_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema subscriptions_add_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = subscriptions_add_request_attrs,
+	.attrs = subscriptions_add_request_attr_node_schemas,
 	.attrs_count = 1,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node subscriptions_remove_request_attrs[] = {
-	/* event.op-id */
+static const struct ctlv_node_schema subscriptions_remove_request_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000600000001ULL,
+		.attr_id = CTLV_ATTR_EVENT_OP_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 256,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
 };
 
-static const struct ctlv_schema_node subscriptions_remove_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema subscriptions_remove_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = subscriptions_remove_request_attrs,
+	.attrs = subscriptions_remove_request_attr_node_schemas,
 	.attrs_count = 1,
 };
 
-static const struct ctlv_schema_node event_queue_get_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema event_queue_get_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node event_queue_get_reply_attrs[] = {
-	/* event.queue-len */
+static const struct ctlv_node_schema event_queue_get_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000600000002ULL,
+		.attr_id = CTLV_ATTR_EVENT_QUEUE_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX |
-			   CTLV_SCHEMA_HAS_UNIT | CTLV_SCHEMA_HAS_SCALE,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
 		.min = 1,
 		.max = 0x1000000ULL,
 		.unit = CTLV_UNIT_BYTES,
 		.scale = 0,
 	},
-	/* event.queue-used */
 	{
-		.attr_id = 0x0000000600000003ULL,
+		.attr_id = CTLV_ATTR_EVENT_QUEUE_USED,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX |
-			   CTLV_SCHEMA_HAS_UNIT | CTLV_SCHEMA_HAS_SCALE,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
 		.min = 0,
 		.max = UINT64_MAX,
 		.unit = CTLV_UNIT_BYTES,
@@ -630,23 +572,22 @@ static const struct ctlv_schema_node event_queue_get_reply_attrs[] = {
 	},
 };
 
-static const struct ctlv_schema_node event_queue_get_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema event_queue_get_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = event_queue_get_reply_attrs,
+	.attrs = event_queue_get_reply_attr_node_schemas,
 	.attrs_count = 2,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node event_queue_set_request_attrs[] = {
-	/* event.queue-len */
+static const struct ctlv_node_schema event_queue_set_request_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000600000002ULL,
+		.attr_id = CTLV_ATTR_EVENT_QUEUE_LEN,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX |
-			   CTLV_SCHEMA_HAS_UNIT | CTLV_SCHEMA_HAS_SCALE,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
 		.min = 1,
 		.max = 0x1000000ULL,
 		.unit = CTLV_UNIT_BYTES,
@@ -654,189 +595,183 @@ static const struct ctlv_schema_node event_queue_set_request_attrs[] = {
 	},
 };
 
-static const struct ctlv_schema_node event_queue_set_request = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema event_queue_set_request_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = event_queue_set_request_attrs,
+	.attrs = event_queue_set_request_attr_node_schemas,
 	.attrs_count = 1,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node op_changed_reply_attrs[] = {
-	/* op.id */
+static const struct ctlv_node_schema op_changed_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000400000001ULL,
+		.attr_id = CTLV_ATTR_OP_ID,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
 		.max = UINT64_MAX,
 	},
-	/* op.disabled */
 	{
-		.attr_id = 0x0000000400000004ULL,
+		.attr_id = CTLV_ATTR_OP_DISABLED,
 		.kind = CTLV_SCHEMA_BOOL,
 		.max_occurrences = 1,
 	},
-	/* op.state-generation */
 	{
-		.attr_id = 0x000000040000000aULL,
+		.attr_id = CTLV_ATTR_OP_STATE_GENERATION,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
 };
 
-static const struct ctlv_schema_node op_changed_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema op_changed_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = op_changed_reply_attrs,
+	.attrs = op_changed_reply_attr_node_schemas,
 	.attrs_count = 3,
 };
 
 /* root, attrs */
-static const struct ctlv_schema_node event_overflow_reply_attrs[] = {
-	/* event.first-sequence */
+static const struct ctlv_node_schema event_overflow_reply_attr_node_schemas[] = {
 	{
-		.attr_id = 0x0000000600000004ULL,
+		.attr_id = CTLV_ATTR_EVENT_FIRST_SEQUENCE,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* event.last-sequence */
 	{
-		.attr_id = 0x0000000600000005ULL,
+		.attr_id = CTLV_ATTR_EVENT_LAST_SEQUENCE,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
-	/* event.dropped-count */
 	{
-		.attr_id = 0x0000000600000006ULL,
+		.attr_id = CTLV_ATTR_EVENT_DROPPED_COUNT,
 		.kind = CTLV_SCHEMA_UINT,
 		.max_occurrences = 1,
-		.present = CTLV_SCHEMA_HAS_MIN | CTLV_SCHEMA_HAS_MAX,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 0,
 		.max = UINT64_MAX,
 	},
 };
 
-static const struct ctlv_schema_node event_overflow_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema event_overflow_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
-	.attrs = event_overflow_reply_attrs,
+	.attrs = event_overflow_reply_attr_node_schemas,
 	.attrs_count = 3,
 };
 
-static const struct ctlv_schema_node device_removed_reply = {
-	.attr_id = CTLV_ATTR_ID_ROOT,
+static const struct ctlv_node_schema device_removed_reply_node_schema = {
+	.attr_id = CTLV_ATTR_ROOT,
 	.kind = CTLV_SCHEMA_NEST,
 	.max_occurrences = 1,
 };
 
 /* Effective ops in declaration order. */
-static const struct ctlv_op_spec ctlv_ctlv_op_specs[] = {
+static const struct ctlv_op_spec ctlv_op_specs[] = {
 	{
-		.op_id = 0x0000000000000001ULL,
+		.op_id = CTLV_OP_FAMILIES_DUMP,
 		.type = CTLV_OP_TYPE_QUERY,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 16,
 		.query_reply_min_len = 112,
 		.query_reply_suggested_len = 65536,
-		.request = &families_dump_request,
-		.reply = &families_dump_reply,
+		.request = &families_dump_request_node_schema,
+		.reply = &families_dump_reply_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000002ULL,
+		.op_id = CTLV_OP_OPS_DUMP,
 		.type = CTLV_OP_TYPE_QUERY,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 16,
 		.query_reply_min_len = 56,
 		.query_reply_suggested_len = 65536,
-		.request = &ops_dump_request,
-		.reply = &ops_dump_reply,
+		.request = &ops_dump_request_node_schema,
+		.reply = &ops_dump_reply_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000003ULL,
+		.op_id = CTLV_OP_OP_SCHEMA_GET,
 		.type = CTLV_OP_TYPE_QUERY,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 40,
 		.query_reply_min_len = 552,
 		.query_reply_suggested_len = 65536,
-		.request = &op_schema_get_request,
-		.reply = &op_schema_get_reply,
+		.request = &op_schema_get_request_node_schema,
+		.reply = &op_schema_get_reply_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000004ULL,
+		.op_id = CTLV_OP_SUBSCRIPTIONS_ADD,
 		.type = CTLV_OP_TYPE_ACTION,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 6160,
-		.request = &subscriptions_add_request,
+		.request = &subscriptions_add_request_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000005ULL,
+		.op_id = CTLV_OP_SUBSCRIPTIONS_REMOVE,
 		.type = CTLV_OP_TYPE_ACTION,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 6160,
-		.request = &subscriptions_remove_request,
+		.request = &subscriptions_remove_request_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000006ULL,
+		.op_id = CTLV_OP_EVENT_QUEUE_GET,
 		.type = CTLV_OP_TYPE_QUERY,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 16,
 		.query_reply_min_len = 40,
 		.query_reply_suggested_len = 65536,
-		.request = &event_queue_get_request,
-		.reply = &event_queue_get_reply,
+		.request = &event_queue_get_request_node_schema,
+		.reply = &event_queue_get_reply_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000007ULL,
+		.op_id = CTLV_OP_EVENT_QUEUE_SET,
 		.type = CTLV_OP_TYPE_ACTION,
 		.fd_access = CTLV_OP_FD_ACCESS_READ,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.request_max_len = 40,
-		.request = &event_queue_set_request,
+		.request = &event_queue_set_request_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000008ULL,
+		.op_id = CTLV_OP_OP_CHANGED,
 		.type = CTLV_OP_TYPE_EVENT,
 		.event_record_max_len = 112,
-		.reply = &op_changed_reply,
+		.reply = &op_changed_reply_node_schema,
 	},
 	{
-		.op_id = 0x0000000000000009ULL,
+		.op_id = CTLV_OP_EVENT_OVERFLOW,
 		.type = CTLV_OP_TYPE_EVENT,
 		.event_record_max_len = 112,
-		.reply = &event_overflow_reply,
+		.reply = &event_overflow_reply_node_schema,
 	},
 	{
-		.op_id = 0x000000000000000aULL,
+		.op_id = CTLV_OP_DEVICE_REMOVED,
 		.type = CTLV_OP_TYPE_EVENT,
 		.event_record_max_len = 40,
-		.reply = &device_removed_reply,
+		.reply = &device_removed_reply_node_schema,
 	},
 };
 
 /* Family specification descriptor. */
-const struct ctlv_family_spec ctlv_ctlv_spec = {
+const struct ctlv_family_spec ctlv_spec = {
 	.name = "ctlv",
 	.family_id = 0,
-	.ops = ctlv_ctlv_op_specs,
+	.ops = ctlv_op_specs,
 	.ops_count = 10,
 };

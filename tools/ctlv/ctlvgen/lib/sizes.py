@@ -37,6 +37,7 @@ BOOL_PAYLOAD_LEN = 1
 # checks these against the blob group of the core family.
 BLOB_DESCRIPTOR_ATTRS = {
     'va': 3,
+    'memfd': 4,
 }
 
 # Attr sets of the root family that are message roots in their own right, each

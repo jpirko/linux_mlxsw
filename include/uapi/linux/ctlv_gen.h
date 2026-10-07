@@ -30,6 +30,7 @@ enum _ctlv_op_availability {
 /* enum blob-type */
 enum _ctlv_blob_type {
 	CTLV_BLOB_TYPE_VA = 1,
+	CTLV_BLOB_TYPE_MEMFD,
 };
 
 /* enum blob-direction */

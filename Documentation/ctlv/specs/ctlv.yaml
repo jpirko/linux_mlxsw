@@ -27,6 +27,7 @@ enums:
   - name: blob-type
     values:
       - va
+      - memfd
 
   - name: blob-direction
     values:
@@ -70,8 +71,8 @@ attr-groups:
         attrs: family-entry
         max-occurrences: unlimited
 
-  # The nest carried by every family blob attr. va uses address; fd and offset
-  # are reserved for later fd-backed types.
+  # The nest carried by every family blob attr. va uses address; memfd uses fd
+  # and may use offset.
   - name: blob
     attrs:
       - name: type

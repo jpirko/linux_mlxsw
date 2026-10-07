@@ -448,12 +448,15 @@ Blobs
 
 An operation that moves more data than a message should carry declares a blob
 attribute, and the caller passes a descriptor instead of the data: a nest
-carrying the backing type, the length and the identifier of the memory. One
-backing is defined:
+carrying the backing type, the length, an offset and the identifier of the
+memory. Two backings are defined:
 
 ``va``
     Anonymous userspace memory of the calling process, named by an address in
     ``blob.address``.
+
+``memfd``
+    A memfd, named by a file descriptor in ``blob.fd``, at ``blob.offset``.
 
 The backings an attribute accepts, the direction data may flow, the maximum
 length and the required alignment are declared by the family and reported by
@@ -461,8 +464,8 @@ length and the required alignment are declared by the family and reported by
 returns; a descriptor the operation may not use is refused before the callback.
 While the operation is in flight, userspace must not modify an ``input`` blob
 or access an ``output`` or ``inout`` blob. Whether two descriptors overlap is
-also the caller's responsibility. Keep every named VA mapping valid until the
-operation returns.
+also the caller's responsibility. Keep every named VA mapping and file
+descriptor valid until the operation returns.
 
 Introspection
 =============

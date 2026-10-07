@@ -12,7 +12,7 @@ family: {name: ctlv, id: 0}
 enums:
   op-type: {action: 1, query: 2, event: 3}
   op-availability: {fixed: 1, dynamic: 2}
-  blob-type: {va: 1}
+  blob-type: {va: 1, memfd: 2}
   blob-direction: {input: 1, output: 2, inout: 3}
   validation-reason: {malformed-message: 1, unknown-attr: 2, unknown-flag: 3,
                       nesting-too-deep: 4, missing-attr: 5,
