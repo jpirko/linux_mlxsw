@@ -47,7 +47,7 @@ attr-groups:
       blob-class: {id: 3, enum: evidence-blob-class}
       format: {id: 4, type: string, min-length: 1, max-length: 128}
       representation: {id: 5, enum: evidence-representation}
-      data: {id: 6, blob: output, backings: [va], max-length: 4294967295}
+      data: {id: 6, blob: output, backings: [va, memfd], max-length: 4294967295}
       object-length: {id: 7, type: uint, max-occurrences: 16}
   mr:
     id: 4

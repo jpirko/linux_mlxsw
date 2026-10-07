@@ -95,7 +95,7 @@ attr-groups:
       - name: data
         blob:
           direction: output
-          allowed-backings: [ va ]
+          allowed-backings: [ va, memfd ]
           max-length: 4294967295
           alignment: 1
       - name: object-length
