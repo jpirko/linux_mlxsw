@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config CTLV
 	tristate
+	# A blob field may name a dma-buf, whatever family declares one.
+	select DMA_SHARED_BUFFER
 
 config CTLV_DEBUG
 	bool "CTLV core self-checks"

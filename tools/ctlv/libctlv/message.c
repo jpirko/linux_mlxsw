@@ -302,6 +302,13 @@ int ctlv_put_blob_memfd(struct ctlv_msg *msg, __u64 type, int fd,
 			   length);
 }
 
+int ctlv_put_blob_dma_buf(struct ctlv_msg *msg, __u64 type, int fd,
+			  __u64 offset, __u64 length)
+{
+	return put_blob_fd(msg, type, CTLV_BLOB_TYPE_DMA_BUF, fd, offset,
+			   length);
+}
+
 bool ctlv_hdr_is_record(const struct ctlv_hdr *hdr)
 {
 	return hdr->flags & CTLV_HDR_F_RECORD;

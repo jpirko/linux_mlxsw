@@ -538,7 +538,7 @@ that received its request and release every successful resolve before return:
     return ret ?: put_ret;
 
 The schema fixes direction, backing, length, and alignment. Resolution holds
-the backing for the ioctl. An output blob too short for
+the backing for the ioctl; CPU mapping is lazy. An output blob too short for
 what the operation produces is the caller's to enlarge: return
 ``ctlv_blob_too_short()`` with the length needed, rather than writing part of
 it.
@@ -546,6 +546,12 @@ it.
 Only a request carries a blob; the generator refuses one in a reply or an
 event. A request that shares fields with a reply includes them and declares its
 blob beside them, as ``item-set`` does when it includes ``item``.
+
+For device DMA, ``ctlv_blob_dma_map()`` accepts dma-buf backing, returns a
+borrowed whole-buffer scatterlist and the blob offset in its DMA-length stream.
+Call ``ctlv_blob_dma_begin()``, submit the fenced work,
+``ctlv_blob_dma_submit_done()``, then ``ctlv_blob_dma_unmap()`` after hardware
+stops. An operation holds at most one device mapping.
 
 Events
 ======

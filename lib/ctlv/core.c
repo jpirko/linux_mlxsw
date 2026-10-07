@@ -1297,3 +1297,5 @@ static void __exit ctlv_module_exit(void)
 module_exit(ctlv_module_exit);
 MODULE_DESCRIPTION("CTLV character device TLV UAPI core");
 MODULE_LICENSE("GPL");
+/* A blob field may name a dma-buf, so the core resolves one itself. */
+MODULE_IMPORT_NS("DMA_BUF");

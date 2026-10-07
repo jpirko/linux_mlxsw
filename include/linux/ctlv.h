@@ -156,6 +156,9 @@ int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
 int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
 
 struct ctlv_blob;
+struct ctlv_blob_dma;
+struct dma_fence;
+struct sg_table;
 
 int ctlv_blob_put(struct ctlv_blob *blob);
 u64 ctlv_blob_len(const struct ctlv_blob *blob);
@@ -163,6 +166,13 @@ int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
 int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
 		    size_t len);
 int ctlv_blob_too_short(struct ctlv_blob *blob, u64 len);
+
+struct ctlv_blob_dma *ctlv_blob_dma_map(struct ctlv_blob *blob,
+					struct device *dev,
+					struct sg_table **sgt, u64 *dma_skip);
+int ctlv_blob_dma_begin(struct ctlv_blob_dma *dma, struct dma_fence *fence);
+void ctlv_blob_dma_submit_done(struct ctlv_blob_dma *dma, int status);
+void ctlv_blob_dma_unmap(struct ctlv_blob_dma *dma, int status);
 
 void ctlv_event_lost(struct ctlv *ctlv, u64 op_id);
 int ctlv_event_emit(struct ctlv_op_ctx *ctx);
