@@ -24,8 +24,10 @@ descriptor.  Its family-wide operation hooks delegate once to
 attestation parent priv.  The hooks serialize an operation, its native
 callback, journal commit and event emission with one instance mutex.
 
-Fixed MRs are listed in the provider descriptor.  Their property storage
-remains valid until ``ctlv_destroy()`` or failed-creation unwind completes.
+Fixed MRs are listed in the provider descriptor.  A provider advertising
+dynamic topology retains handles returned by ``attestation_mr_create()`` and
+passes each handle exactly once to ``attestation_mr_destroy()``.  Property
+storage remains valid for the handle's lifetime.
 
 State changes
 =============

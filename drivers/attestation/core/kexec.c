@@ -20,6 +20,7 @@
 #define ATTESTATION_KEXEC_PROP_READ BIT(0)
 #define ATTESTATION_KEXEC_PROP_EXTEND BIT(1)
 #define ATTESTATION_KEXEC_PROP_INDEX BIT(2)
+#define ATTESTATION_KEXEC_PROP_REMOVABLE BIT(3)
 
 struct attestation_kexec_writer {
 	u8 *data;
@@ -92,7 +93,8 @@ static int attestation_kexec_get_u32(struct attestation_kexec_reader *reader,
 
 static int
 attestation_kexec_props_write(struct attestation_kexec_writer *writer,
-			      const struct attestation_mr_props *props)
+			      const struct attestation_mr_props *props,
+			      bool removable)
 {
 	u32 flags = 0;
 	size_t index;
@@ -104,6 +106,8 @@ attestation_kexec_props_write(struct attestation_kexec_writer *writer,
 		flags |= ATTESTATION_KEXEC_PROP_EXTEND;
 	if (props->has_register_index)
 		flags |= ATTESTATION_KEXEC_PROP_INDEX;
+	if (removable)
+		flags |= ATTESTATION_KEXEC_PROP_REMOVABLE;
 	ret = attestation_kexec_put_u32(writer, props->id);
 	ret |= attestation_kexec_put_u32(writer, strlen(props->name));
 	ret |= attestation_kexec_put_u32(writer, props->algorithms_count);
@@ -154,11 +158,30 @@ attestation_kexec_entry_write(struct attestation_kexec_writer *writer,
 		const struct attestation_mr_log_entry_info *info =
 			container_of(entry, typeof(*info), entry);
 
-		return attestation_kexec_props_write(writer, &info->props);
+		return attestation_kexec_props_write(writer, &info->props,
+						     false);
 	}
 	case ATTESTATION_MR_LOG_ENTRY_EXTEND:
 		extend = container_of(entry, typeof(*extend), entry);
 		return attestation_kexec_values_write(writer, &extend->values);
+	case ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND: {
+		const struct attestation_mr_log_entry_record_extend *record =
+			container_of(entry, typeof(*record), extend.entry);
+
+		ret = attestation_kexec_values_write(
+			writer, &record->extend.values);
+		ret |= attestation_kexec_put_u32(
+			writer, strlen(record->record_format));
+		ret |= attestation_kexec_put_u32(
+			writer, record->record_data_length);
+		ret |= attestation_kexec_put(
+			writer, record->record_format,
+			strlen(record->record_format));
+		ret |= attestation_kexec_put(
+			writer, record->record_data,
+			record->record_data_length);
+		return ret;
+	}
 	case ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND: {
 		const struct attestation_mr_log_entry_ima_extend *ima =
 			container_of(entry, typeof(*ima), extend.entry);
@@ -199,9 +222,10 @@ attestation_kexec_mr_write(struct attestation_kexec_writer *writer,
 		return -ENOMEM;
 	for (index = 0; index < values.values_count; index++)
 		values.values[index].algorithm = mr->props->algorithms[index];
-	ret = att->provider->mr_read(att, mr->props->id, &values);
+	ret = att->provider->mr_read(att, mr->props->id, NULL, &values);
 	if (!ret)
-		ret = attestation_kexec_props_write(writer, mr->props);
+		ret = attestation_kexec_props_write(
+			writer, mr->props, mr->removable);
 	if (!ret)
 		ret = attestation_kexec_put_u32(
 			writer, mr->start_generation);
@@ -394,7 +418,8 @@ static void attestation_kexec_props_free(struct attestation_mr_props *props)
 
 static int
 attestation_kexec_props_read(struct attestation_kexec_reader *reader,
-			     struct attestation_mr_props *props)
+			     struct attestation_mr_props *props,
+			     bool *removable)
 {
 	enum hash_algo *algorithms;
 	char *name;
@@ -443,6 +468,7 @@ attestation_kexec_props_read(struct attestation_kexec_reader *reader,
 		.readable = flags & ATTESTATION_KEXEC_PROP_READ,
 		.extendable = flags & ATTESTATION_KEXEC_PROP_EXTEND,
 	};
+	*removable = flags & ATTESTATION_KEXEC_PROP_REMOVABLE;
 	return 0;
 }
 
@@ -487,7 +513,10 @@ err:
 
 static bool
 attestation_kexec_props_equal(const struct attestation_mr_props *left,
-			      const struct attestation_mr_props *right)
+			      const struct attestation_mr_props *right,
+			      bool removable,
+			      const struct attestation_mr *mr,
+			      bool compare_removable)
 {
 	return left->id == right->id &&
 	       !strcmp(left->name, right->name) &&
@@ -498,7 +527,8 @@ attestation_kexec_props_equal(const struct attestation_mr_props *left,
 	       (!left->has_register_index ||
 		left->register_index == right->register_index) &&
 	       left->readable == right->readable &&
-	       left->extendable == right->extendable;
+	       left->extendable == right->extendable &&
+	       (!compare_removable || removable == mr->removable);
 }
 
 static int
@@ -519,7 +549,7 @@ attestation_kexec_values_compare(struct attestation *att,
 		return -ENOMEM;
 	for (index = 0; index < actual.values_count; index++)
 		actual.values[index].algorithm = mr->props->algorithms[index];
-	ret = att->provider->mr_read(att, mr->props->id, &actual);
+	ret = att->provider->mr_read(att, mr->props->id, NULL, &actual);
 	if (!ret &&
 	    memcmp(actual.values, saved->values,
 		   actual.values_count * sizeof(*actual.values)))
@@ -538,6 +568,7 @@ attestation_kexec_live_mrs_restore(struct attestation *att,
 	struct attestation_mr *mr;
 	unsigned long index;
 	u32 start_generation;
+	bool removable;
 	u32 live = 0;
 	int ret;
 
@@ -546,7 +577,8 @@ attestation_kexec_live_mrs_restore(struct attestation *att,
 	if (live != count)
 		return -ESTALE;
 	while (count--) {
-		ret = attestation_kexec_props_read(reader, &props);
+		ret = attestation_kexec_props_read(
+			reader, &props, &removable);
 		if (ret)
 			return ret;
 		ret = attestation_kexec_get_u32(reader, &start_generation);
@@ -557,7 +589,8 @@ attestation_kexec_live_mrs_restore(struct attestation *att,
 			goto out_props;
 		mr = xa_load(&att->mrs, props.id);
 		if (!mr ||
-		    !attestation_kexec_props_equal(&props, mr->props)) {
+		    !attestation_kexec_props_equal(
+			    &props, mr->props, removable, mr, true)) {
 			ret = -ESTALE;
 			goto out_values;
 		}
@@ -583,6 +616,7 @@ static int attestation_kexec_entry_read(
 	struct attestation_mr_log_entry *entry;
 	u32 type, generation, device_generation, mr_id;
 	u32 name_len, data_len, violation;
+	bool removable;
 	int ret;
 
 	ret = attestation_kexec_get_u32(reader, &type);
@@ -599,8 +633,9 @@ static int attestation_kexec_entry_read(
 		info = kzalloc_obj(*info, GFP_KERNEL);
 		if (!info)
 			return -ENOMEM;
-		ret = attestation_kexec_props_read(reader, &info->props);
-		if (ret || info->props.id != mr_id) {
+		ret = attestation_kexec_props_read(
+			reader, &info->props, &removable);
+		if (ret || removable || info->props.id != mr_id) {
 			if (!ret)
 				ret = -EINVAL;
 			attestation_kexec_props_free(&info->props);
@@ -624,6 +659,44 @@ static int attestation_kexec_entry_read(
 		}
 		entry = &extend->entry;
 		break;
+	}
+	case ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND: {
+		struct attestation_mr_log_entry_record_extend *record;
+
+		record = kzalloc_obj(*record, GFP_KERNEL);
+		if (!record)
+			return -ENOMEM;
+		ret = attestation_kexec_values_read(
+			reader, &record->extend.values);
+		ret |= attestation_kexec_get_u32(reader, &name_len);
+		ret |= attestation_kexec_get_u32(reader, &data_len);
+		if (ret || !name_len || name_len > 128 || data_len > 4096) {
+			ret = -EINVAL;
+			goto err_record;
+		}
+		record->record_format = kmalloc(name_len + 1, GFP_KERNEL);
+		record->record_data = kmalloc(data_len, GFP_KERNEL);
+		if (!record->record_format ||
+		    (data_len && !record->record_data)) {
+			ret = -ENOMEM;
+			goto err_record;
+		}
+		ret = attestation_kexec_get(
+			reader, record->record_format, name_len);
+		record->record_format[name_len] = '\0';
+		ret |= attestation_kexec_get(
+			reader, record->record_data, data_len);
+		if (ret)
+			goto err_record;
+		record->record_data_length = data_len;
+		entry = &record->extend.entry;
+		break;
+err_record:
+		kfree(record->record_data);
+		kfree(record->record_format);
+		kfree(record->extend.values.values);
+		kfree(record);
+		return ret;
 	}
 	case ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND: {
 		struct attestation_mr_log_entry_ima_extend *ima;
@@ -766,7 +839,8 @@ static int attestation_kexec_live_mrs_validate(struct attestation *att)
 		    entry->mr_id != mr->props->id)
 			return -ESTALE;
 		info = container_of(entry, typeof(*info), entry);
-		if (!attestation_kexec_props_equal(&info->props, mr->props))
+		if (!attestation_kexec_props_equal(
+			    &info->props, mr->props, false, mr, false))
 			return -ESTALE;
 	}
 	return 0;

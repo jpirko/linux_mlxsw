@@ -16,6 +16,7 @@
 enum attestation_mr_log_entry_type {
 	ATTESTATION_MR_LOG_ENTRY_INFO,
 	ATTESTATION_MR_LOG_ENTRY_EXTEND,
+	ATTESTATION_MR_LOG_ENTRY_RECORD_EXTEND,
 	ATTESTATION_MR_LOG_ENTRY_IMA_EXTEND,
 };
 
@@ -42,6 +43,13 @@ struct attestation_mr_log_entry_info {
 struct attestation_mr_log_entry_extend {
 	struct attestation_mr_log_entry entry;
 	struct attestation_digest_set values;
+};
+
+struct attestation_mr_log_entry_record_extend {
+	struct attestation_mr_log_entry_extend extend;
+	char *record_format;
+	u8 *record_data;
+	size_t record_data_length;
 };
 
 struct attestation_mr_log_entry_ima_extend {
@@ -83,9 +91,11 @@ struct attestation {
 };
 
 struct attestation_mr {
+	struct attestation *att;
 	const struct attestation_mr_props *props;
 	unsigned int start_generation;
 	unsigned int state_flags;
+	bool removable;
 };
 
 struct attestation_mr_target {
@@ -141,14 +151,17 @@ void attestation_mr_log_free(struct attestation_mr_log *log);
 void attestation_mr_log_append(struct attestation *att, struct attestation_mr_log_entry *entry);
 struct attestation_mr_change *
 attestation_mr_change_prepare(struct attestation *att, struct attestation_mr *mr,
-			      const struct attestation_digest_set *values);
+			      const struct attestation_digest_set *values,
+			      const char *record_format, const u8 *record_data,
+			      size_t record_data_length);
 struct attestation_mr_change *
 attestation_mr_ima_change_prepare(struct attestation *att, struct attestation_mr *mr,
 				  const struct attestation_digest_set *values,
 				  const char *template_name, const u8 *template_data,
 				  size_t template_data_length, bool violation);
 const struct attestation_mr_log_entry *
-attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_change *change);
+attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_change *change,
+			     const struct ctlv_cursor *mr_options);
 void attestation_mr_change_free(struct attestation_mr_change *change);
 
 int attestation_events_prepare(struct attestation *att, struct attestation_event_batch *events,

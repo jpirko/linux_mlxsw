@@ -60,6 +60,11 @@ const struct attestation_digest *
 attestation_mr_log_entry_values(const struct attestation_mr_log_entry *entry,
 				size_t *values_count);
 const char *
+attestation_mr_log_entry_record_format(const struct attestation_mr_log_entry *entry);
+const u8 *
+attestation_mr_log_entry_record_data(const struct attestation_mr_log_entry *entry,
+				     size_t *length);
+const char *
 attestation_mr_log_entry_template_name(const struct attestation_mr_log_entry *entry);
 const u8 *
 attestation_mr_log_entry_template_data(const struct attestation_mr_log_entry *entry,

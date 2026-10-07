@@ -62,17 +62,45 @@ static int attestation_evidence_caps_validate(const struct attestation_provider 
 	for (object_index = 0; object_index < caps->objects_count; object_index++) {
 		const struct attestation_evidence_supported_object *object =
 			&caps->objects[object_index];
+		bool tcb_digest = false;
 		size_t index;
 
 		if (!object->format || !*object->format || strlen(object->format) > 128 ||
+		    !object->representations || !object->representations_count ||
+		    object->representations_count > 2 || object->hash_algorithms_count > 21 ||
 		    !object->max_length || object->max_length > UINT_MAX ||
 		    object->max_length > caps->max_total_output_length)
 			return -EINVAL;
+		for (index = 0; index < object->representations_count; index++) {
+			if (object->representations[index] !=
+				    ATTESTATION_EVIDENCE_REPRESENTATION_RAW &&
+			    object->representations[index] !=
+				    ATTESTATION_EVIDENCE_REPRESENTATION_TCB_DIGEST)
+				return -EINVAL;
+			if (index &&
+			    object->representations[index - 1] >= object->representations[index])
+				return -EINVAL;
+			tcb_digest |= object->representations[index] ==
+				      ATTESTATION_EVIDENCE_REPRESENTATION_TCB_DIGEST;
+		}
+		if (tcb_digest && !object->hash_algorithms_count)
+			return -EINVAL;
+		for (index = 0; index < object->hash_algorithms_count; index++) {
+			if (!attestation_algorithm_valid(object->hash_algorithms[index]))
+				return -EINVAL;
+			if (index &&
+			    object->hash_algorithms[index - 1] >= object->hash_algorithms[index])
+				return -EINVAL;
+		}
 		for (index = 0; index < object_index; index++) {
 			const struct attestation_evidence_supported_object *prior =
 				&caps->objects[index];
 
-			if (!strcmp(prior->format, object->format))
+			if (prior->blob_class == object->blob_class &&
+			    prior->has_blob_instance == object->has_blob_instance &&
+			    (!object->has_blob_instance ||
+			     prior->blob_instance == object->blob_instance) &&
+			    !strcmp(prior->format, object->format))
 				return -EINVAL;
 		}
 	}
@@ -94,9 +122,10 @@ int attestation_provider_validate(const struct attestation_provider *provider)
 	if ((provider->evidence_accept || provider->evidence_accept_clear) &&
 	    !provider->evidence_caps)
 		return -EINVAL;
-	if (!!provider->mrs != !!provider->mrs_count)
+	if (!provider->mr_caps &&
+	    (provider->mr_read || provider->mr_extend || provider->mrs || provider->mrs_count))
 		return -EINVAL;
-	if ((provider->mr_read || provider->mr_extend) && !provider->mrs_count)
+	if (provider->mrs_count && !provider->mrs)
 		return -EINVAL;
 	for (index = 0; index < provider->mrs_count; index++) {
 		ret = attestation_mr_props_validate(provider, &provider->mrs[index]);
@@ -265,7 +294,8 @@ int attestation_preflight(struct attestation *att, bool device, bool evidence, b
 }
 
 static struct attestation_mr *attestation_mr_alloc(struct attestation *att,
-						   const struct attestation_mr_props *props)
+						   const struct attestation_mr_props *props,
+						   bool removable)
 {
 	struct attestation_mr *mr;
 	int ret;
@@ -278,7 +308,9 @@ static struct attestation_mr *attestation_mr_alloc(struct attestation *att,
 	mr = kzalloc_obj(*mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
+	mr->att = att;
 	mr->props = props;
+	mr->removable = removable;
 	ret = xa_insert(&att->mrs, props->id, mr, GFP_KERNEL);
 	if (ret) {
 		kfree(mr);
@@ -295,6 +327,90 @@ struct attestation_mr *attestation_mr_lookup_live(struct attestation *att, unsig
 	mr = xa_load(&att->mrs, mr_id);
 	return mr ? mr : ERR_PTR(-ENOENT);
 }
+
+static int attestation_dynamic_mr_publish(struct attestation_mr *mr)
+{
+	struct attestation *att = mr->att;
+	struct attestation_mr_log_entry_info *info;
+	struct attestation_event_batch events = {};
+	int ret;
+
+	ret = attestation_preflight(att, false, false, true);
+	if (ret)
+		return ret;
+	info = attestation_mr_info_alloc(mr);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+	ret = attestation_events_prepare(att, &events, false, false, true);
+	if (ret)
+		goto err_info;
+	info->entry.mr_generation = att->log->generation + 1;
+	ret = xa_reserve(&att->log->entries, info->entry.mr_generation, GFP_KERNEL);
+	if (ret)
+		goto err_events;
+	attestation_mr_changed(att);
+	info->entry.device_generation = att->device_generation;
+	mr->start_generation = info->entry.mr_generation;
+	attestation_mr_log_append(att, &info->entry);
+	attestation_mr_log_event_emit(&events, &info->entry);
+	return 0;
+
+err_events:
+	attestation_events_abort(&events);
+err_info:
+	attestation_mr_log_entry_free(&info->entry);
+	return ret;
+}
+
+struct attestation_mr *attestation_mr_create(struct attestation *att,
+					     const struct attestation_mr_props *props)
+{
+	struct attestation_mr *mr;
+	int ret;
+
+	guard(mutex)
+		(&att->lock);
+	if (!att->provider->mr_caps || !att->provider->mr_caps->supports_dynamic_topology)
+		return ERR_PTR(-EOPNOTSUPP);
+	if (att->log && att->log->frozen)
+		return ERR_PTR(-EBUSY);
+	mr = attestation_mr_alloc(att, props, true);
+	if (IS_ERR(mr))
+		return mr;
+	if (!attestation_registered(att))
+		return mr;
+	ret = attestation_dynamic_mr_publish(mr);
+	if (ret) {
+		xa_erase(&att->mrs, props->id);
+		kfree(mr);
+		return ERR_PTR(ret);
+	}
+	return mr;
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_create, "ATTESTATION");
+
+void attestation_mr_destroy(struct attestation_mr *mr)
+{
+	struct attestation *att;
+
+	if (WARN_ON_ONCE(!mr->removable))
+		return;
+	att = mr->att;
+	guard(mutex)
+		(&att->lock);
+	if (WARN_ON_ONCE(xa_load(&att->mrs, mr->props->id) != mr))
+		return;
+	attestation_kexec_invalidate(att);
+	xa_erase(&att->mrs, mr->props->id);
+	if (attestation_registered(att)) {
+		if (attestation_preflight(att, false, false, true))
+			attestation_stop(att);
+		else
+			attestation_mr_changed(att);
+	}
+	kfree(mr);
+}
+EXPORT_SYMBOL_NS_GPL(attestation_mr_destroy, "ATTESTATION");
 
 void attestation_state_changed(struct attestation *att)
 {
@@ -339,7 +455,7 @@ void attestation_provide_ops(struct attestation *att)
 			ctlv_attestation_evidence_accept_clear_provide(ctlvdev);
 		}
 	}
-	if (provider->mrs_count) {
+	if (provider->mr_caps) {
 		ctlv_attestation_mr_get_provide(ctlvdev);
 		ctlv_attestation_mr_dump_provide(ctlvdev);
 		ctlv_attestation_mr_log_get_provide(ctlvdev);
@@ -373,7 +489,7 @@ int attestation_core_init(struct attestation *att, struct ctlv_device *ctlvdev,
 	for (index = 0; index < provider->mrs_count; index++) {
 		struct attestation_mr *mr;
 
-		mr = attestation_mr_alloc(att, &provider->mrs[index]);
+		mr = attestation_mr_alloc(att, &provider->mrs[index], false);
 		if (IS_ERR(mr)) {
 			ret = PTR_ERR(mr);
 			goto err_mrs;
@@ -431,6 +547,9 @@ int ctlv_attestation_post_init(struct ctlv_device *ctlvdev, void *priv)
 	struct attestation *att = priv;
 	int ret;
 
+	if (att->provider->mr_caps && xa_empty(&att->mrs) &&
+	    !att->provider->mr_caps->supports_dynamic_topology)
+		return -EINVAL;
 	ret = attestation_kexec_restore(att);
 	if (ret < 0)
 		return ret;

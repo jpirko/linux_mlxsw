@@ -73,15 +73,28 @@ static const struct attestation_mr_props attestation_tdx_mrs[] = {
 	},
 };
 
+static const enum attestation_evidence_representation
+attestation_tdx_representations[] = {
+	ATTESTATION_EVIDENCE_REPRESENTATION_RAW,
+};
+
 static const struct attestation_evidence_supported_object
 attestation_tdx_evidence_objects[] = {
 	{
+		.blob_class = ATTESTATION_EVIDENCE_BLOB_PRIMARY,
 		.format = "tdx-tdreport-1.0",
+		.representations = attestation_tdx_representations,
+		.representations_count =
+			ARRAY_SIZE(attestation_tdx_representations),
 		.max_length = TDX_GUEST_REPORT_LEN,
 		.binds_mrs = true,
 	},
 	{
+		.blob_class = ATTESTATION_EVIDENCE_BLOB_PRIMARY,
 		.format = "tdx-quote-1.0",
+		.representations = attestation_tdx_representations,
+		.representations_count =
+			ARRAY_SIZE(attestation_tdx_representations),
 		.max_length = TDX_GUEST_QUOTE_MAX_LEN,
 		.binds_mrs = true,
 	},
@@ -91,9 +104,12 @@ static const struct attestation_evidence_caps attestation_tdx_evidence_caps = {
 	.min_challenge_length = TDX_GUEST_REPORTDATA_LEN,
 	.max_challenge_length = TDX_GUEST_REPORTDATA_LEN,
 	.max_total_output_length = TDX_GUEST_QUOTE_MAX_LEN,
+	.supports_mr_selection = true,
 	.objects = attestation_tdx_evidence_objects,
 	.objects_count = ARRAY_SIZE(attestation_tdx_evidence_objects),
 };
+
+static const struct attestation_mr_caps attestation_tdx_mr_caps;
 
 static int
 attestation_tdx_evidence_get(struct attestation *att,
@@ -133,8 +149,10 @@ attestation_tdx_evidence_get(struct attestation *att,
 	return ret;
 }
 
-static int attestation_tdx_mr_read(struct attestation *att, unsigned int mr_id,
-				   struct attestation_digest_set *values)
+static int
+attestation_tdx_mr_read(struct attestation *att, unsigned int mr_id,
+			const struct ctlv_cursor *mr_options,
+			struct attestation_digest_set *values)
 {
 	static const enum tdx_guest_mr native_mrs[] = {
 		TDX_GUEST_MR_MRTD,
@@ -155,6 +173,7 @@ static int attestation_tdx_mr_read(struct attestation *att, unsigned int mr_id,
 
 static int
 attestation_tdx_mr_extend(struct attestation *att, unsigned int mr_id,
+			  const struct ctlv_cursor *mr_options,
 			  const struct attestation_digest_set *values)
 {
 	struct attestation_tdx *tdx = ctlv_priv_child(att);
@@ -173,6 +192,7 @@ static const struct attestation_provider attestation_tdx_provider = {
 	.mr_read = attestation_tdx_mr_read,
 	.mr_extend = attestation_tdx_mr_extend,
 	.evidence_caps = &attestation_tdx_evidence_caps,
+	.mr_caps = &attestation_tdx_mr_caps,
 	.mrs = attestation_tdx_mrs,
 	.mrs_count = ARRAY_SIZE(attestation_tdx_mrs),
 };
