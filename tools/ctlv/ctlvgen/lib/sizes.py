@@ -44,6 +44,7 @@ BOOL_PAYLOAD_LEN: int = 1
 # these against the root family's blob record.
 BLOB_DESCRIPTOR_FIELDS: dict[str, int] = {
     'va': 3,
+    'memfd': 4,
 }
 
 ERROR_INFO: str = 'error-info'

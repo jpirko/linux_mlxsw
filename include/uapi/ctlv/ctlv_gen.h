@@ -38,6 +38,8 @@ enum _ctlv_op_availability {
 enum _ctlv_blob_type {
 	/* Anonymous memory of the calling process, at address. */
 	CTLV_BLOB_TYPE_VA = 1,
+	/* A memfd, by fd, at offset. */
+	CTLV_BLOB_TYPE_MEMFD = 2,
 };
 
 /* enum blob-direction */
@@ -105,10 +107,10 @@ enum _ctlv_op_fd_access {
 /* Where a va blob starts in the calling process. */
 #define CTLV_T_BLOB_ADDRESS \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00010000, 2)
-/* Reserved for a later fd-backed type. */
+/* The file descriptor of a memfd blob. */
 #define CTLV_T_BLOB_FD \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00010000, 3)
-/* Reserved for a later fd-backed type. */
+/* Where in fd the blob starts, zero when absent. */
 #define CTLV_T_BLOB_OFFSET \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00010000, 4)
 /* The length of the blob in bytes, at most what its field takes. */

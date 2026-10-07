@@ -61,7 +61,7 @@ SCALAR_KINDS: tuple[str, ...] = ('uint', 'sint', 'bool', 'string', 'binary',
 SCHEMA_KINDS: tuple[str, ...] = ('uint', 'sint', 'bool', 'string', 'binary',
                                  'blob')
 UNITS: tuple[str, ...] = ('seconds', 'hertz', 'bytes', 'celsius')
-BACKINGS: tuple[str, ...] = ('va',)
+BACKINGS: tuple[str, ...] = ('va', 'memfd')
 DIRECTIONS: dict[str, str] = {'in': 'input', 'out': 'output', 'inout': 'inout'}
 DEFAULT_BACKINGS: tuple[str, ...] = ('va',)
 

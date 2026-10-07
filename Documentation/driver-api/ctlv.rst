@@ -68,7 +68,7 @@ Each system call is an op:
           # What the item is called.
           label?: string(..63)
           # The item's contents, which the device reads.
-          data?: blob(in, ..1M, align 8, va)
+          data?: blob(in, ..1M, align 8, va memfd)
 
       # Lists the items.
       item-get:
@@ -143,7 +143,7 @@ and then the specification reads:
         request:
           $include: item
           # The item's contents, which the device reads.
-          data?: blob(in, ..1M, align 8, va)
+          data?: blob(in, ..1M, align 8, va memfd)
 
       # Lists the items.
       item-get:

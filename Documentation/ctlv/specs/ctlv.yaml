@@ -27,6 +27,8 @@ enums:
   blob-type:
     # Anonymous memory of the calling process, at address.
     - va
+    # A memfd, by fd, at offset.
+    - memfd
   # Which way the bytes of a blob go.
   blob-direction:
     # From the caller to the device, which only reads the blob.
@@ -75,16 +77,15 @@ enums:
     - read-write
 
 records:
-  # va takes address; fd and offset are reserved for later fd-backed
-  # types.
+  # va takes address; memfd takes fd and may take offset.
   blob:
     # What holds the bytes, which says which of the fields below are present.
     type: blob-type
     # Where a va blob starts in the calling process.
     address?: uint
-    # Reserved for a later fd-backed type.
+    # The file descriptor of a memfd blob.
     fd?: uint(..s32-max)
-    # Reserved for a later fd-backed type.
+    # Where in fd the blob starts, zero when absent.
     offset?: uint
     # The length of the blob in bytes, at most what its field takes.
     length: uint(1..)

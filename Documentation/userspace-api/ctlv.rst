@@ -89,7 +89,7 @@ system calls are::
           # What the item is called.
           label?: string(..63)
           # The item's contents, which the device reads.
-          data?: blob(in, ..1M, align 8, va)
+          data?: blob(in, ..1M, align 8, va memfd)
 
 To set the label of item 3 to "ab", a program builds a request of two TLVs,
 the index and the label, under the root every message starts with::
@@ -701,12 +701,15 @@ descriptor rather than the data: the root family's ``blob`` record, declared
 in ``Documentation/ctlv/specs/ctlv.yaml`` and numbered in
 ``include/uapi/ctlv/ctlv_gen.h``. ``blob.type`` names the backing and
 ``blob.length`` the length in bytes; the backing says which of
-``blob.address``, ``blob.fd`` and ``blob.offset`` name the memory. One
-backing is defined:
+``blob.address``, ``blob.fd`` and ``blob.offset`` name the memory. Two
+backings are defined:
 
 ``va``
     Anonymous userspace memory of the calling process, named by an address in
     ``blob.address``.
+
+``memfd``
+    A memfd, named by a file descriptor in ``blob.fd``, at ``blob.offset``.
 
 The backings a field accepts, the direction data may flow, the maximum
 length and the required alignment are declared by the family and reported by
@@ -714,17 +717,17 @@ length and the required alignment are declared by the family and reported by
 returns; a descriptor the operation may not use is refused before the callback.
 While the operation is in flight, userspace must not modify an ``input`` blob
 or access an ``output`` or ``inout`` blob. Whether two descriptors overlap is
-also the caller's responsibility. Keep every named VA mapping valid until the
-operation returns.
+also the caller's responsibility. Keep every named VA mapping and file
+descriptor valid until the operation returns.
 
 A descriptor is checked with the rest of the request, before any memory is
-acquired. A malformed field fails like any other. A backing the
-blob field does not accept, fields that do not fit the backing, a zero length
+acquired. A malformed field fails like any other. A backing the blob field
+does not accept, fields that do not fit the backing, a zero length
 or one above the maximum, or a misaligned address or offset fails with
 ``EINVAL``, and a range that does not fit in 64 bits with ``EOVERFLOW``; both
 report ``bad-blob-descriptor`` at the descriptor. The memory is acquired when
-the operation first uses it, and a failure there, such as ``ENOMEM``, reports
-the same reason at the same place. An operation that
+the operation first uses it, and a failure there, such as ``EBADF`` or
+``ENOMEM``, reports the same reason at the same place. An operation that
 finds an ``output`` blob too short for what it has to write there fails with
 ``EMSGSIZE``, and reports the same with ``required-length``, how long the blob
 has to be, so the caller can retry with one that long.
