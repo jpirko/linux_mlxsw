@@ -578,6 +578,7 @@ def output_writers(names: Names, field: semantics.Field) -> tuple[str, ...]:
 BLOB_PUTTERS: dict[str, tuple[str, tuple[str, ...]]] = {
     'va': ('va', ('const void *address', '__u64 length')),
     'memfd': ('memfd', ('int fd', '__u64 offset', '__u64 length')),
+    'dma-buf': ('dma_buf', ('int fd', '__u64 offset', '__u64 length')),
 }
 
 # What an event gets in the place of a wrapper.

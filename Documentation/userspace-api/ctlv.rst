@@ -89,7 +89,7 @@ system calls are::
           # What the item is called.
           label?: string(..63)
           # The item's contents, which the device reads.
-          data?: blob(in, ..1M, align 8, va memfd)
+          data?: blob(in, ..1M, align 8, va memfd dma-buf)
 
 To set the label of item 3 to "ab", a program builds a request of two TLVs,
 the index and the label, under the root every message starts with::
@@ -701,7 +701,7 @@ descriptor rather than the data: the root family's ``blob`` record, declared
 in ``Documentation/ctlv/specs/ctlv.yaml`` and numbered in
 ``include/uapi/ctlv/ctlv_gen.h``. ``blob.type`` names the backing and
 ``blob.length`` the length in bytes; the backing says which of
-``blob.address``, ``blob.fd`` and ``blob.offset`` name the memory. Two
+``blob.address``, ``blob.fd`` and ``blob.offset`` name the memory. Three
 backings are defined:
 
 ``va``
@@ -710,6 +710,10 @@ backings are defined:
 
 ``memfd``
     A memfd, named by a file descriptor in ``blob.fd``, at ``blob.offset``.
+
+``dma-buf``
+    An exported dma-buf, named by a file descriptor in ``blob.fd``, at
+    ``blob.offset``.
 
 The backings a field accepts, the direction data may flow, the maximum
 length and the required alignment are declared by the family and reported by
@@ -734,8 +738,8 @@ finds an ``output`` blob too short for what it has to write there fails with
 has to be, so the caller can retry with one that long.
 
 Breaking the in-flight rules harms only the caller. The kernel copies blob
-data, so what such an operation reads or writes is unspecified and the
-operation may fail, but no kernel memory is at risk.
+data or has a device DMA it, so what such an operation reads or writes is
+unspecified and the operation may fail, but no kernel memory is at risk.
 
 A memfd always needs ``F_SEAL_SHRINK``. For ``output`` or ``inout`` it also
 needs ``F_SEAL_SEAL`` and neither write seal, so it remains writable for the

@@ -29,6 +29,8 @@ enums:
     - va
     # A memfd, by fd, at offset.
     - memfd
+    # An exported dma-buf, by fd, at offset.
+    - dma-buf
   # Which way the bytes of a blob go.
   blob-direction:
     # From the caller to the device, which only reads the blob.
@@ -77,13 +79,13 @@ enums:
     - read-write
 
 records:
-  # va takes address; memfd takes fd and may take offset.
+  # va takes address; memfd and dma-buf take fd and may take offset.
   blob:
     # What holds the bytes, which says which of the fields below are present.
     type: blob-type
     # Where a va blob starts in the calling process.
     address?: uint
-    # The file descriptor of a memfd blob.
+    # The file descriptor of a memfd or dma-buf blob.
     fd?: uint(..s32-max)
     # Where in fd the blob starts, zero when absent.
     offset?: uint

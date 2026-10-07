@@ -40,6 +40,8 @@ enum _ctlv_blob_type {
 	CTLV_BLOB_TYPE_VA = 1,
 	/* A memfd, by fd, at offset. */
 	CTLV_BLOB_TYPE_MEMFD = 2,
+	/* An exported dma-buf, by fd, at offset. */
+	CTLV_BLOB_TYPE_DMA_BUF = 3,
 };
 
 /* enum blob-direction */
@@ -107,7 +109,7 @@ enum _ctlv_op_fd_access {
 /* Where a va blob starts in the calling process. */
 #define CTLV_T_BLOB_ADDRESS \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00010000, 2)
-/* The file descriptor of a memfd blob. */
+/* The file descriptor of a memfd or dma-buf blob. */
 #define CTLV_T_BLOB_FD \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00010000, 3)
 /* Where in fd the blob starts, zero when absent. */

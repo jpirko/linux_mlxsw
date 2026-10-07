@@ -45,6 +45,7 @@ BOOL_PAYLOAD_LEN: int = 1
 BLOB_DESCRIPTOR_FIELDS: dict[str, int] = {
     'va': 3,
     'memfd': 4,
+    'dma-buf': 4,
 }
 
 ERROR_INFO: str = 'error-info'
