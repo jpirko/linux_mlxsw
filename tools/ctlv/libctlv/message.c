@@ -282,6 +282,26 @@ int ctlv_put_blob_va(struct ctlv_msg *msg, __u64 attr_id, const void *address,
 	return ctlv_nest_end(msg);
 }
 
+static int put_blob_fd(struct ctlv_msg *msg, __u64 attr_id, __u64 type, int fd,
+		       __u64 offset, __u64 length)
+{
+	if (fd < 0)
+		return -EBADF;
+	ctlv_nest_start(msg, attr_id);
+	ctlv_put_u64(msg, CTLV_ATTR_BLOB_TYPE, type);
+	ctlv_put_u64(msg, CTLV_ATTR_BLOB_FD, fd);
+	ctlv_put_u64(msg, CTLV_ATTR_BLOB_OFFSET, offset);
+	ctlv_put_u64(msg, CTLV_ATTR_BLOB_LENGTH, length);
+	return ctlv_nest_end(msg);
+}
+
+int ctlv_put_blob_memfd(struct ctlv_msg *msg, __u64 attr_id, int fd,
+			__u64 offset, __u64 length)
+{
+	return put_blob_fd(msg, attr_id, CTLV_BLOB_TYPE_MEMFD, fd, offset,
+			   length);
+}
+
 bool ctlv_attr_is_nest(const struct ctlv_attr *attr)
 {
 	return attr->flags & CTLV_ATTR_F_NESTED;

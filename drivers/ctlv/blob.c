@@ -11,8 +11,11 @@
 #include <linux/ctlv.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/file.h>
+#include <linux/fs.h>
 #include <linux/highmem.h>
 #include <linux/limits.h>
+#include <linux/memfd.h>
 #include <linux/minmax.h>
 #include <linux/mm.h>
 #include <linux/mm_types.h>
@@ -25,6 +28,7 @@
 
 #include <uapi/linux/ctlv.h>
 #include <uapi/linux/ctlv_gen.h>
+#include <uapi/linux/fcntl.h>
 
 #include "blob.h"
 #include "blob_desc.h"
@@ -44,6 +48,10 @@ struct ctlv_blob {
 			unsigned long pages_count;
 			u32 start;
 		} va;
+		struct {
+			struct file *file;
+			loff_t offset;
+		} memfd;
 	};
 };
 
@@ -189,6 +197,107 @@ static void ctlv_blob_va_copy(struct ctlv_blob *blob, u64 offset, void *buf, siz
 	}
 }
 
+static int ctlv_blob_memfd_access(u8 direction, fmode_t mode, int seals)
+{
+	fmode_t access = 0;
+	fmode_t operations = 0;
+	bool readable;
+	bool writable;
+
+	if (direction < CTLV_BLOB_DIRECTION_INPUT || direction > CTLV_BLOB_DIRECTION_INOUT)
+		return -EINVAL;
+	readable = direction != CTLV_BLOB_DIRECTION_OUTPUT;
+	writable = direction != CTLV_BLOB_DIRECTION_INPUT;
+	if (readable) {
+		access |= FMODE_READ;
+		operations |= FMODE_CAN_READ;
+	}
+	if (writable) {
+		access |= FMODE_WRITE;
+		operations |= FMODE_CAN_WRITE;
+	}
+	if ((mode & access) != access)
+		return -EBADF;
+	if ((mode & operations) != operations)
+		return -EOPNOTSUPP;
+	if (writable && seals & (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE))
+		return -EPERM;
+	if (writable && !(seals & F_SEAL_SEAL))
+		return -EINVAL;
+	return 0;
+}
+
+static int ctlv_blob_memfd_acquire(struct ctlv_blob *blob, int fd, u64 offset)
+{
+	struct file *source = fget(fd);
+	struct file *file;
+	u64 end;
+	int seals;
+	int ret;
+
+	if (!source)
+		return -EBADF;
+	seals = memfd_get_seals(source);
+	if (seals < 0) {
+		ret = -EINVAL;
+		goto err_put_source;
+	}
+	file = file_clone_open(source);
+	fput(source);
+	if (IS_ERR(file))
+		return PTR_ERR(file);
+	if (ctlv_blob_writable(blob) &&
+	    (IS_APPEND(file_inode(file)) || IS_IMMUTABLE(file_inode(file)))) {
+		ret = -EPERM;
+		goto err_put;
+	}
+	/* The descriptor's explicit offset, never the caller's append state. */
+	file->f_flags &= ~O_APPEND;
+	file->f_iocb_flags = iocb_flags(file);
+	/* F_SEAL_SHRINK pins the range; write seals conflict with output. */
+	seals = memfd_get_seals(file);
+	if (seals < 0 || !(seals & F_SEAL_SHRINK) || check_add_overflow(offset, blob->len, &end) ||
+	    end > i_size_read(file_inode(file))) {
+		ret = -EINVAL;
+		goto err_put;
+	}
+	ret = ctlv_blob_memfd_access(blob->direction, file->f_mode, seals);
+	if (ret)
+		goto err_put;
+	blob->memfd.file = file;
+	blob->memfd.offset = offset;
+	return 0;
+
+err_put:
+	fput(file);
+	return ret;
+
+err_put_source:
+	fput(source);
+	return ret;
+}
+
+static int ctlv_blob_memfd_copy(struct ctlv_blob *blob, u64 offset, void *buf, size_t len,
+				bool write)
+{
+	loff_t pos = blob->memfd.offset + offset;
+	u8 *bytes = buf;
+
+	while (len) {
+		ssize_t done;
+
+		if (write)
+			done = kernel_write(blob->memfd.file, bytes, len, &pos);
+		else
+			done = kernel_read(blob->memfd.file, bytes, len, &pos);
+		if (done <= 0)
+			return done ? done : -EIO;
+		bytes += done;
+		len -= done;
+	}
+	return 0;
+}
+
 u64 ctlv_blob_len(const struct ctlv_blob *blob)
 {
 	return blob->len;
@@ -223,6 +332,8 @@ static int ctlv_blob_copy(struct ctlv_blob *blob, u64 offset, void *buf, size_t 
 	case CTLV_BLOB_TYPE_VA:
 		ctlv_blob_va_copy(blob, offset, buf, len, write);
 		return 0;
+	case CTLV_BLOB_TYPE_MEMFD:
+		return ctlv_blob_memfd_copy(blob, offset, buf, len, write);
 	default:
 		return -EINVAL;
 	}
@@ -250,6 +361,9 @@ int ctlv_blob_put(struct ctlv_blob *blob)
 	switch (blob->type) {
 	case CTLV_BLOB_TYPE_VA:
 		ctlv_blob_va_release(blob);
+		break;
+	case CTLV_BLOB_TYPE_MEMFD:
+		fput(blob->memfd.file);
 		break;
 	}
 	if (blob->ctx) {
@@ -305,7 +419,9 @@ static void ctlv_blob_context_fail(struct ctlv_op_ctx *ctx, const struct ctlv_cu
 static struct ctlv_blob *ctlv_blob_acquire(const struct ctlv_blob_desc *desc, u8 direction)
 {
 	u64 address = desc->member[CTLV_BLOB_MEMBER_ADDRESS];
+	u64 offset = desc->member[CTLV_BLOB_MEMBER_OFFSET];
 	u64 len = desc->member[CTLV_BLOB_MEMBER_LENGTH];
+	int fd = desc->member[CTLV_BLOB_MEMBER_FD];
 	struct ctlv_blob *blob;
 	int ret;
 
@@ -317,7 +433,10 @@ static struct ctlv_blob *ctlv_blob_acquire(const struct ctlv_blob_desc *desc, u8
 	blob->direction = direction;
 	blob->type = desc->member[CTLV_BLOB_MEMBER_TYPE];
 
-	ret = ctlv_blob_va_acquire(blob, address);
+	if (blob->type == CTLV_BLOB_TYPE_VA)
+		ret = ctlv_blob_va_acquire(blob, address);
+	else
+		ret = ctlv_blob_memfd_acquire(blob, fd, offset);
 	if (ret) {
 		kfree(blob);
 		return ERR_PTR(ret);

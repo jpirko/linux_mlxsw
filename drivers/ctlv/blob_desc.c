@@ -6,6 +6,7 @@
  */
 #include <linux/align.h>
 #include <linux/bits.h>
+#include <linux/limits.h>
 #include <linux/overflow.h>
 #include <linux/types.h>
 
@@ -66,15 +67,22 @@ u32 ctlv_blob_desc_read(const struct ctlv_attr *blob, struct ctlv_blob_desc *des
 static u32 ctlv_blob_variant(const struct ctlv_blob_desc *desc)
 {
 	u32 required = BIT(CTLV_BLOB_MEMBER_TYPE) | BIT(CTLV_BLOB_MEMBER_LENGTH);
+	u32 optional = 0;
 
 	switch (desc->member[CTLV_BLOB_MEMBER_TYPE]) {
 	case CTLV_BLOB_TYPE_VA:
 		required |= BIT(CTLV_BLOB_MEMBER_ADDRESS);
 		break;
+	case CTLV_BLOB_TYPE_MEMFD:
+		required |= BIT(CTLV_BLOB_MEMBER_FD);
+		optional |= BIT(CTLV_BLOB_MEMBER_OFFSET);
+		if (desc->member[CTLV_BLOB_MEMBER_FD] > INT_MAX)
+			return CTLV_VALIDATION_REASON_BAD_BLOB_DESCRIPTOR;
+		break;
 	default:
 		return CTLV_VALIDATION_REASON_BAD_BLOB_DESCRIPTOR;
 	}
-	if (desc->present != required)
+	if (desc->present != required && desc->present != (required | optional))
 		return CTLV_VALIDATION_REASON_BAD_BLOB_DESCRIPTOR;
 	return 0;
 }
@@ -100,3 +108,4 @@ u32 ctlv_blob_desc_check(const struct ctlv_blob_desc *desc, const struct ctlv_no
 		return CTLV_VALIDATION_REASON_BAD_BLOB_DESCRIPTOR;
 	return 0;
 }
+
