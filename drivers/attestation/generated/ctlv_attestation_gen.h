@@ -18,6 +18,8 @@
 
 /* Extension points, as a descendant's fill names one. */
 #define CTLV_ATTESTATION_EXT_DEVICE_INFO 1
+#define CTLV_ATTESTATION_EXT_EVIDENCE_OPTIONS 2
+#define CTLV_ATTESTATION_EXT_MR_OPTIONS 3
 
 /* Enum extension points, numbered apart from the others. */
 #define CTLV_ATTESTATION_ENUM_EXT_EVIDENCE_VENDOR_FORMAT 1
@@ -99,6 +101,49 @@ CTLV_IN_REF(ctlv_attestation_device_generation, CTLV_ATTESTATION_T_DEVICE_GENERA
 	    CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_device_generation)
 CTLV_IN_U64(ctlv_attestation_device_generation)
+/* The MR banks the evidence reports, where the device takes mr-selection. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_selection, CTLV_ATTESTATION_T_EVIDENCE_GET_SELECTION,
+	    CTLV_SCHEMA_RECORD)
+#define ctlv_attestation_evidence_get_selection_for_each(_cursor, _record) \
+	CTLV_IN_FOR_EACH(ctlv_attestation_evidence_get_selection, _cursor, _record)
+/* The MR's ID. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_selection_id,
+	    CTLV_ATTESTATION_T_EVIDENCE_GET_SELECTION_ID, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_selection_id)
+CTLV_IN_U64(ctlv_attestation_evidence_get_selection_id)
+/* The bank's algorithm. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_selection_hash_algo,
+	    CTLV_ATTESTATION_T_EVIDENCE_GET_SELECTION_HASH_ALGO, CTLV_SCHEMA_ENUM)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_selection_hash_algo)
+CTLV_IN_U64(ctlv_attestation_evidence_get_selection_hash_algo)
+/* The privilege level to report for, as configfs-tsm's privlevel. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_privlevel, CTLV_ATTESTATION_T_EVIDENCE_GET_PRIVLEVEL,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_privlevel)
+CTLV_IN_U64(ctlv_attestation_evidence_get_privlevel)
+/*
+ * The service to attest, as configfs-tsm's service_provider; only with service-guid and
+ * service-manifest-version.
+ */
+CTLV_IN_REF(ctlv_attestation_evidence_get_service_provider,
+	    CTLV_ATTESTATION_T_EVIDENCE_GET_SERVICE_PROVIDER, CTLV_SCHEMA_STRING)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_service_provider)
+CTLV_IN_STRING(ctlv_attestation_evidence_get_service_provider)
+/* The service's GUID, as configfs-tsm's service_guid. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_service_guid,
+	    CTLV_ATTESTATION_T_EVIDENCE_GET_SERVICE_GUID, CTLV_SCHEMA_BINARY)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_service_guid)
+CTLV_IN_BINARY(ctlv_attestation_evidence_get_service_guid)
+/* Its manifest version, as configfs-tsm's service_manifest_version. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_service_manifest_version,
+	    CTLV_ATTESTATION_T_EVIDENCE_GET_SERVICE_MANIFEST_VERSION, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_service_manifest_version)
+CTLV_IN_U64(ctlv_attestation_evidence_get_service_manifest_version)
+/* The device's family's fields. */
+CTLV_IN_REF(ctlv_attestation_evidence_get_options, CTLV_ATTESTATION_T_EVIDENCE_GET_OPTIONS,
+	    CTLV_SCHEMA_RECORD)
+CTLV_IN_HAS(ctlv_attestation_evidence_get_options)
+CTLV_IN_RECORD(ctlv_attestation_evidence_get_options)
 /* Only this MR; every MR without it. */
 CTLV_IN_REF(ctlv_attestation_mr_get_id, CTLV_ATTESTATION_T_MR_GET_ID, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_get_id)
@@ -107,6 +152,11 @@ CTLV_IN_U64(ctlv_attestation_mr_get_id)
 CTLV_IN_REF(ctlv_attestation_mr_read_id, CTLV_ATTESTATION_T_MR_READ_ID, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_read_id)
 CTLV_IN_U64(ctlv_attestation_mr_read_id)
+/* The device's family's fields. */
+CTLV_IN_REF(ctlv_attestation_mr_read_options, CTLV_ATTESTATION_T_MR_READ_OPTIONS,
+	    CTLV_SCHEMA_RECORD)
+CTLV_IN_HAS(ctlv_attestation_mr_read_options)
+CTLV_IN_RECORD(ctlv_attestation_mr_read_options)
 /* The MR to extend, by the ID mr-get lists. */
 CTLV_IN_REF(ctlv_attestation_mr_extend_id, CTLV_ATTESTATION_T_MR_EXTEND_ID, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_attestation_mr_extend_id)
@@ -124,6 +174,26 @@ CTLV_IN_U64(ctlv_attestation_mr_value_hash_algo)
 CTLV_IN_REF(ctlv_attestation_mr_value_data, CTLV_ATTESTATION_T_MR_VALUE_DATA, CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_mr_value_data)
 CTLV_IN_BINARY(ctlv_attestation_mr_value_data)
+/* The device's family's fields. */
+CTLV_IN_REF(ctlv_attestation_mr_extend_options, CTLV_ATTESTATION_T_MR_EXTEND_OPTIONS,
+	    CTLV_SCHEMA_RECORD)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_options)
+CTLV_IN_RECORD(ctlv_attestation_mr_extend_options)
+/* What the data extended by is, recorded in the journal with it. */
+CTLV_IN_REF(ctlv_attestation_mr_extend_record, CTLV_ATTESTATION_T_MR_EXTEND_RECORD,
+	    CTLV_SCHEMA_RECORD)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_record)
+CTLV_IN_RECORD(ctlv_attestation_mr_extend_record)
+/* The layout of data, in printable ASCII without spaces. */
+CTLV_IN_REF(ctlv_attestation_mr_extend_record_format, CTLV_ATTESTATION_T_MR_EXTEND_RECORD_FORMAT,
+	    CTLV_SCHEMA_STRING)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_record_format)
+CTLV_IN_STRING(ctlv_attestation_mr_extend_record_format)
+/* What was measured, laid out as format says. */
+CTLV_IN_REF(ctlv_attestation_mr_extend_record_data, CTLV_ATTESTATION_T_MR_EXTEND_RECORD_DATA,
+	    CTLV_SCHEMA_BINARY)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_record_data)
+CTLV_IN_BINARY(ctlv_attestation_mr_extend_record_data)
 /* The evidence the verifier accepted, as evidence-get numbered it. */
 CTLV_IN_REF(ctlv_attestation_evidence_accept_evidence_generation,
 	    CTLV_ATTESTATION_T_EVIDENCE_ACCEPT_EVIDENCE_GENERATION, CTLV_SCHEMA_UINT)
@@ -196,13 +266,19 @@ CTLV_PUT_U64(ctlv_attestation_device_get_challenge_lengths_min_length,
 /* The longest of a range. */
 CTLV_PUT_U64(ctlv_attestation_device_get_challenge_lengths_max_length,
 	     CTLV_ATTESTATION_T_DEVICE_GET_CHALLENGE_LENGTHS_MAX_LENGTH, CTLV_SCHEMA_UINT)
+/* Tells apart the objects of one kind, such as an SPDM slot. */
+CTLV_PUT_U64(ctlv_attestation_device_get_objects_instance,
+	     CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_INSTANCE, CTLV_SCHEMA_UINT)
+/* Where the TCB vouches for the object with a digest, its algorithm. */
+CTLV_PUT_U64(ctlv_attestation_device_get_objects_tcb_digest_algo,
+	     CTLV_ATTESTATION_T_DEVICE_GET_OBJECTS_TCB_DIGEST_ALGO, CTLV_SCHEMA_ENUM)
 /* The optional evidence features the device provides. */
 CTLV_PUT_U64(ctlv_attestation_device_get_evidence_flags,
 	     CTLV_ATTESTATION_T_DEVICE_GET_EVIDENCE_FLAGS, CTLV_SCHEMA_FLAGS)
 /* Present when the device has MRs. */
 CTLV_RECORD_START(ctlv_attestation_device_get_caps_mr, CTLV_ATTESTATION_T_DEVICE_GET_CAPS_MR,
 		  CTLV_SCHEMA_RECORD)
-/* The MR operations the device provides. */
+/* The MR operations the device provides, and whether MRs come and go. */
 CTLV_PUT_U64(ctlv_attestation_device_get_mr_flags, CTLV_ATTESTATION_T_DEVICE_GET_MR_FLAGS,
 	     CTLV_SCHEMA_FLAGS)
 /* The device's family's fields. */
@@ -223,6 +299,15 @@ CTLV_PUT_U64(ctlv_attestation_evidence_get_results_format,
 /* The layout it came in, where its vendor defines it. */
 CTLV_PUT_U64(ctlv_attestation_evidence_get_results_vendor_format,
 	     CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_VENDOR_FORMAT, CTLV_SCHEMA_ENUM)
+/* Where the TCB vouches for the object, the digest it vouches with. */
+CTLV_RECORD_START(ctlv_attestation_evidence_get_results_tcb_digest,
+		  CTLV_ATTESTATION_T_EVIDENCE_GET_RESULTS_TCB_DIGEST, CTLV_SCHEMA_RECORD)
+/* The object's tcb-digest-algo. */
+CTLV_PUT_U64(ctlv_attestation_evidence_get_tcb_digest_hash_algo,
+	     CTLV_ATTESTATION_T_EVIDENCE_GET_TCB_DIGEST_HASH_ALGO, CTLV_SCHEMA_ENUM)
+/* The digest, as long as hash-algo's. */
+CTLV_PUT_BINARY(ctlv_attestation_evidence_get_tcb_digest_data,
+		CTLV_ATTESTATION_T_EVIDENCE_GET_TCB_DIGEST_DATA, CTLV_SCHEMA_BINARY)
 /* The device's MR generation, which each extend bumps. */
 CTLV_PUT_U64(ctlv_attestation_mr_generation, CTLV_ATTESTATION_T_MR_GENERATION, CTLV_SCHEMA_UINT)
 /* On a device with evidence-accept, numbers this evidence for it. */
@@ -238,11 +323,14 @@ CTLV_PUT_STRING(ctlv_attestation_mr_desc_name, CTLV_ATTESTATION_T_MR_DESC_NAME, 
 /* Its banks, each once, in the provider's order. */
 CTLV_PUT_U64(ctlv_attestation_mr_desc_supported_hash_algorithms,
 	     CTLV_ATTESTATION_T_MR_DESC_SUPPORTED_HASH_ALGORITHMS, CTLV_SCHEMA_ENUM)
-/* What it allows. */
+/* What it allows, and whether the provider may remove it. */
 CTLV_PUT_U64(ctlv_attestation_mr_desc_caps, CTLV_ATTESTATION_T_MR_DESC_CAPS, CTLV_SCHEMA_FLAGS)
 /* The hardware's number for the MR, where it has one: 0 for rtmr0. */
 CTLV_PUT_U64(ctlv_attestation_mr_desc_register_index, CTLV_ATTESTATION_T_MR_DESC_REGISTER_INDEX,
 	     CTLV_SCHEMA_UINT)
+/* ima-active while IMA extends it. */
+CTLV_PUT_U64(ctlv_attestation_mr_desc_state_flags, CTLV_ATTESTATION_T_MR_DESC_STATE_FLAGS,
+	     CTLV_SCHEMA_FLAGS)
 /* Values for banks of the MR, each bank once. */
 CTLV_RECORD_START(ctlv_attestation_mr_values, CTLV_ATTESTATION_T_MR_VALUES, CTLV_SCHEMA_RECORD)
 /* The bank's algorithm. */
@@ -269,7 +357,7 @@ CTLV_PUT_STRING(ctlv_attestation_mr_log_entry_mr_name, CTLV_ATTESTATION_T_MR_LOG
 /* Its banks, each once, in the provider's order. */
 CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_supported_hash_algorithms,
 	     CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_SUPPORTED_HASH_ALGORITHMS, CTLV_SCHEMA_ENUM)
-/* What it allows. */
+/* What it allows, and whether the provider may remove it. */
 CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_caps, CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_CAPS,
 	     CTLV_SCHEMA_FLAGS)
 /* The hardware's number for the MR, where it has one. */
@@ -287,6 +375,15 @@ CTLV_PUT_BINARY(ctlv_attestation_mr_log_entry_ima_template_data,
 /* The entry records an IMA violation, not a measurement. */
 CTLV_PUT_BOOL(ctlv_attestation_mr_log_entry_ima_violation,
 	      CTLV_ATTESTATION_T_MR_LOG_ENTRY_IMA_VIOLATION, CTLV_SCHEMA_BOOL)
+/* What was measured, on an extend entry mr-extend made with a record. */
+CTLV_RECORD_START(ctlv_attestation_mr_log_entry_record, CTLV_ATTESTATION_T_MR_LOG_ENTRY_RECORD,
+		  CTLV_SCHEMA_RECORD)
+/* The layout of data, in printable ASCII without spaces. */
+CTLV_PUT_STRING(ctlv_attestation_mr_log_entry_record_format,
+		CTLV_ATTESTATION_T_MR_LOG_ENTRY_RECORD_FORMAT, CTLV_SCHEMA_STRING)
+/* What was measured, laid out as format says. */
+CTLV_PUT_BINARY(ctlv_attestation_mr_log_entry_record_data,
+		CTLV_ATTESTATION_T_MR_LOG_ENTRY_RECORD_DATA, CTLV_SCHEMA_BINARY)
 /* The device interface's TDISP state, where the provider reports one. */
 CTLV_PUT_U64(ctlv_attestation_devsec_state_get_tdisp_state,
 	     CTLV_ATTESTATION_T_DEVSEC_STATE_GET_TDISP_STATE, CTLV_SCHEMA_ENUM)

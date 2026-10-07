@@ -86,11 +86,14 @@ information. It takes no request. The reply carries:
     ``caps.evidence``
         With ``evidence-get``: ``flags``, and one of ``objects`` for each
         object the device produces, up to 16, as `Objects`_ describes.
-        ``flags`` has ``evidence-accept`` where the device records verdicts.
+        ``flags`` has ``evidence-accept`` where that operation is provided,
+        and ``mr-selection``, ``privlevel`` and ``service`` where
+        ``evidence-get`` takes the fields of those names.
 
     ``caps.mr``
         With MRs: ``flags``, which has ``extend`` where ``mr-extend`` is
-        provided. ``mr-read`` is always provided with MRs.
+        provided, and ``dynamic-topology`` where MRs may come and go while
+        the device lives. ``mr-read`` is always provided with MRs.
 
 ``info``
     The device's family's fields, its ``device-info``.
@@ -101,7 +104,8 @@ information. It takes no request. The reply carries:
 Writes each object the request names into a blob the caller supplies. A
 signed object is made by the call, over the challenge, and never reused. The
 others, such as an event log, are read as they stand at the call. One call so
-returns signed evidence with the log needed to check it. The request carries:
+returns signed evidence with the log and certificates needed to check it. The
+request carries:
 
 ``challenge``
     The challenge, described below. Present exactly when a signed object is
@@ -115,6 +119,22 @@ returns signed evidence with the log needed to check it. The request carries:
 ``device-generation``
     Optional, to refuse a device that has changed since.
 
+``selection``
+    Optional, with ``mr-selection``: up to 256 pairs of an MR's ``id`` and a
+    ``hash-algo``, choosing the MR banks the evidence reports.
+
+``privlevel``
+    Optional, with ``privlevel``: the privilege level to report for, as
+    configfs-tsm's ``privlevel``.
+
+``service-provider``
+    Optional, with ``service``, and only together with ``service-guid`` and
+    ``service-manifest-version``: the service to attest, as configfs-tsm's
+    ``service_provider``, ``service_guid`` and ``service_manifest_version``.
+
+``options``
+    Optional, the device's family's fields, its ``evidence-options``.
+
 The reply carries:
 
 ``device-generation``
@@ -122,11 +142,14 @@ The reply carries:
 
 ``results``
     One per object, in request order, each giving the object's format in
-    exactly one of ``format`` and ``vendor-format``, and its ``length``, the
-    bytes written to its blob.
+    exactly one of ``format`` and ``vendor-format``, its ``length``, the bytes
+    written to its blob, and, where the object lists a ``tcb-digest-algo``,
+    ``tcb-digest``: the digest the TCB vouches for it with, a ``hash-algo``
+    and its ``data``. The blob always holds the object's own bytes.
 
 ``mr-generation``
-    Where an object binds MRs, the journal position the evidence reflects.
+    Where an object binds MRs or the request selected some, the journal
+    position the evidence reflects.
 
 ``evidence-generation``
     On a device with ``evidence-accept``, the number of this evidence, which
@@ -135,14 +158,20 @@ The reply carries:
 ``EINVAL``
     A signed object is named without a challenge, a challenge is given
     without one, or its length is one a signed object named does not take.
-    Two objects are the same.
+    Two objects or two selections are the same. Only some of the service
+    fields are given.
+
+``EOPNOTSUPP``
+    The device does not take the request's selection, privilege level or
+    service.
 
 ``EMSGSIZE``
     An object's blob is too short for it. The error information's
     ``required-length`` says how long it has to be.
 
 ``ENOENT``
-    An object's ``id`` is not one ``device-get`` lists.
+    An object's ``id`` is not one ``device-get`` lists. A selection names an
+    MR the device lacks, or a bank that MR does not have.
 
 ``EPROTO``
     The root of trust returned an object in a format the device does not
@@ -189,6 +218,14 @@ Each of ``caps.evidence.objects`` describes one object:
 ``challenge-lengths``
     For a signed object, the challenge lengths it takes.
 
+``instance``
+    Where a device has several objects of one kind, which one this is, as it
+    numbers SPDM certificate slots.
+
+``tcb-digest-algo``
+    Where the TCB vouches for the object with a digest, the digest's
+    algorithm.
+
 ``evidence-class`` says what an object is:
 
 ``signed``
@@ -199,6 +236,13 @@ Each of ``caps.evidence.objects`` describes one object:
     The platform's log of what firmware and the boot chain measured into the
     MRs, for a verifier to replay. Later extends, through ``mr-extend`` or
     otherwise, are not in it.
+
+``cert-chain``
+    The certificates that chain a signing key to its vendor's root.
+
+``auxiliary``
+    Anything else a verifier reads beside the signed evidence, such as a
+    manifest, an SPDM message transcript or a TDISP interface report.
 
 A blob of the object's ``max-length`` always holds it. A shorter one saves
 memory where objects run shorter than their bound, as certificate chains do:
@@ -211,7 +255,7 @@ Two enums name the formats:
 
 ``evidence-format``
     ``ctlv-attestation``'s, for a layout a standard defines, such as the
-    CCEL, so every family that produces it uses the same value.
+    CCEL or SPDM's, so every family that produces it uses the same value.
 
 ``evidence-vendor-format``
     For a layout one vendor defines, whose values the device's family gives
@@ -220,7 +264,40 @@ Two enums name the formats:
 The ABI check of ``regen`` covers both enums. An object lists the formats it
 may have, from either enum, in ``formats`` and ``vendor-formats``, and the
 reply names the one written in exactly one of ``format`` and
-``vendor-format``. A new layout is a new value.
+``vendor-format``. A new layout is a new value:
+
+======  ============  ==========  =========  ===========================
+Family  Format        Class       Challenge  Bytes
+======  ============  ==========  =========  ===========================
+tdx     quote         signed      64         Intel TDX DCAP Quote
+tdx     quote-dice    signed      64         DICE-based TDX Quote
+tdx     ccel          event-log   none       ACPI CCEL log area, a TCG
+                                             crypto-agile event log
+spdm    cert-chain    cert-chain  none       SPDM certificate chain,
+                                             instance = slot 0-7
+spdm    transcript    auxiliary   none       SPDM message transcript,
+                                             starting with VCA
+spdm    measurements  signed      32         SPDM GET_MEASUREMENTS
+                                             response
+spdm    tdisp-report  auxiliary   none       TDISP interface report
+tpm     quote         signed      varies     TPM2_Quote's attestation
+                                             structure and signature
+tpm     event-log     event-log   none       TCG PC Client crypto-agile
+                                             event log
+tpm     ek-cert       cert-chain  none       EK certificate from NV
+armcca  token         signed      64         CCA attestation token,
+                                             platform and realm parts
+armcca  ccel          event-log   none       ACPI CCEL log area, a TCG
+                                             crypto-agile event log
+snp     report        signed      64         SNP attestation report
+snp     cert-table    cert-chain  none       VCEK or VLEK, ASK and ARK
+======  ============  ==========  =========  ===========================
+
+``evidence-format`` prefixes a standard's layouts with its name where the
+bare one could be another's: ``ccel``, ``spdm-cert-chain``,
+``spdm-transcript``, ``spdm-measurements``, ``tdisp-report``, ``tpm-quote``,
+``tpm-event-log`` and ``tpm-ek-cert``. Of the families above only TDX is in
+the tree; the rest show where their formats go.
 
 Accepting evidence and device security
 ======================================
@@ -281,15 +358,21 @@ it:
     The hardware's number for the MR, where it has one.
 
 ``caps``
-    ``extend`` where the MR may be extended. A provider still refuses an
-    extend the platform forbids at the time, as with ``EPERM`` for a TPM PCR
-    the current locality may not extend.
+    ``extend`` where the MR may be extended, and ``removable`` where the
+    provider may remove it. A provider still refuses an extend the platform
+    forbids at the time, as with ``EPERM`` for a TPM PCR the current locality
+    may not extend.
+
+``state-flags``
+    ``ima-active`` on the MR IMA extends.
 
 Every MR can be read, though a read can still fail, as when the caller lacks
 authorization or the platform's state forbids it.
 
-The name, banks, caps and register index describe an MR, and do not change.
-The values change with every extension, so the two are read apart.
+The name, banks, caps, state flags and register index describe an MR. They
+change only when MRs come or go, on a device with ``dynamic-topology``, or when
+IMA starts or stops extending one, and either advances the MR generation. The
+values change with every extension, so the two are read apart.
 ``mr-get`` describes every MR, which is how a program learns the IDs, or the
 one an ID names. It is answered from what the device keeps, while
 ``mr-read``, which returns one MR's values, asks the hardware. ``mr-read`` and
@@ -323,7 +406,8 @@ Access is read.
 -----------
 
 Returns the current values of the MR whose ``id`` the request carries. The
-request may also carry ``device-generation``. The reply carries:
+request may also carry ``device-generation`` and ``options``, the provider
+family's own fields. The reply carries:
 
 ``device-generation``
     The current device generation.
@@ -355,6 +439,13 @@ hashes nothing for the caller. Optionally, the request may also carry:
 ``device-generation``
     To refuse a device that has changed since.
 
+``record``
+    What was measured, kept in the journal entry: a ``format`` of printable
+    ASCII without spaces and up to 4K of ``data``.
+
+``options``
+    The device's family's fields.
+
 The reply carries ``device-generation`` and the ``mr-generation`` of the new
 entry, which ``mr-log-entry-appended`` reports.
 
@@ -370,7 +461,8 @@ entry, which ``mr-log-entry-appended`` reports.
 
 ``EINVAL``
     The request carries no ``mr-values``, a value is for a bank the MR does not
-    have or repeats one, or a digest has the wrong length.
+    have or repeats one, a digest has the wrong length, or the record format
+    has a character outside printable ASCII.
 
 ``ESTALE``
     ``device-generation`` is not current.
@@ -385,10 +477,14 @@ The journal
 
 The device keeps an append-only journal of its MRs, numbered by
 ``mr-generation`` from 1. It starts with an ``info`` entry for each MR,
-describing it as ``mr-get`` does. Every extension then appends an ``extend``
-entry with the digests of the banks it extended, and with IMA's template for
-IMA's measurements. Every entry carries the device generation it was made in.
-After an orderly kexec, the device continues the previous kernel's journal.
+describing it as ``mr-get`` does, and an MR added later gets one when it
+appears. Every extension then appends an ``extend`` entry with the digests of
+the banks it extended, and with the ``record`` that ``mr-extend`` passed, if
+any, or IMA's template for IMA's measurements. Every entry carries the device
+generation it was made in. Removing an MR, or IMA starting or ceasing to extend
+one, advances the MR generation without adding an entry, so ``mr-get`` shows
+what changed. After an orderly kexec, the device continues the previous
+kernel's journal.
 
 A bank is replayed from the entries with a digest for it; an entry without one
 did not extend that bank. So evidence reporting a bank vouches only for the
@@ -430,6 +526,9 @@ each an ``mr-log-entry`` with:
 
 ``mr-values``
     In an ``extend`` entry, the digests the extension folded in.
+
+``record``
+    In an ``extend`` entry that has one, the ``record`` ``mr-extend`` passed.
 
 ``ima``
     In an ``extend`` entry that has one, IMA's ``template-name``,

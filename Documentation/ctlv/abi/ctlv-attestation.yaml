@@ -10,17 +10,19 @@
 # is an ABI break, whatever the file says afterwards.
 family: {name: ctlv-attestation, id: 1, inherits: ctlv}
 enums:
-  evidence-class: {signed: 1, event-log: 2}
-  evidence-format: {ccel: 1}
+  evidence-class: {signed: 1, event-log: 2, cert-chain: 3, auxiliary: 4}
+  evidence-format: {ccel: 1, spdm-cert-chain: 2, spdm-transcript: 3,
+                    spdm-measurements: 4, tdisp-report: 5, tpm-quote: 6,
+                    tpm-event-log: 7, tpm-ek-cert: 8}
   mr-log-event: {info: 1, extend: 2}
   tdisp-state: {unlocked: 1, locked: 2, run: 3, error: 4}
   hash-algo: {$header: linux/hash_info.h, $enum: hash_algo,
               $end: HASH_ALGO__LAST}
 flags:
-  mr-device-caps: {extend: 0}
-  mr-caps: {extend: 0}
+  mr-device-caps: {extend: 0, dynamic-topology: 1}
+  mr-caps: {extend: 0, removable: 1}
   mr-state-flags: {ima-active: 0}
-  evidence-caps: {evidence-accept: 0}
+  evidence-caps: {evidence-accept: 0, mr-selection: 1, privlevel: 2, service: 3}
 records:
   mr-desc:
     id: 0x00010000
@@ -30,6 +32,7 @@ records:
                                   max-occurrences: hash-algo}
       caps: {number: 3, flags: mr-caps}
       register-index: {number: 4, type: uint, max: u32-max, optional: true}
+      state-flags: {number: 5, flags: mr-state-flags, optional: true}
   mr-value:
     id: 0x00020000
     fields:
@@ -50,6 +53,7 @@ records:
       event: {number: 2, enum: mr-log-event}
       mr: {number: 3, record: mr-log-entry.mr, optional: true}
       ima: {number: 4, record: mr-log-entry.ima, optional: true}
+      record: {number: 5, record: mr-log-entry.record, optional: true}
     members: [record mr-generation, record device-generation,
               'record mr-values?']
   mr-log-entry.mr:
@@ -66,6 +70,11 @@ records:
       template-name: {number: 1, type: string, min-length: 1, max-length: 128}
       template-data: {number: 2, type: binary, max-length: 64K}
       violation: {number: 3, type: bool}
+  mr-log-entry.record:
+    id: 0x00053000
+    fields:
+      format: {number: 1, type: string, min-length: 1, max-length: 128}
+      data: {number: 2, type: binary, max-length: 4K}
   mr-start-generation:
     id: 0x00060000
     fields:
@@ -110,6 +119,8 @@ records:
       challenge-lengths:
         {number: 6, record: device-get caps.evidence.objects.challenge-lengths,
          max-occurrences: 8, optional: true}
+      instance: {number: 7, type: uint, max: u32-max, optional: true}
+      tcb-digest-algo: {number: 8, enum: hash-algo, optional: true}
   device-get caps.evidence.objects.challenge-lengths:
     id: 0xc0011111
     fields:
@@ -129,6 +140,15 @@ records:
       challenge: {number: 1, type: binary, min-length: 1, max-length: 4K,
                   optional: true}
       objects: {number: 2, record: evidence-get objects, max-occurrences: 16}
+      selection: {number: 3, record: evidence-get selection,
+                  max-occurrences: 256, optional: true}
+      privlevel: {number: 4, type: uint, max: u32-max, optional: true}
+      service-provider: {number: 5, type: string, min-length: 1,
+                         max-length: 128, optional: true}
+      service-guid: {number: 6, type: binary, length: 16, optional: true}
+      service-manifest-version: {number: 7, type: uint, max: u32-max,
+                                 optional: true}
+      options: {number: 8, extension: evidence-options, optional: true}
     members: ['record device-generation?']
   evidence-get objects:
     id: 0x80021000
@@ -136,6 +156,11 @@ records:
       id: {number: 1, type: uint, max: 15}
       data: {number: 2, blob: output, backings: [va, memfd, dma-buf],
              max-length: u32-max}
+  evidence-get selection:
+    id: 0x80022000
+    fields:
+      id: {number: 1, type: uint, max: u32-max}
+      hash-algo: {number: 2, enum: hash-algo}
   evidence-get reply:
     id: 0xc0020000
     fields:
@@ -148,6 +173,13 @@ records:
       format: {number: 1, enum: evidence-format, optional: true}
       vendor-format: {number: 2, enum: evidence-vendor-format, optional: true}
       length: {number: 3, type: uint}
+      tcb-digest: {number: 4, record: evidence-get results.tcb-digest,
+                   optional: true}
+  evidence-get results.tcb-digest:
+    id: 0xc0021100
+    fields:
+      hash-algo: {number: 1, enum: hash-algo}
+      data: {number: 2, type: binary, min-length: 16, max-length: 64}
   mr-get request:
     id: 0x80030000
     fields:
@@ -165,6 +197,7 @@ records:
     id: 0x80040000
     fields:
       id: {number: 1, type: uint, max: u32-max}
+      options: {number: 2, extension: mr-options, optional: true}
     members: ['record device-generation?']
   mr-read reply:
     id: 0xc0040000
@@ -173,7 +206,14 @@ records:
     id: 0x80050000
     fields:
       id: {number: 1, type: uint, max: u32-max}
+      options: {number: 2, extension: mr-options, optional: true}
+      record: {number: 3, record: mr-extend record, optional: true}
     members: [record mr-values, 'record device-generation?']
+  mr-extend record:
+    id: 0x80051000
+    fields:
+      format: {number: 1, type: string, min-length: 1, max-length: 128}
+      data: {number: 2, type: binary, max-length: 4K}
   mr-extend reply:
     id: 0xc0050000
     members: [record device-generation, record mr-generation]
@@ -220,7 +260,7 @@ records:
       entries: {number: 1, record: mr-log-entry, max-occurrences: unlimited,
                 optional: true}
     members: ['record mr-start-generation?', 'record mr-end-generation?']
-extensions: {device-info: 1}
+extensions: {device-info: 1, evidence-options: 2, mr-options: 3}
 enum-extensions: {evidence-vendor-format: 1}
 ops:
   device-get: {id: 1, type: action, fd-access: read,

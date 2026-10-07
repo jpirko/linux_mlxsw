@@ -16,10 +16,28 @@ enums:
     # The platform's log of what firmware and the boot chain measured into
     # the MRs. Later extends, through mr-extend or otherwise, are not in it.
     - event-log
+    # The certificates that chain a signing key to its vendor's root.
+    - cert-chain
+    # Anything else a verifier reads beside the signed objects.
+    - auxiliary
   # A layout of an evidence object that a standard defines.
   evidence-format:
     # The log area of an ACPI CCEL table, a TCG crypto-agile event log.
     - ccel
+    # An SPDM certificate chain.
+    - spdm-cert-chain
+    # An SPDM message transcript, starting with VCA.
+    - spdm-transcript
+    # An SPDM GET_MEASUREMENTS response.
+    - spdm-measurements
+    # A TDISP interface report.
+    - tdisp-report
+    # TPM2_Quote's attestation structure and signature.
+    - tpm-quote
+    # A TCG PC Client crypto-agile event log.
+    - tpm-event-log
+    # A TPM's EK certificate, read from its NV.
+    - tpm-ek-cert
   # A layout of an evidence object that one vendor defines, given by the
   # device's family.
   evidence-vendor-format: extension
@@ -50,10 +68,14 @@ flags:
   mr-device-caps:
     # mr-extend is provided.
     - extend
+    # MRs may come and go while the device lives.
+    - dynamic-topology
   # What one MR allows.
   mr-caps:
     # The MR may be extended.
     - extend
+    # The provider may remove the MR.
+    - removable
   # The state of one MR.
   mr-state-flags:
     # IMA extends this MR.
@@ -62,6 +84,12 @@ flags:
   evidence-caps:
     # evidence-accept is provided.
     - evidence-accept
+    # evidence-get takes mr-selection.
+    - mr-selection
+    # evidence-get takes privlevel.
+    - privlevel
+    # evidence-get takes service.
+    - service
 
 records:
   # One MR, as mr-get describes it.
@@ -70,10 +98,12 @@ records:
     name: string(1..128)
     # Its banks, each once, in the provider's order.
     supported-hash-algorithms[hash-algo]: hash-algo
-    # What it allows.
+    # What it allows, and whether the provider may remove it.
     caps: mr-caps
     # The hardware's number for the MR, where it has one: 0 for rtmr0.
     register-index?: uint(..u32-max)
+    # ima-active while IMA extends it.
+    state-flags?: mr-state-flags
 
   # One bank of an MR.
   mr-value:
@@ -103,7 +133,7 @@ records:
       name: string(1..128)
       # Its banks, each once, in the provider's order.
       supported-hash-algorithms[hash-algo]: hash-algo
-      # What it allows.
+      # What it allows, and whether the provider may remove it.
       caps: mr-caps
       # The hardware's number for the MR, where it has one.
       register-index?: uint(..u32-max)
@@ -115,6 +145,12 @@ records:
       template-data: binary(..64K)
       # The entry records an IMA violation, not a measurement.
       violation: bool
+    # What was measured, on an extend entry mr-extend made with a record.
+    record?:
+      # The layout of data, in printable ASCII without spaces.
+      format: string(1..128)
+      # What was measured, laid out as format says.
+      data: binary(..4K)
 
   # The first MR generation of the range mr-log-get selects and reports.
   mr-start-generation: uint(..u32-max)
@@ -157,11 +193,16 @@ ops:
               min-length?: uint(1..4K, bytes)
               # The longest of a range.
               max-length?: uint(1..4K, bytes)
+            # Tells apart the objects of one kind, such as an SPDM slot.
+            instance?: uint(..u32-max)
+            # Where the TCB vouches for the object with a digest, its
+            # algorithm.
+            tcb-digest-algo?: hash-algo
           # The optional evidence features the device provides.
           flags?: evidence-caps
         # Present when the device has MRs.
         mr?:
-          # The MR operations the device provides.
+          # The MR operations the device provides, and whether MRs come and go.
           flags: mr-device-caps
       # The device's family's fields.
       info: extension device-info
@@ -188,6 +229,23 @@ ops:
         # be.
         data: blob(out, va memfd dma-buf)
       device-generation?: record
+      # The MR banks the evidence reports, where the device takes mr-selection.
+      selection[256]?:
+        # The MR's ID.
+        id: uint(..u32-max)
+        # The bank's algorithm.
+        hash-algo: hash-algo
+      # The privilege level to report for, as configfs-tsm's privlevel.
+      privlevel?: uint(..u32-max)
+      # The service to attest, as configfs-tsm's service_provider; only with
+      # service-guid and service-manifest-version.
+      service-provider?: string(1..128)
+      # The service's GUID, as configfs-tsm's service_guid.
+      service-guid?: binary(16)
+      # Its manifest version, as configfs-tsm's service_manifest_version.
+      service-manifest-version?: uint(..u32-max)
+      # The device's family's fields.
+      options?: extension evidence-options
     reply:
       device-generation: record
       # One per object, in request order.
@@ -199,13 +257,20 @@ ops:
         vendor-format?: evidence-vendor-format
         # The bytes written to its blob.
         length: uint
+        # Where the TCB vouches for the object, the digest it vouches with.
+        tcb-digest?:
+          # The object's tcb-digest-algo.
+          hash-algo: hash-algo
+          # The digest, as long as hash-algo's.
+          data: binary(16..64)
       # Present when the evidence depends on the MRs.
       mr-generation?: record
       # On a device with evidence-accept, numbers this evidence for it.
       evidence-generation?: uint(..u32-max)
 
-  # The MRs' IDs and descriptions, which do not change; mr-read returns
-  # values, which change with every extension and are read from the hardware.
+  # The MRs' IDs and descriptions, which change only as MRs come and go or IMA
+  # starts and stops; mr-read returns values, which change with every
+  # extension and are read from the hardware.
   mr-get:
     type: query
     fd-access: read
@@ -231,6 +296,8 @@ ops:
       # The MR to read, by the ID mr-get lists.
       id: uint(..u32-max)
       device-generation?: record
+      # The device's family's fields.
+      options?: extension mr-options
     reply:
       device-generation: record
       mr-generation: record
@@ -247,6 +314,14 @@ ops:
       # For the banks to extend, each once, in any order.
       mr-values: record
       device-generation?: record
+      # The device's family's fields.
+      options?: extension mr-options
+      # What the data extended by is, recorded in the journal with it.
+      record?:
+        # The layout of data, in printable ASCII without spaces.
+        format: string(1..128)
+        # What was measured, laid out as format says.
+        data: binary(..4K)
     reply:
       device-generation: record
       mr-generation: record
