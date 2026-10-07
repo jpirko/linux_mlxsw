@@ -124,7 +124,8 @@ records:
     id: 0x80021000
     fields:
       id: {number: 1, type: uint, max: 15}
-      data: {number: 2, blob: output, backings: [va], max-length: u32-max}
+      data: {number: 2, blob: output, backings: [va, memfd],
+             max-length: u32-max}
   evidence-get reply:
     id: 0xc0020000
     fields:

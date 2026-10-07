@@ -60,7 +60,8 @@ static const struct ctlv_node_schema evidence_get_request_node_schemas[] = {
 	CTLV_NODE_SCHEMA_BINARY(CTLV_ATTESTATION_T_EVIDENCE_GET_CHALLENGE, 1, 1, SZ_4K),
 	CTLV_NODE_SCHEMA_UINT(CTLV_ATTESTATION_T_EVIDENCE_GET_OBJECTS_ID, 1, 0, 15),
 	CTLV_NODE_SCHEMA_BLOB(CTLV_ATTESTATION_T_EVIDENCE_GET_OBJECTS_DATA, 1, U32_MAX, 1,
-			      BIT(CTLV_BLOB_TYPE_VA),
+			      BIT(CTLV_BLOB_TYPE_VA) |
+			      BIT(CTLV_BLOB_TYPE_MEMFD),
 			      CTLV_BLOB_DIRECTION_OUTPUT),
 };
 
@@ -184,7 +185,7 @@ const struct ctlv_op_schema ctlv_attestation_op_schemas[] = {
 			      CTLV_SCHEMA_TREE(device_get_request),
 			      CTLV_SCHEMA_TREE_EXTS(device_get_reply)),
 	CTLV_OP_SCHEMA_ACTION(CTLV_ATTESTATION_OP_EVIDENCE_GET, CTLV_OP_FD_ACCESS_READ_WRITE,
-			      CTLV_OP_AVAILABILITY_DYNAMIC, 6176, 1448,
+			      CTLV_OP_AVAILABILITY_DYNAMIC, 6560, 1448,
 			      CTLV_SCHEMA_TREE(evidence_get_request),
 			      CTLV_SCHEMA_TREE(evidence_get_reply), .optional = true),
 	CTLV_OP_SCHEMA_QUERY(CTLV_ATTESTATION_OP_MR_GET, CTLV_OP_FD_ACCESS_READ,

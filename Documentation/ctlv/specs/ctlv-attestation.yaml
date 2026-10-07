@@ -165,7 +165,7 @@ ops:
         # Where the object is written. One too short for it fails the op with
         # EMSGSIZE, and error-info's required-length says how long it has to
         # be.
-        data: blob(out, va)
+        data: blob(out, va memfd)
     reply:
       # One per object, in request order.
       results[16]:
