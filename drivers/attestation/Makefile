@@ -2,4 +2,4 @@
 obj-$(CONFIG_ATTESTATION) += attestation.o
 
 attestation-y := core/core.o core/ctlv.o core/consumer.o core/events.o \
-		 core/mr.o generated/ctlv_attestation_gen.o
+		 core/kexec.o core/mr.o generated/ctlv_attestation_gen.o

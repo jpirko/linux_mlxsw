@@ -338,6 +338,8 @@ attestation_mr_extend_locked(struct attestation_dev *att, struct attestation_mr_
 	int ret;
 
 	lockdep_assert_held(&att->lock);
+	if (att->log->frozen)
+		return ERR_PTR(-EBUSY);
 	if (att->log->generation == UINT_MAX) {
 		dev_warn(att->node.dev.parent,
 			 "attestation instance %u stopped: mr generation exhausted\n",

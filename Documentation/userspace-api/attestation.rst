@@ -288,6 +288,9 @@ The reply carries the ``mr-generation`` of the new entry, which
     The request carries no ``mr-values``, a value is for a bank the MR does not
     have or repeats one, or a digest has the wrong length.
 
+``EBUSY``
+    The journal is frozen for a kexec handover.
+
 Access is read-write.
 
 The journal
@@ -297,7 +300,8 @@ The device keeps an append-only journal of its MRs, numbered by
 ``mr-generation`` from 1. It starts with an ``info`` entry for each MR,
 describing it as ``mr-get`` does. Every extension then appends an ``extend``
 entry with the digests of the banks it extended, and with IMA's template for
-IMA's measurements.
+IMA's measurements. After an orderly kexec, the device continues the previous
+kernel's journal.
 
 A bank is replayed from the entries with a digest for it; an entry without one
 did not extend that bank. So evidence reporting a bank vouches only for the

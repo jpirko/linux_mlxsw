@@ -140,6 +140,16 @@ CTLV instance, which drains the operations and events in flight and queues
 provider may release its native state before ``attestation_put()``.  Open
 files keep the structure until they close, and its release frees the journal.
 
+Orderly kexec
+=============
+
+The core handover serializer captures typed journal entries, live MR
+properties and authoritative terminal values.  The image-transport integration
+supplies that byte stream to the next kernel.  Restoration matches the device's
+family and backing device exactly, validates topology and native values, then
+reconstructs the journal without re-extending any MR or duplicating INFO
+entries.
+
 Kernel API
 ==========
 

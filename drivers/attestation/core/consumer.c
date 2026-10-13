@@ -139,6 +139,7 @@ attestation_mr_target_get(const char *family_name, const char *bus_name,
 		ret = -EOVERFLOW;
 		goto out_unlock;
 	}
+	attestation_kexec_invalidate(att);
 	mr->state_flags |= CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE;
 	attestation_mr_changed(att);
 	target->index = match;
@@ -175,6 +176,7 @@ void attestation_mr_target_put(struct attestation_mr_target *target)
 	mr = xa_load(&att->mrs, target->mr_id);
 	if (mr && mr->start_generation == target->start_generation &&
 	    (mr->state_flags & CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE)) {
+		attestation_kexec_invalidate(att);
 		mr->state_flags &=
 			~CTLV_ATTESTATION_MR_STATE_FLAGS_IMA_ACTIVE;
 		if (att->log->generation == UINT_MAX)

@@ -46,6 +46,7 @@ struct attestation_mr_log_entry_ima_extend {
 
 struct attestation_mr_log {
 	unsigned int generation;
+	bool frozen;
 	struct xarray entries;
 	struct attestation_mr_log_entry *tail;
 };
@@ -119,5 +120,10 @@ void attestation_mr_log_event_emit(struct attestation_event_batch *events,
 int attestation_mr_log_entry_encode(struct ctlv_cursor *reply,
 				    const struct attestation_mr_log_entry *entry);
 int attestation_mr_props_encode(struct ctlv_cursor *reply, const struct attestation_mr *mr);
+
+int attestation_kexec_restore(struct attestation_dev *att);
+void attestation_kexec_invalidate(struct attestation_dev *att);
+int attestation_kexec_init(void);
+void attestation_kexec_exit(void);
 
 #endif /* _ATTESTATION_INTERNAL_H */
