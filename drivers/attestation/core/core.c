@@ -201,6 +201,7 @@ void attestation_stop(struct attestation *att)
 	xa_lock(&attestation_instances);
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
+	attestation_kexec_invalidate(att);
 }
 
 static struct attestation_mr *attestation_mr_alloc(struct attestation *att,
@@ -323,9 +324,14 @@ int ctlv_attestation_post_init(struct ctlv_device *ctlvdev, void *priv)
 	struct attestation *att = priv;
 	int ret;
 
-	ret = attestation_mr_log_init(att);
-	if (ret)
+	ret = attestation_kexec_restore(att);
+	if (ret < 0)
 		return ret;
+	if (!ret) {
+		ret = attestation_mr_log_init(att);
+		if (ret)
+			return ret;
+	}
 	xa_lock(&attestation_instances);
 	__xa_set_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
@@ -339,6 +345,7 @@ void ctlv_attestation_pre_fini(struct ctlv_device *ctlvdev, void *priv)
 	xa_lock(&attestation_instances);
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
+	attestation_kexec_invalidate(att);
 	synchronize_srcu(&attestation_instances_srcu);
 }
 
@@ -370,11 +377,12 @@ EXPORT_SYMBOL_NS_GPL(ctlv_attestation_op_post, "ATTESTATION");
 
 static int __init attestation_module_init(void)
 {
-	return 0;
+	return attestation_kexec_init();
 }
 
 static void __exit attestation_module_exit(void)
 {
+	attestation_kexec_exit();
 	WARN_ON_ONCE(!xa_empty(&attestation_instances));
 	xa_destroy(&attestation_instances);
 }

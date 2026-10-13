@@ -323,6 +323,8 @@ attestation_mr_extend_locked(struct attestation *att, struct attestation_mr_chan
 	int ret;
 
 	lockdep_assert_held(&att->lock);
+	if (att->log->frozen)
+		return ERR_PTR(-EBUSY);
 	if (att->log->generation == UINT_MAX) {
 		attestation_stop(att);
 		return ERR_PTR(-EOVERFLOW);

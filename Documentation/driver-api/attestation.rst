@@ -76,6 +76,16 @@ readers while provider state and CTLV event emission remain available.  CTLV
 stops events only after that callback returns; provider and base ``fini``
 callbacks may then release native and journal storage.
 
+Orderly kexec
+=============
+
+The core handover serializer captures typed journal entries, live MR
+properties and authoritative terminal values.  The image-transport integration
+supplies that byte stream to the next kernel.  Restoration matches the exact
+provider family and backing-device tuple, validates topology and native values,
+then reconstructs the journal without re-extending any MR or duplicating INFO
+entries.
+
 TDX provider
 ============
 
