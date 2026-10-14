@@ -7,6 +7,8 @@
 #ifndef _LINUX_CTLV_H
 #define _LINUX_CTLV_H
 
+#include <linux/device.h>
+#include <linux/spinlock_types.h>
 #include <linux/types.h>
 
 #include <uapi/ctlv/ctlv.h>
@@ -15,6 +17,7 @@ struct ctlv_family;
 struct ctlv;
 struct ctlv_msg;
 struct ctlv_op_ctx;
+struct ctlv_op_entry;
 struct ctlv_schema_tree;
 
 /**
@@ -55,6 +58,29 @@ struct ctlv_cursor {
 	u32 index_record_scope;
 	u32 index_scope;
 	bool progress;
+};
+
+/**
+ * struct ctlv - The CTLV state of one device, embedded by its subsystem.
+ * @dev: device whose release frees the structure embedding this instance;
+ *	every open file pins it
+ *
+ * A family callback is handed the instance and reaches its own state with
+ * container_of().
+ */
+struct ctlv {
+	struct device *dev;
+	/* private: */
+	const struct ctlv_family *family;
+
+	struct ctlv_op_entry *ops;
+	u32 ops_count;
+
+	/* Op publication and state writers, never the dispatch path. */
+	spinlock_t transition_lock;
+	u64 state_generation;
+	u32 dynamic_ops_count;
+	unsigned long *disabled;
 };
 
 void ctlv_record_end(struct ctlv_cursor *child);

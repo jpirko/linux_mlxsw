@@ -60,6 +60,7 @@ struct ctlv_query_fragment {
 };
 
 struct ctlv_op_ctx {
+	struct ctlv *ctlv;
 	const struct ctlv_family *family;
 	/* Compared against current and never followed: identity, not a hold. */
 	const struct task_struct *submitter;
@@ -78,5 +79,7 @@ struct ctlv_op_ctx {
 	int blob_error;
 	struct ctlv_error error;
 };
+
+struct ctlv_op_entry *ctlv_op_find(struct ctlv *ctlv, u64 op_id);
 
 #endif /* _CTLV_INTERNAL_H */
