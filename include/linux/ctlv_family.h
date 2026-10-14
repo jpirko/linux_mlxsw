@@ -451,6 +451,8 @@ bool ctlv_put_binary(struct ctlv_cursor *record, u64 type, u8 kind,
 bool ctlv_record_start(struct ctlv_cursor *record, struct ctlv_cursor *child,
 		       u64 type, u8 kind);
 
+struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
+				    const struct ctlv_cursor *blob);
 #define __CTLV_DEFINE_PUT(_name, _ctype, _put_fn, _type, _kind)	\
 static inline bool _name##_put(struct ctlv_cursor *record,	\
 			       _ctype value)			\
@@ -560,6 +562,17 @@ static inline void _name##_get(struct ctlv_cursor *inner,	\
 	ctlv_input_field(inner, record, _name##_ref());		\
 }
 
+#define CTLV_IN_BLOB(_name)					\
+static inline struct ctlv_blob *				\
+_name##_resolve(struct ctlv_op_ctx *ctx,			\
+		const struct ctlv_cursor *record)		\
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_blob_resolve(ctx, &cursor);			\
+}
+
 #define CTLV_IN_EACH_U64(_name)					\
 static inline u64 _name##_get(const struct ctlv_cursor *cursor)	\
 {								\
@@ -602,6 +615,16 @@ _name##_get(const struct ctlv_cursor *cursor, u32 *len)		\
 		return NULL;					\
 	}							\
 	return ctlv_cursor_binary(cursor, len);			\
+}
+
+#define CTLV_IN_EACH_BLOB(_name)				\
+static inline struct ctlv_blob *				\
+_name##_resolve(struct ctlv_op_ctx *ctx,			\
+		const struct ctlv_cursor *cursor)		\
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref()))		\
+		return ERR_PTR(-EINVAL);			\
+	return ctlv_blob_resolve(ctx, cursor);			\
 }
 
 #endif /* _LINUX_CTLV_FAMILY_H */

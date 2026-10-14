@@ -78,4 +78,13 @@ int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
 		       u64 next_cursor);
 int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
 
+struct ctlv_blob;
+
+int ctlv_blob_put(struct ctlv_blob *blob);
+u64 ctlv_blob_len(const struct ctlv_blob *blob);
+int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
+int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
+		    size_t len);
+int ctlv_blob_too_short(struct ctlv_blob *blob, u64 len);
+
 #endif /* _LINUX_CTLV_H */

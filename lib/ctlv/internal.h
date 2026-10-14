@@ -9,6 +9,7 @@
 
 #include <linux/bug.h>
 #include <linux/ctlv_family.h>
+#include <linux/list.h>
 #include <linux/types.h>
 
 #include <uapi/ctlv/ctlv.h>
@@ -21,6 +22,8 @@
 #else
 #define CTLV_ASSERT(cond) BUILD_BUG_ON_INVALID(cond)
 #endif
+
+struct task_struct;
 
 #define CTLV_ERROR_MESSAGE_LEN 256
 
@@ -58,6 +61,8 @@ struct ctlv_query_fragment {
 
 struct ctlv_op_ctx {
 	const struct ctlv_family *family;
+	/* Compared against current and never followed: identity, not a hold. */
+	const struct task_struct *submitter;
 	const struct ctlv_op_entry *op;
 
 	struct ctlv_msg request;
@@ -68,6 +73,9 @@ struct ctlv_op_ctx {
 	struct ctlv_cursor *deepest;
 
 	struct ctlv_query_fragment frag;
+	struct list_head blobs;
+	bool blobs_live;
+	int blob_error;
 	struct ctlv_error error;
 };
 
