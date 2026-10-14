@@ -4439,6 +4439,7 @@ L:	linux-security-module@vger.kernel.org
 S:	Supported
 F:	Documentation/ctlv/abi/ctlv-attestation*
 F:	Documentation/ctlv/specs/ctlv-attestation*
+F:	Documentation/userspace-api/attestation*.rst
 F:	drivers/attestation/
 F:	include/uapi/ctlv/ctlv_attestation*
 
