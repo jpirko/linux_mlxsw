@@ -123,4 +123,45 @@ int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
  */
 int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
 
+struct ctlv_blob;
+
+/**
+ * ctlv_blob_put - Release a resolved blob.
+ * @blob: blob returned by a generated resolve helper
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_blob_put(struct ctlv_blob *blob);
+
+/**
+ * ctlv_blob_len - Get a resolved blob's length.
+ * @blob: resolved blob
+ *
+ * Return: blob length in bytes.
+ */
+u64 ctlv_blob_len(const struct ctlv_blob *blob);
+
+/**
+ * ctlv_blob_read - Copy bytes from a resolved input blob.
+ * @blob: resolved blob
+ * @offset: byte offset
+ * @dst: destination buffer
+ * @len: number of bytes
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
+
+/**
+ * ctlv_blob_write - Copy bytes to a resolved output blob.
+ * @blob: resolved blob
+ * @offset: byte offset
+ * @src: source buffer
+ * @len: number of bytes
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
+		    size_t len);
+
 #endif /* _LINUX_CTLV_H */

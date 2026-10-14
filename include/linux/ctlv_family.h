@@ -336,6 +336,8 @@ bool ctlv_put_binary(struct ctlv_cursor *nest, u64 attr_id, u8 kind,
 bool ctlv_nest_start(struct ctlv_cursor *nest, struct ctlv_cursor *child,
 		     u64 attr_id, u8 kind);
 
+struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
+				    const struct ctlv_cursor *blob);
 #define __CTLV_DEFINE_PUT(_name, _type, _put_fn, _attr_id, _kind) \
 static inline bool _name##_put(struct ctlv_cursor *nest,		\
 			       _type value)			\
@@ -448,6 +450,17 @@ static inline void _name##_get(struct ctlv_cursor *nested,	\
 	ctlv_input_attr(nested, nest, _name##_ref());		\
 }
 
+#define CTLV_IN_BLOB(_name)					\
+static inline struct ctlv_blob *				\
+_name##_resolve(struct ctlv_op_ctx *ctx,			\
+		const struct ctlv_cursor *nest)			\
+{								\
+	struct ctlv_cursor attr;				\
+								\
+	ctlv_input_attr(&attr, nest, _name##_ref());		\
+	return ctlv_blob_resolve(ctx, &attr);			\
+}
+
 #define CTLV_IN_EACH_U64(_name)					\
 static inline u64 _name##_get(const struct ctlv_cursor *attr)	\
 {								\
@@ -490,6 +503,16 @@ _name##_get(const struct ctlv_cursor *attr, u32 *len)		\
 		return NULL;					\
 	}							\
 	return ctlv_attr_binary(attr, len);			\
+}
+
+#define CTLV_IN_EACH_BLOB(_name)				\
+static inline struct ctlv_blob *				\
+_name##_resolve(struct ctlv_op_ctx *ctx,			\
+		const struct ctlv_cursor *attr)			\
+{								\
+	if (!ctlv_input_cursor(attr, _name##_ref()))		\
+		return ERR_PTR(-EINVAL);				\
+	return ctlv_blob_resolve(ctx, attr);			\
 }
 
 #endif /* _LINUX_CTLV_FAMILY_H */
