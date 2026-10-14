@@ -4337,7 +4337,9 @@ L:	linux-security-module@vger.kernel.org
 S:	Supported
 F:	Documentation/ctlv/abi/ctlv-attestation*
 F:	Documentation/ctlv/specs/ctlv-attestation*
+F:	Documentation/driver-api/attestation.rst
 F:	drivers/attestation/
+F:	include/linux/attestation*
 F:	include/uapi/linux/ctlv_attestation*
 
 ATTO EXPRESSSAS SAS/SATA RAID SCSI DRIVER
