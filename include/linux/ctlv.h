@@ -53,10 +53,65 @@ struct ctlv_cursor {
 };
 
 /**
+ * ctlv_priv_parent - Get the direct parent family private data.
+ * @priv: core-allocated private data passed to a family callback
+ *
+ * Return: parent private data, or NULL for the root family.
+ */
+void *ctlv_priv_parent(const void *priv);
+
+/**
+ * ctlv_priv_child - Get the direct child family private data.
+ * @priv: core-allocated private data passed to a family callback
+ *
+ * Return: child private data, or NULL for the device family.
+ */
+void *ctlv_priv_child(const void *priv);
+
+struct device;
+
+/**
+ * ctlv_device_parent - Get the backing device.
+ * @ctlvdev: CTLV device
+ *
+ * Return: backing device passed to ctlv_create().
+ */
+struct device *ctlv_device_parent(const struct ctlv_device *ctlvdev);
+
+/**
+ * ctlv_create - Create and register a CTLV device.
+ * @parent_dev: backing device
+ * @family: device family
+ * @init_info: family initialization data
+ *
+ * Return: CTLV device, or an error pointer.
+ */
+struct ctlv_device *ctlv_create(struct device *parent_dev,
+				const struct ctlv_family *family,
+				const void *init_info);
+
+/**
+ * ctlv_destroy - Unregister and destroy a CTLV device.
+ * @ctlvdev: CTLV device
+ */
+void ctlv_destroy(struct ctlv_device *ctlvdev);
+
+/**
  * ctlv_nest_end - Finish an output nest.
  * @child: nest cursor returned by a generated start helper
  */
 void ctlv_nest_end(struct ctlv_cursor *child);
+
+/**
+ * ctlv_stub_fill - Delegate an extension-point output nest.
+ * @ctx: operation context
+ * @request: validated request root
+ * @nest: output nest selected by the generated helper
+ *
+ * Return: filling callback result, or 0 for an unfilled point.
+ */
+int ctlv_stub_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
+		   struct ctlv_cursor *nest);
 
 /**
  * ctlv_op_error - Record an operation error message.

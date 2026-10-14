@@ -313,6 +313,10 @@ struct ctlv_family {
 
 extern const struct ctlv_family ctlv_family;
 
+void ctlv_device_op_provide(struct ctlv_device *ctlvdev, u64 op_id);
+void ctlv_device_op_state_set(struct ctlv_device *ctlvdev, u64 op_id,
+			      bool disabled);
+
 struct ctlv_cursor *
 ctlv_input_attr(struct ctlv_cursor *cursor, const struct ctlv_cursor *nest,
 		struct ctlv_input_ref ref);
@@ -340,6 +344,24 @@ struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
 				    const struct ctlv_cursor *blob);
 struct ctlv_op_ctx *ctlv_event_create(struct ctlv_device *ctlvdev, u64 op_id,
 				      struct ctlv_cursor **event, gfp_t gfp);
+
+#define CTLV_OP_PROVIDE(_name, _op_id)				\
+static inline void _name##_provide(struct ctlv_device *ctlvdev)	\
+{								\
+	ctlv_device_op_provide(ctlvdev, (_op_id));		\
+}
+
+#define CTLV_OP_ENABLE(_name, _op_id)				\
+static inline void _name##_enable(struct ctlv_device *ctlvdev)	\
+{								\
+	ctlv_device_op_state_set(ctlvdev, (_op_id), false);	\
+}
+
+#define CTLV_OP_DISABLE(_name, _op_id)				\
+static inline void _name##_disable(struct ctlv_device *ctlvdev)	\
+{								\
+	ctlv_device_op_state_set(ctlvdev, (_op_id), true);	\
+}
 
 #define CTLV_EVENT_CREATE(_name, _op_id)			\
 static inline struct ctlv_op_ctx *				\
