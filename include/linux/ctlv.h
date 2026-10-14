@@ -164,4 +164,31 @@ int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
 int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
 		    size_t len);
 
+/**
+ * ctlv_event_lost - Report an event that could not be created.
+ * @ctlvdev: CTLV device
+ * @op_id: event operation ID
+ *
+ * This does not allocate or sleep. It is not for interrupt context.
+ */
+void ctlv_event_lost(struct ctlv_device *ctlvdev, u64 op_id);
+
+/**
+ * ctlv_event_emit - Validate and publish a completed event.
+ * @ctx: context returned by a generated event create helper
+ *
+ * This consumes @ctx. It is not for interrupt context.
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_event_emit(struct ctlv_op_ctx *ctx);
+
+/**
+ * ctlv_event_abort - Discard an event under construction.
+ * @ctx: context returned by a generated event create helper
+ *
+ * This consumes @ctx. It is not for interrupt context.
+ */
+void ctlv_event_abort(struct ctlv_op_ctx *ctx);
+
 #endif /* _LINUX_CTLV_H */

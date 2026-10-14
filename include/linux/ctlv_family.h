@@ -338,6 +338,17 @@ bool ctlv_nest_start(struct ctlv_cursor *nest, struct ctlv_cursor *child,
 
 struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
 				    const struct ctlv_cursor *blob);
+struct ctlv_op_ctx *ctlv_event_create(struct ctlv_device *ctlvdev, u64 op_id,
+				      struct ctlv_cursor **event, gfp_t gfp);
+
+#define CTLV_EVENT_CREATE(_name, _op_id)			\
+static inline struct ctlv_op_ctx *				\
+_name##_create(struct ctlv_device *ctlvdev,			\
+	       struct ctlv_cursor **reply, gfp_t gfp)		\
+{								\
+	return ctlv_event_create(ctlvdev, (_op_id), reply, gfp);	\
+}
+
 #define __CTLV_DEFINE_PUT(_name, _type, _put_fn, _attr_id, _kind) \
 static inline bool _name##_put(struct ctlv_cursor *nest,		\
 			       _type value)			\
