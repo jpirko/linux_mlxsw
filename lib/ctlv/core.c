@@ -1035,6 +1035,23 @@ static int ctlv_uevent_check(const struct ctlv_family *family)
 }
 
 /**
+ * ctlv_uevent - Add the family variables to a device uevent.
+ * @ctlv: instance
+ * @env: uevent environment
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_uevent(const struct ctlv *ctlv, struct kobj_uevent_env *env)
+{
+	/* Read unlocked: a uevent may be asked for under the registration lock. */
+	const struct ctlv_family *family = READ_ONCE(ctlv->family);
+
+	if (!family)
+		return 0;
+	return ctlv_uevent_families(env, family);
+}
+
+/**
  * ctlv_init - Prepare an embedded instance for one family.
  * @ctlv: zeroed instance
  * @dev: device

@@ -23,6 +23,7 @@
 #define CTLV_ASSERT(cond) BUILD_BUG_ON_INVALID(cond)
 #endif
 
+struct kobj_uevent_env;
 struct task_struct;
 
 #define CTLV_ERROR_MESSAGE_LEN 256
@@ -81,5 +82,6 @@ struct ctlv_op_ctx {
 };
 
 struct ctlv_op_entry *ctlv_op_find(struct ctlv *ctlv, u64 op_id);
+int ctlv_uevent(const struct ctlv *ctlv, struct kobj_uevent_env *env);
 
 #endif /* _CTLV_INTERNAL_H */
