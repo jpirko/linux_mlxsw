@@ -157,12 +157,51 @@ bool attestation_registered(struct attestation *att)
 	return registered;
 }
 
+void attestation_mr_changed(struct attestation *att)
+{
+	lockdep_assert_held(&att->lock);
+	att->log->generation++;
+	att->mr_read_generation++;
+}
+
 void attestation_stop(struct attestation *att)
 {
 	lockdep_assert_held(&att->lock);
 	xa_lock(&attestation_instances);
 	__xa_clear_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);
+}
+
+static struct attestation_mr *attestation_mr_alloc(struct attestation *att,
+						   const struct attestation_mr_props *props)
+{
+	struct attestation_mr *mr;
+	int ret;
+
+	ret = attestation_mr_props_validate(att->provider, props);
+	if (ret)
+		return ERR_PTR(ret);
+	if (xa_load(&att->mrs, props->id))
+		return ERR_PTR(-EEXIST);
+	mr = kzalloc_obj(*mr, GFP_KERNEL);
+	if (!mr)
+		return ERR_PTR(-ENOMEM);
+	mr->props = props;
+	ret = xa_insert(&att->mrs, props->id, mr, GFP_KERNEL);
+	if (ret) {
+		kfree(mr);
+		return ERR_PTR(ret);
+	}
+	return mr;
+}
+
+struct attestation_mr *attestation_mr_lookup_live(struct attestation *att, unsigned int mr_id)
+{
+	struct attestation_mr *mr;
+
+	lockdep_assert_held(&att->lock);
+	mr = xa_load(&att->mrs, mr_id);
+	return mr ? mr : ERR_PTR(-ENOENT);
 }
 
 void attestation_provide_ops(struct attestation *att)
@@ -174,37 +213,66 @@ void attestation_provide_ops(struct attestation *att)
 		ctlv_attestation_evidence_get_provide(ctlvdev);
 		ctlv_attestation_evidence_get_enable(ctlvdev);
 	}
+	if (provider->mrs_count) {
+		ctlv_attestation_mr_get_provide(ctlvdev);
+		ctlv_attestation_mr_dump_provide(ctlvdev);
+		ctlv_attestation_mr_log_get_provide(ctlvdev);
+		if (provider->mr_read)
+			ctlv_attestation_mr_read_provide(ctlvdev);
+		if (provider->mr_extend)
+			ctlv_attestation_mr_extend_provide(ctlvdev);
+	}
 }
 
 int attestation_core_init(struct attestation *att, struct ctlv_device *ctlvdev,
 			  const struct attestation_provider *provider)
 {
+	size_t index;
 	int ret;
 
 	ret = attestation_provider_validate(provider);
 	if (ret)
 		return ret;
 	mutex_init(&att->lock);
+	xa_init(&att->mrs);
 	att->ctlvdev = ctlvdev;
 	att->provider = provider;
+	for (index = 0; index < provider->mrs_count; index++) {
+		struct attestation_mr *mr;
+
+		mr = attestation_mr_alloc(att, &provider->mrs[index]);
+		if (IS_ERR(mr)) {
+			ret = PTR_ERR(mr);
+			goto err_mrs;
+		}
+	}
 	ret = attestation_registry_insert(att);
 	if (ret)
-		goto err_core;
+		goto err_mrs;
 	attestation_provide_ops(att);
 	att->initialized = true;
 	return 0;
 
-err_core:
+err_mrs:
 	attestation_core_fini(att);
 	return ret;
 }
 
 void attestation_core_fini(struct attestation *att)
 {
+	struct attestation_mr *mr;
+	unsigned long index;
+
 	if (!att->ctlvdev)
 		return;
 	if (att->initialized)
 		attestation_registry_remove(att);
+	xa_for_each(&att->mrs, index, mr) {
+		xa_erase(&att->mrs, index);
+		kfree(mr);
+	}
+	attestation_mr_log_free(att->log);
+	xa_destroy(&att->mrs);
 	mutex_destroy(&att->lock);
 	att->ctlvdev = NULL;
 }
@@ -222,7 +290,11 @@ int ctlv_attestation_init(struct ctlv_device *ctlvdev, const void *init_info, vo
 int ctlv_attestation_post_init(struct ctlv_device *ctlvdev, void *priv)
 {
 	struct attestation *att = priv;
+	int ret;
 
+	ret = attestation_mr_log_init(att);
+	if (ret)
+		return ret;
 	xa_lock(&attestation_instances);
 	__xa_set_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);

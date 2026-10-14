@@ -27,6 +27,14 @@ callback, journal commit and event emission with one instance mutex.
 Fixed MRs are listed in the provider descriptor.  Their property storage
 remains valid until ``ctlv_destroy()`` or failed-creation unwind completes.
 
+MR journal
+==========
+
+MR extension is transactional.  The core allocates the complete journal entry
+and event before invoking ``mr_extend``.  A successful callback is followed
+only by infallible publication, so userspace observes the same ordered
+journal.
+
 Teardown
 ========
 
