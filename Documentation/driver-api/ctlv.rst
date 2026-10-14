@@ -7,7 +7,7 @@ Writing a CTLV family
 :Author: Jiri Pirko
 
 A CTLV family is a set of system calls for one sort of device: actions and
-queries a program executes. The family is written as a
+queries a program executes, and events it reads. The family is written as a
 YAML specification, a generator turns that into headers, and the family
 implementation supplies the callbacks the generated header names. CTLV checks
 every request against the specification before a callback sees it. The
@@ -23,11 +23,16 @@ calls::
     item_set_action(u64 index, string label?, blob data?) -> status;
     item_get_query() -> { u64 index; string label?; }[];
 
+and one event::
+
+    item_changed_event -> { u64 index; string label?; };
+
 ``index`` is 0..4095, ``label`` is at most 63 bytes excluding NUL, and
 ``data`` is at most 1 MiB with 8-byte alignment. ``?`` marks an optional
 argument. An action runs once and returns a status. A query returns an answer
 that may be larger than the caller's buffer, which CTLV delivers in as many
 fragments as the buffer needs; a list, as here, is the usual case.
+An event is a message the device sends to every descriptor subscribed to it.
 
 Write the specification
 =======================
@@ -76,9 +81,19 @@ Each system call is an op:
             # What the item is called.
             label?: string(..63)
 
-``request`` is what an op takes and ``reply`` what it returns. An op
-without a ``request`` takes no arguments, and an action without a ``reply``
-returns only its status. An action or a query may also set these keys:
+      # Reports an item that changed.
+      item-changed:
+        type: event
+        payload:
+          # Which item it is.
+          index: uint(..4095)
+          # What the item is called.
+          label?: string(..63)
+
+``request`` is what an op takes and ``reply`` what it returns; an event
+reports its ``payload``. An op without a ``request`` takes no arguments, and
+an action without a ``reply`` returns only its status. An action or a query
+may also set these keys:
 
 =========================== ========== ========================================
 Key                         Default    What it does
@@ -113,7 +128,8 @@ and then the specification reads:
 .. code-block:: yaml
 
     records:
-      # One item, as item-set takes it and item-get lists it.
+      # One item, as item-set takes it, item-get lists it and item-changed
+      # reports it.
       item:
         # Which item it is.
         index: uint(..4095)
@@ -136,12 +152,17 @@ and then the specification reads:
           # Every item the device keeps.
           items[]: record item
 
+      # Reports an item that changed.
+      item-changed:
+        type: event
+        payload: record item
+
 ``$include: item`` puts the record's fields in place, and ``record item`` makes
 it a whole message or a record's field. The field is then the same wherever it
 appears: ``item.index`` has one type, one bound and one generated helper in
-the ``item-set`` request and in the items ``item-get`` returns, and
-``ctlv_example_item_index_put()`` writes it in the latter. This guide keeps
-the fields spelled out.
+the ``item-set`` request, in the items ``item-get`` returns and in
+``item-changed`` events, and ``ctlv_example_item_index_put()`` writes it in
+both of the last two. This guide keeps the fields spelled out.
 
 A field's type, the ID it has in a message, is made of the family's number,
 its record and its place in that record. A named record is numbered by its
@@ -198,8 +219,8 @@ enum written as ``extension`` has no values of its own; see
 `Inheritance and HW driver fields`_.
 
 No message outgrows the core's inline limit, ``CTLV_MAX_INLINE_MESSAGE_LEN``
-(64 KiB): the generator refuses an operation whose request or action reply
-could be longer, or a query whose longest field could not fit in one
+(64 KiB): the generator refuses an operation whose request, action reply or
+event could be longer, or a query whose longest field could not fit in one
 fragment. Larger data goes in a blob.
 
 Generate the family
@@ -312,10 +333,11 @@ A device of the class is then made:
 ``ctlv_device_init()`` names the node after the class, ``/dev/example0``.
 ``ctlv_init()`` resolves the family chain. Until the instance is published, the
 driver selects its optional operations and their initial dynamic state, see
-Hooks and availability. ``ctlv_publish()`` makes operations live, and only then
-may the node be added, as a program may open it as soon as it appears.
-``ctlv_device_add()`` adds the node, whose uevent names the family; that is how
-libctlv and udev find the device. Destruction is the reverse:
+Hooks and availability. ``ctlv_publish()`` makes operations and events live,
+and only then may the node be added, as a program may open it as soon as it
+appears. ``ctlv_device_add()`` adds the node, whose uevent names the family;
+that is how libctlv and udev find the device. The node's ``read()`` and
+``poll()`` serve its event queue. Destruction is the reverse:
 
 .. code-block:: c
 
@@ -323,12 +345,13 @@ libctlv and udev find the device. Destruction is the reverse:
     ctlv_unpublish(&example->ctlv);
     put_device(&example->ctlvdev.dev);
 
-``ctlv_unpublish()`` waits for the operations in flight; no callback runs
-afterwards. Each open file description fails its operations with ``-ENODEV``.
-The structure is freed with the last reference, the device's or an open file's,
-so what the callbacks used may stay in it. From ``ctlv_device_init()`` on,
-``put_device()`` alone unwinds a failed initialization, as it does a failed add
-once the instance is unpublished.
+``ctlv_unpublish()`` waits for the operations in flight and the events being
+built; no callback runs afterwards. Each open file description gets
+``DEVICE_REMOVED`` behind what it had queued, and fails anything but draining
+it with ``-ENODEV``. The structure is freed with the last reference, the
+device's or an open file's, so what the callbacks used may stay in it. From
+``ctlv_device_init()`` on, ``put_device()`` alone unwinds a failed
+initialization, as it does a failed add once the instance is unpublished.
 
 A file of another subsystem
 ---------------------------
@@ -358,8 +381,10 @@ ioctls:
             return ret == -ENOIOCTLCMD ? foo_own_ioctl(filp, cmd, arg) : ret;
     }
 
-Its release calls ``ctlv_file_close()``. The file's uevent is the other
-subsystem's and names no family, so a program opens the file by its name.
+Its release calls ``ctlv_file_close()``. ``read()`` and ``poll()`` stay the
+subsystem's, and the file's event queue is read from the fd that
+``CTLV_IOC_EVENT_FD`` returns. The file's uevent is the other subsystem's and
+names no family, so a program opens the file by its name.
 
 The ``struct ctlv_hooks`` passed to ``ctlv_init()`` holds the device's pre and
 post hooks, see `Hooks`_. The device structure's release calls ``ctlv_fini()``
@@ -494,7 +519,7 @@ device that publishes it:
     ctlv_example_item_get_enable(&example->ctlv);
 
 A disabled operation stays in ``op-get``, which reports it disabled, and
-returns ``-EOPNOTSUPP``.
+returns ``-EOPNOTSUPP``; a state change emits ``op-changed``.
 
 Blobs
 =====
@@ -518,9 +543,31 @@ what the operation produces is the caller's to enlarge: return
 ``ctlv_blob_too_short()`` with the length needed, rather than writing part of
 it.
 
-Only a request carries a blob; the generator refuses one in a reply. A request
-that shares fields with a reply includes them and declares its blob beside them,
-as ``item-set`` does when it includes ``item``.
+Only a request carries a blob; the generator refuses one in a reply or an
+event. A request that shares fields with a reply includes them and declares its
+blob beside them, as ``item-set`` does when it includes ``item``.
+
+Events
+======
+
+.. code-block:: c
+
+    ctx = ctlv_example_item_changed_create(&example->ctlv, &payload, GFP_KERNEL);
+    if (IS_ERR(ctx))
+            return PTR_ERR(ctx);
+    ctlv_example_item_changed_index_put(payload, index);
+    return ctlv_event_emit(ctx);
+
+Creation fails with ``-ENODEV`` before the instance is published and after it
+is unpublished. Exactly one of ``ctlv_event_emit()`` and ``ctlv_event_abort()`` ends the context. The
+GFP argument covers subscriber copies; atomic producers use ``GFP_NOWAIT`` or
+``GFP_ATOMIC``. Event APIs are not called from interrupt context, and hooks do
+not run around events.
+
+If an event occurred but allocation failed, commit the state change and call
+``ctlv_event_lost()``. It neither allocates nor sleeps. Do not use it for an
+aborted event or for per-subscriber drops already tracked by
+``ctlv_event_emit()``.
 
 Inheritance and HW driver fields
 ================================
@@ -691,8 +738,8 @@ Tests and examples
 ==================
 
 ``Documentation/ctlv/specs/ctlv-test.yaml``
-    Every schema kind, records, actions, queries, blobs, availability, hooks,
-    and an extension point.
+    Every schema kind, records, actions, queries, events, blobs, availability,
+    hooks, and an extension point.
 
 ``drivers/ctlv/tests/ctlv_test.c``
     The ``ctlv-test`` family implementation.
@@ -717,6 +764,8 @@ Kernel API
 .. kernel-doc:: lib/ctlv/schema.c
    :export:
 .. kernel-doc:: lib/ctlv/blob.c
+   :export:
+.. kernel-doc:: lib/ctlv/event.c
    :export:
 .. kernel-doc:: include/linux/ctlv_device.h
 .. kernel-doc:: lib/ctlv/device.c

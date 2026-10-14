@@ -15,6 +15,8 @@ enums:
     - action
     # Executed and answered, in as many fragments as the answer needs.
     - query
+    # Produced by the device and read from a subscribed file description.
+    - event
   # A permission, not a state: what a device currently allows is disabled.
   op-availability:
     # A device that publishes the op always answers it.
@@ -152,6 +154,11 @@ records:
     # The optional nodes one level in.
     optional-fields[]?: record schema-node
 
+  # The ops a subscription names.
+  event-subscription:
+    # The op ID of an event the device emits.
+    op-ids[256]: uint(1..)
+
 ops:
   # The families this device answers, this one first and the device family
   # last. The only names any reply of this family carries.
@@ -168,16 +175,17 @@ ops:
         name: string(..63)
 
   # One entry per effective op. Length fields that do not apply to an
-  # entry's op type are absent.
+  # entry's op type are absent, as are fd access, availability and disabled
+  # for an event.
   op-get:
     type: query
     fd-access: read
     reply:
       # One entry per op the device publishes.
       ops[]:
-        # The op ID, which CTLV_IOC_OP_EXEC carries.
+        # The op ID, which CTLV_IOC_OP_EXEC and an event header carry.
         id: uint(1..)
-        # Action or query.
+        # Action, query or event.
         type: op-type
         # Whether the device may disable and enable the op.
         availability?: op-availability
@@ -195,6 +203,8 @@ ops:
         fd-access?: op-fd-access
         # The longest error information the op can return.
         error-info-max-len?: uint
+        # The longest message an event of the op carries.
+        event-max-len?: uint
 
   # The request and reply ABI of one op, whether or not it can be called right
   # now. A removed op answers as one that was never declared.
@@ -207,5 +217,72 @@ ops:
     reply:
       # The root of the op's request tree, absent when it has no request.
       request?: record schema-node
-      # The root of its reply tree, absent when it has no reply.
+      # The root of its reply tree, absent when it has no reply. An event's
+      # one tree, its payload's, is reported here.
       reply?: record schema-node
+
+  # Subscribes the file description to the events named, or to none of them
+  # when one is not an event the device emits.
+  subscriptions-add:
+    type: action
+    fd-access: read
+    request: record event-subscription
+
+  # Unsubscribes the file description from the events named, or from none of
+  # them when one is not an event the device emits.
+  subscriptions-remove:
+    type: action
+    fd-access: read
+    request: record event-subscription
+
+  # The event queue of the file description, and the lengths it may be set
+  # to.
+  event-queue-get:
+    type: query
+    fd-access: read
+    reply:
+      # How long the queue is.
+      queue-len: uint(1.., bytes)
+      # How much of it the queued events take.
+      queue-used: uint(bytes)
+      # The shortest queue-len this device takes.
+      queue-min-len?: uint(bytes)
+      # The longest queue-len this device takes.
+      queue-max-len?: uint(bytes)
+
+  # Sets the length of the file description's event queue, never below what
+  # the queued events take.
+  event-queue-set:
+    type: action
+    fd-access: read
+    request:
+      # The new length, within what event-queue-get reports.
+      queue-len: uint(1.., bytes)
+
+  # A dynamically available op was enabled or disabled. The name is not about
+  # availability: a later mutable op property reports its state here too.
+  op-changed:
+    type: event
+    payload:
+      # The op that changed.
+      id: uint(1..)
+      # Whether the op is disabled now.
+      disabled: bool
+      # Advances once per op state change on one device.
+      state-generation: uint
+
+  # Events were dropped for want of room in the queue, which the next read
+  # reports with this event.
+  event-overflow:
+    type: event
+    payload:
+      # The sequence number of the first event lost.
+      first-sequence: uint
+      # The sequence number of the last event lost.
+      last-sequence: uint
+      # How many events were lost.
+      dropped-count: uint
+
+  # Payload-free: the event itself is the whole indication.
+  device-removed:
+    type: event

@@ -212,7 +212,7 @@ class RecordSpec:
 
 @dataclasses.dataclass(frozen=True)
 class MessageSpec:
-    """A request or a reply: a record in place, or a named one."""
+    """A request, a reply or a payload: a record in place, or a named one."""
 
     where: str
     body: Body = Body()
@@ -222,7 +222,7 @@ class MessageSpec:
 
 @dataclasses.dataclass(frozen=True)
 class OpSpec:
-    """One op."""
+    """One op. reply is an event's payload."""
 
     name: str
     type: str
@@ -785,9 +785,13 @@ class _Reader:
                 suggested = self._size(where, str(suggested),
                                        'suggested-reply-length')
             self._check_op_keys(where, raw, op_type)
-            request = self.message(raw, 'request', f'{where} request')
+            request = None
+            if op_type != 'event':
+                request = self.message(raw, 'request', f'{where} request')
             reply = None
-            if 'reply' in raw:
+            if op_type == 'event':
+                reply = self.message(raw, 'payload', f'{where} payload')
+            elif 'reply' in raw:
                 reply = self.message(raw, 'reply', f'{where} reply')
             ops.append(OpSpec(
                 name=name,
@@ -806,8 +810,22 @@ class _Reader:
 
     def _check_op_keys(self, where: str, raw: dict[str, Any],
                        op_type: str) -> None:
+        if op_type == 'event':
+            for key in ('request', 'reply'):
+                if key in raw:
+                    raise CtlvError(where, f'an event has no {key}; its one '
+                                           'record is payload:')
+        elif 'payload' in raw:
+            raise CtlvError(where, 'payload: is an event\'s; an action or a '
+                                   'query has request: and reply:')
         if op_type == 'query' and 'reply' not in raw:
             raise CtlvError(where, 'a query op must declare a reply')
         if 'suggested-reply-length' in raw and op_type != 'query':
             raise CtlvError(where, 'suggested-reply-length is only valid on '
                                    'a query op')
+        # An event is produced rather than answered: no authority to check,
+        # nothing to enable, opt in to or wrap in hooks.
+        for key in ('fd-access', 'availability', 'optional', 'pre-post'):
+            if key in raw and op_type == 'event':
+                raise CtlvError(where, f'{key} is only valid on an action '
+                                       'or a query op')

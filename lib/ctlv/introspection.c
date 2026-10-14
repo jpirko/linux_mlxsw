@@ -127,9 +127,10 @@ enum ctlv_introspection_op_field {
 	CTLV_INTROSPECTION_OP_FIELD_ACTION_REPLY_MAX_LEN = 5,
 	CTLV_INTROSPECTION_OP_FIELD_QUERY_REPLY_MIN_LEN = 6,
 	CTLV_INTROSPECTION_OP_FIELD_QUERY_REPLY_SUGGESTED_LEN = 7,
-	CTLV_INTROSPECTION_OP_FIELD_FD_ACCESS = 8,
-	CTLV_INTROSPECTION_OP_FIELD_ERROR_INFO_MAX_LEN = 9,
-	CTLV_INTROSPECTION_OP_FIELD_END = 10,
+	CTLV_INTROSPECTION_OP_FIELD_EVENT_MAX_LEN = 8,
+	CTLV_INTROSPECTION_OP_FIELD_FD_ACCESS = 9,
+	CTLV_INTROSPECTION_OP_FIELD_ERROR_INFO_MAX_LEN = 10,
+	CTLV_INTROSPECTION_OP_FIELD_END = 11,
 };
 
 static bool ctlv_introspection_op_field_put(struct ctlv_cursor *entry,
@@ -161,8 +162,10 @@ static bool ctlv_introspection_op_field_put(struct ctlv_cursor *entry,
 			entry, sizes->query_reply_suggested_len);
 	case CTLV_INTROSPECTION_OP_FIELD_FD_ACCESS:
 		return ctlv_op_get_ops_fd_access_put(entry, op->schema->fd_access);
-	default:
+	case CTLV_INTROSPECTION_OP_FIELD_ERROR_INFO_MAX_LEN:
 		return ctlv_op_get_ops_error_info_max_len_put(entry, CTLV_ERROR_INFO_MAX_LEN);
+	default:
+		return ctlv_op_get_ops_event_max_len_put(entry, sizes->event_max_len);
 	}
 }
 
@@ -171,14 +174,17 @@ static bool ctlv_introspection_op_field_applies(const struct ctlv_op_entry *op, 
 	switch (member) {
 	case CTLV_INTROSPECTION_OP_FIELD_ID:
 	case CTLV_INTROSPECTION_OP_FIELD_TYPE:
+		return true;
 	case CTLV_INTROSPECTION_OP_FIELD_AVAILABILITY:
 	case CTLV_INTROSPECTION_OP_FIELD_DISABLED:
 	case CTLV_INTROSPECTION_OP_FIELD_REQUEST_MAX_LEN:
 	case CTLV_INTROSPECTION_OP_FIELD_FD_ACCESS:
 	case CTLV_INTROSPECTION_OP_FIELD_ERROR_INFO_MAX_LEN:
-		return true;
+		return op->schema->type != CTLV_OP_TYPE_EVENT;
 	case CTLV_INTROSPECTION_OP_FIELD_ACTION_REPLY_MAX_LEN:
 		return op->schema->type == CTLV_OP_TYPE_ACTION;
+	case CTLV_INTROSPECTION_OP_FIELD_EVENT_MAX_LEN:
+		return op->schema->type == CTLV_OP_TYPE_EVENT;
 	default:
 		return op->schema->type == CTLV_OP_TYPE_QUERY;
 	}

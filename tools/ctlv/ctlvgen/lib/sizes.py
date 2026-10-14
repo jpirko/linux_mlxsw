@@ -20,10 +20,12 @@ if TYPE_CHECKING:
 
 ALIGNTO: int = 8
 HDR_LEN: int = 16
+EVENT_HDR_LEN: int = 24
 
 MAX_INLINE_MESSAGE_LEN: int = 0x10000
 MAX_ERROR_LEN: int = 0x4000
 MAX_RECORD_DEPTH: int = 8
+MAX_EVENT_QUEUE_LEN: int = 0x1000000
 
 # The suggested reply length of a query whose spec suggests none.
 DEFAULT_QUERY_REPLY_LEN: int = 0x10000
@@ -61,6 +63,7 @@ class OpSizes:
     action_reply_max_len: int
     query_reply_min_len: int
     query_reply_suggested_len: int
+    event_max_len: int
     error_info_max_len: int
 
 
@@ -99,6 +102,7 @@ def compute(where: str, op: spec.OpSpec, request: semantics.Node | None,
     action_reply_max_len = 0
     query_reply_min_len = 0
     query_reply_suggested_len = 0
+    event_max_len = 0
 
     if op.type == 'action' and reply is not None:
         action_reply_max_len = root_max_len(reply)
@@ -110,12 +114,19 @@ def compute(where: str, op: spec.OpSpec, request: semantics.Node | None,
                       query_reply_min_len)
         query_reply_suggested_len = _suggested_len(
             where, op.suggested_reply_length, query_reply_min_len)
+    elif op.type == 'event':
+        assert reply is not None
+        payload_max_len = root_max_len(reply)
+        _check_inline(where, 'event payload', payload_max_len)
+        event_max_len = EVENT_HDR_LEN + align(payload_max_len)
 
     return OpSizes(request_max_len=request_max_len,
                    action_reply_max_len=action_reply_max_len,
                    query_reply_min_len=query_reply_min_len,
                    query_reply_suggested_len=query_reply_suggested_len,
-                   error_info_max_len=error_info_max_len)
+                   event_max_len=event_max_len,
+                   error_info_max_len=(0 if op.type == 'event'
+                                       else error_info_max_len))
 
 
 def composed(where: str, op: semantics.Op, request: semantics.Node | None,
@@ -127,7 +138,7 @@ def composed(where: str, op: semantics.Op, request: semantics.Node | None,
     """
     sizes = OpSizes(request_max_len=root_max_len(request) if request else 0,
                     action_reply_max_len=0, query_reply_min_len=0,
-                    query_reply_suggested_len=0,
+                    query_reply_suggested_len=0, event_max_len=0,
                     error_info_max_len=op.sizes.error_info_max_len)
     _check_inline(where, 'request', sizes.request_max_len)
 
@@ -143,6 +154,16 @@ def composed(where: str, op: semantics.Op, request: semantics.Node | None,
             sizes, query_reply_min_len=minimum,
             query_reply_suggested_len=max(op.sizes.query_reply_suggested_len,
                                           minimum))
+    elif op.type == 'event':
+        assert reply is not None
+        payload_max_len = root_max_len(reply)
+        _check_inline(where, 'event payload', payload_max_len)
+        length = EVENT_HDR_LEN + align(payload_max_len)
+        if length > MAX_EVENT_QUEUE_LEN:
+            raise CtlvError(where, f'event needs {length} bytes, more than '
+                                   f'the {MAX_EVENT_QUEUE_LEN} byte event '
+                                   'queue limit')
+        sizes = dataclasses.replace(sizes, event_max_len=length)
     return sizes
 
 

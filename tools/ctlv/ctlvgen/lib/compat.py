@@ -344,7 +344,7 @@ def _field(field: semantics.Field, required: bool) -> dict[str, Any]:
 def _ops(items: tuple[semantics.Op, ...]) -> dict[str, dict[str, Any]]:
     ops = {}
     for op in items:
-        ops[op.name] = {
+        entry = {
             'op-id': op.local_id,
             'type': op.type,
             'availability': op.availability,
@@ -352,8 +352,10 @@ def _ops(items: tuple[semantics.Op, ...]) -> dict[str, dict[str, Any]]:
             'pre-post': op.pre_post,
             'request': op.request_record.path if op.request_record else None,
             'reply': op.reply_record.path if op.reply_record else None,
-            'fd-access': op.fd_access,
         }
+        if op.type != 'event':
+            entry['fd-access'] = op.fd_access
+        ops[op.name] = entry
     return ops
 
 
@@ -475,7 +477,8 @@ def _compact_op(op: dict[str, Any]) -> _FlowMap:
         'id': op['op-id'],
         'type': op['type'],
     })
-    if op.get('fd-access') != spec.DEFAULT_FD_ACCESS:
+    if (op['type'] != 'event' and
+            op.get('fd-access') != spec.DEFAULT_FD_ACCESS):
         abi['fd-access'] = op.get('fd-access')
     availability = op.get('availability', spec.DEFAULT_AVAILABILITY)
     if availability != spec.DEFAULT_AVAILABILITY:
@@ -487,7 +490,7 @@ def _compact_op(op: dict[str, Any]) -> _FlowMap:
     if op.get('request') is not None:
         abi['request'] = op['request']
     if op.get('reply') is not None:
-        abi['reply'] = op['reply']
+        abi['payload' if op['type'] == 'event' else 'reply'] = op['reply']
     return abi
 
 
@@ -597,17 +600,21 @@ def _number(where: str, value: int | str) -> int:
 def _expand_ops(ops: dict[str, Any]) -> dict[str, dict[str, Any]]:
     expanded = {}
     for name, abi in ops.items():
-        expanded[name] = {
+        op_type = abi['type']
+        entry = {
             'op-id': abi['id'],
-            'type': abi['type'],
+            'type': op_type,
             'availability': abi.get(
                 'availability', spec.DEFAULT_AVAILABILITY),
             'optional': abi.get('optional', False),
             'pre-post': abi.get('pre-post', False),
             'request': abi.get('request'),
-            'reply': abi.get('reply'),
-            'fd-access': abi.get('fd-access', spec.DEFAULT_FD_ACCESS),
+            'reply': abi.get('payload' if op_type == 'event' else 'reply'),
         }
+        if op_type != 'event':
+            entry['fd-access'] = abi.get(
+                'fd-access', spec.DEFAULT_FD_ACCESS)
+        expanded[name] = entry
     return expanded
 
 

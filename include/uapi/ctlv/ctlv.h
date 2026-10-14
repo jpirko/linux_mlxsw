@@ -2,9 +2,9 @@
 /*
  * Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES
  *
- * CTLV transport UAPI: the TLV message format and the op-execution ioctl.
- * Schema-free; a family's constants are generated into <ctlv/<family>_gen.h>,
- * the root family's into <ctlv/ctlv_gen.h>.
+ * CTLV transport UAPI: the TLV message format, the ioctls and the event
+ * header. Schema-free; a family's constants are generated into
+ * <ctlv/<family>_gen.h>, the root family's into <ctlv/ctlv_gen.h>.
  */
 #ifndef _UAPI_CTLV_CTLV_H
 #define _UAPI_CTLV_CTLV_H
@@ -56,7 +56,7 @@ struct ctlv_hdr {
  * @CTLV_TYPE_KIND_NAMED: a named record
  * @CTLV_TYPE_KIND_RESERVED: reserved, so no type has it
  * @CTLV_TYPE_KIND_REQUEST: an op's request
- * @CTLV_TYPE_KIND_REPLY: an op's reply
+ * @CTLV_TYPE_KIND_REPLY: an op's reply, or an event's payload
  *
  * Bits 47..46 of a type. The index in 45..32 is the named record's place in
  * the family's records, or the op's number.
@@ -176,5 +176,29 @@ struct ctlv_op_exec {
 #define CTLV_IOC_MAGIC 0xBB
 
 #define CTLV_IOC_OP_EXEC _IO(CTLV_IOC_MAGIC, 0x00)
+
+/*
+ * The argument must be zero. Returns a new read-only, close-on-exec file
+ * descriptor whose read() and poll() serve this file's event queue, for a file
+ * whose own read() is not CTLV's. It holds this file open until it is closed.
+ */
+#define CTLV_IOC_EVENT_FD _IO(CTLV_IOC_MAGIC, 0x01)
+
+/**
+ * struct ctlv_event_hdr - Header of one queued event.
+ * @length: complete event length, this header plus the aligned root
+ * @flags: must be zero
+ * @op_id: complete op ID of the event op that produced the event
+ * @sequence: per open file description sequence number, assigned to every
+ *	eligible enqueue attempt including dropped ones
+ *
+ * Exactly one root follows the header, and one read() returns one event.
+ */
+struct ctlv_event_hdr {
+	__u32 length;
+	__u32 flags;
+	__aligned_u64 op_id;
+	__aligned_u64 sequence;
+};
 
 #endif /* _UAPI_CTLV_CTLV_H */

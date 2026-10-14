@@ -35,7 +35,7 @@ def _field(item: semantics.Field) -> dict[str, str]:
 
 
 def _op(item: semantics.Op) -> dict[str, Any]:
-    return {
+    out = {
         'name': item.name,
         'id': f'0x{item.op_id:016x}',
         'type': item.type,
@@ -45,9 +45,12 @@ def _op(item: semantics.Op) -> dict[str, Any]:
         'query-reply-min-len': item.sizes.query_reply_min_len,
         'query-reply-suggested-len':
             item.sizes.query_reply_suggested_len,
+        'event-max-len': item.sizes.event_max_len,
         'error-info-max-len': item.sizes.error_info_max_len,
-        'fd-access': item.fd_access,
     }
+    if item.type != 'event':
+        out['fd-access'] = item.fd_access
+    return out
 
 
 def render(family: semantics.Family) -> str:

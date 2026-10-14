@@ -78,7 +78,7 @@ static const struct ctlv_node_schema op_get_reply_ops_field_node_schemas[] = {
 		.max_occurrences = 1,
 		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
 		.min = 1,
-		.max = 2,
+		.max = 3,
 	},
 };
 
@@ -145,6 +145,14 @@ static const struct ctlv_node_schema op_get_reply_ops_optional_field_node_schema
 		.min = 0,
 		.max = UINT64_MAX,
 	},
+	{
+		.type = CTLV_T_OP_GET_OPS_EVENT_MAX_LEN,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 0,
+		.max = UINT64_MAX,
+	},
 };
 
 /* root, fields */
@@ -156,7 +164,7 @@ static const struct ctlv_node_schema op_get_reply_field_node_schemas[] = {
 		.fields = op_get_reply_ops_field_node_schemas,
 		.fields_count = 2,
 		.optional_fields = op_get_reply_ops_optional_field_node_schemas,
-		.optional_fields_count = 8,
+		.optional_fields_count = 9,
 	},
 };
 
@@ -502,6 +510,212 @@ static const struct ctlv_node_schema op_schema_get_reply_node_schema = {
 	.optional_fields_count = 2,
 };
 
+/* root, fields */
+static const struct ctlv_node_schema subscriptions_add_request_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_SUBSCRIPTION_OP_IDS,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 256,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 1,
+		.max = UINT64_MAX,
+	},
+};
+
+static const struct ctlv_node_schema subscriptions_add_request_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = subscriptions_add_request_field_node_schemas,
+	.fields_count = 1,
+};
+
+/* root, fields */
+static const struct ctlv_node_schema subscriptions_remove_request_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_SUBSCRIPTION_OP_IDS,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 256,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 1,
+		.max = UINT64_MAX,
+	},
+};
+
+static const struct ctlv_node_schema subscriptions_remove_request_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = subscriptions_remove_request_field_node_schemas,
+	.fields_count = 1,
+};
+
+static const struct ctlv_node_schema event_queue_get_request_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+};
+
+/* root, fields */
+static const struct ctlv_node_schema event_queue_get_reply_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
+		.min = 1,
+		.max = UINT64_MAX,
+		.unit = CTLV_UNIT_BYTES,
+		.scale = 0,
+	},
+	{
+		.type = CTLV_T_EVENT_QUEUE_GET_QUEUE_USED,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
+		.min = 0,
+		.max = UINT64_MAX,
+		.unit = CTLV_UNIT_BYTES,
+		.scale = 0,
+	},
+};
+
+/* root, optional fields */
+static const struct ctlv_node_schema event_queue_get_reply_optional_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
+		.min = 0,
+		.max = UINT64_MAX,
+		.unit = CTLV_UNIT_BYTES,
+		.scale = 0,
+	},
+	{
+		.type = CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
+		.min = 0,
+		.max = UINT64_MAX,
+		.unit = CTLV_UNIT_BYTES,
+		.scale = 0,
+	},
+};
+
+static const struct ctlv_node_schema event_queue_get_reply_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = event_queue_get_reply_field_node_schemas,
+	.fields_count = 2,
+	.optional_fields = event_queue_get_reply_optional_field_node_schemas,
+	.optional_fields_count = 2,
+};
+
+/* root, fields */
+static const struct ctlv_node_schema event_queue_set_request_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX |
+			   CTLV_NODE_SCHEMA_HAS_UNIT | CTLV_NODE_SCHEMA_HAS_SCALE,
+		.min = 1,
+		.max = UINT64_MAX,
+		.unit = CTLV_UNIT_BYTES,
+		.scale = 0,
+	},
+};
+
+static const struct ctlv_node_schema event_queue_set_request_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = event_queue_set_request_field_node_schemas,
+	.fields_count = 1,
+};
+
+/* root, fields */
+static const struct ctlv_node_schema op_changed_reply_field_node_schemas[] = {
+	{
+		.type = CTLV_T_OP_CHANGED_ID,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 1,
+		.max = UINT64_MAX,
+	},
+	{
+		.type = CTLV_T_OP_CHANGED_DISABLED,
+		.kind = CTLV_SCHEMA_BOOL,
+		.max_occurrences = 1,
+	},
+	{
+		.type = CTLV_T_OP_CHANGED_STATE_GENERATION,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 0,
+		.max = UINT64_MAX,
+	},
+};
+
+static const struct ctlv_node_schema op_changed_reply_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = op_changed_reply_field_node_schemas,
+	.fields_count = 3,
+};
+
+/* root, fields */
+static const struct ctlv_node_schema event_overflow_reply_field_node_schemas[] = {
+	{
+		.type = CTLV_T_EVENT_OVERFLOW_FIRST_SEQUENCE,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 0,
+		.max = UINT64_MAX,
+	},
+	{
+		.type = CTLV_T_EVENT_OVERFLOW_LAST_SEQUENCE,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 0,
+		.max = UINT64_MAX,
+	},
+	{
+		.type = CTLV_T_EVENT_OVERFLOW_DROPPED_COUNT,
+		.kind = CTLV_SCHEMA_UINT,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = 0,
+		.max = UINT64_MAX,
+	},
+};
+
+static const struct ctlv_node_schema event_overflow_reply_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+	.fields = event_overflow_reply_field_node_schemas,
+	.fields_count = 3,
+};
+
+static const struct ctlv_node_schema device_removed_reply_node_schema = {
+	.type = CTLV_TYPE_ROOT,
+	.kind = CTLV_SCHEMA_RECORD,
+	.max_occurrences = 1,
+};
+
 /* Effective ops in declaration order. */
 static const struct ctlv_op_spec ctlv_op_specs[] = {
 	{
@@ -540,6 +754,63 @@ static const struct ctlv_op_spec ctlv_op_specs[] = {
 		.request = &op_schema_get_request_node_schema,
 		.reply = &op_schema_get_reply_node_schema,
 	},
+	{
+		.op_id = CTLV_OP_SUBSCRIPTIONS_ADD,
+		.type = CTLV_OP_TYPE_ACTION,
+		.fd_access = CTLV_OP_FD_ACCESS_READ,
+		.availability = CTLV_OP_AVAILABILITY_FIXED,
+		.request_max_len = 6160,
+		.error_info_max_len = 456,
+		.request = &subscriptions_add_request_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_SUBSCRIPTIONS_REMOVE,
+		.type = CTLV_OP_TYPE_ACTION,
+		.fd_access = CTLV_OP_FD_ACCESS_READ,
+		.availability = CTLV_OP_AVAILABILITY_FIXED,
+		.request_max_len = 6160,
+		.error_info_max_len = 456,
+		.request = &subscriptions_remove_request_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_EVENT_QUEUE_GET,
+		.type = CTLV_OP_TYPE_QUERY,
+		.fd_access = CTLV_OP_FD_ACCESS_READ,
+		.availability = CTLV_OP_AVAILABILITY_FIXED,
+		.request_max_len = 16,
+		.query_reply_min_len = 40,
+		.query_reply_suggested_len = 65536,
+		.error_info_max_len = 456,
+		.request = &event_queue_get_request_node_schema,
+		.reply = &event_queue_get_reply_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_EVENT_QUEUE_SET,
+		.type = CTLV_OP_TYPE_ACTION,
+		.fd_access = CTLV_OP_FD_ACCESS_READ,
+		.availability = CTLV_OP_AVAILABILITY_FIXED,
+		.request_max_len = 40,
+		.error_info_max_len = 456,
+		.request = &event_queue_set_request_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_OP_CHANGED,
+		.type = CTLV_OP_TYPE_EVENT,
+		.event_max_len = 112,
+		.reply = &op_changed_reply_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_EVENT_OVERFLOW,
+		.type = CTLV_OP_TYPE_EVENT,
+		.event_max_len = 112,
+		.reply = &event_overflow_reply_node_schema,
+	},
+	{
+		.op_id = CTLV_OP_DEVICE_REMOVED,
+		.type = CTLV_OP_TYPE_EVENT,
+		.event_max_len = 40,
+		.reply = &device_removed_reply_node_schema,
+	},
 };
 
 /* Family specification descriptor. */
@@ -547,5 +818,5 @@ const struct ctlv_family_spec ctlv_spec = {
 	.name = "ctlv",
 	.family_id = 0,
 	.ops = ctlv_op_specs,
-	.ops_count = 3,
+	.ops_count = 10,
 };

@@ -36,6 +36,7 @@ struct ctlvctl_op_name {
 	__u64 action_reply_max_len;
 	__u64 query_reply_min_len;
 	__u64 query_reply_suggested_len;
+	__u64 event_max_len;
 	char *name;
 };
 

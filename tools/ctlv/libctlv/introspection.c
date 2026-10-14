@@ -16,6 +16,7 @@ enum op_info_ctype {
 enum op_info_type {
 	OP_INFO_ACTION = 1,
 	OP_INFO_QUERY = 2,
+	OP_INFO_EVENT = 4,
 };
 
 static int op_info_read(struct ctlv_op_info *info,
@@ -48,6 +49,9 @@ static int op_info_read(struct ctlv_op_info *info,
 		{ CTLV_T_OP_GET_OPS_QUERY_REPLY_SUGGESTED_LEN,
 		  offsetof(struct ctlv_op_info, query_reply_suggested_len),
 		  OP_INFO_QUERY, OP_INFO_U64 },
+		{ CTLV_T_OP_GET_OPS_EVENT_MAX_LEN,
+		  offsetof(struct ctlv_op_info, event_max_len),
+		  OP_INFO_EVENT, OP_INFO_U64 },
 		{ CTLV_T_OP_GET_OPS_ERROR_INFO_MAX_LEN,
 		  offsetof(struct ctlv_op_info, error_info_max_len),
 		  OP_INFO_ACTION | OP_INFO_QUERY, OP_INFO_U64 },
@@ -69,6 +73,8 @@ static int op_info_read(struct ctlv_op_info *info,
 		applies = OP_INFO_ACTION;
 	else if (value == CTLV_OP_TYPE_QUERY)
 		applies = OP_INFO_QUERY;
+	else if (value == CTLV_OP_TYPE_EVENT)
+		applies = OP_INFO_EVENT;
 
 	for (i = 0; i < CTLV_ARRAY_SIZE(fields); i++) {
 		hdr = ctlv_hdr_find(entry, fields[i].type);

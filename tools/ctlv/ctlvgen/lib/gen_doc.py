@@ -30,6 +30,7 @@ DOC_INDENT: int = 4
 TYPES: dict[str, str] = {
     'action': 'action',
     'query': 'query',
+    'event': 'event',
 }
 
 # A blob's direction as a spec writes it.
@@ -342,8 +343,9 @@ def _ops(writer: _Writer, family: semantics.Family,
     writer.heading('Ops', '=')
     writer.paragraph(
         'One section per op this family declares. An action is executed and '
-        'acknowledged, and a query is executed and answered in as many '
-        'fragments as its answer needs. In short:')
+        'acknowledged, a query is executed and answered in as many fragments '
+        'as its answer needs, and an event is produced by the device and read '
+        'from a subscribed file description. In short:')
     lines = []
     for op in own:
         lines += _signature(family, op, LINE_LIMIT - BLOCK_INDENT)
@@ -357,13 +359,20 @@ def _op(writer: _Writer, family: semantics.Family,
     writer.heading(op.name, '-')
     writer.field('Op ID', f'``{_id(op.op_id)}``, op {op.local_id}')
     writer.field('Type', TYPES[op.type])
-    writer.field('FD access', _fd_access(op.fd_access))
-    writer.field('Availability', _availability(op.availability))
+    if op.type != 'event':
+        writer.field('FD access', _fd_access(op.fd_access))
+        writer.field('Availability', _availability(op.availability))
     writer.line()
     if op.doc:
         writer.paragraph(op.doc)
-    _message(writer, family, descendants, 'Request', op.request_record)
-    _message(writer, family, descendants, 'Reply', op.reply_record)
+    if op.type == 'event':
+        writer.paragraph(
+            'An event of this op reaches a file description that subscribed '
+            'to it, and is dropped for one that did not.')
+        _message(writer, family, descendants, 'Payload', op.reply_record)
+    else:
+        _message(writer, family, descendants, 'Request', op.request_record)
+        _message(writer, family, descendants, 'Reply', op.reply_record)
     _sizes(writer, op)
 
 
@@ -547,6 +556,7 @@ def _sizes(writer: _Writer, op: semantics.Op) -> None:
          op.sizes.query_reply_min_len),
         ('{} bytes of reply buffer suggested',
          op.sizes.query_reply_suggested_len),
+        ('an event of at most {} bytes', op.sizes.event_max_len),
     )
     rows = [label.format(value) for label, value in reported if value]
     if not rows:
@@ -576,6 +586,10 @@ def _messages(writer: _Writer, family: semantics.Family,
 def _signature(family: semantics.Family, op: semantics.Op,
                width: int) -> list[str]:
     """One op as a call: what it takes, and what it answers."""
+    if op.type == 'event':
+        assert op.reply_record is not None
+        return _layout((f'{op.name} event ', _shape(family, op.reply_record)),
+                       width)
     request = _members(family, op.request_record) if op.request_record \
         else []
     call = (f'{op.name}(', request, ')')

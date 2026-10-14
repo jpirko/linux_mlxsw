@@ -30,7 +30,8 @@ AVAILABILITIES: dict[str, str] = {
     for availability in spec.AVAILABILITIES
 }
 
-# Lengths that have to fit the inline message limit.
+# Lengths that have to fit the inline message limit. An event is checked
+# against the event queue instead.
 INLINE_FIELDS: tuple[str, ...] = (
     'request_max_len', 'action_reply_max_len', 'query_reply_min_len',
     'query_reply_suggested_len')
@@ -252,6 +253,10 @@ def _includes(names: cgen.Names, family: semantics.Family, family_api: bool,
             lines.append('')
         lines += group
     return lines
+
+
+def _has_event(family: semantics.Family) -> bool:
+    return any(op.type == 'event' for op in family.local_ops)
 
 
 def _node_schemas(writer: cgen.Writer, family: semantics.Family,
@@ -490,7 +495,7 @@ def _op_schema_initializer(names: cgen.Names,
                 str(sizes.request_max_len),
                 str(sizes.action_reply_max_len),
                 _op_tree(op, 'request'), _op_tree(op, 'reply')]
-    else:
+    elif op.type == 'query':
         macro = 'CTLV_OP_SCHEMA_QUERY'
         args = [names.op_id(op), FD_ACCESSES[op.fd_access],
                 AVAILABILITIES[op.availability],
@@ -498,6 +503,10 @@ def _op_schema_initializer(names: cgen.Names,
                 str(sizes.query_reply_min_len),
                 str(sizes.query_reply_suggested_len),
                 _op_tree(op, 'request'), _op_tree(op, 'reply')]
+    else:
+        macro = 'CTLV_OP_SCHEMA_EVENT'
+        args = [names.op_id(op), str(sizes.event_max_len),
+                _op_tree(op, 'reply')]
     if op.optional:
         args.append('.optional = true')
     if op.pre_post:
@@ -563,6 +572,9 @@ def _limits(writer: cgen.Writer, family: semantics.Family,
     inline = max(getattr(op.sizes, field)
                  for op in local for field in INLINE_FIELDS)
     writer.line(f'static_assert({inline} <= CTLV_MAX_INLINE_MESSAGE_LEN);')
+    if _has_event(family):
+        longest = max(op.sizes.event_max_len for op in local)
+        writer.line(f'static_assert({longest} <= CTLV_MAX_EVENT_QUEUE_LEN);')
     depth = max(_record_depth(root) for root in _roots(family, trees))
     if depth:
         writer.line(f'static_assert({depth} <= '

@@ -8,9 +8,11 @@
 #define _LINUX_CTLV_H
 
 #include <linux/device.h>
+#include <linux/list.h>
 #include <linux/rwsem.h>
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
+#include <linux/wait.h>
 
 #include <uapi/ctlv/ctlv.h>
 
@@ -99,6 +101,20 @@ struct ctlv {
 	u64 state_generation;
 	u32 dynamic_ops_count;
 	unsigned long *disabled;
+
+	/* Everything about the queues, and nothing family code runs under. */
+	spinlock_t events_lock;
+	struct list_head files;
+	bool dead_announced;
+	wait_queue_head_t event_context_wait;
+	u32 active_event_contexts;
+	bool events_live;
+	u32 events_count;
+	const struct ctlv_op_entry *overflow_op;
+	const struct ctlv_op_entry *removed_op;
+	u32 queue_min;
+	u32 queue_reserved;
+	u32 queue_default;
 };
 
 int ctlv_init(struct ctlv *ctlv, struct device *dev,
@@ -145,5 +161,9 @@ int ctlv_blob_read(struct ctlv_blob *blob, u64 offset, void *dst, size_t len);
 int ctlv_blob_write(struct ctlv_blob *blob, u64 offset, const void *src,
 		    size_t len);
 int ctlv_blob_too_short(struct ctlv_blob *blob, u64 len);
+
+void ctlv_event_lost(struct ctlv *ctlv, u64 op_id);
+int ctlv_event_emit(struct ctlv_op_ctx *ctx);
+void ctlv_event_abort(struct ctlv_op_ctx *ctx);
 
 #endif /* _LINUX_CTLV_H */

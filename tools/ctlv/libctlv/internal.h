@@ -98,6 +98,7 @@ void ctlv_query_guard_free(struct ctlv_query_guard *guard);
  * struct ctlv_dev - One open device.
  * @fd: the character device
  * @owns_fd: whether ctlv_close() closes @fd
+ * @event_fd: what events are read from, or -1 before the first is wanted
  * @name: what it is called under /dev
  * @chain_len: how many families it answers
  * @chain_id: their registry IDs, the root first
@@ -110,6 +111,7 @@ void ctlv_query_guard_free(struct ctlv_query_guard *guard);
 struct ctlv_dev {
 	int fd;
 	bool owns_fd;
+	int event_fd;
 	char *name;
 	unsigned int chain_len;
 	__u16 *chain_id;
@@ -127,6 +129,16 @@ struct ctlv_reply {
 	struct ctlv_msg *msg;
 	__u64 generation;
 	unsigned int fragments;
+};
+
+/**
+ * struct ctlv_event - One event, as one read() returned it.
+ * @buf: the event header followed by the one root that belongs to it
+ * @len: how long the event is
+ */
+struct ctlv_event {
+	__u8 *buf;
+	__u32 len;
 };
 
 /**

@@ -124,9 +124,9 @@ $defs:
     properties:
       type:
         description:
-          action is invoked once and never fragments, and query may fragment
-          its reply.
-        enum: [ action, query ]
+          action is invoked once and never fragments, query may fragment its
+          reply, and event is an unsolicited reply-only schema.
+        enum: [ action, query, event ]
       fd-access:
         description:
           Authority needed to execute an action or query. read permits an
@@ -135,29 +135,33 @@ $defs:
       availability:
         description: >
           Whether a family may enable and disable this op per device. fixed,
-          the default, is always enabled. dynamic is a permission rather than
-          a state: every device starts with the op enabled.
+          the default, is always enabled. dynamic is action and query only,
+          and is a permission rather than a state: every device starts with
+          the op enabled.
         enum: [ fixed, dynamic ]
       optional:
         description:
           Whether family initialization must opt in before publication for
-          this op to exist on the device. False by default. An op not opted
-          into is absent from introspection.
+          this op to exist on the device. Action and query only, and false by
+          default. An op not opted into is absent from introspection.
         type: boolean
       pre-post:
         description: >
           Whether this op gets a generated pre/post hook pair of its own,
           which its declaring family implements. It runs inside the pair of
           the device family, or the core family for a core op.
-          False by default. Kernel implementation metadata: it reaches
-          neither UAPI nor op-schema introspection.
+          Action and query only, and false by default. Kernel implementation
+          metadata: it reaches neither UAPI nor op-schema introspection.
         type: boolean
       request:
-        description: An op's request.
+        description: An action's or a query's request.
         $ref: '#/$defs/message'
       reply:
         description:
           Required on a query. Omitted on an action means ACK-only.
+        $ref: '#/$defs/message'
+      payload:
+        description: An event's one record.
         $ref: '#/$defs/message'
       suggested-reply-length:
         description:

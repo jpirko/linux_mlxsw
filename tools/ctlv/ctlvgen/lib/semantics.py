@@ -36,6 +36,7 @@ TYPE_KIND_REPLY: int = 3
 TYPE_KINDS: dict[str, int] = {
     'named': TYPE_KIND_NAMED, 'field': TYPE_KIND_NAMED,
     'request': TYPE_KIND_REQUEST, 'reply': TYPE_KIND_REPLY,
+    'payload': TYPE_KIND_REPLY,
 }
 
 # What the 64 bits of a type hold room for.
@@ -143,8 +144,8 @@ class Record:
     """A named record, a field of records:, an op's request or reply root,
     or an unnamed record inside one of them.
 
-    role says which: named, field, request, reply or unnamed. path is
-    unique, name is what constants and helpers take. fields are the ones
+    role says which: named, field, request, reply, payload or unnamed. path
+    is unique, name is what constants and helpers take. fields are the ones
     declared here, members the whole record.
     """
 
@@ -237,7 +238,7 @@ class Op:
     availability is the permission to enable and disable the op per device,
     not a state. optional means a device has the op only once its family opts
     in. pre_post asks for a pair of this op's own, inside the one the device
-    puts around every op.
+    puts around every op. reply is an event's payload.
     """
 
     name: str
@@ -342,7 +343,7 @@ class Family:
 
 def field_uses(family: Family, family_ids: set[int] | None = None
                ) -> tuple[dict[int, Field], dict[int, Field]]:
-    """The fields read in a request and written in a reply.
+    """The fields read in a request and written in a reply or an event.
 
     Two dicts by type, in the order the fields are met, over the ops and
     fills of the families in family_ids, the whole chain by default.
@@ -838,7 +839,7 @@ class _Resolver:
             number += 1
             _check_count(item.where, 'fields', number, MAX_FIELD_NUMBER)
             decl = self._definition(item)
-            if role in ('request', 'reply'):
+            if role in ('request', 'reply', 'payload'):
                 full_name = f'{owner} {decl.name}'
             else:
                 full_name = f'{path}.{decl.name}'
@@ -962,9 +963,10 @@ class _Resolver:
                                                local_id, 'request')
                 request = self._tree(request_record, where + ' request')
             if op.reply is not None:
+                which = 'payload' if op.type == 'event' else 'reply'
                 reply_record = self._message(op, op.reply, family_id,
-                                             local_id, 'reply')
-                reply = self._tree(reply_record, where + ' reply')
+                                             local_id, which)
+                reply = self._tree(reply_record, f'{where} {which}')
             self._check_context(where, op, request, reply)
             self.ops.append(Op(
                 name=op.name,
@@ -1048,6 +1050,8 @@ class _Resolver:
         if op.type == 'query':
             self._check_subtree(where, reply, 'query reply')
             self._check_reentry(where, reply)
+        elif op.type == 'event':
+            self._check_subtree(where, reply, 'event')
         else:
             self._check_subtree(where, reply, 'action reply')
 

@@ -211,6 +211,8 @@ static void dev_free(struct ctlv_dev *dev)
 	free(dev->chain_id);
 	free(dev->name);
 	ctlv_ops_free(dev->sizes);
+	if (dev->event_fd >= 0)
+		close(dev->event_fd);
 	if (dev->fd >= 0 && dev->owns_fd)
 		close(dev->fd);
 	free(dev);
@@ -231,6 +233,7 @@ static int dev_attach(const char *name, int fd, bool owns_fd,
 	}
 	dev->fd = fd;
 	dev->owns_fd = owns_fd;
+	dev->event_fd = -1;
 	ret = name_dup(name, &dev->name);
 	if (!ret)
 		ret = ctlv_chain_load(dev);

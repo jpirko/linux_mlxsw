@@ -91,7 +91,7 @@ EXTREMES: dict[tuple[str, int], str] = {
 
 OP_TYPES: dict[str, str] = {
     op_type: cgen.macro(spec.CORE_FAMILY_NAME, 'op-type', op_type)
-    for op_type in ('action', 'query')
+    for op_type in ('action', 'query', 'event')
 }
 
 FD_ACCESSES: dict[str, str] = {
@@ -136,6 +136,7 @@ def render_header(family: semantics.Family) -> str:
     _ops(writer, names, family)
     _writers(writer, names, family)
     _readers(writer, names, family)
+    _events(writer, names, family)
     writer.line()
     writer.close_guard(guard)
     return writer.text()
@@ -155,7 +156,7 @@ def _ops(writer: cgen.Writer, names: cgen.Names,
 
     A wrapper needing a reply buffer asks the device for the length.
     """
-    ops = family.local_ops
+    ops = [op for op in family.local_ops if op.type != 'event']
     if not ops:
         return
     writer.line()
@@ -281,7 +282,7 @@ def _blob_putters(writer: cgen.Writer, names: cgen.Names,
 
 def _readers(writer: cgen.Writer, names: cgen.Names,
              family: semantics.Family) -> None:
-    """What an application reads out of a reply.
+    """What an application reads out of a reply or an event.
 
     A getter answers whether it read anything: a device wrote it, not the
     validator.
@@ -291,8 +292,8 @@ def _readers(writer: cgen.Writer, names: cgen.Names,
     if not fields:
         return
     writer.line()
-    writer.comment('Reading a reply. A getter answers whether it could '
-                   'read.')
+    writer.comment('Reading a reply or an event. A getter answers whether it '
+                   'could read.')
     for field in fields:
         writer.line()
         writer.doc(field.decl.doc)
@@ -387,6 +388,39 @@ def _extension_enum(names: cgen.Names, field: semantics.Field) -> bool:
         return False
     assert field.decl.ref is not None
     return names.effective.definitions[field.decl.ref].extension is not None
+
+
+def _events(writer: cgen.Writer, names: cgen.Names,
+            family: semantics.Family) -> None:
+    """What arrives unasked once it has been asked for."""
+    events = [op for op in family.local_ops if op.type == 'event']
+    if not events:
+        return
+    writer.line()
+    writer.comment('Watching for events. A subscription is per open file '
+                   'description.')
+    for op in events:
+        writer.line()
+        writer.signature('static inline bool', names.user_op_helper(op, 'is'),
+                         ('const struct ctlv_event *event',), ')')
+        writer.line('{')
+        comparison = f'\treturn ctlv_event_op_id(event) == {names.op_id(op)};'
+        if cgen.width(comparison) <= cgen.LINE_LIMIT:
+            writer.line(comparison)
+        else:
+            writer.line('\treturn ctlv_event_op_id(event) ==')
+            writer.line(f'\t\t{names.op_id(op)};')
+        writer.line('}')
+        for what in ('subscribe', 'unsubscribe'):
+            writer.line()
+            writer.signature('static inline int',
+                             names.user_op_helper(op, what),
+                             (DEV_PARAM, ERROR_PARAM), ')')
+            writer.line('{')
+            writer.line(f'\tconst __u64 op_id = {names.op_id(op)};')
+            writer.line()
+            writer.line(f'\treturn ctlv_{what}(dev, &op_id, 1, error);')
+            writer.line('}')
 
 
 class ComposedNode:
@@ -773,9 +807,10 @@ def _table(writer: cgen.Writer, names: cgen.Names,
         writer.line('\t{')
         writer.declaration('\t\t.op_id =', f'{names.op_id(op)},')
         writer.line(f'\t\t.type = {OP_TYPES[op.type]},')
-        writer.line(f'\t\t.fd_access = {FD_ACCESSES[op.fd_access]},')
-        writer.line('\t\t.availability = '
-                    f'{AVAILABILITIES[op.availability]},')
+        if op.type != 'event':
+            writer.line(f'\t\t.fd_access = {FD_ACCESSES[op.fd_access]},')
+            writer.line('\t\t.availability = '
+                        f'{AVAILABILITIES[op.availability]},')
         if op.optional:
             writer.line('\t\t.optional = true,')
         for field in TABLE_LENGTHS:

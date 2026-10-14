@@ -33,9 +33,9 @@ static const struct ctlv_node_schema op_get_request_node_schemas[] = {
 
 static const struct ctlv_node_schema op_get_reply_node_schemas[] = {
 	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
-	CTLV_NODE_SCHEMA_RECORD(CTLV_T_OP_GET_OPS, CTLV_NODE_SCHEMA_UNLIMITED, 2, 10, 2),
+	CTLV_NODE_SCHEMA_RECORD(CTLV_T_OP_GET_OPS, CTLV_NODE_SCHEMA_UNLIMITED, 2, 11, 2),
 	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_GET_OPS_ID, 1, 1, U64_MAX),
-	CTLV_NODE_SCHEMA_ENUM(CTLV_T_OP_GET_OPS_TYPE, 1, 2),
+	CTLV_NODE_SCHEMA_ENUM(CTLV_T_OP_GET_OPS_TYPE, 1, 3),
 	CTLV_NODE_SCHEMA_ENUM(CTLV_T_OP_GET_OPS_AVAILABILITY, 1, 2),
 	CTLV_NODE_SCHEMA_BOOL(CTLV_T_OP_GET_OPS_DISABLED, 1),
 	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_GET_OPS_REQUEST_MAX_LEN, 1, 0, U64_MAX),
@@ -44,6 +44,7 @@ static const struct ctlv_node_schema op_get_reply_node_schemas[] = {
 	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_GET_OPS_QUERY_REPLY_SUGGESTED_LEN, 1, 0, U64_MAX),
 	CTLV_NODE_SCHEMA_ENUM(CTLV_T_OP_GET_OPS_FD_ACCESS, 1, 2),
 	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_GET_OPS_ERROR_INFO_MAX_LEN, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_GET_OPS_EVENT_MAX_LEN, 1, 0, U64_MAX),
 };
 
 static const struct ctlv_node_schema op_schema_get_request_node_schemas[] = {
@@ -95,6 +96,56 @@ static const struct ctlv_node_schema op_schema_get_reply_node_schemas[] = {
 					 CTLV_NODE_SCHEMA_UNLIMITED, 20, 17, 3),
 };
 
+static const struct ctlv_node_schema subscriptions_add_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_EVENT_SUBSCRIPTION_OP_IDS, 256, 1, U64_MAX),
+};
+
+static const struct ctlv_node_schema subscriptions_remove_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_EVENT_SUBSCRIPTION_OP_IDS, 256, 1, U64_MAX),
+};
+
+static const struct ctlv_node_schema event_queue_get_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
+};
+
+static const struct ctlv_node_schema event_queue_get_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 4, 2),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN, 1, 1, U64_MAX, CTLV_UNIT_BYTES,
+				   0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_T_EVENT_QUEUE_GET_QUEUE_USED, 1, 0, U64_MAX,
+				   CTLV_UNIT_BYTES, 0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN, 1, 0, U64_MAX,
+				   CTLV_UNIT_BYTES, 0),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN, 1, 0, U64_MAX,
+				   CTLV_UNIT_BYTES, 0),
+};
+
+static const struct ctlv_node_schema event_queue_set_request_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 1, 1),
+	CTLV_NODE_SCHEMA_UINT_UNIT(CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN, 1, 1, U64_MAX, CTLV_UNIT_BYTES,
+				   0),
+};
+
+static const struct ctlv_node_schema op_changed_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 3, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_CHANGED_ID, 1, 1, U64_MAX),
+	CTLV_NODE_SCHEMA_BOOL(CTLV_T_OP_CHANGED_DISABLED, 1),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_OP_CHANGED_STATE_GENERATION, 1, 0, U64_MAX),
+};
+
+static const struct ctlv_node_schema event_overflow_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(1, 3, 3),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_EVENT_OVERFLOW_FIRST_SEQUENCE, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_EVENT_OVERFLOW_LAST_SEQUENCE, 1, 0, U64_MAX),
+	CTLV_NODE_SCHEMA_UINT(CTLV_T_EVENT_OVERFLOW_DROPPED_COUNT, 1, 0, U64_MAX),
+};
+
+static const struct ctlv_node_schema device_removed_reply_node_schemas[] = {
+	CTLV_NODE_SCHEMA_ROOT(0, 0, 0),
+};
+
 static const struct ctlv_node_schema error_info_node_schemas[] = {
 	CTLV_NODE_SCHEMA_ROOT(1, 8, 0),
 	CTLV_NODE_SCHEMA_ENUM(CTLV_T_ERROR_INFO_REASON, 1, 12),
@@ -127,6 +178,23 @@ const struct ctlv_op_schema ctlv_op_schemas[] = {
 			     CTLV_OP_AVAILABILITY_FIXED, 40, 168, 65536,
 			     CTLV_SCHEMA_TREE(op_schema_get_request),
 			     CTLV_SCHEMA_TREE(op_schema_get_reply)),
+	CTLV_OP_SCHEMA_ACTION(CTLV_OP_SUBSCRIPTIONS_ADD, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 6160, 0,
+			      CTLV_SCHEMA_TREE(subscriptions_add_request), CTLV_SCHEMA_TREE_NONE()),
+	CTLV_OP_SCHEMA_ACTION(CTLV_OP_SUBSCRIPTIONS_REMOVE, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 6160, 0,
+			      CTLV_SCHEMA_TREE(subscriptions_remove_request),
+			      CTLV_SCHEMA_TREE_NONE()),
+	CTLV_OP_SCHEMA_QUERY(CTLV_OP_EVENT_QUEUE_GET, CTLV_OP_FD_ACCESS_READ,
+			     CTLV_OP_AVAILABILITY_FIXED, 16, 40, 65536,
+			     CTLV_SCHEMA_TREE(event_queue_get_request),
+			     CTLV_SCHEMA_TREE(event_queue_get_reply)),
+	CTLV_OP_SCHEMA_ACTION(CTLV_OP_EVENT_QUEUE_SET, CTLV_OP_FD_ACCESS_READ,
+			      CTLV_OP_AVAILABILITY_FIXED, 40, 0,
+			      CTLV_SCHEMA_TREE(event_queue_set_request), CTLV_SCHEMA_TREE_NONE()),
+	CTLV_OP_SCHEMA_EVENT(CTLV_OP_OP_CHANGED, 112, CTLV_SCHEMA_TREE(op_changed_reply)),
+	CTLV_OP_SCHEMA_EVENT(CTLV_OP_EVENT_OVERFLOW, 112, CTLV_SCHEMA_TREE(event_overflow_reply)),
+	CTLV_OP_SCHEMA_EVENT(CTLV_OP_DEVICE_REMOVED, 40, CTLV_SCHEMA_TREE(device_removed_reply)),
 };
 
 /* The family ID is its position in the central registry. */
@@ -143,6 +211,7 @@ static_assert(3 <= CTLV_UEVENT_MAX_VARS);
 
 /* Guards for generated maxima. */
 static_assert(65536 <= CTLV_MAX_INLINE_MESSAGE_LEN);
+static_assert(112 <= CTLV_MAX_EVENT_QUEUE_LEN);
 static_assert(2 <= CTLV_MAX_DECLARED_RECORD_DEPTH);
 
 /* Local action and query bindings in declaration order. */
@@ -150,6 +219,10 @@ static const struct ctlv_op ctlv_ops[] = {
 	CTLV_OP_QUERY(ctlv_family_get),
 	CTLV_OP_QUERY(ctlv_op_get),
 	CTLV_OP_QUERY(ctlv_op_schema_get),
+	CTLV_OP_ACTION(ctlv_subscriptions_add),
+	CTLV_OP_ACTION(ctlv_subscriptions_remove),
+	CTLV_OP_QUERY(ctlv_event_queue_get),
+	CTLV_OP_ACTION(ctlv_event_queue_set),
 };
 
 /* Root-family descriptor used by the CTLV core. */

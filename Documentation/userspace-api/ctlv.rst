@@ -24,7 +24,7 @@ organized into families, each roughly corresponding to a subsystem.
 A family describes what its devices accept in YAML, a generator turns that into
 kernel metadata, UAPI headers and userspace bindings, and CTLV validates every
 message before a family callback sees it. Userspace executes every operation
-through one ioctl.
+through one ioctl and reads events with ``read()``.
 
 This document is the ABI. What each family accepts is specified under
 ``Documentation/ctlv/specs``; writing a family is :doc:`/driver-api/ctlv`.
@@ -72,6 +72,7 @@ system calls are::
 
     item_set_action(u64 index, string label?, blob data?) -> status;
     item_get_query() -> { u64 index; string label?; }[];
+    item_changed_event -> { u64 index; string label?; };
 
 ``?`` marks an optional argument. The family's specification declares
 ``item-set`` with the bounds the kernel checks:
@@ -139,7 +140,8 @@ and so does ``ctlvctl``, given the family's specification::
             exec /dev/ctlv-example item-set index=3 label=ab
 
 The sections below define each piece: the device, the message format, the
-ioctl, queries, blobs and introspection, and then the rules of compatibility.
+ioctl, queries, events, blobs and introspection, and then the rules of
+compatibility.
 
 Terms
 =====
@@ -153,22 +155,23 @@ family
 
 operation, op
     What a family declares a device does: an action, executed once and
-    acknowledged, or a query.
+    acknowledged; a query; or an event, which the device produces and a
+    subscribed file description reads.
 
 TLV
     Type, length, value: a ``struct ctlv_hdr`` and its payload.
 
 record
     A TLV whose payload is TLVs, its fields, flagged ``CTLV_HDR_F_RECORD``:
-    a named record of the family, an operation's request or reply, or a
-    record declared inside one of those.
+    a named record of the family, an operation's request or reply, an
+    event's payload, or a record declared inside one of those.
 
 root
     The record a message starts with, of type zero: the operation's request
-    or reply.
+    or reply, or the event's payload.
 
 message
-    A request or a reply: one root record.
+    A request, a reply or an event: one root record.
 
 field
     One member of a record, a value or a record, required or optional, with its
@@ -195,6 +198,12 @@ fragment
     One reply of a query: as much of the answer as fits, with a cursor to
     continue from.
 
+file description
+    What ``open()`` creates and an fd refers to, as POSIX uses the term. It
+    holds the access the device was opened with, the event subscriptions and
+    the event queue, which fds made by ``dup()`` or passed by ``SCM_RIGHTS``
+    share.
+
 Devices
 ========
 
@@ -219,11 +228,13 @@ matching the uevent properties described under Discovery. A container is
 given such a name, ``/dev/ctlv-example`` below, rather than whichever number
 the device got.
 
+Each open file description has its own event subscriptions and event queue.
 ``O_RDONLY`` opens an observation fd, ``O_RDWR`` opens a full-control fd, and
 ``O_WRONLY`` is rejected with ``-EACCES``. Every action and query declares the
 authority it needs: ``read`` permits either accepted fd, while ``read-write``
-requires full control. ``dup()`` and ``SCM_RIGHTS`` preserve that authority;
-attenuation requires a separate observation open.
+requires full control. Events are readable and subscribable through both.
+``dup()`` and ``SCM_RIGHTS`` preserve that authority; attenuation requires a
+separate observation open.
 
 Discovery
 ---------
@@ -382,7 +393,7 @@ field within that record::
 
 A record's type kind, ``enum ctlv_type_kind``, says what it starts from: a
 named record of the family (``CTLV_TYPE_KIND_NAMED``), an op's request
-(``_REQUEST``), or an op's reply (``_REPLY``). The index
+(``_REQUEST``), or an op's reply or an event's payload (``_REPLY``). The index
 is the named record's place among the family's records, or the op's number. A
 record declared inside one of those adds a path, one hex digit a level for up
 to four levels, saying which it is among the records declared beside it,
@@ -421,12 +432,12 @@ that an older kernel does not know. Normally an unknown type fails the
 request. Setting ``CTLV_HDR_F_IGNORE_IF_UNKNOWN`` in a TLV's header asks the
 kernel to skip it instead, together with everything in it.
 
-The flag only matters for a type that none of the device's families
-declares. A type the device knows is validated as usual, flag or not:
-it fails the request where the schema does not place it, and is checked
-against its bounds where it does. A skipped TLV still has to be well
-formed: its length must fit inside its record, and its header may carry only
-defined flags. The root cannot carry the flag, and replies never do.
+The flag only matters for a type that none of the device's families declares.
+A type the device knows is validated as usual, flag or not: it fails the
+request where the schema does not place it, and is checked against its bounds
+where it does. A skipped TLV still has to be well formed: its length must fit
+inside its record, and its header may carry only defined flags. The root cannot
+carry the flag, and replies and events never do.
 
 So the kernel acts on what it knows and ignores the rest. A caller that needs
 to know which of its fields will be acted on asks ``op-schema-get`` first.
@@ -474,7 +485,7 @@ from the known schema; a newer caller may exceed it with well-formed unknown
 TLVs marked ``IGNORE_IF_UNKNOWN``. The kernel refuses a request longer than a
 limit of its own, which no request composed from a schema exceeds.
 
-The two op types differ in what they answer:
+The three op types differ in what they answer:
 
 action
     Executed once and acknowledged. ``reply_len`` is at least the
@@ -486,6 +497,10 @@ query
     ``generation`` and ``cursor``. ``reply_len`` is at least the
     ``query-reply-min-len`` in ``op-get``, which also suggests a length as
     ``query-reply-suggested-len``.
+
+event
+    Not executed. A device produces events and a subscribed file description
+    reads them.
 
 Errors
 ------
@@ -503,8 +518,9 @@ way.
 What the ioctls answer with, as against a family's own callback:
 
 ``ENOTTY``
-    Any ioctl but ``CTLV_IOC_OP_EXEC``, on a file only CTLV answers. Where the
-    file is also another subsystem's, that subsystem answers any other ioctl.
+    Neither ``CTLV_IOC_OP_EXEC`` nor ``CTLV_IOC_EVENT_FD``, on a file only CTLV
+    answers. Where the file is also another subsystem's, that subsystem
+    answers any other ioctl.
 
 ``EINVAL``
     ``size`` was below 56, ``flags`` was not zero, ``op_id`` was zero,
@@ -523,8 +539,8 @@ What the ioctls answer with, as against a family's own callback:
     bits.
 
 ``EOPNOTSUPP``
-    The device does not publish the operation, or publishes it but has it
-    disabled.
+    The device does not publish the operation, publishes it but has it
+    disabled, or the operation is an event, which is read rather than executed.
 
 ``EACCES``
     The fd lacks the operation's declared authority.
@@ -553,6 +569,11 @@ What the ioctls answer with, as against a family's own callback:
 ``open()`` answers ``EACCES`` for ``O_WRONLY``, which no operation accepts,
 ``ENODEV`` once the device has been unregistered, and ``ENOMEM`` when the
 kernel could not allocate the open file.
+
+``read()`` answers ``EAGAIN`` when no event is queued on a non-blocking
+description, ``EINTR`` when a blocking read was interrupted, ``EMSGSIZE`` when
+the buffer cannot hold the event at the head of the queue, and ``ENODEV``
+once a removed device's queue has been drained.
 
 Queries and fragments
 =====================
@@ -601,6 +622,74 @@ fragments and a 64 MiB reassembled reply.
 
 A continuation whose generation no longer matches fails with ``-ESTALE``, and
 the error information carries the expected and the current generation.
+
+Events
+======
+
+An event reaches a file description that asked for it, and only that one:
+
+1. subscribe with the ``subscriptions-add`` action, naming operation IDs;
+2. read events with ``read()``, one complete event per call;
+3. unsubscribe with ``subscriptions-remove``.
+
+``poll()`` reports readability when an event is queued. A file whose ``read()``
+and ``poll()`` are another subsystem's has its queue read from a descriptor of
+its own::
+
+    #define CTLV_IOC_EVENT_FD _IO(0xBB, 0x01)
+
+The argument is zero, and the ioctl returns a new ``O_RDONLY | O_CLOEXEC``
+descriptor whose ``read()`` and ``poll()`` serve the queue of the file
+description it was asked on: an event read through either is gone from both.
+It keeps that description open, so its events keep arriving after the
+descriptor the ioctl was asked on is closed. It executes nothing and takes
+``O_NONBLOCK`` through ``fcntl()``. Every device answers the ioctl, whichever
+subsystem it is in, and still does once unregistered, so that the rest of its
+queue and the event of its removal can be read.
+
+Each event is a header followed by exactly one root::
+
+    struct ctlv_event_hdr {
+            __u32 length;             /* header + aligned root */
+            __u32 flags;              /* zero */
+            __aligned_u64 op_id;      /* the event op that produced it */
+            __aligned_u64 sequence;   /* per file description */
+    };
+
+One ``read()`` returns one event, the header and the aligned root::
+
+    +---------------------------------------------------------------+ 0
+    | length = 24 + CTLV_ALIGN(root.len)     | flags = 0            |
+    +---------------------------------------------------------------+ 8
+    | op_id: the event operation that produced this event           |
+    +---------------------------------------------------------------+ 16
+    | sequence: counted per file description                        |
+    +---------------------------------------------------------------+ 24
+    | root: len, flags = RECORD, type = 0                           |
+    |   the event's TLVs, exactly as a reply carries them           |
+    +---------------------------------------------------------------+ length
+
+A buffer shorter than ``length`` reads nothing and fails with ``-EMSGSIZE``. An
+event is one message, no longer than the ``event-max-len`` of its operation in
+``op-get``. A sequence number is assigned to every eligible event, dropped
+ones included, so a gap in the sequence is exactly what was lost.
+
+The queue is per file description: ``event-queue-get`` reports its length, how
+much is in use, and the shortest and longest length the device takes, which
+``event-queue-set`` changes it within. An event that does not fit is dropped,
+and the next read returns an ``event-overflow`` event carrying the first and
+last sequence numbers lost and how many events that was.
+
+Two events come from the root family:
+
+op-changed
+    An operation with dynamic availability was enabled or disabled. The event
+    carries the operation ID, the new state, and the state generation that
+    ``op-get`` also reports, so a client can order dump against event.
+
+device-removed
+    The device is gone. Operations fail from then on and the descriptor stays
+    valid until it is closed.
 
 Blobs
 =====
@@ -657,11 +746,12 @@ The CTLV core answers all three on every device.
 ``op-get``
     One entry per published operation: its ID, op type, required fd access,
     whether its availability is fixed or dynamic, whether it is currently
-    disabled, and those of its lengths on this device that apply to its op type:
-    ``request-max-len``, ``action-reply-max-len``, ``query-reply-min-len``,
-    ``query-reply-suggested-len`` and ``error-info-max-len``. An unpublished
-    operation has no entry and is indistinguishable from one no family ever
-    declared.
+    disabled, and those of its lengths on this device that apply to its op
+    type: ``request-max-len``, ``action-reply-max-len``,
+    ``query-reply-min-len``, ``query-reply-suggested-len``, ``event-max-len``
+    and ``error-info-max-len``. An unpublished operation has no entry and is
+    indistinguishable from one no family ever declared. Event entries have no
+    fd-access field.
 
 ``op-schema-get``
     The whole tree of one operation: every field of the request and the
@@ -701,10 +791,10 @@ these rules:
 - A family grows by new operations and new optional fields. A field's type
   includes its place in its record, so a new field goes last, and the others
   keep their types.
-- A reply may carry TLVs an older program does not know, and it skips them. A
-  request TLV the kernel does not know fails the request unless the program
-  marks it ``CTLV_HDR_F_IGNORE_IF_UNKNOWN``, and ``op-schema-get`` tells a
-  newer program which of its fields the kernel acts on; see
+- A reply or an event may carry TLVs an older program does not know, and it
+  skips them. A request TLV the kernel does not know fails the request unless
+  the program marks it ``CTLV_HDR_F_IGNORE_IF_UNKNOWN``, and ``op-schema-get``
+  tells a newer program which of its fields the kernel acts on; see
   `TLVs an older kernel may skip`_.
 - Anything incompatible is a new operation.
 
@@ -721,22 +811,24 @@ Library and tools
 
 ``tools/ctlv/libctlv`` is a small C library for the mechanical parts: opening
 a device, checking the chain, building requests, parsing replies, reassembling
-fragmented queries and building blob descriptors. Per-family
+fragmented queries, reading events and building blob descriptors. Per-family
 bindings are generated beside it, turning operations into typed functions.
 ``ctlv_open()`` finds a device by the family its uevent announces, whichever
 subsystem it is in. ``ctlv_open_fd()`` takes a file the caller opened, through
 another subsystem's interface if need be, and ``ctlv_close()`` leaves it open.
+Events are read through an event fd either way.
 
 ``tools/ctlv/ctlvctl`` defaults to runtime introspection alone. Compiled
 against no family, it can list devices, print the operations one publishes and
-their schemas, and execute its actions and queries alike. A device is
-named as ``list`` prints it, relative to ``/dev``, or by a path::
+their schemas, execute its actions and queries alike and stream its events. A
+device is named as ``list`` prints it, relative to ``/dev``, or by a path::
 
     ctlvctl list
     ctlvctl ops /dev/ctlv-example
     ctlvctl schema /dev/ctlv-example 0x0001000000000008
     ctlvctl exec /dev/ctlv-example 0x0001000000000001
     ctlvctl exec /dev/ctlv-example 0x0001000000000002 0x0001800200000001=7
+    ctlvctl monitor /dev/ctlv-example 0x000100000000000a
 
 Passing the directory of the kernel's family specifications adds the names
 that are deliberately absent from introspection. This is the ``specs``
@@ -758,10 +850,11 @@ the parent directory::
 ``CTLV_SPEC_DIR`` avoids repeating the directory. Known items are printed by
 name without IDs; ``-n`` adds them, while an item unknown to the selected
 specifications stays numeric. ``schema --json-template`` prints a minimal JSON
-request. ``--output-json`` emits one object for an action or query. A JSON
-request may be inline, read from ``@file``, or read from standard input with
-``--json -``; it cannot be combined with assignments. Specification and JSON
-support are built when json-c is available.
+request. ``--output-json`` emits one object for an action or query and one JSON
+object per line while monitoring. A JSON request may be inline, read from
+``@file``, or read from standard input with ``--json -``; it cannot be combined
+with assignments. Specification and JSON support are built when json-c is
+available.
 
 In JSON, a blob is ``{"file": "<path>"}``, passed as ``va`` memory. An input
 blob holds the file. An output blob is written to the file whole, so give it

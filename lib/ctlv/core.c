@@ -3,6 +3,7 @@
  * Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES
  */
 #define pr_fmt(fmt) "ctlv: " fmt
+#include <linux/anon_inodes.h>
 #include <linux/bitmap.h>
 #include <linux/bitops.h>
 #include <linux/build_bug.h>
@@ -12,6 +13,7 @@
 #include <linux/ctlv_gen.h>
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/kobject.h>
 #include <linux/list.h>
@@ -19,6 +21,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/overflow.h>
+#include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 #include <linux/string.h>
@@ -29,6 +32,7 @@
 
 #include "blob.h"
 #include "builder.h"
+#include "event.h"
 #include "internal.h"
 #include "schema.h"
 
@@ -41,6 +45,9 @@ static_assert(__alignof__(struct ctlv_hdr) == CTLV_ALIGNTO);
 
 static_assert(sizeof(struct ctlv_op_exec) == 56);
 static_assert(__alignof__(struct ctlv_op_exec) == CTLV_ALIGNTO);
+
+static_assert(sizeof(struct ctlv_event_hdr) == 24);
+static_assert(__alignof__(struct ctlv_event_hdr) == CTLV_ALIGNTO);
 
 /* Claims persist across unload so one ID cannot later name another family. */
 struct ctlv_family_claim {
@@ -211,6 +218,7 @@ struct ctlv_op_resolution {
 	const struct ctlv_family *family;
 	u32 bound;
 	u32 dynamic;
+	u32 events;
 	u64 previous;
 };
 
@@ -288,6 +296,17 @@ static int ctlv_op_resolution_add(struct ctlv_op_resolution *state, const struct
 		if (!entry->binding->pre != !op->pre_post)
 			return ctlv_op_bad(family, op->op_id, "disagrees about its hook pair");
 		break;
+	case CTLV_OP_TYPE_EVENT:
+		if (op->fd_access)
+			return ctlv_op_bad(target, op->op_id, "is an event with fd access");
+		if (op->optional)
+			return ctlv_op_bad(target, op->op_id, "is an event a device could omit");
+		/*
+		 * Produced rather than answered, so nothing to bind: an event
+		 * gets a subscription bit, numbered as the walk meets it.
+		 */
+		entry->event_index = state->events++;
+		break;
 	default:
 		return ctlv_op_bad(target, op->op_id, "has an unknown type");
 	}
@@ -296,6 +315,8 @@ static int ctlv_op_resolution_add(struct ctlv_op_resolution *state, const struct
 	case CTLV_OP_AVAILABILITY_FIXED:
 		break;
 	case CTLV_OP_AVAILABILITY_DYNAMIC:
+		if (op->type == CTLV_OP_TYPE_EVENT)
+			return ctlv_op_bad(target, op->op_id, "is an event a device could disable");
 		/*
 		 * Numbered from zero as the walk meets them, per device: two
 		 * families of one chain need not have the same ops.
@@ -357,6 +378,7 @@ static int ctlv_op_resolution_init(struct ctlv *ctlv, const struct ctlv_family *
 	if (ret)
 		return ret;
 	ctlv->dynamic_ops_count = state.dynamic;
+	ctlv->events_count = state.events;
 	return 0;
 }
 
@@ -428,7 +450,8 @@ void ctlv_op_provide(struct ctlv *ctlv, u64 op_id)
 	if (WARN_ON_ONCE(ctlv->published || ctlv->destroying))
 		return;
 	op = ctlv_op_find(ctlv, op_id);
-	if (WARN_ON_ONCE(!op))
+	/* An event is produced rather than answered, so there is none. */
+	if (WARN_ON_ONCE(!op) || WARN_ON_ONCE(!op->binding))
 		return;
 	op->absent = false;
 }
@@ -464,11 +487,16 @@ void ctlv_op_state_set(struct ctlv *ctlv, u64 op_id, bool disabled)
 	if (!ctlv->published)
 		return;
 	ctlv->state_generation++;
+	/* Still holding the serializer, so events reach queues in order. */
+	ctlv_event_op_changed(ctlv, op, disabled, ctlv->state_generation);
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_op_state_set, "CTLV");
 
 static int ctlv_op_check_mode(const struct file *filp, const struct ctlv_op_entry *op)
 {
+	if (op->schema->type == CTLV_OP_TYPE_EVENT)
+		return -EOPNOTSUPP;
+
 	switch (op->schema->fd_access) {
 	case CTLV_OP_FD_ACCESS_READ:
 		return filp->f_mode & FMODE_READ ? 0 : -EACCES;
@@ -692,12 +720,6 @@ static void ctlv_error_info(struct ctlv_op_ctx *ctx, u32 room, void **reply, u32
 	*reply_len = ctx->output.root->len;
 }
 
-struct ctlv_file {
-	struct ctlv *ctlv;
-	/* The device file, whose release frees this. */
-	struct file *filp;
-};
-
 /*
  * Everything that needs the device to still have a family. @reply is built
  * here and becomes the caller's to free, to copy out once the family is gone.
@@ -741,6 +763,7 @@ static int ctlv_op_exec(struct ctlv_file *cfile, struct ctlv_op_exec *exec,
 
 	ctx.ctlv = ctlv;
 	ctx.family = ctlv->family;
+	ctx.file = cfile;
 	/* Whose memory a blob descriptor of this request describes. */
 	ctx.submitter = current;
 	ctx.op = op;
@@ -909,6 +932,73 @@ static long ctlv_op_exec_ioctl(struct ctlv_file *cfile, unsigned long arg)
 }
 
 /**
+ * ctlv_fops_read - Read one event.
+ * @filp: a node's file, or an event fd
+ * @buf: user buffer
+ * @len: buffer length
+ * @pos: unused
+ *
+ * One event per read, so a reader never gets a partial one. The offset says
+ * nothing about a queue and is neither read nor advanced.
+ *
+ * Return: event length, or a negative error.
+ */
+ssize_t ctlv_fops_read(struct file *filp, char __user *buf, size_t len, loff_t *pos)
+{
+	struct ctlv_file *cfile = filp->private_data;
+
+	return ctlv_event_file_read(cfile, buf, len, !(filp->f_flags & O_NONBLOCK));
+}
+
+/**
+ * ctlv_fops_poll - Poll for events.
+ * @filp: a node's file, or an event fd
+ * @wait: poll table
+ *
+ * Return: poll mask.
+ */
+__poll_t ctlv_fops_poll(struct file *filp, struct poll_table_struct *wait)
+{
+	struct ctlv_file *cfile = filp->private_data;
+
+	return ctlv_event_file_poll(cfile, filp, wait);
+}
+
+static int ctlv_event_fd_release(struct inode *inode, struct file *filp)
+{
+	struct ctlv_file *cfile = filp->private_data;
+
+	fput(cfile->filp);
+	return 0;
+}
+
+static const struct file_operations ctlv_event_fd_operations = {
+	.owner = THIS_MODULE,
+	.release = ctlv_event_fd_release,
+	.read = ctlv_fops_read,
+	.poll = ctlv_fops_poll,
+	.llseek = noop_llseek,
+};
+
+/*
+ * Answered after unregistration too, the queue ending in the removal event.
+ * The device file's release frees @cfile, and its module may own the instance.
+ */
+static long ctlv_event_fd_ioctl(struct ctlv_file *cfile, unsigned long arg)
+{
+	int fd;
+
+	if (arg)
+		return -EINVAL;
+	get_file(cfile->filp);
+	fd = anon_inode_getfd("[ctlv-events]", &ctlv_event_fd_operations, cfile,
+			      O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		fput(cfile->filp);
+	return fd;
+}
+
+/**
  * ctlv_file_ioctl - Run a CTLV ioctl on a device file.
  * @cfile: state returned by ctlv_file_open()
  * @cmd: ioctl command
@@ -921,6 +1011,8 @@ long ctlv_file_ioctl(struct ctlv_file *cfile, unsigned int cmd, unsigned long ar
 	switch (cmd) {
 	case CTLV_IOC_OP_EXEC:
 		return ctlv_op_exec_ioctl(cfile, arg);
+	case CTLV_IOC_EVENT_FD:
+		return ctlv_event_fd_ioctl(cfile, arg);
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -969,6 +1061,16 @@ struct ctlv_file *ctlv_file_open(struct ctlv *ctlv, struct file *filp)
 		}
 		cfile->ctlv = ctlv;
 		cfile->filp = filp;
+
+		/*
+		 * Commits this description to the device. An open that failed
+		 * after this would have to take it back.
+		 */
+		ret = ctlv_event_file_init(cfile);
+		if (ret) {
+			kfree(cfile);
+			break;
+		}
 		/* This description keeps the reference taken on entry. */
 		return cfile;
 	} while (0);
@@ -988,6 +1090,7 @@ void ctlv_file_close(struct ctlv_file *cfile)
 {
 	struct device *dev = cfile->ctlv->dev;
 
+	ctlv_event_file_exit(cfile);
 	kfree(cfile);
 	put_device(dev);
 }
@@ -1076,9 +1179,15 @@ int ctlv_init(struct ctlv *ctlv, struct device *dev,
 	ctlv->hooks = hooks;
 	init_rwsem(&ctlv->registration_lock);
 	spin_lock_init(&ctlv->transition_lock);
+	ctlv_event_device_init(ctlv);
 
 	/* Before anything reads the schema through this instance. */
 	ret = ctlv_op_resolution_init(ctlv, family);
+	if (ret)
+		return ret;
+
+	/* What this family's events need of every queue opened on it. */
+	ret = ctlv_event_sizes(ctlv);
 	if (ret)
 		return ret;
 
@@ -1104,20 +1213,24 @@ EXPORT_SYMBOL_NS_GPL(ctlv_init, "CTLV");
 /**
  * ctlv_publish - Fix the op table and accept operations.
  * @ctlv: initialized instance
+ *
+ * Events can be created from here on.
  */
 void ctlv_publish(struct ctlv *ctlv)
 {
 	ctlv_op_publish_all(ctlv);
+	ctlv_event_contexts_start(ctlv);
 	scoped_guard(rwsem_write, &ctlv->registration_lock)
 		ctlv->registered = true;
 }
 EXPORT_SYMBOL_NS_GPL(ctlv_publish, "CTLV");
 
 /**
- * ctlv_unpublish - Stop operations.
+ * ctlv_unpublish - Stop operations and events.
  * @ctlv: published instance
  *
- * Waits for the operations in flight. No family callback runs afterwards.
+ * Waits for the operations in flight and the events under construction. No
+ * family callback runs afterwards, and open files only drain their queues.
  */
 void ctlv_unpublish(struct ctlv *ctlv)
 {
@@ -1125,16 +1238,21 @@ void ctlv_unpublish(struct ctlv *ctlv)
 
 	lockdep_assert_not_held(&ctlv->registration_lock);
 	lockdep_assert_not_held(&ctlv->transition_lock);
+	lockdep_assert_not_held(&ctlv->events_lock);
 
 	/*
-	 * The write side waits for admitted callbacks. Once held, registration
-	 * state keeps every later ioctl out.
+	 * The write side waits for admitted callbacks while their events still
+	 * work. Once held, registration state keeps every later ioctl out.
 	 */
 	scoped_guard(rwsem_write, &ctlv->registration_lock)
 		ctlv->registered = false;
 
-	scoped_guard(spinlock, &ctlv->transition_lock)
+	scoped_guard(spinlock, &ctlv->transition_lock) {
 		ctlv->destroying = true;
+		ctlv_event_contexts_stop(ctlv);
+	}
+	ctlv_event_contexts_wait(ctlv);
+	ctlv_event_device_dead(ctlv);
 
 	/* No callback can reach what the family owns after this. */
 	scoped_guard(rwsem_write, &ctlv->registration_lock)

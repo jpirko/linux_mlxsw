@@ -22,6 +22,8 @@ enum _ctlv_op_type {
 	CTLV_OP_TYPE_ACTION = 1,
 	/* Executed and answered, in as many fragments as the answer needs. */
 	CTLV_OP_TYPE_QUERY = 2,
+	/* Produced by the device and read from a subscribed file description. */
+	CTLV_OP_TYPE_EVENT = 3,
 };
 
 /* enum op-availability */
@@ -204,6 +206,11 @@ enum _ctlv_op_fd_access {
 #define CTLV_T_SCHEMA_NODE_OPTIONAL_FIELDS \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00030000, 17)
 
+/* event-subscription */
+/* The op ID of an event the device emits. */
+#define CTLV_T_EVENT_SUBSCRIPTION_OP_IDS \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x00040000, 1)
+
 /* family-get reply */
 /* One entry per family of the chain. */
 #define CTLV_T_FAMILY_GET_FAMILIES \
@@ -226,10 +233,10 @@ enum _ctlv_op_fd_access {
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0020000, 1)
 
 /* op-get ops */
-/* The op ID, which CTLV_IOC_OP_EXEC carries. */
+/* The op ID, which CTLV_IOC_OP_EXEC and an event header carry. */
 #define CTLV_T_OP_GET_OPS_ID \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0021000, 1)
-/* Action or query. */
+/* Action, query or event. */
 #define CTLV_T_OP_GET_OPS_TYPE \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0021000, 2)
 /* Whether the device may disable and enable the op. */
@@ -256,6 +263,9 @@ enum _ctlv_op_fd_access {
 /* The longest error information the op can return. */
 #define CTLV_T_OP_GET_OPS_ERROR_INFO_MAX_LEN \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0021000, 10)
+/* The longest message an event of the op carries. */
+#define CTLV_T_OP_GET_OPS_EVENT_MAX_LEN \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0021000, 11)
 
 /* op-schema-get request */
 /* The ID of the op to describe. */
@@ -266,13 +276,74 @@ enum _ctlv_op_fd_access {
 /* The root of the op's request tree, absent when it has no request. */
 #define CTLV_T_OP_SCHEMA_GET_REQUEST \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0030000, 1)
-/* The root of its reply tree, absent when it has no reply. */
+/*
+ * The root of its reply tree, absent when it has no reply. An event's one tree, its payload's, is
+ * reported here.
+ */
 #define CTLV_T_OP_SCHEMA_GET_REPLY \
 	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0030000, 2)
+
+/* event-queue-get reply */
+/* How long the queue is. */
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0060000, 1)
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN_UNIT CTLV_UNIT_BYTES
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN_SCALE 0
+/* How much of it the queued events take. */
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_USED \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0060000, 2)
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_USED_UNIT CTLV_UNIT_BYTES
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_USED_SCALE 0
+/* The shortest queue-len this device takes. */
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0060000, 3)
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN_UNIT CTLV_UNIT_BYTES
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN_SCALE 0
+/* The longest queue-len this device takes. */
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0060000, 4)
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN_UNIT CTLV_UNIT_BYTES
+#define CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN_SCALE 0
+
+/* event-queue-set request */
+/* The new length, within what event-queue-get reports. */
+#define CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0x80070000, 1)
+#define CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN_UNIT CTLV_UNIT_BYTES
+#define CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN_SCALE 0
+
+/* op-changed payload */
+/* The op that changed. */
+#define CTLV_T_OP_CHANGED_ID \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0080000, 1)
+/* Whether the op is disabled now. */
+#define CTLV_T_OP_CHANGED_DISABLED \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0080000, 2)
+/* Advances once per op state change on one device. */
+#define CTLV_T_OP_CHANGED_STATE_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0080000, 3)
+
+/* event-overflow payload */
+/* The sequence number of the first event lost. */
+#define CTLV_T_EVENT_OVERFLOW_FIRST_SEQUENCE \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0090000, 1)
+/* The sequence number of the last event lost. */
+#define CTLV_T_EVENT_OVERFLOW_LAST_SEQUENCE \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0090000, 2)
+/* How many events were lost. */
+#define CTLV_T_EVENT_OVERFLOW_DROPPED_COUNT \
+	CTLV_TYPE(CTLV_FAMILY_ROOT, 0xc0090000, 3)
 
 /* ops */
 #define CTLV_OP_FAMILY_GET CTLV_OP(CTLV_FAMILY_ROOT, 1)
 #define CTLV_OP_OP_GET CTLV_OP(CTLV_FAMILY_ROOT, 2)
 #define CTLV_OP_OP_SCHEMA_GET CTLV_OP(CTLV_FAMILY_ROOT, 3)
+#define CTLV_OP_SUBSCRIPTIONS_ADD CTLV_OP(CTLV_FAMILY_ROOT, 4)
+#define CTLV_OP_SUBSCRIPTIONS_REMOVE CTLV_OP(CTLV_FAMILY_ROOT, 5)
+#define CTLV_OP_EVENT_QUEUE_GET CTLV_OP(CTLV_FAMILY_ROOT, 6)
+#define CTLV_OP_EVENT_QUEUE_SET CTLV_OP(CTLV_FAMILY_ROOT, 7)
+#define CTLV_OP_OP_CHANGED CTLV_OP(CTLV_FAMILY_ROOT, 8)
+#define CTLV_OP_EVENT_OVERFLOW CTLV_OP(CTLV_FAMILY_ROOT, 9)
+#define CTLV_OP_DEVICE_REMOVED CTLV_OP(CTLV_FAMILY_ROOT, 10)
 
 #endif /* _UAPI_CTLV_CTLV_GEN_H */

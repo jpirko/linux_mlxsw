@@ -66,6 +66,8 @@ struct ctlv_dev;
 struct ctlv_msg;
 /* A complete reply, however many fragments it arrived in. */
 struct ctlv_reply;
+/* One event. */
+struct ctlv_event;
 /* One op's request or reply tree, as numbers. */
 struct ctlv_schema;
 
@@ -202,11 +204,85 @@ int ctlv_query_sized(struct ctlv_dev *dev, __u64 op_id,
 		     struct ctlv_reply **replyp, struct ctlv_error *error);
 
 const struct ctlv_hdr *ctlv_reply_root(const struct ctlv_reply *reply);
-/* The generation the answer belongs to. */
+/* The generation the answer belongs to, which orders it against events. */
 __u64 ctlv_reply_generation(const struct ctlv_reply *reply);
 /* How many ioctls it took, a property of the buffer, not the reply. */
 unsigned int ctlv_reply_fragments(const struct ctlv_reply *reply);
 void ctlv_reply_free(struct ctlv_reply *reply);
+
+/*
+ * A subscription belongs to the open file description, one read() returns one
+ * event, and an overflowed queue says so with an event of its own.
+ */
+int ctlv_subscribe(struct ctlv_dev *dev, const __u64 *op_ids, unsigned int n,
+		   struct ctlv_error *error);
+int ctlv_unsubscribe(struct ctlv_dev *dev, const __u64 *op_ids, unsigned int n,
+		     struct ctlv_error *error);
+
+/**
+ * struct ctlv_queue - The event queue of one open file description.
+ * @len: bytes it may hold
+ * @used: bytes its events and reserved room take now
+ * @min_len: smallest @len the device takes, zero when it does not say
+ * @max_len: largest @len the device takes, zero when it does not say
+ */
+struct ctlv_queue {
+	__u64 len;
+	__u64 used;
+	__u64 min_len;
+	__u64 max_len;
+};
+
+int ctlv_queue_get(struct ctlv_dev *dev, struct ctlv_queue *queue,
+		   struct ctlv_error *error);
+int ctlv_queue_set(struct ctlv_dev *dev, __u64 len, struct ctlv_error *error);
+
+/* -EAGAIN when nothing is queued and the device was opened non-blocking. */
+int ctlv_event_read(struct ctlv_dev *dev, struct ctlv_event **eventp);
+/* 0 when an event is waiting, -ETIMEDOUT when @timeout_ms passed first. */
+int ctlv_event_wait(struct ctlv_dev *dev, int timeout_ms);
+
+__u64 ctlv_event_op_id(const struct ctlv_event *event);
+__u64 ctlv_event_sequence(const struct ctlv_event *event);
+const struct ctlv_hdr *ctlv_event_root(const struct ctlv_event *event);
+void ctlv_event_free(struct ctlv_event *event);
+
+/**
+ * struct ctlv_op_change - What one op-changed event reports.
+ * @op_id: the op whose state changed
+ * @disabled: whether the device refuses it now
+ * @generation: the op-state generation the change made current
+ *
+ * A change no newer than an ops dump's generation is one the dump reported.
+ */
+struct ctlv_op_change {
+	__u64 op_id;
+	bool disabled;
+	__u64 generation;
+};
+
+/**
+ * struct ctlv_overflow - What one event-overflow event reports.
+ * @first_sequence: sequence the first lost event would have had
+ * @last_sequence: sequence of the last one
+ * @dropped_count: how many were lost, the two above included
+ *
+ * Everything between the two sequences was missed and nothing outside them.
+ */
+struct ctlv_overflow {
+	__u64 first_sequence;
+	__u64 last_sequence;
+	__u64 dropped_count;
+};
+
+/*
+ * The root family's two events as structures, no generated binding needed.
+ * -EINVAL says the event is of another op, -EPROTO that it is malformed.
+ */
+int ctlv_event_op_change(const struct ctlv_event *event,
+			 struct ctlv_op_change *change);
+int ctlv_event_overflow(const struct ctlv_event *event,
+			struct ctlv_overflow *overflow);
 
 /*
  * What op-schema-get reports, in the shape the generator computes the same
@@ -272,7 +348,10 @@ struct ctlv_node_schema {
 	unsigned int optional_fields_count;
 };
 
-/* Either tree is absent when the op has no such message. */
+/*
+ * Either tree is absent when the op has no such message; an event's payload
+ * is reported as the reply.
+ */
 int ctlv_op_schema_get(struct ctlv_dev *dev, __u64 op_id,
 		       struct ctlv_schema **schemap, struct ctlv_error *error);
 const struct ctlv_node_schema *ctlv_schema_request(const struct ctlv_schema *s);
@@ -297,14 +376,15 @@ void ctlv_schema_render(const struct ctlv_node_schema *node,
  * struct ctlv_op_info - One entry of an ops dump.
  * @op_id: complete op ID
  * @type: enum ctlv_op_type
- * @fd_access: enum ctlv_op_fd_access
- * @availability: enum ctlv_op_availability
+ * @fd_access: enum ctlv_op_fd_access, zero for an event
+ * @availability: enum ctlv_op_availability, zero for an event
  * @disabled: whether this device refuses the op right now
- * @request_max_len: longest request made from known fields
+ * @request_max_len: longest request made from known fields, zero for an event
  * @action_reply_max_len: longest action reply, zero when it is not an action
  * @query_reply_min_len: smallest buffer a query fragment needs
  * @query_reply_suggested_len: buffer size the device would rather have
- * @error_info_max_len: longest error information
+ * @event_max_len: longest event, zero when it is not an event
+ * @error_info_max_len: longest error information, zero for an event
  */
 struct ctlv_op_info {
 	__u64 op_id;
@@ -316,6 +396,7 @@ struct ctlv_op_info {
 	__u64 action_reply_max_len;
 	__u64 query_reply_min_len;
 	__u64 query_reply_suggested_len;
+	__u64 event_max_len;
 	__u64 error_info_max_len;
 };
 
@@ -324,6 +405,9 @@ struct ctlv_op_info {
  * @ops: entries in the order the device reported them
  * @ops_count: number of entries
  * @generation: the op-state generation the whole dump belongs to
+ *
+ * Monitoring starts without a race by subscribing, dumping, then taking only
+ * the op-changed events newer than @generation.
  */
 struct ctlv_ops {
 	struct ctlv_op_info *ops;
@@ -346,14 +430,15 @@ const struct ctlv_op_info *ctlv_ops_find(const struct ctlv_ops *ops,
  * struct ctlv_op_spec - What a specification says about one op.
  * @op_id: complete op ID
  * @type: enum ctlv_op_type
- * @fd_access: enum ctlv_op_fd_access
- * @availability: enum ctlv_op_availability
+ * @fd_access: enum ctlv_op_fd_access, zero for an event
+ * @availability: enum ctlv_op_availability, zero for an event
  * @optional: whether a device may omit this op
- * @request_max_len: longest request made from known fields
+ * @request_max_len: longest request made from known fields, zero for an event
  * @action_reply_max_len: longest action reply, zero when it is not an action
  * @query_reply_min_len: smallest buffer a query fragment needs
  * @query_reply_suggested_len: buffer size worth offering a query
- * @error_info_max_len: longest error information
+ * @event_max_len: longest event, zero when it is not an event
+ * @error_info_max_len: longest error information, zero for an event
  * @request: the request tree, NULL when the op takes no request
  * @reply: the reply tree, NULL when it answers none
  *
@@ -369,6 +454,7 @@ struct ctlv_op_spec {
 	__u64 action_reply_max_len;
 	__u64 query_reply_min_len;
 	__u64 query_reply_suggested_len;
+	__u64 event_max_len;
 	__u64 error_info_max_len;
 	const struct ctlv_node_schema *request;
 	const struct ctlv_node_schema *reply;

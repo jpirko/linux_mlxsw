@@ -114,7 +114,8 @@ The reply carries:
     list for it.
 
 Access is read-write. Availability is dynamic: a device may switch the
-operation off for a time, and meanwhile it fails with ``EOPNOTSUPP``.
+operation off for a time, ``op-changed`` reports it, and meanwhile it fails
+with ``EOPNOTSUPP``.
 
 The challenge
 ~~~~~~~~~~~~~

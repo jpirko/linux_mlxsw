@@ -105,6 +105,8 @@ static int op_type_parse(const char *name, __u32 *type)
 		*type = CTLV_OP_TYPE_ACTION;
 	else if (!strcmp(name, "query"))
 		*type = CTLV_OP_TYPE_QUERY;
+	else if (!strcmp(name, "event"))
+		*type = CTLV_OP_TYPE_EVENT;
 	else
 		return -EINVAL;
 	return 0;
@@ -267,19 +269,23 @@ static int op_parse(struct json_object *json, struct ctlvctl_op_name *op)
 	if (json_member(json, "type", json_type_string, &item) ||
 	    op_type_parse(json_object_get_string(item), &op->type))
 		return -EINVAL;
-	if (json_member(json, "fd-access", json_type_string, &item) ||
-	    fd_access_parse(json_object_get_string(item), &op->fd_access) ||
-	    json_member(json, "availability", json_type_string, &item) ||
-	    availability_parse(json_object_get_string(item),
-			       &op->availability))
-		return -EINVAL;
+	if (op->type != CTLV_OP_TYPE_EVENT) {
+		if (json_member(json, "fd-access", json_type_string, &item) ||
+		    fd_access_parse(json_object_get_string(item),
+				    &op->fd_access) ||
+		    json_member(json, "availability", json_type_string, &item) ||
+		    availability_parse(json_object_get_string(item),
+				       &op->availability))
+			return -EINVAL;
+	}
 	if (json_u64(json, "request-max-len", &op->request_max_len) ||
 	    json_u64(json, "action-reply-max-len",
 		     &op->action_reply_max_len) ||
 	    json_u64(json, "query-reply-min-len",
 		     &op->query_reply_min_len) ||
 	    json_u64(json, "query-reply-suggested-len",
-		     &op->query_reply_suggested_len))
+		     &op->query_reply_suggested_len) ||
+	    json_u64(json, "event-max-len", &op->event_max_len))
 		return -EINVAL;
 	return 0;
 }

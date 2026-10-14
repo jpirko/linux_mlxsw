@@ -87,9 +87,10 @@ Teardown
 ``attestation_unregister()`` first removes the node, so nothing opens the
 device again.  It then withdraws the device from the kernel registry, refusing
 the operations of files still open.  Only then does it unpublish the CTLV
-instance, which drains the operations in flight.  No provider callback runs
-once it returns, so the provider may release its native state before
-``attestation_put()``.  Open files keep the structure until they close.
+instance, which drains the operations and events in flight and queues
+``DEVICE_REMOVED``.  No provider callback runs once it returns, so the
+provider may release its native state before ``attestation_put()``.  Open
+files keep the structure until they close.
 
 Kernel API
 ==========

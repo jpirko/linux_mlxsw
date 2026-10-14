@@ -47,6 +47,8 @@ static const struct file_operations ctlv_device_operations = {
 	.owner = THIS_MODULE,
 	.open = ctlv_device_open,
 	.release = ctlv_device_release,
+	.read = ctlv_fops_read,
+	.poll = ctlv_fops_poll,
 	.unlocked_ioctl = ctlv_device_ioctl,
 	/* Every ioctl field is fixed width, so one entry point serves both. */
 	.compat_ioctl = compat_ptr_ioctl,

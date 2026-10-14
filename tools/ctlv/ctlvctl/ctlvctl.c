@@ -111,6 +111,8 @@ static void help(FILE *out)
 		"                             the request and reply ABI of one op\n"
 		"  exec [-l len] <device> <op> [a=v]\n"
 		"                             run an op, reassembling a query's answer\n"
+		"  monitor [-q len] <device> [op ...]\n"
+		"                             subscribe and print events as they arrive\n"
 		"\n"
 		"  --spec-dir DIR             use DIR/<family>.json or .yaml\n"
 		"  -n, --show-ids             show IDs beside specification names\n"
@@ -122,6 +124,8 @@ static void help(FILE *out)
 		"\n"
 		"-l names the reply buffer, which for a query decides how many fragments\n"
 		"the answer arrives in; the device reports its smallest usable size in ops.\n"
+		"-q resizes the event queue before subscribing, which is how a reader\n"
+		"decides how far behind it may fall before events are dropped.\n"
 		"\n"
 		"With --spec-dir, operation names and top-level scalar names may be\n"
 		"used. Otherwise an operation goes by its ID and a field by its type.\n"
@@ -292,6 +296,8 @@ static const char *type_name(__u32 type)
 		return "action";
 	case CTLV_OP_TYPE_QUERY:
 		return "query";
+	case CTLV_OP_TYPE_EVENT:
+		return "event";
 	default:
 		return "?";
 	}
@@ -347,6 +353,9 @@ static int op_print(const struct ctlvctl_spec *spec,
 		printf("\treply %llu..%llu",
 		       (unsigned long long)op->query_reply_min_len,
 		       (unsigned long long)op->query_reply_suggested_len);
+	if (op->event_max_len)
+		printf("\tevent %llu",
+		       (unsigned long long)op->event_max_len);
 	printf("\n");
 	return 0;
 }
@@ -2451,6 +2460,7 @@ static void reply_dump(const struct ctlv_hdr *root,
 static int run_op_info(const struct ctlv_dev *dev,
 		       const struct ctlvctl_spec *spec,
 		       const struct ctlv_ops *ops, __u64 op_id,
+		       const char *op_text,
 		       const struct ctlv_op_info **infop)
 {
 	const struct ctlvctl_op_name *name = ctlvctl_spec_op_id(spec, op_id);
@@ -2465,6 +2475,11 @@ static int run_op_info(const struct ctlv_dev *dev,
 		fprintf(stderr, "%s: specification disagrees with operation %s\n",
 			prog, name->name);
 		return -ENOMSG;
+	}
+	if (info->type == CTLV_OP_TYPE_EVENT) {
+		fprintf(stderr, "%s: %s is an event; use \"monitor\"\n",
+			prog, name ? name->name : op_text);
+		return -EINVAL;
 	}
 	if (info->fd_access != CTLV_OP_FD_ACCESS_READ &&
 	    info->fd_access != CTLV_OP_FD_ACCESS_READ_WRITE)
@@ -2538,7 +2553,7 @@ static int cmd_run(int argc, char **argv)
 			ctlv_error_str(&error, text, sizeof(text)));
 		goto out_close;
 	}
-	ret = run_op_info(dev, spec, ops, op_id, &info);
+	ret = run_op_info(dev, spec, ops, op_id, argv[1], &info);
 	if (ret)
 		goto out_free_ops;
 	fd_access = info->fd_access;
@@ -2573,7 +2588,7 @@ static int cmd_run(int argc, char **argv)
 				ctlv_error_str(&error, text, sizeof(text)));
 			goto out_close;
 		}
-		ret = run_op_info(dev, spec, ops, op_id, &info);
+		ret = run_op_info(dev, spec, ops, op_id, argv[1], &info);
 		if (ret)
 			goto out_free_ops;
 		if (info->fd_access != fd_access || info->type != type) {
@@ -2714,6 +2729,300 @@ out_free_ops:
 	goto out_close;
 }
 
+/*
+ * An event names only the op it belongs to, so reading its payload means
+ * asking the device what that op answers with. The answer is cached per op.
+ */
+
+struct schema_entry {
+	__u64 op_id;
+	/* NULL for an op whose schema could not be had, so as not to re-ask. */
+	struct ctlv_schema *schema;
+	int error;
+};
+
+struct schema_cache {
+	struct schema_entry *entries;
+	unsigned int entries_count;
+};
+
+static int cache_reply(struct schema_cache *cache, struct ctlv_dev *dev,
+		       const struct ctlvctl_spec *spec, __u64 op_id,
+		       const struct ctlv_node_schema **tree)
+{
+	struct schema_entry *entry;
+	struct ctlv_error error;
+	int ret;
+	unsigned int i;
+
+	for (i = 0; i < cache->entries_count; i++) {
+		if (cache->entries[i].op_id != op_id)
+			continue;
+		*tree = cache->entries[i].schema ?
+			ctlv_schema_reply(cache->entries[i].schema) : NULL;
+		return cache->entries[i].error;
+	}
+
+	entry = realloc(cache->entries,
+			(cache->entries_count + 1) * sizeof(*entry));
+	if (!entry)
+		return -ENOMEM;
+	cache->entries = entry;
+	entry += cache->entries_count++;
+	entry->op_id = op_id;
+	entry->schema = NULL;
+	ret = ctlv_op_schema_get(dev, op_id, &entry->schema, &error);
+	if (ret && !spec) {
+		ctlv_schema_free(entry->schema);
+		entry->schema = NULL;
+		ret = 0;
+	}
+	if (!ret)
+		ret = tree_names_check(spec, entry->schema ?
+				       ctlv_schema_reply(entry->schema) : NULL);
+	if (ret) {
+		ctlv_schema_free(entry->schema);
+		entry->schema = NULL;
+	}
+	entry->error = ret;
+	*tree = entry->schema ? ctlv_schema_reply(entry->schema) : NULL;
+	return ret;
+}
+
+static void cache_free(struct schema_cache *cache)
+{
+	unsigned int i;
+
+	for (i = 0; i < cache->entries_count; i++)
+		ctlv_schema_free(cache->entries[i].schema);
+	free(cache->entries);
+}
+
+static int monitor_subscribe(struct ctlv_dev *dev,
+			     const struct ctlvctl_spec *spec, int argc,
+			     char **argv, struct ctlv_error *error)
+{
+	struct ctlv_ops *ops;
+	__u64 *op_ids;
+	unsigned int op_ids_count = 0, i;
+	int ret;
+
+	if (!spec && argc) {
+		op_ids = calloc(argc, sizeof(*op_ids));
+		if (!op_ids)
+			return -ENOMEM;
+		for (i = 0; i < (unsigned int)argc; i++) {
+			if (parse_u64(argv[i], &op_ids[op_ids_count]))
+				fprintf(stderr, "%s: %s: not an op ID\n",
+					prog, argv[i]);
+			else
+				op_ids_count++;
+		}
+		ret = op_ids_count ?
+			ctlv_subscribe(dev, op_ids, op_ids_count, error) :
+			-ENOENT;
+		free(op_ids);
+		return ret;
+	}
+
+	ret = ctlv_ops_get(dev, &ops, error);
+	if (ret)
+		return ret;
+	for (i = 0; i < ops->ops_count; i++) {
+		const struct ctlvctl_op_name *name;
+
+		name = ctlvctl_spec_op_id(spec, ops->ops[i].op_id);
+		if (name && !op_matches(name, &ops->ops[i])) {
+			fprintf(stderr,
+				"%s: specification disagrees with operation %s\n",
+				prog, name->name);
+			ret = -ENOMSG;
+			goto out_ops;
+		}
+	}
+	if (argc) {
+		op_ids = calloc(argc, sizeof(*op_ids));
+		if (!op_ids) {
+			ret = -ENOMEM;
+			goto out_ops;
+		}
+		for (i = 0; i < (unsigned int)argc; i++) {
+			const struct ctlv_op_info *info;
+			__u64 op_id;
+
+			ret = op_resolve(spec, argv[i], &op_id);
+			if (ret)
+				goto out_ids;
+			info = ctlv_ops_find(ops, op_id);
+			if (!info || info->type != CTLV_OP_TYPE_EVENT) {
+				fprintf(stderr, "%s: %s is not an event\n",
+					prog, argv[i]);
+				ret = -EINVAL;
+				goto out_ids;
+			}
+			op_ids[op_ids_count++] = op_id;
+		}
+	} else {
+		/* Every event the device reports, when none were named. */
+		op_ids = calloc(ops->ops_count ? ops->ops_count : 1,
+				sizeof(*op_ids));
+		if (!op_ids) {
+			ret = -ENOMEM;
+			goto out_ops;
+		}
+		for (i = 0; i < ops->ops_count; i++)
+			if (ops->ops[i].type == CTLV_OP_TYPE_EVENT)
+				op_ids[op_ids_count++] = ops->ops[i].op_id;
+	}
+
+	if (!op_ids_count) {
+		fprintf(stderr, "%s: device publishes no matching events\n",
+			prog);
+		ret = -ENOENT;
+	} else {
+		ret = ctlv_subscribe(dev, op_ids, op_ids_count, error);
+	}
+out_ids:
+	free(op_ids);
+out_ops:
+	ctlv_ops_free(ops);
+	return ret;
+}
+
+static int cmd_monitor(int argc, char **argv)
+{
+	struct schema_cache cache = { NULL, 0 };
+	struct ctlvctl_spec *spec = NULL;
+	struct ctlv_queue queue;
+	struct ctlv_error error;
+	__u64 queue_len = 0;
+	struct ctlv_dev *dev;
+	char text[LINE_LEN];
+	int ret;
+
+	if (argc > 1 && !strcmp(argv[0], "-q")) {
+		if (parse_u64(argv[1], &queue_len) || !queue_len) {
+			fprintf(stderr, "%s: %s: not a queue length\n", prog,
+				argv[1]);
+			return -EINVAL;
+		}
+		argc -= 2;
+		argv += 2;
+	}
+
+	if (argc < 1) {
+		help(stderr);
+		return -EINVAL;
+	}
+	ret = dev_open(argv[0], O_RDONLY, &dev);
+	if (ret)
+		return ret;
+	ret = spec_load(dev, &spec);
+	if (ret)
+		goto out;
+
+	/* Resized before subscribing, when the queue holds nobody's events. */
+	if (queue_len) {
+		ret = ctlv_queue_set(dev, queue_len, &error);
+		if (ret) {
+			fprintf(stderr, "%s: event-queue-set: %s\n", prog,
+				ctlv_error_str(&error, text, sizeof(text)));
+			goto out;
+		}
+	}
+	if (!ctlv_queue_get(dev, &queue, &error) && !options.output_json)
+		printf("# queue %llu bytes, %llu used\n",
+		       (unsigned long long)queue.len,
+		       (unsigned long long)queue.used);
+
+	memset(&error, 0, sizeof(error));
+	ret = monitor_subscribe(dev, spec, argc - 1, argv + 1, &error);
+	if (ret) {
+		if (error.err)
+			fprintf(stderr, "%s: subscriptions-add: %s\n", prog,
+				ctlv_error_str(&error, text, sizeof(text)));
+		goto out;
+	}
+
+	/*
+	 * Until the device goes away, which is -ENODEV once the events it
+	 * queued before that have been read.
+	 */
+	for (;;) {
+		const struct ctlv_node_schema *tree;
+		struct ctlv_event *event;
+		__u64 op_id;
+
+		ret = ctlv_event_read(dev, &event);
+		if (ret == -EAGAIN) {
+			ret = ctlv_event_wait(dev, -1);
+			if (!ret)
+				continue;
+		}
+		if (ret) {
+			if (ret != -ENODEV)
+				fprintf(stderr, "%s: read: %s\n", prog,
+					strerror(-ret));
+			break;
+		}
+		op_id = ctlv_event_op_id(event);
+		ret = cache_reply(&cache, dev, spec, op_id, &tree);
+		if (ret) {
+			fprintf(stderr, "%s: cannot read event schema: %s\n",
+				prog, strerror(-ret));
+			ctlv_event_free(event);
+			break;
+		}
+		if (options.output_json) {
+#ifdef HAVE_JSON_C
+			struct json_object *output = json_object_new_object();
+			struct json_object *payload;
+
+			if (!output) {
+				ctlv_event_free(event);
+				ret = -ENOMEM;
+				break;
+			}
+			json_add_string(output, "device",
+					ctlv_dev_name(dev));
+			json_add_op(output, spec, op_id);
+			json_add_u64(output, "sequence",
+				     ctlv_event_sequence(event));
+			payload = json_reply(ctlv_event_root(event), tree, spec);
+			if (!payload) {
+				json_object_put(output);
+				ctlv_event_free(event);
+				ret = -ENOMEM;
+				break;
+			}
+			json_object_object_add(output, "payload", payload);
+			ret = json_print(output);
+			ctlv_event_free(event);
+			if (ret)
+				break;
+			continue;
+#endif
+		}
+		if (ctlvctl_spec_op_id(spec, op_id)) {
+			printf("%s", ctlvctl_spec_op_id(spec, op_id)->name);
+			if (options.show_ids)
+				printf(" (%#018llx)",
+				       (unsigned long long)op_id);
+		} else {
+			printf("%#018llx", (unsigned long long)op_id);
+		}
+		printf("\tsequence %llu\n", (unsigned long long)
+		       ctlv_event_sequence(event));
+		reply_dump(ctlv_event_root(event), tree, spec);
+		ctlv_event_free(event);
+	}
+out:
+	cache_free(&cache);
+	ctlvctl_spec_free(spec);
+	ctlv_close(dev);
+	return ret == -ENODEV ? 0 : ret;
+}
+
 int main(int argc, char **argv)
 {
 	static const struct option long_options[] = {
@@ -2726,6 +3035,9 @@ int main(int argc, char **argv)
 	const char *command;
 	const char *spec_dir;
 	int opt;
+
+	/* Line buffered, monitoring ending by a kill with a pipe to flush. */
+	setvbuf(stdout, NULL, _IOLBF, 0);
 
 	if (argc > 0)
 		prog = argv[0];
@@ -2777,6 +3089,8 @@ int main(int argc, char **argv)
 		return cmd_schema(argc, argv) ? EXIT_FAILURE : EXIT_SUCCESS;
 	if (!strcmp(command, "exec"))
 		return cmd_run(argc, argv) ? EXIT_FAILURE : EXIT_SUCCESS;
+	if (!strcmp(command, "monitor"))
+		return cmd_monitor(argc, argv) ? EXIT_FAILURE : EXIT_SUCCESS;
 	if (!strcmp(command, "help") || !strcmp(command, "--help")) {
 		help(stdout);
 		return EXIT_SUCCESS;

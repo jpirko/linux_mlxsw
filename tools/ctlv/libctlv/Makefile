@@ -21,6 +21,7 @@ LIB = $(OUTPUT)libctlv.a
 OBJS = $(addprefix $(OUTPUT),	\
 	ctlv_user_gen.o			\
 	device.o			\
+	event.o				\
 	introspection.o			\
 	message.o			\
 	schema.o			\

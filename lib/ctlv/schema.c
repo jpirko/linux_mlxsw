@@ -31,7 +31,7 @@
  * Where composing a tree's maximum length gives up, which keeps the check on a
  * composed length from being passed by a total that wrapped.
  */
-#define CTLV_SCHEMA_MAX_COMPOSED_LEN CTLV_MAX_INLINE_MESSAGE_LEN
+#define CTLV_SCHEMA_MAX_COMPOSED_LEN CTLV_MAX_EVENT_QUEUE_LEN
 
 const struct ctlv_family *ctlv_family_ancestor(const struct ctlv_family *family, u32 up)
 {
@@ -364,7 +364,7 @@ int ctlv_schema_op_sizes(const struct ctlv_family *family, const struct ctlv_op_
 			 struct ctlv_op_sizes *sizes)
 {
 	struct ctlv_schema_length_walk walk = { .family = family };
-	u64 request = 0, reply = 0;
+	u64 request = 0, reply = 0, event = 0;
 
 	if (op->request.node_schemas)
 		request = ctlv_schema_root_max_len(&walk, &op->request);
@@ -384,12 +384,16 @@ int ctlv_schema_op_sizes(const struct ctlv_family *family, const struct ctlv_op_
 			reply = ctlv_schema_min_len(&walk, &op->reply, 0, 0, 0);
 		}
 		break;
+	case CTLV_OP_TYPE_EVENT:
+		event = sizeof(struct ctlv_event_hdr) +
+			 ALIGN(ctlv_schema_root_max_len(&walk, &op->reply), CTLV_ALIGNTO);
+		break;
 	default:
 		return -EINVAL;
 	}
 
 	if (walk.bad || request > CTLV_MAX_INLINE_MESSAGE_LEN ||
-	    reply > CTLV_MAX_INLINE_MESSAGE_LEN)
+	    reply > CTLV_MAX_INLINE_MESSAGE_LEN || event > CTLV_MAX_EVENT_QUEUE_LEN)
 		return -EINVAL;
 
 	*sizes = (struct ctlv_op_sizes){ .request_max_len = request };
@@ -405,6 +409,9 @@ int ctlv_schema_op_sizes(const struct ctlv_family *family, const struct ctlv_op_
 		 */
 		sizes->query_reply_suggested_len =
 			max_t(u32, op->sizes.query_reply_suggested_len, reply);
+		break;
+	default:
+		sizes->event_max_len = event;
 		break;
 	}
 	return 0;

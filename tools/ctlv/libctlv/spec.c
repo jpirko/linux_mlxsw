@@ -49,6 +49,7 @@ static int info_check(const struct ctlv_op_spec *spec,
 		info->query_reply_min_len);
 	UNEQUAL("query-reply-suggested-len", spec->query_reply_suggested_len,
 		info->query_reply_suggested_len);
+	UNEQUAL("event-max-len", spec->event_max_len, info->event_max_len);
 	UNEQUAL("error-info-max-len", spec->error_info_max_len,
 		info->error_info_max_len);
 	return 0;

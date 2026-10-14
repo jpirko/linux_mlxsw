@@ -8,6 +8,7 @@
 #define _LINUX_CTLV_FAMILY_H
 
 #include <linux/ctlv.h>
+#include <linux/gfp_types.h>
 #include <linux/kobject.h>
 #include <linux/types.h>
 
@@ -18,12 +19,13 @@
  * lengths of each op from op-get, so raising one is compatible.
  */
 
-/* Request roots, action replies and query reply fragments. */
+/* Request roots, action replies, query reply fragments and event roots. */
 #define CTLV_MAX_INLINE_MESSAGE_LEN	0x10000		/* 64 KiB */
 /* Includes the error information root. */
 #define CTLV_MAX_ERROR_LEN		0x4000		/* 16 KiB */
 /* The root is at depth zero. Validation recurses once per level. */
 #define CTLV_MAX_RECORD_DEPTH		8
+#define CTLV_MAX_EVENT_QUEUE_LEN	0x1000000	/* 16 MiB */
 
 /* op-schema-get needs one level to describe the declared schema. */
 #define CTLV_MAX_DECLARED_RECORD_DEPTH (CTLV_MAX_RECORD_DEPTH - 1)
@@ -294,6 +296,7 @@ struct ctlv_op_sizes {
 	u32 action_reply_max_len;
 	u32 query_reply_min_len;
 	u32 query_reply_suggested_len;
+	u32 event_max_len;
 };
 
 struct ctlv_op_schema {
@@ -339,6 +342,19 @@ struct ctlv_op_schema {
 			.request_max_len = (_request_len),		\
 			.query_reply_min_len = (_reply_min),		\
 			.query_reply_suggested_len = (_reply_suggested), \
+		},							\
+		__VA_ARGS__						\
+	})
+
+/* An op never executed: the device queues events of up to _event_len. */
+#define CTLV_OP_SCHEMA_EVENT(_op, _event_len, _reply, ...)		\
+	((struct ctlv_op_schema){					\
+		.op_id = (_op),						\
+		.type = CTLV_OP_TYPE_EVENT,				\
+		.availability = CTLV_OP_AVAILABILITY_FIXED,		\
+		.reply = _reply,					\
+		.sizes = {						\
+			.event_max_len = (_event_len),			\
 		},							\
 		__VA_ARGS__						\
 	})
@@ -456,6 +472,8 @@ bool ctlv_record_start(struct ctlv_cursor *record, struct ctlv_cursor *child,
 
 struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
 				    const struct ctlv_cursor *blob);
+struct ctlv_op_ctx *ctlv_event_create(struct ctlv *ctlv, u64 op_id,
+				      struct ctlv_cursor **payload, gfp_t gfp);
 
 #define CTLV_OP_PROVIDE(_name, _op_id)				\
 static inline void _name##_provide(struct ctlv *ctlv)	\
@@ -473,6 +491,14 @@ static inline void _name##_enable(struct ctlv *ctlv)	\
 static inline void _name##_disable(struct ctlv *ctlv)	\
 {								\
 	ctlv_op_state_set(ctlv, (_op_id), true);	\
+}
+
+#define CTLV_EVENT_CREATE(_name, _op_id)			\
+static inline struct ctlv_op_ctx *				\
+_name##_create(struct ctlv *ctlv,			\
+	       struct ctlv_cursor **payload, gfp_t gfp)		\
+{								\
+	return ctlv_event_create(ctlv, (_op_id), payload, gfp);	\
 }
 
 #define __CTLV_DEFINE_PUT(_name, _ctype, _put_fn, _type, _kind)	\

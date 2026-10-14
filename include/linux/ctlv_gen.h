@@ -33,6 +33,14 @@ int ctlv_op_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx, const struct c
 		      struct ctlv_cursor *reply);
 int ctlv_op_schema_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 			     const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_subscriptions_add_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+				  const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_subscriptions_remove_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+				     const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_event_queue_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+			       const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_event_queue_set_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+				const struct ctlv_cursor *request, struct ctlv_cursor *reply);
 
 extern const struct ctlv_family ctlv_family;
 
@@ -43,6 +51,15 @@ extern const struct ctlv_family ctlv_family;
 CTLV_IN_REF(ctlv_op_schema_get_id, CTLV_T_OP_SCHEMA_GET_ID, CTLV_SCHEMA_UINT)
 CTLV_IN_HAS(ctlv_op_schema_get_id)
 CTLV_IN_U64(ctlv_op_schema_get_id)
+/* The op ID of an event the device emits. */
+CTLV_IN_REF(ctlv_event_subscription_op_ids, CTLV_T_EVENT_SUBSCRIPTION_OP_IDS, CTLV_SCHEMA_UINT)
+#define ctlv_event_subscription_op_ids_for_each(_cursor, _record) \
+	CTLV_IN_FOR_EACH(ctlv_event_subscription_op_ids, _cursor, _record)
+CTLV_IN_EACH_U64(ctlv_event_subscription_op_ids)
+/* The new length, within what event-queue-get reports. */
+CTLV_IN_REF(ctlv_event_queue_set_queue_len, CTLV_T_EVENT_QUEUE_SET_QUEUE_LEN, CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_event_queue_set_queue_len)
+CTLV_IN_U64(ctlv_event_queue_set_queue_len)
 
 /* Writing a reply. An append is atomic; a record ends with ctlv_record_end(). */
 /* One entry per family of the chain. */
@@ -56,9 +73,9 @@ CTLV_PUT_U64(ctlv_family_get_families_id, CTLV_T_FAMILY_GET_FAMILIES_ID, CTLV_SC
 CTLV_PUT_STRING(ctlv_family_get_families_name, CTLV_T_FAMILY_GET_FAMILIES_NAME, CTLV_SCHEMA_STRING)
 /* One entry per op the device publishes. */
 CTLV_RECORD_START(ctlv_op_get_ops, CTLV_T_OP_GET_OPS, CTLV_SCHEMA_RECORD)
-/* The op ID, which CTLV_IOC_OP_EXEC carries. */
+/* The op ID, which CTLV_IOC_OP_EXEC and an event header carry. */
 CTLV_PUT_U64(ctlv_op_get_ops_id, CTLV_T_OP_GET_OPS_ID, CTLV_SCHEMA_UINT)
-/* Action or query. */
+/* Action, query or event. */
 CTLV_PUT_U64(ctlv_op_get_ops_type, CTLV_T_OP_GET_OPS_TYPE, CTLV_SCHEMA_ENUM)
 /* Whether the device may disable and enable the op. */
 CTLV_PUT_U64(ctlv_op_get_ops_availability, CTLV_T_OP_GET_OPS_AVAILABILITY, CTLV_SCHEMA_ENUM)
@@ -80,6 +97,8 @@ CTLV_PUT_U64(ctlv_op_get_ops_fd_access, CTLV_T_OP_GET_OPS_FD_ACCESS, CTLV_SCHEMA
 /* The longest error information the op can return. */
 CTLV_PUT_U64(ctlv_op_get_ops_error_info_max_len, CTLV_T_OP_GET_OPS_ERROR_INFO_MAX_LEN,
 	     CTLV_SCHEMA_UINT)
+/* The longest message an event of the op carries. */
+CTLV_PUT_U64(ctlv_op_get_ops_event_max_len, CTLV_T_OP_GET_OPS_EVENT_MAX_LEN, CTLV_SCHEMA_UINT)
 /* The root of the op's request tree, absent when it has no request. */
 CTLV_RECORD_START(ctlv_op_schema_get_request, CTLV_T_OP_SCHEMA_GET_REQUEST, CTLV_SCHEMA_RECORD)
 /* Zero in a message root node, as in the root TLV. */
@@ -126,8 +145,36 @@ CTLV_RECORD_START(ctlv_schema_node_fields, CTLV_T_SCHEMA_NODE_FIELDS, CTLV_SCHEM
 /* The optional nodes one level in. */
 CTLV_RECORD_START(ctlv_schema_node_optional_fields, CTLV_T_SCHEMA_NODE_OPTIONAL_FIELDS,
 		  CTLV_SCHEMA_RECORD)
-/* The root of its reply tree, absent when it has no reply. */
+/*
+ * The root of its reply tree, absent when it has no reply. An event's one tree, its payload's, is
+ * reported here.
+ */
 CTLV_RECORD_START(ctlv_op_schema_get_reply, CTLV_T_OP_SCHEMA_GET_REPLY, CTLV_SCHEMA_RECORD)
+/* How long the queue is. */
+CTLV_PUT_U64(ctlv_event_queue_get_queue_len, CTLV_T_EVENT_QUEUE_GET_QUEUE_LEN, CTLV_SCHEMA_UINT)
+/* How much of it the queued events take. */
+CTLV_PUT_U64(ctlv_event_queue_get_queue_used, CTLV_T_EVENT_QUEUE_GET_QUEUE_USED, CTLV_SCHEMA_UINT)
+/* The shortest queue-len this device takes. */
+CTLV_PUT_U64(ctlv_event_queue_get_queue_min_len, CTLV_T_EVENT_QUEUE_GET_QUEUE_MIN_LEN,
+	     CTLV_SCHEMA_UINT)
+/* The longest queue-len this device takes. */
+CTLV_PUT_U64(ctlv_event_queue_get_queue_max_len, CTLV_T_EVENT_QUEUE_GET_QUEUE_MAX_LEN,
+	     CTLV_SCHEMA_UINT)
+/* The op that changed. */
+CTLV_PUT_U64(ctlv_op_changed_id, CTLV_T_OP_CHANGED_ID, CTLV_SCHEMA_UINT)
+/* Whether the op is disabled now. */
+CTLV_PUT_BOOL(ctlv_op_changed_disabled, CTLV_T_OP_CHANGED_DISABLED, CTLV_SCHEMA_BOOL)
+/* Advances once per op state change on one device. */
+CTLV_PUT_U64(ctlv_op_changed_state_generation, CTLV_T_OP_CHANGED_STATE_GENERATION, CTLV_SCHEMA_UINT)
+/* The sequence number of the first event lost. */
+CTLV_PUT_U64(ctlv_event_overflow_first_sequence, CTLV_T_EVENT_OVERFLOW_FIRST_SEQUENCE,
+	     CTLV_SCHEMA_UINT)
+/* The sequence number of the last event lost. */
+CTLV_PUT_U64(ctlv_event_overflow_last_sequence, CTLV_T_EVENT_OVERFLOW_LAST_SEQUENCE,
+	     CTLV_SCHEMA_UINT)
+/* How many events were lost. */
+CTLV_PUT_U64(ctlv_event_overflow_dropped_count, CTLV_T_EVENT_OVERFLOW_DROPPED_COUNT,
+	     CTLV_SCHEMA_UINT)
 /* The rule the message broke. */
 CTLV_PUT_U64(ctlv_error_info_reason, CTLV_T_ERROR_INFO_REASON, CTLV_SCHEMA_ENUM)
 /* What went wrong, for a person to read. */
@@ -149,6 +196,11 @@ CTLV_PUT_U64(ctlv_error_info_current_generation, CTLV_T_ERROR_INFO_CURRENT_GENER
 	     CTLV_SCHEMA_UINT)
 /* How long the output blob at bad-tlv-offset has to be for the op. */
 CTLV_PUT_U64(ctlv_error_info_required_length, CTLV_T_ERROR_INFO_REQUIRED_LENGTH, CTLV_SCHEMA_UINT)
+
+/* Building one event, passed to ctlv_event_emit() or ctlv_event_abort() once. */
+CTLV_EVENT_CREATE(ctlv_op_changed, CTLV_OP_OP_CHANGED)
+CTLV_EVENT_CREATE(ctlv_event_overflow, CTLV_OP_EVENT_OVERFLOW)
+CTLV_EVENT_CREATE(ctlv_device_removed, CTLV_OP_DEVICE_REMOVED)
 #endif /* _CTLV_GENERATED_METADATA_ONLY */
 
 #endif /* _LINUX_CTLV_GEN_H */

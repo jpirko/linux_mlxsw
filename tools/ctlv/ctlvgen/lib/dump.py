@@ -108,13 +108,15 @@ def _ops(lines: list[str], family: semantics.Family) -> None:
     lines.append('ops:')
     for op in family.ops:
         lines.append(f'{INDENT}{op.name} = {_id(op.op_id)} {op.type}')
-        lines.append(f'{INDENT * 2}fd-access: {op.fd_access}')
+        if op.type != 'event':
+            lines.append(f'{INDENT * 2}fd-access: {op.fd_access}')
         if op.request is not None:
             _tree(lines, 'request', op.request)
         if op.reply is None:
             lines.append(f'{INDENT * 2}reply: none')
         else:
-            _tree(lines, 'reply', op.reply)
+            _tree(lines, 'payload' if op.type == 'event' else 'reply',
+                  op.reply)
         _sizes(lines, op.sizes)
 
 
@@ -144,6 +146,7 @@ def _sizes(lines: list[str], op_sizes: sizes.OpSizes) -> None:
         ('action-reply-max-len', op_sizes.action_reply_max_len),
         ('query-reply-min-len', op_sizes.query_reply_min_len),
         ('query-reply-suggested-len', op_sizes.query_reply_suggested_len),
+        ('event-max-len', op_sizes.event_max_len),
         ('error-info-max-len', op_sizes.error_info_max_len),
     )
     for name, value in reported:

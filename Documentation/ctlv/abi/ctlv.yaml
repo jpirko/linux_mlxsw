@@ -10,7 +10,7 @@
 # is an ABI break, whatever the file says afterwards.
 family: {name: ctlv, id: 0}
 enums:
-  op-type: {action: 1, query: 2}
+  op-type: {action: 1, query: 2, event: 3}
   op-availability: {fixed: 1, dynamic: 2}
   blob-type: {va: 1}
   blob-direction: {input: 1, output: 2, inout: 3}
@@ -62,6 +62,10 @@ records:
                optional: true}
       optional-fields: {number: 17, record: schema-node,
                         max-occurrences: unlimited, optional: true}
+  event-subscription:
+    id: 0x00040000
+    fields:
+      op-ids: {number: 1, type: uint, min: 1, max-occurrences: 256}
   family-get request:
     id: 0x80010000
   family-get reply:
@@ -93,6 +97,7 @@ records:
       query-reply-suggested-len: {number: 8, type: uint, optional: true}
       fd-access: {number: 9, enum: op-fd-access, optional: true}
       error-info-max-len: {number: 10, type: uint, optional: true}
+      event-max-len: {number: 11, type: uint, optional: true}
   op-schema-get request:
     id: 0x80030000
     fields:
@@ -102,6 +107,33 @@ records:
     fields:
       request: {number: 1, record: schema-node, optional: true}
       reply: {number: 2, record: schema-node, optional: true}
+  event-queue-get request:
+    id: 0x80060000
+  event-queue-get reply:
+    id: 0xc0060000
+    fields:
+      queue-len: {number: 1, type: uint, min: 1, unit: bytes}
+      queue-used: {number: 2, type: uint, unit: bytes}
+      queue-min-len: {number: 3, type: uint, unit: bytes, optional: true}
+      queue-max-len: {number: 4, type: uint, unit: bytes, optional: true}
+  event-queue-set request:
+    id: 0x80070000
+    fields:
+      queue-len: {number: 1, type: uint, min: 1, unit: bytes}
+  op-changed payload:
+    id: 0xc0080000
+    fields:
+      id: {number: 1, type: uint, min: 1}
+      disabled: {number: 2, type: bool}
+      state-generation: {number: 3, type: uint}
+  event-overflow payload:
+    id: 0xc0090000
+    fields:
+      first-sequence: {number: 1, type: uint}
+      last-sequence: {number: 2, type: uint}
+      dropped-count: {number: 3, type: uint}
+  device-removed payload:
+    id: 0xc00a0000
 ops:
   family-get: {id: 1, type: query, fd-access: read, request: family-get request,
                reply: family-get reply}
@@ -109,3 +141,15 @@ ops:
            reply: op-get reply}
   op-schema-get: {id: 3, type: query, fd-access: read,
                   request: op-schema-get request, reply: op-schema-get reply}
+  subscriptions-add: {id: 4, type: action, fd-access: read,
+                      request: event-subscription}
+  subscriptions-remove: {id: 5, type: action, fd-access: read,
+                         request: event-subscription}
+  event-queue-get: {id: 6, type: query, fd-access: read,
+                    request: event-queue-get request,
+                    reply: event-queue-get reply}
+  event-queue-set: {id: 7, type: action, fd-access: read,
+                    request: event-queue-set request}
+  op-changed: {id: 8, type: event, payload: op-changed payload}
+  event-overflow: {id: 9, type: event, payload: event-overflow payload}
+  device-removed: {id: 10, type: event, payload: device-removed payload}

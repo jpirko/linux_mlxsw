@@ -562,7 +562,7 @@ def input_readers(names: Names, field: semantics.Field) -> tuple[str, ...]:
 
 
 def output_writers(names: Names, field: semantics.Field) -> tuple[str, ...]:
-    """The names of what appends one field to a reply.
+    """The names of what appends one field to a reply or an event.
 
     A blob has none: a request carries one and a reply never does.
     """
@@ -578,6 +578,9 @@ def output_writers(names: Names, field: semantics.Field) -> tuple[str, ...]:
 BLOB_PUTTERS: dict[str, tuple[str, tuple[str, ...]]] = {
     'va': ('va', ('const void *address', '__u64 length')),
 }
+
+# What an event gets in the place of a wrapper.
+EVENT_HELPERS: tuple[str, ...] = ('is', 'subscribe', 'unsubscribe')
 
 # The lengths a user-mode header states for one op, by sizes.OpSizes member.
 # What a device answers with, its descendants' fills included, op-get says.
@@ -645,9 +648,14 @@ def user_symbols(family: semantics.Family) -> dict[str, str]:
             table.add(helper, what)
     for op in family.local_ops:
         what = f'op {op.name}'
-        table.add(names.user_op(op), what)
-        if op.request is not None:
-            table.add(names.user_op_helper(op, 'request_new'), what)
+        # An event has those helpers and no wrapper of its own name.
+        if op.type == 'event':
+            for helper in EVENT_HELPERS:
+                table.add(names.user_op_helper(op, helper), what)
+        else:
+            table.add(names.user_op(op), what)
+            if op.request is not None:
+                table.add(names.user_op_helper(op, 'request_new'), what)
         for member, what_len in USER_LENGTHS.items():
             if getattr(op.sizes, member):
                 table.add(names.user_op_len(op, what_len), what)
@@ -711,6 +719,9 @@ def symbols(family: semantics.Family) -> dict[str, str]:
     for op in family.ops:
         what = f'op {op.name}'
         add(names.op_id(op), what)
+        if op.type == 'event':
+            add(names.op_helper(op, 'create'), what)
+            continue
         add(names.callback(op), what)
         if op.optional:
             add(names.op_helper(op, 'provide'), what)
@@ -730,7 +741,7 @@ def symbols(family: semantics.Family) -> dict[str, str]:
         add(names.ext_ops(), f'family {family.name}')
     if family.enum_fills:
         add(names.enum_fill_schemas(), f'family {family.name}')
-    if family.local_ops:
+    if any(op.type != 'event' for op in family.local_ops):
         add(names.ops(), f'family {family.name}')
     for op in family.local_ops:
         what = f'op {op.name}'

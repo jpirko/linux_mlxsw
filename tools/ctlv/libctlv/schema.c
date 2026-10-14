@@ -507,7 +507,10 @@ static int fill(struct build *build, const struct ctlv_hdr *src,
 	return node_kind_check(src, dst, depth);
 }
 
-/* The two trees of one op. Either may be absent. */
+/*
+ * The two trees of one op. Either may be absent, and an event reports its
+ * payload as its reply.
+ */
 int ctlv_schema_parse(const struct ctlv_hdr *root, __u32 len,
 		      struct ctlv_schema **sp)
 {

@@ -62,10 +62,10 @@ PUT_MACROS: dict[str, str] = {
 def bindings(family: semantics.Family) -> tuple[semantics.Op, ...]:
     """The ops family binds, in the order it binds them.
 
-    Its own ops, in declaration order. An op it inherited is answered by the
-    family that declared it.
+    Its own actions and queries, in declaration order. An op it inherited is
+    answered by the family that declared it, and an event by nobody.
     """
-    return tuple(family.local_ops)
+    return tuple(op for op in family.local_ops if op.type != 'event')
 
 
 def _implementer(family: semantics.Family) -> str:
@@ -99,6 +99,7 @@ def emit_header(writer: cgen.Writer, names: cgen.Names,
     _helpers(writer, names, family)
     _readers(writer, names, inputs.values())
     _writers(writer, names, outputs.values())
+    _creators(writer, names, family)
     writer.line('#endif /* _CTLV_GENERATED_METADATA_ONLY */')
     writer.line()
 
@@ -133,8 +134,8 @@ def _ext_hooks(writer: cgen.Writer, names: cgen.Names,
 def _helpers(writer: cgen.Writer, names: cgen.Names,
              family: semantics.Family) -> None:
     """What one device may decide about each op this family declares."""
-    ops = [op for op in family.local_ops
-           if op.optional or op.availability == 'dynamic']
+    ops = [op for op in family.local_ops if op.type != 'event' and
+           (op.optional or op.availability == 'dynamic')]
     if not ops:
         return
     writer.line()
@@ -203,6 +204,23 @@ def _writers(writer: cgen.Writer, names: cgen.Names,
         _macro(writer, macro,
                (names.field_ident(field), names.field(field),
                 cgen.KINDS[field.decl.kind]))
+
+
+def _creators(writer: cgen.Writer, names: cgen.Names,
+              family: semantics.Family) -> None:
+    """What begins each event this family declares.
+
+    A creator hands back a context and the cursor of its root.
+    """
+    events = [op for op in family.local_ops if op.type == 'event']
+    if not events:
+        return
+    writer.line()
+    writer.comment('Building one event, passed to ctlv_event_emit() or '
+                   'ctlv_event_abort() once.')
+    for op in events:
+        _macro(writer, 'CTLV_EVENT_CREATE',
+               (names.op_ident(op), names.op_id(op)))
 
 
 def _iterator(writer: cgen.Writer, names: cgen.Names,
