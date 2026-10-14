@@ -35,6 +35,10 @@ and event before invoking ``mr_extend``.  A successful callback is followed
 only by infallible publication, so userspace observes the same ordered
 journal.
 
+``MR_READ`` uses ``mr_read_generation`` only to validate query continuation;
+the returned ``mr.generation`` is the journal boundary at which the values
+were read.
+
 Teardown
 ========
 

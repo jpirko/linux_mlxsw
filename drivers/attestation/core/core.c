@@ -326,6 +326,7 @@ int ctlv_attestation_op_pre(void *priv, struct ctlv_op_ctx *ctx)
 	}
 	return 0;
 }
+EXPORT_SYMBOL_NS_GPL(ctlv_attestation_op_pre, "ATTESTATION");
 
 void ctlv_attestation_op_post(void *priv, struct ctlv_op_ctx *ctx)
 {
@@ -333,6 +334,7 @@ void ctlv_attestation_op_post(void *priv, struct ctlv_op_ctx *ctx)
 
 	mutex_unlock(&att->lock);
 }
+EXPORT_SYMBOL_NS_GPL(ctlv_attestation_op_post, "ATTESTATION");
 
 static int __init attestation_module_init(void)
 {
