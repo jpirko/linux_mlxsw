@@ -428,6 +428,9 @@ extern const struct ctlv_family ctlv_family;
 
 u32 ctlv_enum_ext_max(const struct ctlv_family *family, u16 family_id, u32 ext_id);
 
+void ctlv_op_provide(struct ctlv *ctlv, u64 op_id);
+void ctlv_op_state_set(struct ctlv *ctlv, u64 op_id, bool disabled);
+
 struct ctlv_cursor *
 ctlv_input_field(struct ctlv_cursor *cursor, const struct ctlv_cursor *record,
 		 struct ctlv_input_ref ref);
@@ -453,6 +456,25 @@ bool ctlv_record_start(struct ctlv_cursor *record, struct ctlv_cursor *child,
 
 struct ctlv_blob *ctlv_blob_resolve(struct ctlv_op_ctx *ctx,
 				    const struct ctlv_cursor *blob);
+
+#define CTLV_OP_PROVIDE(_name, _op_id)				\
+static inline void _name##_provide(struct ctlv *ctlv)	\
+{								\
+	ctlv_op_provide(ctlv, (_op_id));		\
+}
+
+#define CTLV_OP_ENABLE(_name, _op_id)				\
+static inline void _name##_enable(struct ctlv *ctlv)	\
+{								\
+	ctlv_op_state_set(ctlv, (_op_id), false);	\
+}
+
+#define CTLV_OP_DISABLE(_name, _op_id)				\
+static inline void _name##_disable(struct ctlv *ctlv)	\
+{								\
+	ctlv_op_state_set(ctlv, (_op_id), true);	\
+}
+
 #define __CTLV_DEFINE_PUT(_name, _ctype, _put_fn, _type, _kind)	\
 static inline bool _name##_put(struct ctlv_cursor *record,	\
 			       _ctype value)			\

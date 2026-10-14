@@ -8,17 +8,20 @@
 #define _LINUX_CTLV_H
 
 #include <linux/device.h>
+#include <linux/rwsem.h>
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
 
 #include <uapi/ctlv/ctlv.h>
 
 struct ctlv_family;
+struct ctlv_file;
 struct ctlv;
 struct ctlv_msg;
 struct ctlv_op_ctx;
 struct ctlv_op_entry;
 struct ctlv_schema_tree;
+struct file;
 
 /**
  * struct ctlv_cursor - One TLV position in one message.
@@ -61,6 +64,16 @@ struct ctlv_cursor {
 };
 
 /**
+ * struct ctlv_hooks - What a device runs around the ops of its instance.
+ * @pre: entered before every op the core does not answer, and may refuse it
+ * @post: entered after every op whose @pre succeeded
+ */
+struct ctlv_hooks {
+	int (*pre)(struct ctlv *ctlv, struct ctlv_op_ctx *ctx);
+	void (*post)(struct ctlv *ctlv, struct ctlv_op_ctx *ctx);
+};
+
+/**
  * struct ctlv - The CTLV state of one device, embedded by its subsystem.
  * @dev: device whose release frees the structure embedding this instance;
  *	every open file pins it
@@ -71,6 +84,9 @@ struct ctlv_cursor {
 struct ctlv {
 	struct device *dev;
 	/* private: */
+	const struct ctlv_hooks *hooks;
+	struct rw_semaphore registration_lock;
+	bool registered;
 	const struct ctlv_family *family;
 
 	struct ctlv_op_entry *ops;
@@ -78,14 +94,31 @@ struct ctlv {
 
 	/* Op publication and state writers, never the dispatch path. */
 	spinlock_t transition_lock;
+	bool published;
+	bool destroying;
 	u64 state_generation;
 	u32 dynamic_ops_count;
 	unsigned long *disabled;
 };
 
+int ctlv_init(struct ctlv *ctlv, struct device *dev,
+	      const struct ctlv_family *family, const struct ctlv_hooks *hooks);
+void ctlv_publish(struct ctlv *ctlv);
+void ctlv_unpublish(struct ctlv *ctlv);
+void ctlv_fini(struct ctlv *ctlv);
+bool ctlv_family_inherits(const struct ctlv_family *family,
+			  const struct ctlv_family *ancestor);
+
+struct ctlv_file *ctlv_file_open(struct ctlv *ctlv, struct file *filp);
+long ctlv_file_ioctl(struct ctlv_file *cfile, unsigned int cmd,
+		     unsigned long arg);
+void ctlv_file_close(struct ctlv_file *cfile);
+
 void ctlv_record_end(struct ctlv_cursor *child);
 void ctlv_record_cancel(struct ctlv_cursor *child);
 
+int ctlv_ext_fill(struct ctlv_op_ctx *ctx, const struct ctlv_cursor *request,
+		  struct ctlv_cursor *record);
 int ctlv_op_error(struct ctlv_op_ctx *ctx, int error, const char *message);
 __printf(3, 4)
 int ctlv_op_errorf(struct ctlv_op_ctx *ctx, int error, const char *fmt, ...);
