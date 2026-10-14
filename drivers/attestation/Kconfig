@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menuconfig ATTESTATION
+	tristate "Attestation"
+	select CRYPTO_HASH_INFO
+	select CTLV
+	help
+	  Provides a CTLV family for evidence and measurement registers.
+
+	  Providers register one instance for a physical or logical device and
+	  translate the common operations to their native service.
+
+	  If you are unsure, say N.
