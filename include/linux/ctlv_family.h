@@ -441,6 +441,47 @@ bool ctlv_cursor_bool(const struct ctlv_cursor *cursor);
 const char *ctlv_cursor_string(const struct ctlv_cursor *cursor);
 const void *ctlv_cursor_binary(const struct ctlv_cursor *cursor, u32 *len);
 
+bool ctlv_put_u64(struct ctlv_cursor *record, u64 type, u8 kind, u64 value);
+bool ctlv_put_s64(struct ctlv_cursor *record, u64 type, u8 kind, s64 value);
+bool ctlv_put_bool(struct ctlv_cursor *record, u64 type, u8 kind, bool value);
+bool ctlv_put_string(struct ctlv_cursor *record, u64 type, u8 kind,
+		     const char *value);
+bool ctlv_put_binary(struct ctlv_cursor *record, u64 type, u8 kind,
+		     const void *value, u32 len);
+bool ctlv_record_start(struct ctlv_cursor *record, struct ctlv_cursor *child,
+		       u64 type, u8 kind);
+
+#define __CTLV_DEFINE_PUT(_name, _ctype, _put_fn, _type, _kind)	\
+static inline bool _name##_put(struct ctlv_cursor *record,	\
+			       _ctype value)			\
+{								\
+	return _put_fn(record, (_type), (_kind), value);	\
+}
+
+#define CTLV_PUT_U64(_name, _type, _kind)			\
+	__CTLV_DEFINE_PUT(_name, u64, ctlv_put_u64, _type, _kind)
+#define CTLV_PUT_S64(_name, _type, _kind)			\
+	__CTLV_DEFINE_PUT(_name, s64, ctlv_put_s64, _type, _kind)
+#define CTLV_PUT_BOOL(_name, _type, _kind)			\
+	__CTLV_DEFINE_PUT(_name, bool, ctlv_put_bool, _type, _kind)
+#define CTLV_PUT_STRING(_name, _type, _kind)			\
+	__CTLV_DEFINE_PUT(_name, const char *, ctlv_put_string,	\
+			  _type, _kind)
+
+#define CTLV_PUT_BINARY(_name, _type, _kind)			\
+static inline bool _name##_put(struct ctlv_cursor *record,	\
+			       const void *value, u32 len)	\
+{								\
+	return ctlv_put_binary(record, (_type), (_kind), value, len); \
+}
+
+#define CTLV_RECORD_START(_name, _type, _kind)			\
+static inline bool _name##_start(struct ctlv_cursor *record,	\
+				 struct ctlv_cursor *inner)	\
+{								\
+	return ctlv_record_start(record, inner, (_type), (_kind)); \
+}
+
 #define CTLV_IN_REF(_name, _type, _kind)			\
 static inline struct ctlv_input_ref _name##_ref(void)		\
 {								\

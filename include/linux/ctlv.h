@@ -34,6 +34,8 @@ struct ctlv_schema_tree;
  * @depth: record levels above this position, the root being zero
  * @index_record_scope: schema scope used to read the members of @hdr, a record
  * @index_scope: core-private schema scope containing this TLV
+ * @progress: writing, whether the fragment had progressed before this record
+ *	opened
  *
  * Fixed-size, so family code can put a child cursor on the stack.
  * ctlv_record_start() opens at most CTLV_MAX_RECORD_DEPTH levels, which bounds
@@ -52,6 +54,28 @@ struct ctlv_cursor {
 	u32 depth;
 	u32 index_record_scope;
 	u32 index_scope;
+	bool progress;
 };
+
+void ctlv_record_end(struct ctlv_cursor *child);
+void ctlv_record_cancel(struct ctlv_cursor *child);
+
+int ctlv_op_error(struct ctlv_op_ctx *ctx, int error, const char *message);
+__printf(3, 4)
+int ctlv_op_errorf(struct ctlv_op_ctx *ctx, int error, const char *fmt, ...);
+
+/*
+ * The core retains no query state. A continuation repeats the request and
+ * passes back the family's generation and nonzero cursor. It fails with
+ * -ESTALE if the generation changed. Each fragment must complete a logical
+ * leaf and return a cursor different from its input.
+ *
+ * ctlv_op_query_more() marks still-open records, whose cursors must stay live.
+ */
+u64 ctlv_op_query_generation(const struct ctlv_op_ctx *ctx);
+u64 ctlv_op_query_cursor(const struct ctlv_op_ctx *ctx);
+int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
+		       u64 next_cursor);
+int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
 
 #endif /* _LINUX_CTLV_H */
