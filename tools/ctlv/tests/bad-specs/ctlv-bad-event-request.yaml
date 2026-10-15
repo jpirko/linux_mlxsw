@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: an event op cannot declare a request
+family:
+  name: ctlv-bad-event-request
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+ops:
+  - name: happened
+    type: event
+    request:
+      attrs: thing.id
+    reply:
+      attrs: thing.id

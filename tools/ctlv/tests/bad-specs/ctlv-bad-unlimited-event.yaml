@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.many has unlimited occurrences, which only a query reply may
+family:
+  name: ctlv-bad-unlimited-event
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: many
+        type: uint
+        max-occurrences: unlimited
+ops:
+  - name: happened
+    type: event
+    reply:
+      attrs: thing.many

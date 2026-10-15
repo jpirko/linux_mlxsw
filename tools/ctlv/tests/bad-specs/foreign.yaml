@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a family that inherits ctlv must be named ctlv-<suffix>
+# Inherits the root correctly and is named as if it inherited nothing.
+family:
+  name: foreign
+  inherits: ctlv
+ops:
+  - name: mine-get
+    type: query
+    reply:
+      attrs: family.name

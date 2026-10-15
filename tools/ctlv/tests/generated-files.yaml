@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+# Generated files for schema fixtures.
+version: 1
+registry:
+  source: tools/ctlv/tests/families.yaml
+  outputs:
+    uapi-header: drivers/ctlv/tests/linux/ctlv_families_gen.h
+
+families:
+  - name: ctlv-fixture
+    source: tools/ctlv/tests/specs/ctlv-fixture.yaml
+    outputs:
+      uapi-header: drivers/ctlv/tests/linux/ctlv_fixture_gen.h
+      kernel-header: drivers/ctlv/tests/ctlv_fixture_gen.h
+      kernel-source: drivers/ctlv/tests/ctlv_fixture_gen.c
+
+  - name: ctlv-fixture-child
+    source: tools/ctlv/tests/specs/ctlv-fixture-child.yaml
+    outputs:
+      uapi-header: drivers/ctlv/tests/linux/ctlv_fixture_child_gen.h
+      kernel-header: drivers/ctlv/tests/ctlv_fixture_child_gen.h
+      kernel-source: drivers/ctlv/tests/ctlv_fixture_child_gen.c

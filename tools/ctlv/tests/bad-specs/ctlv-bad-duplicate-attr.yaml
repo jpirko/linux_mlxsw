@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: duplicate attr
+family:
+  name: ctlv-bad-duplicate-attr
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+      - name: label
+        type: string
+        max-length: 16
+      - name: id
+        type: sint

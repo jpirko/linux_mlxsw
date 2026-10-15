@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.self is recursive, but attr set "node" never selects it again
+family:
+  name: ctlv-bad-recursive-inert
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: self
+        attrs: node
+        recursive: true
+        max-occurrences: unlimited
+attr-sets:
+  - name: node
+    attrs: thing.leaf
+ops:
+  - name: get
+    type: query
+    reply:
+      attrs: thing.self

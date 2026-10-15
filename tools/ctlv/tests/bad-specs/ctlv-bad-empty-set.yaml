@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: attr set has no members; declare stub: true for an extension point
+family:
+  name: ctlv-bad-empty-set
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+attr-sets:
+  - name: key

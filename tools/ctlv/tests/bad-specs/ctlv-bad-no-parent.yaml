@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: must name the family it inherits
+family:
+  name: ctlv-bad-no-parent
+attr-groups:
+  - name: mine
+    attrs:
+      - name: thing
+        type: uint
+ops:
+  - name: mine-get
+    type: query
+    reply:
+      attrs: mine.thing

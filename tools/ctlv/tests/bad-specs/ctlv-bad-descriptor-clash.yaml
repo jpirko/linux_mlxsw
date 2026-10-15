@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: the action suffix separates this callback from the descriptor
+family:
+  name: ctlv-bad-descriptor-clash
+  inherits: ctlv
+ops:
+  - name: ctlv-family
+    type: action

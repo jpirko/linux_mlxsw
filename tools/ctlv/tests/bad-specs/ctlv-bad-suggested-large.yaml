@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: 2097152 is greater than the maximum of 1048576
+family:
+  name: ctlv-bad-suggested-large
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+        max-occurrences: unlimited
+ops:
+  - name: dump
+    type: query
+    reply:
+      attrs: thing.id
+    suggested-reply-length: 2097152

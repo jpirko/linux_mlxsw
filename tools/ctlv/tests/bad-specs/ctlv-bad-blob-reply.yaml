@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.data is a blob attr, which only a request may contain
+family:
+  name: ctlv-bad-blob-reply
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+      - name: data
+        blob:
+          direction: output
+          allowed-backings: [va]
+          max-length: 4096
+ops:
+  - name: get
+    type: action
+    request:
+      attrs: thing.id
+    reply:
+      attrs: thing.data

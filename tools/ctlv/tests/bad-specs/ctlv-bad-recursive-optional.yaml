@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a recursive attr cannot declare optional-attrs
+family:
+  name: ctlv-bad-recursive-optional
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: self
+        attrs: node
+        optional-attrs: thing.leaf
+        recursive: true
+        max-occurrences: unlimited
+attr-sets:
+  - name: node
+    attrs: thing.leaf
+    optional-attrs: thing.self
+ops:
+  - name: get
+    type: query
+    reply:
+      attrs: node

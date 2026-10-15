@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: True is not of type 'string'
+# A bare "on" resolves to a boolean, so such a value needs quoting.
+family:
+  name: ctlv-bad-yaml-bool
+  inherits: ctlv
+enums:
+  - name: mode
+    values:
+      - on
+      - manual

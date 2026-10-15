@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: typed callback names do not collide with generated node arrays
+family:
+  name: ctlv-bad-unified-source-clash
+  inherits: ctlv
+ops:
+  - name: ctlv-bad-unified-source-clash-noop
+    type: action
+  - name: noop-request-nodes
+    type: action

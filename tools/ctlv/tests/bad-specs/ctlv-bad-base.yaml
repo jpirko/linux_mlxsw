@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: a valid parent for the inheritance cases
+family:
+  name: ctlv-bad-base
+  inherits: ctlv
+attr-groups:
+  - name: base
+    attrs:
+      - name: thing
+        type: uint
+attr-sets:
+  - name: base-stub
+    stub: true
+ops:
+  - name: base-get
+    type: action
+    request:
+      attrs: base.thing

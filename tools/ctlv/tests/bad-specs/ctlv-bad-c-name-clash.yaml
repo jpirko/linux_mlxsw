@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: name _CTLV_BAD_C_NAME_CLASH_ATTR_THING_SUB_ID is already used by
+family:
+  name: ctlv-bad-c-name-clash
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: sub-id
+        type: uint
+  - name: thing-sub
+    attrs:
+      - name: id
+        type: uint
+ops:
+  - name: get
+    type: action
+    request:
+      attrs: thing.sub-id

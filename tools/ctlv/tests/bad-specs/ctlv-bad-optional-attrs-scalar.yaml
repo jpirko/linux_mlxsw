@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a uint attr cannot declare optional-attrs
+family:
+  name: ctlv-bad-optional-attrs-scalar
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+        optional-attrs: thing.id

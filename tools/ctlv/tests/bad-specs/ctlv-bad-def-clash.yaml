@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: enum or flags "mode" is already declared
+family:
+  name: ctlv-bad-def-clash
+  inherits: ctlv
+enums:
+  - name: mode
+    values:
+      - fast
+flags:
+  - name: mode
+    values:
+      - fast

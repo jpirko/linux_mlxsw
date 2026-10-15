@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: lifecycle names need no device infix once callbacks name their type
+family:
+  name: ctlv-bad-lifecycle-clash
+  inherits: ctlv
+ops:
+  - name: device-init
+    type: action

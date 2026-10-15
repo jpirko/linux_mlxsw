@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: duplicate value "one"
+family:
+  name: ctlv-bad-duplicate-value
+  inherits: ctlv
+enums:
+  - name: mode
+    values:
+      - one
+      - two
+      - one

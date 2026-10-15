@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: cycle: ctlv-bad-cycle-one -> ctlv-bad-cycle-two -> ctlv-bad-cycle-one
+# Together with ctlv-bad-cycle-two, a chain with no root to resolve from.
+family:
+  name: ctlv-bad-cycle-one
+  inherits: ctlv-bad-cycle-two

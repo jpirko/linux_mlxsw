@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: min 5 is greater than max 1
+family:
+  name: ctlv-bad-min-over-max
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+        min: 5
+        max: 1

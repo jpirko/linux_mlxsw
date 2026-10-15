@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: cycle: ctlv-bad-cycle-two -> ctlv-bad-cycle-one -> ctlv-bad-cycle-two
+# The other half of the cycle, entered from the other side.
+family:
+  name: ctlv-bad-cycle-two
+  inherits: ctlv-bad-cycle-one

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: unknown enum "nope"
+family:
+  name: ctlv-bad-unknown-enum
+  inherits: ctlv
+enums:
+  - name: mode
+    values:
+      - one
+attr-groups:
+  - name: thing
+    attrs:
+      - name: mode
+        enum: nope

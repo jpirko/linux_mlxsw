@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: unknown attr "base.thing"
+# base.thing is declared by ctlv-bad-base, which this family does not inherit.
+family:
+  name: ctlv-bad-cross-family
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: id
+        type: uint
+ops:
+  - name: get
+    type: action
+    request:
+      attrs: base.thing

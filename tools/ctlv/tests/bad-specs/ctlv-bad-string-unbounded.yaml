@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a string attr requires max-length
+family:
+  name: ctlv-bad-string-unbounded
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: label
+        type: string

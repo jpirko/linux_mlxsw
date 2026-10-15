@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a bool attr cannot declare max, min
+family:
+  name: ctlv-bad-bool-bounds
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: enabled
+        type: bool
+        min: 0
+        max: 1
+attr-sets:
+  - name: thing-key
+    attrs: thing.enabled
+ops:
+  - name: thing-set
+    type: action
+    request:
+      attrs: thing-key

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: "thing.leaf" is one attr, and a recursive attr nests an attr set
+family:
+  name: ctlv-bad-recursive-attr
+  inherits: ctlv
+attr-groups:
+  - name: thing
+    attrs:
+      - name: leaf
+        type: uint
+      - name: self
+        attrs: thing.leaf
+        recursive: true
+        max-occurrences: unlimited
+ops:
+  - name: get
+    type: query
+    reply:
+      attrs: thing.self

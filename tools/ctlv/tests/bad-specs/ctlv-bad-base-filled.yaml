@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: fills the stub of ctlv-bad-base, so a further fill can be rejected
+family:
+  name: ctlv-bad-base-filled
+  inherits: ctlv-bad-base
+attr-groups:
+  - name: filled
+    attrs:
+      - name: thing
+        type: uint
+attr-sets:
+  - name: base-stub
+    attrs: filled.thing
+  - name: filled-key
+    attrs: filled.thing

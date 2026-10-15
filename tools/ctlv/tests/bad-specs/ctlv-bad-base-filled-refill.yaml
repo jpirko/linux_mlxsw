@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: stub was already filled by family ctlv-bad-base-filled
+family:
+  name: ctlv-bad-base-filled-refill
+  inherits: ctlv-bad-base-filled
+attr-groups:
+  - name: again
+    attrs:
+      - name: thing
+        type: uint
+attr-sets:
+  - name: base-stub
+    attrs: again.thing
