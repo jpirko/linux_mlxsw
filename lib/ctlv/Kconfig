@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config CTLV
+	tristate
+
+config CTLV_DEBUG
+	bool "CTLV core self-checks"
+	depends on CTLV
+	help
+	  Checks the CTLV core's own bookkeeping where no error path depends
+	  on the result, and warns once when it is wrong. The checks that do
+	  guard an error path are made either way.
+
+	  If you are unsure, say N.

@@ -428,4 +428,139 @@ extern const struct ctlv_family ctlv_family;
 
 u32 ctlv_enum_ext_max(const struct ctlv_family *family, u16 family_id, u32 ext_id);
 
+struct ctlv_cursor *
+ctlv_input_field(struct ctlv_cursor *cursor, const struct ctlv_cursor *record,
+		 struct ctlv_input_ref ref);
+bool ctlv_input_cursor(const struct ctlv_cursor *cursor,
+		       struct ctlv_input_ref ref);
+void ctlv_cursor_next(struct ctlv_cursor *cursor);
+bool ctlv_cursor_ok(const struct ctlv_cursor *cursor);
+u64 ctlv_cursor_u64(const struct ctlv_cursor *cursor);
+s64 ctlv_cursor_s64(const struct ctlv_cursor *cursor);
+bool ctlv_cursor_bool(const struct ctlv_cursor *cursor);
+const char *ctlv_cursor_string(const struct ctlv_cursor *cursor);
+const void *ctlv_cursor_binary(const struct ctlv_cursor *cursor, u32 *len);
+
+#define CTLV_IN_REF(_name, _type, _kind)			\
+static inline struct ctlv_input_ref _name##_ref(void)		\
+{								\
+	return (struct ctlv_input_ref){				\
+		.type = (_type),				\
+		.kind = (_kind),				\
+	};							\
+}
+
+#define CTLV_IN_FOR_EACH(_name, _cursor, _record)		\
+	for (struct ctlv_cursor *__ctlv_cursor =		\
+		ctlv_input_field(_cursor, _record, _name##_ref()); \
+	     ctlv_cursor_ok(__ctlv_cursor);			\
+	     ctlv_cursor_next(__ctlv_cursor))
+
+#define CTLV_IN_HAS(_name)					\
+static inline bool _name##_present(const struct ctlv_cursor *record) \
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_ok(&cursor);				\
+}
+
+#define CTLV_IN_U64(_name)					\
+static inline u64 _name##_get(const struct ctlv_cursor *record)	\
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_u64(&cursor);			\
+}
+
+#define CTLV_IN_S64(_name)					\
+static inline s64 _name##_get(const struct ctlv_cursor *record)	\
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_s64(&cursor);			\
+}
+
+#define CTLV_IN_BOOL(_name)					\
+static inline bool _name##_get(const struct ctlv_cursor *record) \
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_bool(&cursor);			\
+}
+
+#define CTLV_IN_STRING(_name)					\
+static inline const char *					\
+_name##_get(const struct ctlv_cursor *record)			\
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_string(&cursor);			\
+}
+
+#define CTLV_IN_BINARY(_name)					\
+static inline const void *					\
+_name##_get(const struct ctlv_cursor *record, u32 *len)		\
+{								\
+	struct ctlv_cursor cursor;				\
+								\
+	ctlv_input_field(&cursor, record, _name##_ref());	\
+	return ctlv_cursor_binary(&cursor, len);		\
+}
+
+#define CTLV_IN_RECORD(_name)					\
+static inline void _name##_get(struct ctlv_cursor *inner,	\
+			       const struct ctlv_cursor *record) \
+{								\
+	ctlv_input_field(inner, record, _name##_ref());		\
+}
+
+#define CTLV_IN_EACH_U64(_name)					\
+static inline u64 _name##_get(const struct ctlv_cursor *cursor)	\
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref()))		\
+		return 0;					\
+	return ctlv_cursor_u64(cursor);				\
+}
+
+#define CTLV_IN_EACH_S64(_name)					\
+static inline s64 _name##_get(const struct ctlv_cursor *cursor)	\
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref()))		\
+		return 0;					\
+	return ctlv_cursor_s64(cursor);				\
+}
+
+#define CTLV_IN_EACH_BOOL(_name)				\
+static inline bool _name##_get(const struct ctlv_cursor *cursor) \
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref()))		\
+		return false;					\
+	return ctlv_cursor_bool(cursor);			\
+}
+
+#define CTLV_IN_EACH_STRING(_name)				\
+static inline const char *					\
+_name##_get(const struct ctlv_cursor *cursor)			\
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref()))		\
+		return NULL;					\
+	return ctlv_cursor_string(cursor);			\
+}
+
+#define CTLV_IN_EACH_BINARY(_name)				\
+static inline const void *					\
+_name##_get(const struct ctlv_cursor *cursor, u32 *len)		\
+{								\
+	if (!ctlv_input_cursor(cursor, _name##_ref())) {	\
+		*len = 0;					\
+		return NULL;					\
+	}							\
+	return ctlv_cursor_binary(cursor, len);			\
+}
+
 #endif /* _LINUX_CTLV_FAMILY_H */

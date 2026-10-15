@@ -7191,6 +7191,7 @@ F:	Documentation/ctlv/
 F:	Documentation/userspace-api/ctlv.rst
 F:	include/linux/ctlv*.h
 F:	include/uapi/ctlv/
+F:	lib/ctlv/
 F:	tools/ctlv/
 
 CTU CAN FD DRIVER
