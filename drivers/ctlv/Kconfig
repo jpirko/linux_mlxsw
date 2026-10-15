@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menuconfig CTLV
+	tristate "CTLV character device TLV UAPI"
+	help
+	  CTLV provides character device UAPIs described by a checked-in YAML
+	  specification. It owns the character device lifetime, the strict TLV
+	  message format, request validation, reply serialization, the large
+	  payloads a request describes rather than carries, per-open event
+	  queues and runtime schema introspection, so families only implement
+	  semantics.
+
+	  If you don't know what to do here, say N.
