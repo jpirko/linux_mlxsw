@@ -393,12 +393,8 @@ Tests and examples
     Attribute forms, nesting, actions, queries, events, blobs, availability,
     hooks, and an extension point.
 
-``drivers/ctlv/tests/ctlv_test.c``
-    The ``ctlv-test`` family implementation.
+Configuration
+=============
 
-``drivers/ctlv/tests/ctlv_test_child.c``
-    A separately built inheriting family and extension-point fill.
-
-``drivers/ctlv/tests/*_kunit.c`` and ``tools/testing/selftests/ctlv/``
-    Core unit tests plus raw-wire, generated-binding, allocation-failure, and
-    mutation selftests.
+``CONFIG_CTLV``
+    CTLV. A family implementation selects it.
