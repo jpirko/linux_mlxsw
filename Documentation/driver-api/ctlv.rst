@@ -751,17 +751,11 @@ Tests and examples
     Every schema kind, records, actions, queries, events, blobs, availability,
     hooks, and an extension point.
 
-``drivers/ctlv/tests/ctlv_test.c``
-    The ``ctlv-test`` family implementation.
+Configuration
+=============
 
-``drivers/ctlv/tests/ctlv_test_child.c``
-    A separately built inheriting family and extension-point fill.
-
-``lib/ctlv/tests/*_kunit.c``
-    Unit tests of the engine and of its nodes.
-
-``tools/testing/selftests/ctlv/``
-    Raw-message, generated-binding, allocation-failure, and mutation selftests.
+``CONFIG_CTLV``
+    CTLV. A family implementation selects it.
 
 Kernel API
 ==========
