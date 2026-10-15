@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: no record is called filled-key
+# filled-key is declared by ctlv-bad-base-filled, which this family does not
+# inherit.
+family: ctlv-bad-cross-family
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      $include: filled-key

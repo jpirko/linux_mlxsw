@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: count 0 is outside 1 to u32-max
+family: ctlv-bad-count-zero
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      ids[0]: uint

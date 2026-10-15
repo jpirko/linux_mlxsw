@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: minimum -1 is outside the uint range
+family: ctlv-bad-min-range
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      id: uint(-1..)

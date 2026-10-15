@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: fills ctlv-bad-base's extension points, for the refill cases
+family: ctlv-bad-base-filled
+inherits: ctlv-bad-base
+
+enums:
+  # Fills ctlv-bad-base's enum extension point.
+  base-variant:
+    # Its one value.
+    - first
+
+records:
+  # Fills ctlv-bad-base's extension point.
+  base-extension:
+    # What the fill adds.
+    thing: uint
+
+  # A record of the family's own, which filled-get answers with.
+  filled-key:
+    # Its one field.
+    thing: uint
+
+ops:
+  # Answers with filled-key.
+  filled-get:
+    type: query
+    reply: record filled-key

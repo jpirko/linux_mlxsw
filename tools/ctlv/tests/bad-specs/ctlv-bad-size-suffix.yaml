@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: K, M and G are for byte counts
+family: ctlv-bad-size-suffix
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      count: uint(..4K)

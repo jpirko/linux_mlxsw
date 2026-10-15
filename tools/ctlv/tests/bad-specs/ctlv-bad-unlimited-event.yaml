@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: event: happened many has no count limit
+family: ctlv-bad-unlimited-event
+inherits: ctlv
+
+ops:
+  happened:
+    type: event
+    payload:
+      many[]: uint

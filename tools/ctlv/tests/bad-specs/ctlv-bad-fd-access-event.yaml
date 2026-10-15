@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: fd-access is only valid on an action or a query op
+family: ctlv-bad-fd-access-event
+inherits: ctlv
+
+ops:
+  thing-changed:
+    type: event
+    fd-access: read
+    payload:
+      id: uint

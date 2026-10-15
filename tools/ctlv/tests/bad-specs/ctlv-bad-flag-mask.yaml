@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: generated name CTLV_BAD_FLAG_MASK_QUIRKS_MASK is already used by flags quirks
+# The mask of all of the bits takes the name a bit called mask would.
+family: ctlv-bad-flag-mask
+inherits: ctlv
+
+flags:
+  # Two bits, the second named as the mask is.
+  quirks:
+    # A bit of no consequence.
+    - fast
+    # The bit whose name the mask takes.
+    - mask

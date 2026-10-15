@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: record leaf holds a named record, and leaf is a field of records:
+family: ctlv-bad-record-of-field
+inherits: ctlv
+
+records:
+  leaf: uint
+
+ops:
+  get:
+    type: query
+    reply:
+      self[]: record leaf

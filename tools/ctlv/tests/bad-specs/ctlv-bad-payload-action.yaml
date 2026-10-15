@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: payload: is an event's; an action or a query has request: and reply:
+family: ctlv-bad-payload-action
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    payload:
+      id: uint

@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+# The inherited fixture family. Its name carries the parent's, as inheritance
+# requires. It fills ctlv-fixture's extension points and declares definitions of
+# its own, which the inheritance, extension and child-numbering tests need.
+family: ctlv-fixture-child
+inherits: ctlv-fixture
+
+enums:
+  # Fills ctlv-fixture's variant.
+  variant:
+    # The first value.
+    - plain
+    # The second and highest.
+    - fancy
+
+records:
+  # Placed in the fill and in a request, with one type in both.
+  serial: uint
+
+  # Fills ctlv-fixture's extension point.
+  extension-point:
+    # A string the fill adds.
+    tag: string(..31)
+    serial?: record
+
+ops:
+  # Takes the placed fields and answers with the fill as a named record.
+  child-info-get:
+    type: query
+    request:
+      u: record
+      serial?: record
+    reply: record extension-point
+
+  # Optional and dynamic together, so emission covers both sorts of helper on
+  # one op and the fixture has an op a device starts without.
+  child-dump:
+    type: query
+    availability: dynamic
+    optional: true
+    reply:
+      # A binary of up to a page.
+      dump: binary(..4K)

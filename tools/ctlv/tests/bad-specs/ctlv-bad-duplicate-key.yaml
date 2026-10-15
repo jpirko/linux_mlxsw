@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: duplicate key "family"
+family: ctlv-bad-duplicate-key
+inherits: ctlv
+family: ctlv-bad-something-else

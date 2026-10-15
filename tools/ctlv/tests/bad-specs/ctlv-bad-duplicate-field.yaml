@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: two fields are called id
+family: ctlv-bad-duplicate-field
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      id: uint
+      label: string(..16)
+      id?: sint

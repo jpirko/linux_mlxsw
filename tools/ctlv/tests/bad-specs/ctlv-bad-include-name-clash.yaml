@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: two fields of get request are called id: common.id and get id
+family: ctlv-bad-include-name-clash
+inherits: ctlv
+
+records:
+  common:
+    id: uint
+
+ops:
+  get:
+    type: action
+    request:
+      $include: common
+      id: sint

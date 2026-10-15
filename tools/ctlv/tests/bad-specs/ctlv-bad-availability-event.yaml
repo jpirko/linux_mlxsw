@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: availability is only valid on an action or a query op
+family: ctlv-bad-availability-event
+inherits: ctlv
+
+ops:
+  thing-changed:
+    type: event
+    availability: dynamic
+    payload:
+      id: uint

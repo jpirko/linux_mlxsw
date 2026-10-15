@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: must be named ctlv-bad-base-<suffix>
+# ctlv-bad-basement is a family of its own, not a prefix of ctlv-bad-base.
+family: ctlv-bad-basement-child
+inherits: ctlv-bad-base
+
+ops:
+  mine-get:
+    type: query
+    reply:
+      thing: uint

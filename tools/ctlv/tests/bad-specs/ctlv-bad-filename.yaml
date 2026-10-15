@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a specification must be named after its family
+family: ctlv-bad-elsewhere
+inherits: ctlv
+
+ops:
+  get:
+    type: query
+    reply:
+      id: uint

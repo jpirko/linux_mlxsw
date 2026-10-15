@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+# The schema tool's fixture family, deliberately not a plausible UAPI: it holds
+# one of every shape the language allows, including shapes no real family would
+# combine. Not registered in Documentation/ctlv/families.yaml, so it has no ABI
+# and no snapshot.
+family: ctlv-fixture
+inherits: ctlv
+
+enums:
+  # An enum of the fixture's own, numbered from one.
+  mode:
+    # The first value.
+    - disabled
+    # The second value.
+    - enabled
+    # The third value.
+    - auto
+  # A uapi header's enum, under its own names and numbers, short of its end.
+  hash-algo:
+    $header: linux/hash_info.h
+    $enum: hash_algo
+    $end: HASH_ALGO__LAST
+  # An enum extension point, which ctlv-fixture-child fills.
+  variant: extension
+
+flags:
+  # Flags of the fixture's own, numbered from bit zero.
+  quirks:
+    # Bit 0.
+    - slow
+    # Bit 1.
+    - noisy
+    # Bit 2.
+    - flaky
+
+records:
+  # One field per schema kind, carrying the bounds that kind allows.
+  scalar:
+    u: record
+    s: record
+    # No bounds at all, so both signed defaults have to be filled in.
+    delta: sint
+    # An integer with a unit and a scale.
+    freq: uint(hertz, scale 3)
+    # An integer with a unit and no scale.
+    size: uint(bytes)
+    # An enum.
+    mode: mode
+    # A flags.
+    quirks: quirks
+    # One byte, and nothing a bound or a unit could apply to.
+    flag: bool
+    # A string bounded on both sides.
+    text: string(1..15)
+    # A binary of one length.
+    fixed: binary(8)
+    # A binary bounded on both sides.
+    bounded: binary(4..64)
+
+  # Placed wherever a key or a pair is, with one type everywhere.
+  u: uint(1..4096)
+  # Placed as u is, and signed.
+  s: sint(-100..100)
+
+  # The two fields above as one named record.
+  scalar-pair:
+    u: record
+    s: record
+
+ops:
+  # Answers with nothing.
+  noop:
+    type: action
+    fd-access: read
+
+  # The two ops a device may take away, one of each executable type.
+  scalars-set:
+    type: action
+    availability: dynamic
+    request: record scalar
+    reply:
+      u: record
+
+  # The one op with a hook pair of its own, inherited by ctlv-fixture-child.
+  counts-get:
+    type: query
+    fd-access: read
+    availability: dynamic
+    pre-post: true
+    request:
+      # An integer that may occur three times.
+      few[3]?: uint
+      # An enum.
+      mode?: mode
+      # A named record that may occur twice.
+      request[2]?: record scalar-pair
+      # An enum a header numbers.
+      algo?: hash-algo
+      # An integer that may occur once per value of an enum.
+      per-mode[mode]?: uint
+      # Each value of the header's enum, at most once.
+      algos[hash-algo]?: hash-algo
+    reply:
+      # An integer that may occur as often as the reply has room.
+      many[]: uint
+
+  # A record chain with unlimited fields at more than one depth, so that a reply
+  # has somewhere to stop fragmenting, plus an extension point.
+  records-dump:
+    type: query
+    suggested-reply-length: 4K
+    reply:
+      # A record in place that occurs twice.
+      level1[2]:
+        u: record
+        # A record in place one level in, unlimited.
+        level2[]?:
+          u: record
+          # A named record two levels in, unlimited.
+          level3[]?: record scalar-pair
+      # Filled by ctlv-fixture-child.
+      extension?: extension extension-point
+
+  # A blob of each direction, and one that may occur three times.
+  blobs-submit:
+    type: action
+    request:
+      # Memory of the caller, which the device reads.
+      input-va: blob(in, ..4K, va)
+      # A memfd or a dma-buf at a page, which the device writes.
+      output-fd: blob(out, ..1M, align 4K, memfd dma-buf)
+      # Any backing at eight bytes, which the device reads and writes.
+      inout-any?: blob(inout, ..64K, align 8, va memfd dma-buf)
+      # Memory of the caller, up to three blobs of it.
+      pieces[3]?: blob(in, ..4K, va)
+
+  # Optional without being dynamic, the other half of the pairing the child
+  # fixture's own optional op covers. Validation tests build on its request.
+  optional-check:
+    type: action
+    optional: true
+    request:
+      u: record
+      # An enum.
+      mode?: mode
+      # An enum whose values the device's family gives.
+      variant?: variant
+
+  # An event carrying scalar-pair's fields.
+  thing-changed:
+    type: event
+    payload:
+      $include: scalar-pair
+
+  # An event carrying nothing.
+  pinged:
+    type: event

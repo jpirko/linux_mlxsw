@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: count quirks is not an enum
+family: ctlv-bad-count-flags
+inherits: ctlv
+
+flags:
+  quirks: [slow]
+
+ops:
+  set:
+    type: action
+    request:
+      ids[quirks]: uint

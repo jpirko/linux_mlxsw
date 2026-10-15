@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: field id: needs a comment right above it, which is its documentation
+# Everything but one request field says what it is.
+family: ctlv-bad-undocumented
+inherits: ctlv
+
+ops:
+  # Takes one field, which has no comment.
+  set:
+    type: action
+    request:
+      id: uint

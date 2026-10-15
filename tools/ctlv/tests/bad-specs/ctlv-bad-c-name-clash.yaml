@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: thing.sub-id and thing-sub.id would both be named thing-sub-id
+family: ctlv-bad-c-name-clash
+inherits: ctlv
+
+records:
+  thing:
+    sub-id: uint
+
+  thing-sub:
+    id: uint
+
+ops:
+  get:
+    type: action
+    request: record thing
+
+  sub-get:
+    type: action
+    request: record thing-sub

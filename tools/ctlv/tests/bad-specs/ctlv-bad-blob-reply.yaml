@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: get data is a blob, which only a request may contain
+family: ctlv-bad-blob-reply
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      id: uint
+    reply:
+      data: blob(out, ..4K, va)

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: a valid parent for the inheritance cases
+family: ctlv-bad-base
+inherits: ctlv
+
+enums:
+  # Where a child adds its values.
+  base-variant: extension
+
+ops:
+  # Takes a field and extension points a child may fill.
+  base-get:
+    type: action
+    request:
+      # The parent's one field.
+      thing: uint
+      # Where a child adds its fields.
+      extension?: extension base-extension
+      # An enum whose values a child gives.
+      variant?: base-variant

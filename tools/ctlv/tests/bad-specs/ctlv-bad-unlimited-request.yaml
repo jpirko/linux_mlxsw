@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: request: get many has no count limit, which only a query reply may contain
+family: ctlv-bad-unlimited-request
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      many[]: uint

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a count belongs to a field, and this is a record
+family: ctlv-bad-record-count
+inherits: ctlv
+
+records:
+  thing[2]:
+    id: uint
+
+ops:
+  get:
+    type: action
+    request: record thing

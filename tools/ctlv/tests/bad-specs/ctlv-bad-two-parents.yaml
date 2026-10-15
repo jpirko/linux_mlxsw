@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: is not of type 'string'
+# There is no syntax for a second parent, so the meta-schema refuses it.
+family: ctlv-bad-two-parents
+inherits: [ctlv-bad-base, ctlv-bad-other]

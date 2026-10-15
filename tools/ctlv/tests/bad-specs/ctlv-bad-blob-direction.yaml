@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a blob starts with its direction, in, out or inout
+family: ctlv-bad-blob-direction
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      data: blob(..4K, va)

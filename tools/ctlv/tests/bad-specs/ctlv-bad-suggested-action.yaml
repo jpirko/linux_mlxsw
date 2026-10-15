@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: suggested-reply-length is only valid on a query op
+family: ctlv-bad-suggested-action
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    suggested-reply-length: 4K
+    reply:
+      id: uint

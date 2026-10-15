@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# fixture: an unrelated family, named by the two-parents case
+family: ctlv-bad-other
+inherits: ctlv
+
+ops:
+  # Answers with one field.
+  other-get:
+    type: query
+    reply:
+      # The one field.
+      thing: uint

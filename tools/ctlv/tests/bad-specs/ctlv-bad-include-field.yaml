@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: $include splices a named record, and serial is a field of records:
+family: ctlv-bad-include-field
+inherits: ctlv
+
+records:
+  serial: uint
+
+ops:
+  get:
+    type: action
+    request:
+      $include: serial

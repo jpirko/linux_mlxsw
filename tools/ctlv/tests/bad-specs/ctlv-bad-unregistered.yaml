@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: not registered in
+family: ctlv-bad-unregistered
+inherits: ctlv
+
+ops:
+  get:
+    type: query
+    reply:
+      id: uint

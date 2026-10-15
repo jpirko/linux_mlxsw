@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: no inherited extension point is called spare, and nothing in ctlv-bad-unused-record
+family: ctlv-bad-unused-record
+inherits: ctlv
+
+records:
+  spare:
+    id: uint
+
+ops:
+  get:
+    type: query
+    reply:
+      id: uint

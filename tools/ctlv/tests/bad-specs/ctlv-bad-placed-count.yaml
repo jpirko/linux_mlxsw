@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a field of records: takes its count from its declaration, not where it is placed
+family: ctlv-bad-placed-count
+inherits: ctlv
+
+records:
+  serial: uint
+
+ops:
+  get:
+    type: action
+    request:
+      serial[2]: record

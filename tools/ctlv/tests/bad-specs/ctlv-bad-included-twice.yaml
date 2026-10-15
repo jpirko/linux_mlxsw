@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: common.id is in get request twice
+family: ctlv-bad-included-twice
+inherits: ctlv
+
+records:
+  common:
+    id: uint
+
+ops:
+  get:
+    type: action
+    request:
+      $include: [common, common]

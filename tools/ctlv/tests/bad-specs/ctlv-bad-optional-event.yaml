@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: optional is only valid on an action or a query op
+family: ctlv-bad-optional-event
+inherits: ctlv
+
+ops:
+  thing-changed:
+    type: event
+    optional: true
+    payload:
+      id: uint

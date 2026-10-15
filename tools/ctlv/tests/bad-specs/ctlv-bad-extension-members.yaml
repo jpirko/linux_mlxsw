@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: extension-point is a record, which record extension-point holds
+# Members are what a descendant adds, so a record of the same name is a
+# record to hold rather than the members of the extension point.
+family: ctlv-bad-extension-members
+inherits: ctlv
+
+records:
+  extension-point:
+    id: uint
+
+ops:
+  get:
+    type: query
+    reply:
+      more?: extension extension-point

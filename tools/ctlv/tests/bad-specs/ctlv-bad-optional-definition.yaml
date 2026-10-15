@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a definition cannot be optional; whatever places it says so
+family: ctlv-bad-optional-definition
+inherits: ctlv
+
+records:
+  serial?: uint
+
+ops:
+  get:
+    type: action
+    request:
+      serial: record

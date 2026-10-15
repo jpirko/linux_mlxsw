@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: "nope" is not a schema kind, an enum or flags
+family: ctlv-bad-unknown-enum
+inherits: ctlv
+
+enums:
+  mode: [one]
+
+ops:
+  set:
+    type: action
+    request:
+      mode: nope

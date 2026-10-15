@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: base-extension is declared by ctlv-bad-base; a further one needs a new name
+family: ctlv-bad-base-redeclared
+inherits: ctlv-bad-base
+
+ops:
+  mine-get:
+    type: query
+    reply:
+      more?: extension base-extension

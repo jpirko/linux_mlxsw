@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: already declared by ctlv-bad-base-filled
+family: ctlv-bad-base-filled-record-clash
+inherits: ctlv-bad-base-filled
+
+records:
+  filled-key:
+    id: uint
+
+ops:
+  mine-get:
+    type: query
+    reply: record filled-key

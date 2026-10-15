@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: no record is called nope
+family: ctlv-bad-unknown-record
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request: record nope

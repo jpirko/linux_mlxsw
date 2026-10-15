@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: node.self re-enters node, so it has no maximum length
+family: ctlv-bad-recursive-request
+inherits: ctlv
+
+records:
+  node:
+    leaf: uint
+    self[4]?: record node
+
+ops:
+  get:
+    type: action
+    request: record node

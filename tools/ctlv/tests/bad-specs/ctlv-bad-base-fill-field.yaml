@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a fill is a record, not a field of records:
+family: ctlv-bad-base-fill-field
+inherits: ctlv-bad-base
+
+records:
+  base-extension: uint

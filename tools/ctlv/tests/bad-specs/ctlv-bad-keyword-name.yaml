@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: "string" is a keyword of the spec language, so no enum is called that
+# A field names an enum bare, so an enum cannot share a schema kind's name.
+family: ctlv-bad-keyword-name
+inherits: ctlv
+
+enums:
+  string: [short, long]

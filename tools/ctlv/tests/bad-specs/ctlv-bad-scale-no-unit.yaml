@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: scale requires a unit
+family: ctlv-bad-scale-no-unit
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      interval: uint(scale -3)

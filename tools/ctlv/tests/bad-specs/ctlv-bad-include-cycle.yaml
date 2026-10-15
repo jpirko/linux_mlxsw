@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: record cycle: first -> second -> first
+family: ctlv-bad-include-cycle
+inherits: ctlv
+
+records:
+  first:
+    id: uint
+    $include: second
+
+  second:
+    $include: first
+
+ops:
+  get:
+    type: action
+    request: record first

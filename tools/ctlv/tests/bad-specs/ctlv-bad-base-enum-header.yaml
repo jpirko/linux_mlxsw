@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a fill numbers its own values, which a header cannot
+family: ctlv-bad-base-enum-header
+inherits: ctlv-bad-base
+
+enums:
+  base-variant:
+    $header: linux/hash_info.h
+    $enum: hash_algo

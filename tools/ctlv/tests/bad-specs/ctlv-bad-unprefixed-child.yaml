@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: must be named ctlv-bad-base-<suffix>
+family: ctlv-bad-unprefixed-child
+inherits: ctlv-bad-base
+
+ops:
+  mine-get:
+    type: query
+    reply:
+      thing: uint

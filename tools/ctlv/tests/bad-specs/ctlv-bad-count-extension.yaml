@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: count variant is an enum extension point
+family: ctlv-bad-count-extension
+inherits: ctlv
+
+enums:
+  variant: extension
+
+ops:
+  set:
+    type: action
+    request:
+      ids[variant]: uint

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a bool takes no bounds
+family: ctlv-bad-bool-bounds
+inherits: ctlv
+
+ops:
+  thing-set:
+    type: action
+    request:
+      enabled: bool(0..1)

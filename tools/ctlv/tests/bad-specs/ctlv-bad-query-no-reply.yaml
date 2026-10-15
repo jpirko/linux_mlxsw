@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a query op must declare a reply
+family: ctlv-bad-query-no-reply
+inherits: ctlv
+
+ops:
+  dump:
+    type: query
+    request:
+      id: uint

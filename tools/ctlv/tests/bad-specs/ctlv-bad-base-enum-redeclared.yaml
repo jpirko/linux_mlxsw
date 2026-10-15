@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: enum extension point base-variant is declared by ctlv-bad-base; a further one needs a new name
+family: ctlv-bad-base-enum-redeclared
+inherits: ctlv-bad-base
+
+enums:
+  base-variant: extension

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: suggested-reply-length 262144 exceeds the 131072 byte inline message limit
+family: ctlv-bad-suggested-large
+inherits: ctlv
+
+ops:
+  dump:
+    type: query
+    suggested-reply-length: 256K
+    reply:
+      ids[]: uint

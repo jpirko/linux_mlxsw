@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: re-enters a record and holds an extension point
+family: ctlv-bad-reentry-extension
+inherits: ctlv
+
+records:
+  node:
+    id: uint
+    more?: extension node-more
+    child[]?: record node
+
+ops:
+  get:
+    type: query
+    reply: record node

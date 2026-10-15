@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: enum extension point base-variant was already filled by family ctlv-bad-base-filled
+family: ctlv-bad-base-filled-enum-refill
+inherits: ctlv-bad-base-filled
+
+enums:
+  base-variant:
+    - again

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: more than 15 unnamed records side by side in
+family: ctlv-bad-unnamed-peers
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      peer-00:
+        id: uint
+      peer-01:
+        id: uint
+      peer-02:
+        id: uint
+      peer-03:
+        id: uint
+      peer-04:
+        id: uint
+      peer-05:
+        id: uint
+      peer-06:
+        id: uint
+      peer-07:
+        id: uint
+      peer-08:
+        id: uint
+      peer-09:
+        id: uint
+      peer-10:
+        id: uint
+      peer-11:
+        id: uint
+      peer-12:
+        id: uint
+      peer-13:
+        id: uint
+      peer-14:
+        id: uint
+      peer-15:
+        id: uint

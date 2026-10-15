@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: count nope is not an enum
+family: ctlv-bad-count-unknown
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      ids[nope]: uint

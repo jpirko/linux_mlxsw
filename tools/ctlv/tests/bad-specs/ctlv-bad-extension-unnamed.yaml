@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: extension needs the name of its extension point
+family: ctlv-bad-extension-unnamed
+inherits: ctlv
+
+ops:
+  get:
+    type: query
+    reply:
+      more?: extension

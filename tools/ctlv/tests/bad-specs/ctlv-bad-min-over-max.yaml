@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: minimum 5 is greater than maximum 1
+family: ctlv-bad-min-over-max
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      id: uint(5..1)

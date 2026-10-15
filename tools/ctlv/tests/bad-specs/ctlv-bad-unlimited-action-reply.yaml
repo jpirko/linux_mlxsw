@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: action reply: get many has no count limit
+family: ctlv-bad-unlimited-action-reply
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      id: uint
+    reply:
+      many[]: uint

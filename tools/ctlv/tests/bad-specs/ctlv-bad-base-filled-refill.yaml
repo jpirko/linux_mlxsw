@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: extension point was already filled by family ctlv-bad-base-filled
+family: ctlv-bad-base-filled-refill
+inherits: ctlv-bad-base-filled
+
+records:
+  base-extension:
+    again: uint

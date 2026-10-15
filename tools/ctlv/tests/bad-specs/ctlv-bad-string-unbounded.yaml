@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a string needs a maximum length, as string(..N)
+family: ctlv-bad-string-unbounded
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      label: string

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: is not of type 'array'
+# Only an enum can be an extension point.
+family: ctlv-bad-flags-extension
+inherits: ctlv
+
+flags:
+  quirks: extension

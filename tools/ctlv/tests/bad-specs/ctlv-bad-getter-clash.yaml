@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: foo-bar baz-x and foo bar-baz-x would both be named foo-bar-baz-x
+# An op name and a field name may spell the same C identifier.
+family: ctlv-bad-getter-clash
+inherits: ctlv
+
+ops:
+  foo-bar:
+    type: action
+    request:
+      baz-x: uint
+
+  foo:
+    type: action
+    request:
+      bar-baz-x: uint

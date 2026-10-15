@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a fill cannot re-enter a record
+family: ctlv-bad-base-fill-reenters
+inherits: ctlv-bad-base
+
+records:
+  base-extension:
+    id: uint
+    again[2]?: record base-extension

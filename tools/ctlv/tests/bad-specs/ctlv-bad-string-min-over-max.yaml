@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: minimum length 20 is greater than maximum length 10
+family: ctlv-bad-string-min-over-max
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      label: string(20..10)

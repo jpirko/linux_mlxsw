@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: enum mode value one: needs a comment of its own right above it
+# The values share the line of their enum, so its comment is the enum's alone.
+family: ctlv-bad-undocumented-value
+inherits: ctlv
+
+enums:
+  # Two values on one line.
+  mode: [one, two]

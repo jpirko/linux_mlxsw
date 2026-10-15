@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: pre-post is only valid on an action or a query op
+family: ctlv-bad-pre-post-event
+inherits: ctlv
+
+ops:
+  thing-changed:
+    type: event
+    pre-post: true
+    payload:
+      id: uint

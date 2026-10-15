@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: blob length 4095 is not a multiple of alignment 4K
+family: ctlv-bad-blob-max-length
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      data: blob(in, ..4095, align 4K, memfd)

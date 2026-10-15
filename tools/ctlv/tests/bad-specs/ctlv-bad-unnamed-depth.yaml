@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: unnamed records go more than 4 deep below
+family: ctlv-bad-unnamed-depth
+inherits: ctlv
+
+ops:
+  get:
+    type: action
+    request:
+      one:
+        two:
+          three:
+            four:
+              five:
+                id: uint

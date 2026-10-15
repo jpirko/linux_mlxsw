@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: bare record places a field of records:, and node is a record
+family: ctlv-bad-place-record
+inherits: ctlv
+
+records:
+  node:
+    leaf: uint
+
+ops:
+  get:
+    type: query
+    reply:
+      node: record

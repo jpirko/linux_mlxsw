@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: an event has no request; its one record is payload:
+family: ctlv-bad-event-request
+inherits: ctlv
+
+ops:
+  happened:
+    type: event
+    request:
+      id: uint
+    payload:
+      id: uint

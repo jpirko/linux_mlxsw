@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: op "base-get" is already declared
+family: ctlv-bad-base-op-clash
+inherits: ctlv-bad-base
+
+ops:
+  base-get:
+    type: action
+    request:
+      id: uint

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: None is not valid under any of the given schemas
+family: ctlv-bad-no-schema-kind
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      ids[2]:

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: request needs 131088 bytes, more than the 131072 byte inline
+family: ctlv-bad-request-too-long
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      chunk[2]: binary(..65520)

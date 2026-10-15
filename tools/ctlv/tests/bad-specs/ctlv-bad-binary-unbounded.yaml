@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a binary needs a maximum length, as binary(..N)
+family: ctlv-bad-binary-unbounded
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      opaque: binary(4..)

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: "3..4" is not a range, a unit or a scale, or is given twice
+family: ctlv-bad-range-twice
+inherits: ctlv
+
+ops:
+  set:
+    type: action
+    request:
+      id: uint(1..2, 3..4)

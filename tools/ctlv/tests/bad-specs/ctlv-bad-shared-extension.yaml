@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: a field of records: is shared by name, and an extension point is not shared
+family: ctlv-bad-shared-extension
+inherits: ctlv
+
+records:
+  more: extension more-info
+
+ops:
+  get:
+    type: query
+    reply:
+      more?: record

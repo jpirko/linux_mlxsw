@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: more-info is an extension point, which extension names
+family: ctlv-bad-record-of-extension
+inherits: ctlv
+
+ops:
+  get:
+    type: query
+    reply:
+      more?: extension more-info
+
+  other-get:
+    type: query
+    reply:
+      again?: record more-info

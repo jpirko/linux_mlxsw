@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# expect: is not of type 'array'
+# Only an enum can come from a header.
+family: ctlv-bad-flags-header
+inherits: ctlv
+
+flags:
+  quirks:
+    $header: linux/hash_info.h
+    $enum: hash_algo
