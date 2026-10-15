@@ -326,6 +326,47 @@ bool ctlv_attr_bool(const struct ctlv_cursor *cursor);
 const char *ctlv_attr_string(const struct ctlv_cursor *cursor);
 const void *ctlv_attr_binary(const struct ctlv_cursor *cursor, u32 *len);
 
+bool ctlv_put_u64(struct ctlv_cursor *nest, u64 attr_id, u8 kind, u64 value);
+bool ctlv_put_s64(struct ctlv_cursor *nest, u64 attr_id, u8 kind, s64 value);
+bool ctlv_put_bool(struct ctlv_cursor *nest, u64 attr_id, u8 kind, bool value);
+bool ctlv_put_string(struct ctlv_cursor *nest, u64 attr_id, u8 kind,
+		     const char *value);
+bool ctlv_put_binary(struct ctlv_cursor *nest, u64 attr_id, u8 kind,
+		     const void *value, u32 len);
+bool ctlv_nest_start(struct ctlv_cursor *nest, struct ctlv_cursor *child,
+		     u64 attr_id, u8 kind);
+
+#define __CTLV_DEFINE_PUT(_name, _type, _put_fn, _attr_id, _kind) \
+static inline bool _name##_put(struct ctlv_cursor *nest,		\
+			       _type value)			\
+{								\
+	return _put_fn(nest, (_attr_id), (_kind), value);		\
+}
+
+#define CTLV_PUT_U64(_name, _attr_id, _kind)			\
+	__CTLV_DEFINE_PUT(_name, u64, ctlv_put_u64, _attr_id, _kind)
+#define CTLV_PUT_S64(_name, _attr_id, _kind)			\
+	__CTLV_DEFINE_PUT(_name, s64, ctlv_put_s64, _attr_id, _kind)
+#define CTLV_PUT_BOOL(_name, _attr_id, _kind)			\
+	__CTLV_DEFINE_PUT(_name, bool, ctlv_put_bool, _attr_id, _kind)
+#define CTLV_PUT_STRING(_name, _attr_id, _kind)			\
+	__CTLV_DEFINE_PUT(_name, const char *, ctlv_put_string,	\
+			  _attr_id, _kind)
+
+#define CTLV_PUT_BINARY(_name, _attr_id, _kind)			\
+static inline bool _name##_put(struct ctlv_cursor *nest,		\
+			       const void *value, u32 len)		\
+{								\
+	return ctlv_put_binary(nest, (_attr_id), (_kind), value, len); \
+}
+
+#define CTLV_NEST_START(_name, _attr_id, _kind)			\
+static inline bool _name##_start(struct ctlv_cursor *nest,	\
+				 struct ctlv_cursor *nested)	\
+{								\
+	return ctlv_nest_start(nest, nested, (_attr_id), (_kind));	\
+}
+
 #define CTLV_IN_REF(_name, _tree, _attr_id, _node, _slot, _kind) \
 static inline struct ctlv_input_ref _name##_ref(void)		\
 {								\

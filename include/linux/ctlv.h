@@ -52,4 +52,75 @@ struct ctlv_cursor {
 	u32 index_scope;
 };
 
+/**
+ * ctlv_nest_end - Finish an output nest.
+ * @child: nest cursor returned by a generated start helper
+ */
+void ctlv_nest_end(struct ctlv_cursor *child);
+
+/**
+ * ctlv_op_error - Record an operation error message.
+ * @ctx: operation context
+ * @error: negative error to return
+ * @message: message copied into the operation result
+ *
+ * Return: @error, or -EINVAL if @error is invalid.
+ */
+int ctlv_op_error(struct ctlv_op_ctx *ctx, int error, const char *message);
+
+/**
+ * ctlv_op_errorf - Format an operation error message.
+ * @ctx: operation context
+ * @error: negative error to return
+ * @fmt: printf format and arguments
+ *
+ * Return: @error, or -EINVAL if @error is invalid.
+ */
+__printf(3, 4)
+int ctlv_op_errorf(struct ctlv_op_ctx *ctx, int error, const char *fmt, ...);
+
+/*
+ * The core retains no query state. A continuation repeats the request and
+ * passes back the family's generation and nonzero cursor. It fails with
+ * -ESTALE if the generation changed. Each fragment must complete a logical
+ * leaf and return a cursor different from its input.
+ *
+ * ctlv_op_query_more() marks still-open nests, whose cursors must remain live.
+ */
+/**
+ * ctlv_op_query_generation - Get a query continuation generation.
+ * @ctx: query operation context
+ *
+ * Return: generation supplied by the previous fragment, or zero initially.
+ */
+u64 ctlv_op_query_generation(const struct ctlv_op_ctx *ctx);
+
+/**
+ * ctlv_op_query_cursor - Get a query continuation cursor.
+ * @ctx: query operation context
+ *
+ * Return: cursor supplied by the previous fragment, or zero initially.
+ */
+u64 ctlv_op_query_cursor(const struct ctlv_op_ctx *ctx);
+
+/**
+ * ctlv_op_query_more - Complete a query fragment with more data pending.
+ * @ctx: query operation context
+ * @generation: current data generation
+ * @next_cursor: nonzero cursor for the next fragment
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_op_query_more(struct ctlv_op_ctx *ctx, u64 generation,
+		       u64 next_cursor);
+
+/**
+ * ctlv_op_query_done - Complete the last query fragment.
+ * @ctx: query operation context
+ * @generation: current data generation
+ *
+ * Return: 0, or a negative error.
+ */
+int ctlv_op_query_done(struct ctlv_op_ctx *ctx, u64 generation);
+
 #endif /* _LINUX_CTLV_H */
