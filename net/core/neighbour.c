@@ -3593,6 +3593,13 @@ static void __neigh_notify(struct neighbour *n, int type, int flags,
 	int err = -ENOBUFS;
 	struct net *net;
 
+	/* An attempt to send anything but RTM_DELNEIGH on a dead neighbor
+	 * indicates that the neighbor was marked dead while another update
+	 * gave the lock up for a bit. Do not send such notifications.
+	 */
+	if (n->dead && type != RTM_DELNEIGH)
+		return;
+
 	rcu_read_lock();
 	net = dev_net_rcu(n->dev);
 	skb = nlmsg_new(neigh_nlmsg_size(), GFP_ATOMIC);
