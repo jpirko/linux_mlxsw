@@ -313,7 +313,7 @@ int ctlv_attestation_evidence_get_action(struct ctlv *ctlv, struct ctlv_op_ctx *
 	}
 	if (ret)
 		goto out;
-	if (mr_dependent && !ctlv_attestation_mr_generation_put(reply, att->mr_generation)) {
+	if (mr_dependent && !ctlv_attestation_mr_generation_put(reply, att->log->generation)) {
 		ret = -EMSGSIZE;
 		goto out;
 	}
@@ -337,7 +337,7 @@ int ctlv_attestation_mr_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	struct ctlv_cursor inner;
 	unsigned long id, first = 0, last = UINT_MAX;
 	u64 cursor = ctlv_op_query_cursor(ctx);
-	unsigned int generation = att->mr_generation;
+	unsigned int generation = att->log->generation;
 	bool progress = false;
 	int ret;
 
@@ -407,7 +407,7 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	int ret;
 
 	if (ctlv_op_query_cursor(ctx) &&
-	    ctlv_op_query_generation(ctx) != att->mr_generation)
+	    ctlv_op_query_generation(ctx) != att->mr_read_generation)
 		return -ESTALE;
 	id = ctlv_attestation_mr_read_id_get(request);
 	mr = attestation_mr_lookup_live(att, id);
@@ -423,14 +423,14 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	ret = att->provider->mr_read(att, mr->props->id, &values);
 	if (!ret)
 		ret = attestation_mr_values_validate(mr->props, &values, true);
-	if (!ret && !ctlv_attestation_mr_generation_put(reply, att->mr_generation))
+	if (!ret && !ctlv_attestation_mr_generation_put(reply, att->log->generation))
 		ret = -EMSGSIZE;
 	if (!ret)
 		ret = attestation_mr_values_put(reply, &values);
 	kfree(values.values);
 	if (ret)
 		return ret;
-	return ctlv_op_query_done(ctx, att->mr_generation);
+	return ctlv_op_query_done(ctx, att->mr_read_generation);
 }
 
 static int attestation_mr_extend_decode(const struct ctlv_cursor *request,
@@ -472,6 +472,8 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 				      const struct ctlv_cursor *request, struct ctlv_cursor *reply)
 {
 	struct attestation_digest_set values = {};
+	struct attestation_mr_change *change;
+	const struct attestation_mr_log_entry *entry;
 	struct attestation_dev *att = attestation_from_ctlv(ctlv);
 	struct attestation_mr *mr;
 	u64 id;
@@ -490,10 +492,109 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	ret = attestation_mr_values_validate(mr->props, &values, false);
 	if (ret)
 		goto out_values;
-	ret = attestation_mr_extend_locked(att, mr, &values);
-	if (!ret && !ctlv_attestation_mr_generation_put(reply, att->mr_generation))
+	change = attestation_mr_change_prepare(att, mr, &values);
+	if (IS_ERR(change)) {
+		ret = PTR_ERR(change);
+		goto out_values;
+	}
+
+	entry = attestation_mr_extend_locked(att, change);
+	if (IS_ERR(entry))
+		ret = PTR_ERR(entry);
+	else if (!ctlv_attestation_mr_generation_put(reply, entry->mr_generation))
 		ret = -EMSGSIZE;
+	attestation_mr_change_free(change);
+
 out_values:
 	kfree(values.values);
 	return ret;
+}
+
+static bool attestation_log_selected(const unsigned int *ids, size_t count, unsigned int id)
+{
+	size_t index;
+
+	if (!count)
+		return true;
+	for (index = 0; index < count; index++)
+		if (ids[index] == id)
+			return true;
+	return false;
+}
+
+int ctlv_attestation_mr_log_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+				      const struct ctlv_cursor *request, struct ctlv_cursor *reply)
+{
+	struct attestation_dev *att = attestation_from_ctlv(ctlv);
+	struct attestation_mr_log_entry *entry;
+	struct ctlv_cursor item, inner;
+	unsigned int ids[256];
+	size_t ids_count = 0, index;
+	unsigned int start, end;
+	unsigned long xa_index;
+	u64 boundary;
+	u64 cursor = ctlv_op_query_cursor(ctx);
+	bool progress = false;
+	int ret;
+
+	ctlv_attestation_mr_log_get_selection_for_each(&item, request)
+	{
+		u64 id = ctlv_attestation_mr_log_get_selection_id_get(&item);
+
+		for (index = 0; index < ids_count; index++)
+			if (ids[index] == id)
+				return -EINVAL;
+		if (WARN_ON_ONCE(ids_count == ARRAY_SIZE(ids)))
+			return -EINVAL;
+		ids[ids_count++] = id;
+	}
+
+	if (cursor)
+		boundary = ctlv_op_query_generation(ctx);
+	else
+		boundary = att->log->generation;
+	if (boundary > UINT_MAX || boundary > att->log->generation)
+		return -ESTALE;
+
+	end = boundary;
+	if (ctlv_attestation_mr_end_generation_present(request)) {
+		u64 requested_end = ctlv_attestation_mr_end_generation_get(request);
+
+		end = min_t(u64, end, requested_end);
+	}
+
+	start = 1;
+	if (ctlv_attestation_mr_start_generation_present(request))
+		start = ctlv_attestation_mr_start_generation_get(request);
+	if (att->log->generation && start > end)
+		return -EINVAL;
+
+	if (!cursor && att->log->generation) {
+		if (!ctlv_attestation_mr_start_generation_put(reply, start) ||
+		    !ctlv_attestation_mr_end_generation_put(reply, end))
+			return -EMSGSIZE;
+		progress = true;
+	}
+
+	xa_for_each_range(&att->log->entries, xa_index, entry, cursor ? cursor : start, end) {
+		if (!attestation_log_selected(ids, ids_count, entry->mr_id))
+			continue;
+		if (!ctlv_attestation_mr_log_get_entries_start(reply, &inner))
+			break;
+		ret = attestation_mr_log_entry_encode(&inner, entry);
+		if (ret == -EMSGSIZE) {
+			ctlv_record_cancel(&inner);
+			break;
+		}
+		ctlv_record_end(&inner);
+		if (ret)
+			return ret;
+		progress = true;
+	}
+
+	if (!entry)
+		return ctlv_op_query_done(ctx, boundary);
+	if (!progress)
+		return -EMSGSIZE;
+	return ctlv_op_query_more(ctx, boundary, entry->mr_generation);
 }

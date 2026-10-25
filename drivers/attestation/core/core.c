@@ -216,7 +216,8 @@ bool attestation_registered(struct attestation_dev *att)
 void attestation_mr_changed(struct attestation_dev *att)
 {
 	lockdep_assert_held(&att->lock);
-	att->mr_generation++;
+	att->log->generation++;
+	att->mr_read_generation++;
 }
 
 void attestation_stop(struct attestation_dev *att)
@@ -293,6 +294,7 @@ void attestation_provide_ops(struct attestation_dev *att)
 
 	if (provider->mrs_count) {
 		ctlv_attestation_mr_get_provide(ctlv);
+		ctlv_attestation_mr_log_get_provide(ctlv);
 		ctlv_attestation_mr_read_provide(ctlv);
 		if (provider->mr_extend)
 			ctlv_attestation_mr_extend_provide(ctlv);
@@ -324,6 +326,7 @@ static void attestation_state_free(struct attestation_dev *att)
 		xa_erase(&att->mrs, index);
 		kfree(mr);
 	}
+	attestation_mr_log_free(att->log);
 	xa_destroy(&att->mrs);
 	mutex_destroy(&att->lock);
 }
@@ -437,6 +440,10 @@ int attestation_register(struct attestation_dev *att)
 	if (ret)
 		return ret;
 	ctlv_publish(&att->ctlv);
+
+	ret = attestation_mr_log_init(att);
+	if (ret)
+		goto err_withdraw;
 	xa_lock(&attestation_instances);
 	__xa_set_mark(&attestation_instances, att->index, ATTESTATION_REGISTERED);
 	xa_unlock(&attestation_instances);

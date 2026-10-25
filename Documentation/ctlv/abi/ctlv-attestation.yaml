@@ -12,6 +12,7 @@ family: {name: ctlv-attestation, id: 1, inherits: ctlv}
 enums:
   evidence-class: {signed: 1, event-log: 2}
   evidence-format: {ccel: 1}
+  mr-log-event: {info: 1, extend: 2}
   hash-algo: {$header: linux/hash_info.h, $enum: hash_algo,
               $end: HASH_ALGO__LAST}
 flags:
@@ -39,6 +40,29 @@ records:
     id: 0x00040000
     fields:
       mr-values: {number: 1, record: mr-value, max-occurrences: hash-algo}
+  mr-log-entry:
+    id: 0x00050000
+    fields:
+      mr-id: {number: 1, type: uint, max: u32-max}
+      event: {number: 2, enum: mr-log-event}
+      mr: {number: 3, record: mr-log-entry.mr, optional: true}
+    members: [record mr-generation, 'record mr-values?']
+  mr-log-entry.mr:
+    id: 0x00051000
+    fields:
+      name: {number: 1, type: string, min-length: 1, max-length: 128}
+      supported-hash-algorithms: {number: 2, enum: hash-algo,
+                                  max-occurrences: hash-algo}
+      caps: {number: 3, flags: mr-caps}
+      register-index: {number: 4, type: uint, max: u32-max, optional: true}
+  mr-start-generation:
+    id: 0x00060000
+    fields:
+      mr-start-generation: {number: 1, type: uint, max: u32-max}
+  mr-end-generation:
+    id: 0x00070000
+    fields:
+      mr-end-generation: {number: 1, type: uint, max: u32-max}
   device-get request:
     id: 0x80010000
   device-get reply:
@@ -132,6 +156,26 @@ records:
   mr-extend reply:
     id: 0xc0050000
     members: [record mr-generation]
+  mr-log-entry-appended payload:
+    id: 0xc0060000
+    fields:
+      entry: {number: 1, record: mr-log-entry}
+  mr-log-get request:
+    id: 0x80070000
+    fields:
+      selection: {number: 1, record: mr-log-get selection, max-occurrences: 256,
+                  optional: true}
+    members: ['record mr-start-generation?', 'record mr-end-generation?']
+  mr-log-get selection:
+    id: 0x80071000
+    fields:
+      id: {number: 1, type: uint, max: u32-max}
+  mr-log-get reply:
+    id: 0xc0070000
+    fields:
+      entries: {number: 1, record: mr-log-entry, max-occurrences: unlimited,
+                optional: true}
+    members: ['record mr-start-generation?', 'record mr-end-generation?']
 extensions: {device-info: 1}
 enum-extensions: {evidence-vendor-format: 1}
 ops:
@@ -145,3 +189,7 @@ ops:
             request: mr-read request, reply: mr-read reply}
   mr-extend: {id: 5, type: action, optional: true, request: mr-extend request,
               reply: mr-extend reply}
+  mr-log-entry-appended: {id: 6, type: event,
+                          payload: mr-log-entry-appended payload}
+  mr-log-get: {id: 7, type: query, fd-access: read, optional: true,
+               request: mr-log-get request, reply: mr-log-get reply}

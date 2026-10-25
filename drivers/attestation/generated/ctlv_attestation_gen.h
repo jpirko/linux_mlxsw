@@ -40,6 +40,8 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				   const struct ctlv_cursor *request, struct ctlv_cursor *reply);
 int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				      const struct ctlv_cursor *request, struct ctlv_cursor *reply);
+int ctlv_attestation_mr_log_get_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
+				      const struct ctlv_cursor *request, struct ctlv_cursor *reply);
 
 extern const struct ctlv_family ctlv_attestation_family;
 
@@ -52,6 +54,7 @@ CTLV_OP_DISABLE(ctlv_attestation_evidence_get, CTLV_ATTESTATION_OP_EVIDENCE_GET)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_get, CTLV_ATTESTATION_OP_MR_GET)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_read, CTLV_ATTESTATION_OP_MR_READ)
 CTLV_OP_PROVIDE(ctlv_attestation_mr_extend, CTLV_ATTESTATION_OP_MR_EXTEND)
+CTLV_OP_PROVIDE(ctlv_attestation_mr_log_get, CTLV_ATTESTATION_OP_MR_LOG_GET)
 
 /* Reading a validated message. A blob has a resolver instead of a getter. */
 /* The objects to produce, each named once. */
@@ -106,6 +109,26 @@ CTLV_IN_U64(ctlv_attestation_mr_value_hash_algo)
 CTLV_IN_REF(ctlv_attestation_mr_value_data, CTLV_ATTESTATION_T_MR_VALUE_DATA, CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_mr_value_data)
 CTLV_IN_BINARY(ctlv_attestation_mr_value_data)
+/* Only these MRs' entries; every MR's without it. */
+CTLV_IN_REF(ctlv_attestation_mr_log_get_selection, CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION,
+	    CTLV_SCHEMA_RECORD)
+#define ctlv_attestation_mr_log_get_selection_for_each(_cursor, _record) \
+	CTLV_IN_FOR_EACH(ctlv_attestation_mr_log_get_selection, _cursor, _record)
+/* An MR's ID. */
+CTLV_IN_REF(ctlv_attestation_mr_log_get_selection_id, CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION_ID,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_mr_log_get_selection_id)
+CTLV_IN_U64(ctlv_attestation_mr_log_get_selection_id)
+/* The first MR generation of the range mr-log-get selects and reports. */
+CTLV_IN_REF(ctlv_attestation_mr_start_generation, CTLV_ATTESTATION_T_MR_START_GENERATION,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_mr_start_generation)
+CTLV_IN_U64(ctlv_attestation_mr_start_generation)
+/* The last MR generation of that range. */
+CTLV_IN_REF(ctlv_attestation_mr_end_generation, CTLV_ATTESTATION_T_MR_END_GENERATION,
+	    CTLV_SCHEMA_UINT)
+CTLV_IN_HAS(ctlv_attestation_mr_end_generation)
+CTLV_IN_U64(ctlv_attestation_mr_end_generation)
 
 /* Writing a reply. An append is atomic; a record ends with ctlv_record_end(). */
 /* What the device supports, fixed for its life. */
@@ -199,6 +222,42 @@ CTLV_PUT_U64(ctlv_attestation_mr_value_hash_algo, CTLV_ATTESTATION_T_MR_VALUE_HA
 /* The digest, as long as hash-algo's. */
 CTLV_PUT_BINARY(ctlv_attestation_mr_value_data, CTLV_ATTESTATION_T_MR_VALUE_DATA,
 		CTLV_SCHEMA_BINARY)
+/* The entry, as mr-log-get returns it. */
+CTLV_RECORD_START(ctlv_attestation_mr_log_entry_appended_entry,
+		  CTLV_ATTESTATION_T_MR_LOG_ENTRY_APPENDED_ENTRY, CTLV_SCHEMA_RECORD)
+/* The ID of the MR the entry is about. */
+CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_id, CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_ID,
+	     CTLV_SCHEMA_UINT)
+/* What the entry records. */
+CTLV_PUT_U64(ctlv_attestation_mr_log_entry_event, CTLV_ATTESTATION_T_MR_LOG_ENTRY_EVENT,
+	     CTLV_SCHEMA_ENUM)
+/* The MR an info entry describes. */
+CTLV_RECORD_START(ctlv_attestation_mr_log_entry_mr, CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR,
+		  CTLV_SCHEMA_RECORD)
+/* The platform's name for the MR. */
+CTLV_PUT_STRING(ctlv_attestation_mr_log_entry_mr_name, CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_NAME,
+		CTLV_SCHEMA_STRING)
+/* Its banks, each once, in the provider's order. */
+CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_supported_hash_algorithms,
+	     CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_SUPPORTED_HASH_ALGORITHMS, CTLV_SCHEMA_ENUM)
+/* What it allows. */
+CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_caps, CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_CAPS,
+	     CTLV_SCHEMA_FLAGS)
+/* The hardware's number for the MR, where it has one. */
+CTLV_PUT_U64(ctlv_attestation_mr_log_entry_mr_register_index,
+	     CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_REGISTER_INDEX, CTLV_SCHEMA_UINT)
+/* The first MR generation of the range mr-log-get selects and reports. */
+CTLV_PUT_U64(ctlv_attestation_mr_start_generation, CTLV_ATTESTATION_T_MR_START_GENERATION,
+	     CTLV_SCHEMA_UINT)
+/* The last MR generation of that range. */
+CTLV_PUT_U64(ctlv_attestation_mr_end_generation, CTLV_ATTESTATION_T_MR_END_GENERATION,
+	     CTLV_SCHEMA_UINT)
+/* The entries, in journal order. */
+CTLV_RECORD_START(ctlv_attestation_mr_log_get_entries, CTLV_ATTESTATION_T_MR_LOG_GET_ENTRIES,
+		  CTLV_SCHEMA_RECORD)
+
+/* Building one event, passed to ctlv_event_emit() or ctlv_event_abort() once. */
+CTLV_EVENT_CREATE(ctlv_attestation_mr_log_entry_appended, CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED)
 #endif /* _CTLV_GENERATED_METADATA_ONLY */
 
 #endif /* _LINUX_CTLV_ATTESTATION_GEN_H */

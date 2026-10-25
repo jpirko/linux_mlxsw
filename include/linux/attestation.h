@@ -15,6 +15,7 @@
 #include <uapi/linux/hash_info.h>
 
 struct attestation_dev;
+struct attestation_mr_log;
 struct ctlv_blob;
 struct ctlv_family;
 
@@ -201,11 +202,12 @@ struct attestation_dev {
 	const struct attestation_provider *provider;
 	unsigned int index;
 
-	/* Mutable instance and MR state. */
+	/* Mutable instance, MR, and journal state. */
 	struct mutex lock;
-	unsigned int mr_generation;
+	unsigned int mr_read_generation;
 
 	struct xarray mrs;
+	struct attestation_mr_log *log;
 };
 
 /* What a CTLV callback of a family inheriting ctlv-attestation was handed. */

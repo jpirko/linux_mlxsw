@@ -38,6 +38,14 @@ enum _ctlv_attestation_evidence_format {
 	CTLV_ATTESTATION_EVIDENCE_FORMAT_CCEL = 1,
 };
 
+/* enum mr-log-event */
+enum _ctlv_attestation_mr_log_event {
+	/* Describes an MR. */
+	CTLV_ATTESTATION_MR_LOG_EVENT_INFO = 1,
+	/* Records an extension of an MR. */
+	CTLV_ATTESTATION_MR_LOG_EVENT_EXTEND = 2,
+};
+
 /* flags mr-device-caps */
 enum _ctlv_attestation_mr_device_caps_bit {
 	CTLV_ATTESTATION_MR_DEVICE_CAPS_EXTEND_BIT = 0,
@@ -87,6 +95,41 @@ enum _ctlv_attestation_mr_caps_bit {
 /* Values for banks of the MR, each bank once. */
 #define CTLV_ATTESTATION_T_MR_VALUES \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00040000, 1)
+
+/* mr-log-entry */
+/* The ID of the MR the entry is about. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_ID \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00050000, 1)
+/* What the entry records. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_EVENT \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00050000, 2)
+/* The MR an info entry describes. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00050000, 3)
+
+/* mr-log-entry.mr */
+/* The platform's name for the MR. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_NAME \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00051000, 1)
+/* Its banks, each once, in the provider's order. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_SUPPORTED_HASH_ALGORITHMS \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00051000, 2)
+/* What it allows. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_CAPS \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00051000, 3)
+/* The hardware's number for the MR, where it has one. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_MR_REGISTER_INDEX \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00051000, 4)
+
+/* mr-start-generation */
+/* The first MR generation of the range mr-log-get selects and reports. */
+#define CTLV_ATTESTATION_T_MR_START_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00060000, 1)
+
+/* mr-end-generation */
+/* The last MR generation of that range. */
+#define CTLV_ATTESTATION_T_MR_END_GENERATION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x00070000, 1)
 
 /* device-get reply */
 /* What the device supports, fixed for its life. */
@@ -224,11 +267,33 @@ enum _ctlv_attestation_mr_caps_bit {
 #define CTLV_ATTESTATION_T_MR_EXTEND_ID \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 1)
 
+/* mr-log-entry-appended payload */
+/* The entry, as mr-log-get returns it. */
+#define CTLV_ATTESTATION_T_MR_LOG_ENTRY_APPENDED_ENTRY \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0060000, 1)
+
+/* mr-log-get request */
+/* Only these MRs' entries; every MR's without it. */
+#define CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80070000, 1)
+
+/* mr-log-get selection */
+/* An MR's ID. */
+#define CTLV_ATTESTATION_T_MR_LOG_GET_SELECTION_ID \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80071000, 1)
+
+/* mr-log-get reply */
+/* The entries, in journal order. */
+#define CTLV_ATTESTATION_T_MR_LOG_GET_ENTRIES \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0xc0070000, 1)
+
 /* ops */
 #define CTLV_ATTESTATION_OP_DEVICE_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 1)
 #define CTLV_ATTESTATION_OP_EVIDENCE_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 2)
 #define CTLV_ATTESTATION_OP_MR_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 3)
 #define CTLV_ATTESTATION_OP_MR_READ CTLV_OP(CTLV_FAMILY_ATTESTATION, 4)
 #define CTLV_ATTESTATION_OP_MR_EXTEND CTLV_OP(CTLV_FAMILY_ATTESTATION, 5)
+#define CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED CTLV_OP(CTLV_FAMILY_ATTESTATION, 6)
+#define CTLV_ATTESTATION_OP_MR_LOG_GET CTLV_OP(CTLV_FAMILY_ATTESTATION, 7)
 
 #endif /* _UAPI_CTLV_CTLV_ATTESTATION_GEN_H */

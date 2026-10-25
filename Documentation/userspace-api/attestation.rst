@@ -8,8 +8,9 @@ A confidential guest proves what it runs to a remote verifier with evidence: a
 statement of its measurements, signed by its root of trust and carrying a
 challenge the verifier chose, and the logs behind those measurements. An
 attestation provider gives its device a node, ``/dev/attestation/attestationN``.
-Through it a program asks for evidence, and reads and extends the measurement
-registers (MRs) the evidence reports.
+Through it a program asks for evidence, reads and extends the measurement
+registers (MRs) the evidence reports, and follows a journal of every
+extension.
 
 The node speaks CTLV, described in :doc:`ctlv`, as a descendant of the
 ``ctlv-attestation`` family, one family per provider. Every operation below
@@ -27,14 +28,17 @@ evidence-get            action  read-write  evidence objects
 mr-get                  query   read        describe the MRs
 mr-read                 query   read        one MR's values
 mr-extend               action  read-write  extend one MR
+mr-log-get              query   read        entries of the MR journal
+mr-log-entry-appended   event               a journal entry was added
 ======================  ======  ==========  ================================
 
-``device-get`` is always provided. Every other operation is optional, and a
-device provides those its provider implements, which ``op-get`` lists. The
-errors below are the family's own. Those of the transport, such as ``EACCES``
-for a descriptor without the access an operation needs, are in :doc:`ctlv`,
-and once a device is gone or has stopped, every operation fails with
-``ENODEV``. A provider's own failure returns its errno, such as ``EIO``.
+``device-get`` and the events are always provided. Every other operation is
+optional, and a device provides those its provider implements, which
+``op-get`` lists. The errors below are the family's own. Those of the
+transport, such as ``EACCES`` for a descriptor without the access an operation
+needs, are in :doc:`ctlv`, and once a device is gone or has stopped, every
+operation fails with ``ENODEV``. A provider's own failure returns its errno,
+such as ``EIO``.
 
 Generations
 ===========
@@ -44,8 +48,8 @@ bits wide. An operation that would advance it past its maximum fails with
 ``EOVERFLOW`` and stops the device.
 
 ``mr-generation``
-    The state of the MRs. It advances with every extension, and a reply that
-    depends on MR state carries the generation it reflects.
+    A position in the MR journal. Every journal entry has its own, and a reply
+    that depends on MR state carries the position it reflects.
 
 Evidence
 ========
@@ -95,7 +99,7 @@ The reply carries:
     bytes written to its blob.
 
 ``mr-generation``
-    Where an object binds MRs, the MR generation the evidence reflects.
+    Where an object binds MRs, the journal position the evidence reflects.
 
 ``EINVAL``
     A signed object is named without a challenge, a challenge is given
@@ -222,9 +226,9 @@ A hash algorithm is a constant of ``enum hash_algo`` in
 Nothing reserves an MR, and the kernel does not arbitrate between its
 writers. Any program with a read-write descriptor can extend it, and so can
 the register's own interface, as for a TPM's PCRs. A program that replays an
-MR from its own records has to make sure, through the system's configuration,
-that it is the only writer; ``mr-generation`` counts only the extensions made
-through the device.
+MR from the journal has to make sure, through the system's configuration, that
+it is the only writer; the journal records only the extensions made through
+the device.
 
 ``mr-get``
 ----------
@@ -247,7 +251,7 @@ Returns the current values of the MR whose ``id`` the request carries. The
 reply carries:
 
 ``mr-generation``
-    The MR generation of the values.
+    The journal position of the values.
 
 ``mr-values``
     One for each bank, in ``mr-get``'s order, with its ``hash-algo`` and
@@ -261,12 +265,14 @@ Access is read.
 ``mr-extend``
 -------------
 
-Extends the MR whose ``id`` the request carries. The request carries one of
-``mr-values`` for each bank of the MR to extend, in any order, each a
-``hash-algo`` and a ``data`` of exactly that algorithm's digest size. The
-banks left out keep their values. The device hashes nothing for the caller.
+Extends the MR whose ``id`` the request carries, and appends the extension
+to the journal. The request carries one of ``mr-values`` for each bank of the
+MR to extend, in any order, each a ``hash-algo`` and a ``data`` of exactly
+that algorithm's digest size. The banks left out keep their values. The device
+hashes nothing for the caller.
 
-The reply carries ``mr-generation``, the MR generation after the extension.
+The reply carries the ``mr-generation`` of the new entry, which
+``mr-log-entry-appended`` reports.
 
 ``ENOENT``
     No MR has that ID.
@@ -283,6 +289,67 @@ The reply carries ``mr-generation``, the MR generation after the extension.
     have or repeats one, or a digest has the wrong length.
 
 Access is read-write.
+
+The journal
+-----------
+
+The device keeps an append-only journal of its MRs, numbered by
+``mr-generation`` from 1. It starts with an ``info`` entry for each MR,
+describing it as ``mr-get`` does. Every extension then appends an ``extend``
+entry with the digests of the banks it extended.
+
+A bank is replayed from the entries with a digest for it; an entry without one
+did not extend that bank. So evidence reporting a bank vouches only for the
+entries that extended that bank.
+
+``mr-log-get``
+~~~~~~~~~~~~~~
+
+Returns journal entries in order, in fragments. Optionally, the request may
+carry:
+
+``selection``
+    Up to 256 MR ``id`` values, returning only those MRs' entries.
+
+``mr-start-generation``, ``mr-end-generation``
+    The range to return. The start defaults to 1 and the end to the end of the
+    journal when the query starts. Later entries are not returned by its
+    continuations.
+
+The first fragment carries the ``mr-start-generation`` and
+``mr-end-generation`` the query covers. Every fragment carries ``entries``,
+each an ``mr-log-entry`` with:
+
+``mr-generation``
+    The entry's position in the journal.
+
+``mr-id``
+    The MR the entry is about.
+
+``event``
+    ``info`` or ``extend``.
+
+``mr``
+    In an ``info`` entry, the MR's description, with the fields of
+    ``mr-desc``.
+
+``mr-values``
+    In an ``extend`` entry, the digests the extension folded in.
+
+``EINVAL``
+    The selection names an MR twice, or the start is past the end.
+
+Access is read.
+
+Events
+======
+
+Events are read as :doc:`ctlv` describes. An event that cannot be built shows
+as a gap in the sequence, as a dropped one does.
+
+``mr-log-entry-appended``
+    An entry was appended to the journal, carried in ``entry`` as
+    ``mr-log-get`` returns it.
 
 Providers
 =========

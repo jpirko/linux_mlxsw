@@ -9,9 +9,9 @@ The attestation subsystem gives each provider device a node of the
 descendant of the ``ctlv-attestation`` family, one family per provider.  A
 program tells providers apart by the last entry of ``family-get`` on the
 open device, and generic tools use the ``ctlv-attestation`` operations on any
-of them.  The subsystem owns common evidence retrieval and
-measurement-register topology.  Providers retain ownership of native hardware
-access and immutable capability descriptions.
+of them.  The subsystem owns common evidence retrieval, measurement-register
+topology and an append-only extension journal.  Providers retain ownership of
+native hardware access and immutable capability descriptions.
 
 Registering a provider
 ======================
@@ -49,7 +49,8 @@ and arrays remain immutable until the last ``attestation_put()``.
 
 The subsystem embeds the CTLV instance, and its hooks run every operation,
 those of the device's family included, under one instance mutex.  That
-serializes an operation and its native callback.
+serializes an operation, its native callback, journal commit and event
+emission.
 
 Every MR can be read, so a provider with MRs implements ``mr_read``.
 Fixed MRs are listed in the provider descriptor.  Their property storage
@@ -81,6 +82,18 @@ the order they arrived, and ``mr-read`` and the evidence report it as it is.
 A program that replays a register from its own records has to be its only
 writer, by agreement with whatever else runs on the system.
 
+MR journal
+==========
+
+MR extension is transactional.  The core allocates the complete journal entry
+and event before invoking ``mr_extend``.  A successful callback is followed
+only by infallible publication, so userspace observes the same ordered
+journal.
+
+``MR_READ`` uses ``mr_read_generation`` only to validate query continuation;
+the returned ``mr-generation`` is the journal boundary at which the values
+were read.
+
 Teardown
 ========
 
@@ -90,7 +103,7 @@ the operations of files still open.  Only then does it unpublish the CTLV
 instance, which drains the operations and events in flight and queues
 ``DEVICE_REMOVED``.  No provider callback runs once it returns, so the
 provider may release its native state before ``attestation_put()``.  Open
-files keep the structure until they close.
+files keep the structure until they close, and its release frees the journal.
 
 Kernel API
 ==========

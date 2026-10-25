@@ -23,6 +23,12 @@ enums:
   # A layout of an evidence object that one vendor defines, given by the
   # device's family.
   evidence-vendor-format: extension
+  # What a journal entry records.
+  mr-log-event:
+    # Describes an MR.
+    - info
+    # Records an extension of an MR.
+    - extend
   # The kernel's hash algorithms.
   hash-algo:
     $header: linux/hash_info.h
@@ -63,6 +69,30 @@ records:
 
   # Values for banks of the MR, each bank once.
   mr-values[hash-algo]: record mr-value
+
+  # One journal entry, as mr-log-get and mr-log-entry-appended carry it.
+  mr-log-entry:
+    mr-generation: record
+    # The ID of the MR the entry is about.
+    mr-id: uint(..u32-max)
+    # What the entry records.
+    event: mr-log-event
+    mr-values?: record
+    # The MR an info entry describes.
+    mr?:
+      # The platform's name for the MR.
+      name: string(1..128)
+      # Its banks, each once, in the provider's order.
+      supported-hash-algorithms[hash-algo]: hash-algo
+      # What it allows.
+      caps: mr-caps
+      # The hardware's number for the MR, where it has one.
+      register-index?: uint(..u32-max)
+
+  # The first MR generation of the range mr-log-get selects and reports.
+  mr-start-generation: uint(..u32-max)
+  # The last MR generation of that range.
+  mr-end-generation: uint(..u32-max)
 
 ops:
   # What the device can do, and its family's fields.
@@ -179,3 +209,30 @@ ops:
       mr-values: record
     reply:
       mr-generation: record
+
+  # A journal entry was added.
+  mr-log-entry-appended:
+    type: event
+    payload:
+      # The entry, as mr-log-get returns it.
+      entry: record mr-log-entry
+
+  # Entries of the MR journal, of the MRs and the generations the request
+  # selects.
+  mr-log-get:
+    type: query
+    fd-access: read
+    optional: true
+    suggested-reply-length: 64K
+    request:
+      # Only these MRs' entries; every MR's without it.
+      selection[256]?:
+        # An MR's ID.
+        id: uint(..u32-max)
+      mr-start-generation?: record
+      mr-end-generation?: record
+    reply:
+      mr-start-generation?: record
+      mr-end-generation?: record
+      # The entries, in journal order.
+      entries[]?: record mr-log-entry
