@@ -430,12 +430,15 @@ enum _ctlv_attestation_evidence_caps_bit {
 /* The MR to extend, by the ID mr-get lists. */
 #define CTLV_ATTESTATION_T_MR_EXTEND_ID \
 	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 1)
+/* Data the device hashes for each bank, in place of the caller's digests. */
+#define CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA \
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 2)
 /* The device's family's fields. */
 #define CTLV_ATTESTATION_T_MR_EXTEND_OPTIONS \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 2)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 3)
 /* What the data extended by is, recorded in the journal with it. */
 #define CTLV_ATTESTATION_T_MR_EXTEND_RECORD \
-	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 3)
+	CTLV_TYPE(CTLV_FAMILY_ATTESTATION, 0x80050000, 4)
 
 /* mr-extend record */
 /* The layout of data, in printable ASCII without spaces. */

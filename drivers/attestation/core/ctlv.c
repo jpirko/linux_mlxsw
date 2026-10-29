@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <crypto/hash_info.h>
+#include <crypto/sha2.h>
 #include <linux/bitmap.h>
 #include <linux/cleanup.h>
 #include <linux/err.h>
 #include <linux/limits.h>
+#include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 
@@ -747,14 +749,163 @@ int ctlv_attestation_mr_read_query(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 	return ctlv_op_query_done(ctx, att->mr_read_generation);
 }
 
-static int attestation_mr_extend_decode(const struct ctlv_cursor *request,
+struct attestation_hash {
+	enum hash_algo algorithm;
+	union {
+		struct sha256_ctx sha256;
+		struct sha384_ctx sha384;
+		struct sha512_ctx sha512;
+	};
+};
+
+static bool attestation_hash_init(struct attestation_hash *hash, enum hash_algo algorithm)
+{
+	hash->algorithm = algorithm;
+	switch (algorithm) {
+	case HASH_ALGO_SHA256:
+		sha256_init(&hash->sha256);
+		return true;
+	case HASH_ALGO_SHA384:
+		sha384_init(&hash->sha384);
+		return true;
+	case HASH_ALGO_SHA512:
+		sha512_init(&hash->sha512);
+		return true;
+	default:
+		return false;
+	}
+}
+
+static void attestation_hash_update(struct attestation_hash *hash, const u8 *data, size_t len)
+{
+	switch (hash->algorithm) {
+	case HASH_ALGO_SHA256:
+		sha256_update(&hash->sha256, data, len);
+		break;
+	case HASH_ALGO_SHA384:
+		sha384_update(&hash->sha384, data, len);
+		break;
+	case HASH_ALGO_SHA512:
+		sha512_update(&hash->sha512, data, len);
+		break;
+	default:
+		break;
+	}
+}
+
+static void attestation_hash_final(struct attestation_hash *hash, u8 *out)
+{
+	switch (hash->algorithm) {
+	case HASH_ALGO_SHA256:
+		sha256_final(&hash->sha256, out);
+		break;
+	case HASH_ALGO_SHA384:
+		sha384_final(&hash->sha384, out);
+		break;
+	case HASH_ALGO_SHA512:
+		sha512_final(&hash->sha512, out);
+		break;
+	default:
+		break;
+	}
+}
+
+static int attestation_hash_blob(struct ctlv_blob *blob, struct attestation_hash *hashes,
+				 size_t count)
+{
+	u64 offset, len = ctlv_blob_len(blob);
+	size_t index, step;
+	int ret = 0;
+	u8 *chunk;
+
+	chunk = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!chunk)
+		return -ENOMEM;
+	for (offset = 0; offset < len; offset += step) {
+		step = min_t(u64, len - offset, PAGE_SIZE);
+		ret = ctlv_blob_read(blob, offset, chunk, step);
+		if (ret)
+			break;
+		for (index = 0; index < count; index++)
+			attestation_hash_update(&hashes[index], chunk, step);
+		if (fatal_signal_pending(current)) {
+			ret = -EINTR;
+			break;
+		}
+		cond_resched();
+	}
+	kfree(chunk);
+	return ret;
+}
+
+/* Returns with the device locked again, but @mr may be gone. */
+static int attestation_mr_raw_data_hash(struct attestation_dev *att, struct ctlv_op_ctx *ctx,
+					const struct ctlv_cursor *request,
 					const struct attestation_mr *mr,
 					struct attestation_digest_set *values)
 {
-	size_t banks = mr->props->algorithms_count, bank;
+	size_t count = mr->props->algorithms_count, index;
+	struct attestation_hash *hashes;
+	struct ctlv_blob *blob;
+	int ret, put_ret;
+
+	lockdep_assert_held(&att->lock);
+	hashes = kcalloc(count, sizeof(*hashes), GFP_KERNEL);
+	values->values = kcalloc(count, sizeof(*values->values), GFP_KERNEL);
+	if (!hashes || !values->values) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	values->values_count = count;
+	for (index = 0; index < count; index++) {
+		values->values[index].algorithm = mr->props->algorithms[index];
+		if (!attestation_hash_init(&hashes[index], mr->props->algorithms[index])) {
+			ret = -EOPNOTSUPP;
+			goto out;
+		}
+	}
+
+	/* Hashing can take seconds, too long to keep IMA and others waiting. */
+	mutex_unlock(&att->lock);
+	blob = ctlv_attestation_mr_extend_raw_data_resolve(ctx, request);
+	if (IS_ERR(blob)) {
+		ret = PTR_ERR(blob);
+	} else {
+		ret = attestation_hash_blob(blob, hashes, count);
+		put_ret = ctlv_blob_put(blob);
+		if (!ret)
+			ret = put_ret;
+	}
+	mutex_lock(&att->lock);
+
+	if (!ret && !attestation_registered(att))
+		ret = -ENODEV;
+	if (ret)
+		goto out;
+
+	for (index = 0; index < count; index++)
+		attestation_hash_final(&hashes[index], values->values[index].data);
+
+out:
+	kfree(hashes);
+	return ret;
+}
+
+static int attestation_mr_extend_decode(const struct ctlv_cursor *request,
+					const struct attestation_mr *mr, bool hashed,
+					struct attestation_digest_set *values)
+{
+	size_t banks = mr->props->algorithms_count, count = 0, bank;
 	DECLARE_BITMAP(seen, HASH_ALGO__LAST) = {};
 	struct ctlv_cursor item;
 
+	ctlv_attestation_mr_values_for_each(&item, request) count++;
+	/* Digests or data to hash, exactly one of them. */
+	if (!count == !hashed)
+		return -EINVAL;
+	if (hashed)
+		return 0;
 	values->values = kcalloc(banks, sizeof(*values->values), GFP_KERNEL);
 	if (!values->values)
 		return -ENOMEM;
@@ -792,9 +943,26 @@ static bool attestation_record_format_valid(const char *format)
 	return true;
 }
 
+static struct attestation_mr *attestation_mr_extend_target(struct attestation_dev *att,
+							   const struct ctlv_cursor *request)
+{
+	struct attestation_mr *mr;
+	u64 id;
+
+	if (ctlv_attestation_device_generation_present(request) &&
+	    ctlv_attestation_device_generation_get(request) != att->device_generation)
+		return ERR_PTR(-ESTALE);
+	id = ctlv_attestation_mr_extend_id_get(request);
+	mr = attestation_mr_lookup_live(att, id);
+	if (!IS_ERR(mr) && !mr->props->extendable)
+		return ERR_PTR(-EOPNOTSUPP);
+	return mr;
+}
+
 int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx,
 				      const struct ctlv_cursor *request, struct ctlv_cursor *reply)
 {
+	bool hashed = ctlv_attestation_mr_extend_raw_data_present(request);
 	struct attestation_digest_set values = {};
 	struct ctlv_cursor options, record;
 	const struct ctlv_cursor *options_ptr = NULL;
@@ -805,23 +973,13 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	struct attestation_dev *att = attestation_from_ctlv(ctlv);
 	struct attestation_mr *mr;
 	u32 data_length = 0;
-	u64 id;
 	int ret;
 
-	if (ctlv_attestation_device_generation_present(request) &&
-	    ctlv_attestation_device_generation_get(request) != att->device_generation)
-		return -ESTALE;
-	id = ctlv_attestation_mr_extend_id_get(request);
-	mr = attestation_mr_lookup_live(att, id);
+	mr = attestation_mr_extend_target(att, request);
 	if (IS_ERR(mr))
 		return PTR_ERR(mr);
 
-	if (!mr->props->extendable)
-		return -EOPNOTSUPP;
-	ret = attestation_mr_extend_decode(request, mr, &values);
-	if (ret)
-		goto out_values;
-	ret = attestation_mr_values_validate(mr->props, &values, false);
+	ret = attestation_mr_extend_decode(request, mr, hashed, &values);
 	if (ret)
 		goto out_values;
 
@@ -839,6 +997,22 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 		ctlv_attestation_mr_extend_options_get(&options, request);
 		options_ptr = &options;
 	}
+
+	if (hashed) {
+		ret = attestation_mr_raw_data_hash(att, ctx, request, mr, &values);
+		if (ret)
+			goto out_values;
+		mr = attestation_mr_extend_target(att, request);
+		if (IS_ERR(mr)) {
+			ret = PTR_ERR(mr);
+			goto out_values;
+		}
+	}
+
+	ret = attestation_mr_values_validate(mr->props, &values, hashed);
+	if (ret)
+		goto out_values;
+
 	change = attestation_mr_change_prepare(att, mr, &values, format, data, data_length);
 	if (IS_ERR(change)) {
 		ret = PTR_ERR(change);
@@ -851,6 +1025,8 @@ int ctlv_attestation_mr_extend_action(struct ctlv *ctlv, struct ctlv_op_ctx *ctx
 	else if (!ctlv_attestation_device_generation_put(reply, att->device_generation) ||
 		 !ctlv_attestation_mr_generation_put(reply, entry->mr_generation))
 		ret = -EMSGSIZE;
+	else
+		ret = attestation_mr_values_put(reply, &values);
 	attestation_mr_change_free(change);
 
 out_values:

@@ -206,9 +206,11 @@ records:
     id: 0x80050000
     fields:
       id: {number: 1, type: uint, max: u32-max}
-      options: {number: 2, extension: mr-options, optional: true}
-      record: {number: 3, record: mr-extend record, optional: true}
-    members: [record mr-values, 'record device-generation?']
+      raw-data: {number: 2, blob: input, backings: [va, memfd, dma-buf],
+                 max-length: u32-max, optional: true}
+      options: {number: 3, extension: mr-options, optional: true}
+      record: {number: 4, record: mr-extend record, optional: true}
+    members: ['record mr-values?', 'record device-generation?']
   mr-extend record:
     id: 0x80051000
     fields:
@@ -216,7 +218,7 @@ records:
       data: {number: 2, type: binary, max-length: 4K}
   mr-extend reply:
     id: 0xc0050000
-    members: [record device-generation, record mr-generation]
+    members: [record device-generation, record mr-generation, record mr-values]
   device-state-changed payload:
     id: 0xc0060000
     members: [record device-generation]

@@ -303,7 +303,8 @@ ops:
       mr-generation: record
       mr-values: record
 
-  # Extends banks of the MR by digests, as TPM2_PCR_Extend.
+  # Extends banks of the MR by digests, as TPM2_PCR_Extend, or every bank by
+  # the hash of raw-data, as TPM2_PCR_Event. A request takes one of the two.
   mr-extend:
     type: action
     fd-access: read-write
@@ -312,7 +313,9 @@ ops:
       # The MR to extend, by the ID mr-get lists.
       id: uint(..u32-max)
       # For the banks to extend, each once, in any order.
-      mr-values: record
+      mr-values?: record
+      # Data the device hashes for each bank, in place of the caller's digests.
+      raw-data?: blob(in, va memfd dma-buf)
       device-generation?: record
       # The device's family's fields.
       options?: extension mr-options
@@ -325,6 +328,8 @@ ops:
     reply:
       device-generation: record
       mr-generation: record
+      # The digest each extended bank was extended by.
+      mr-values: record
 
   # The device generation advanced.
   device-state-changed:

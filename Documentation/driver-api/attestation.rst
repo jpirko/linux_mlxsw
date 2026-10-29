@@ -50,7 +50,9 @@ and arrays remain immutable until the last ``attestation_put()``.
 The subsystem embeds the CTLV instance, and its hooks run every operation,
 those of the device's family included, under one instance mutex.  That
 serializes an operation, its native callback, journal commit and event
-emission.
+emission.  ``mr-extend`` hashes data userspace passes into a digest for each
+bank, so ``mr_extend`` only ever receives digests, and drops the mutex while it
+hashes.
 
 Every MR can be read, so a provider with ``mr_caps`` implements ``mr_read``.
 Fixed MRs are listed in the provider descriptor.  A provider advertising

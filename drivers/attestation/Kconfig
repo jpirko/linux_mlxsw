@@ -2,6 +2,8 @@
 menuconfig ATTESTATION
 	tristate "Attestation"
 	select CRYPTO_HASH_INFO
+	select CRYPTO_LIB_SHA256
+	select CRYPTO_LIB_SHA512
 	select CTLV
 	help
 	  Provides a CTLV family for evidence, measurement registers,

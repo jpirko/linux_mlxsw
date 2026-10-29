@@ -79,7 +79,7 @@ static inline int ctlv_attestation_mr_read(struct ctlv_dev *dev, struct ctlv_msg
 	return ctlv_query(dev, CTLV_ATTESTATION_OP_MR_READ, request, reply, error);
 }
 
-#define CTLV_ATTESTATION_OP_MR_EXTEND_REQUEST_MAX_LEN 7120
+#define CTLV_ATTESTATION_OP_MR_EXTEND_REQUEST_MAX_LEN 7232
 
 static inline int ctlv_attestation_mr_extend_request_new(struct ctlv_msg **request)
 {
@@ -624,6 +624,26 @@ static inline int ctlv_attestation_mr_read_options_start(struct ctlv_msg *msg)
 static inline int ctlv_attestation_mr_extend_id_put(struct ctlv_msg *msg, __u64 value)
 {
 	return ctlv_put_u64(msg, CTLV_ATTESTATION_T_MR_EXTEND_ID, value);
+}
+
+/* Data the device hashes for each bank, in place of the caller's digests. */
+static inline int ctlv_attestation_mr_extend_raw_data_put_va(struct ctlv_msg *msg,
+							     const void *address, __u64 length)
+{
+	return ctlv_put_blob_va(msg, CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA, address, length);
+}
+
+static inline int ctlv_attestation_mr_extend_raw_data_put_memfd(struct ctlv_msg *msg, int fd,
+								__u64 offset, __u64 length)
+{
+	return ctlv_put_blob_memfd(msg, CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA, fd, offset, length);
+}
+
+static inline int ctlv_attestation_mr_extend_raw_data_put_dma_buf(struct ctlv_msg *msg, int fd,
+								  __u64 offset, __u64 length)
+{
+	return ctlv_put_blob_dma_buf(msg, CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA, fd, offset,
+				     length);
 }
 
 /* The device's family's fields. */

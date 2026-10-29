@@ -174,6 +174,11 @@ CTLV_IN_U64(ctlv_attestation_mr_value_hash_algo)
 CTLV_IN_REF(ctlv_attestation_mr_value_data, CTLV_ATTESTATION_T_MR_VALUE_DATA, CTLV_SCHEMA_BINARY)
 CTLV_IN_HAS(ctlv_attestation_mr_value_data)
 CTLV_IN_BINARY(ctlv_attestation_mr_value_data)
+/* Data the device hashes for each bank, in place of the caller's digests. */
+CTLV_IN_REF(ctlv_attestation_mr_extend_raw_data, CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA,
+	    CTLV_SCHEMA_BLOB)
+CTLV_IN_HAS(ctlv_attestation_mr_extend_raw_data)
+CTLV_IN_BLOB(ctlv_attestation_mr_extend_raw_data)
 /* The device's family's fields. */
 CTLV_IN_REF(ctlv_attestation_mr_extend_options, CTLV_ATTESTATION_T_MR_EXTEND_OPTIONS,
 	    CTLV_SCHEMA_RECORD)

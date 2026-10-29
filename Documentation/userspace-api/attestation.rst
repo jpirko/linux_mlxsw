@@ -431,10 +431,21 @@ Access is read.
 -------------
 
 Extends the MR whose ``id`` the request carries, and appends the extension
-to the journal. The request carries one of ``mr-values`` for each bank of the
-MR to extend, in any order, each a ``hash-algo`` and a ``data`` of exactly
-that algorithm's digest size. The banks left out keep their values. The device
-hashes nothing for the caller. Optionally, the request may also carry:
+to the journal. The request carries what to extend the MR's banks by in one of
+two ways:
+
+``mr-values``
+    One for each bank to extend, in any order, each a ``hash-algo`` and a
+    ``data`` of exactly that algorithm's digest size. The banks left out keep
+    their values.
+
+``raw-data``
+    An input blob of up to 4 GiB, which the device hashes with the algorithm of
+    each bank to extend that bank by the digest. The journal keeps the digests,
+    not the data. The device hashes with SHA-256, SHA-384 and SHA-512, so an
+    MR with a bank in another algorithm takes ``mr-values`` only.
+
+Optionally, the request may also carry:
 
 ``device-generation``
     To refuse a device that has changed since.
@@ -446,23 +457,24 @@ hashes nothing for the caller. Optionally, the request may also carry:
 ``options``
     The device's family's fields.
 
-The reply carries ``device-generation`` and the ``mr-generation`` of the new
-entry, which ``mr-log-entry-appended`` reports.
+The reply carries ``device-generation``, the ``mr-generation`` of the new
+entry, which ``mr-log-entry-appended`` reports, and one of ``mr-values`` for
+each bank extended, with the digest it was extended by.
 
 ``ENOENT``
     No MR has that ID.
 
 ``EOPNOTSUPP``
-    The MR cannot be extended, or the provider cannot extend only some of its
-    banks.
+    The MR cannot be extended, the provider cannot extend only some of its
+    banks, or the device cannot hash ``raw-data`` for one of its banks.
 
 ``EPERM``
     The platform forbids extending the MR at the time.
 
 ``EINVAL``
-    The request carries no ``mr-values``, a value is for a bank the MR does not
-    have or repeats one, a digest has the wrong length, or the record format
-    has a character outside printable ASCII.
+    The request carries both ``mr-values`` and ``raw-data``, or neither, a
+    value is for a bank the MR does not have or repeats one, a digest has the
+    wrong length, or the record format has a character outside printable ASCII.
 
 ``ESTALE``
     ``device-generation`` is not current.

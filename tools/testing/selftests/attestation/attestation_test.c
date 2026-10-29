@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -405,6 +406,10 @@ TEST_F(attestation, extension_record_log_and_event)
 	EXPECT_TRUE(ctlv_attestation_mr_generation_get(
 		ctlv_reply_root(reply), &generation));
 	EXPECT_EQ(3, generation);
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA256,
+			      sha256, sizeof(sha256)));
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA384,
+			      sha384, sizeof(sha384)));
 	ctlv_reply_free(reply);
 
 	ASSERT_EQ(0, ctlv_event_wait(self->dev, EVENT_WAIT_MS));
@@ -427,6 +432,143 @@ TEST_F(attestation, extension_record_log_and_event)
 	ASSERT_EQ(0, log_get(self->dev, &reply, &self->error));
 	EXPECT_EQ(3, ctlv_reply_generation(reply));
 	ctlv_reply_free(reply);
+}
+
+/* From the memfd when fd is not negative, else from data. */
+static int mr_extend_raw(struct ctlv_dev *dev, unsigned int id,
+			 const void *data, size_t length, int fd,
+			 const unsigned char *sha256,
+			 struct ctlv_reply **reply, struct ctlv_error *error)
+{
+	struct ctlv_msg *request;
+	int ret;
+
+	ret = ctlv_attestation_mr_extend_request_new(&request);
+	if (ret)
+		return ret;
+	ctlv_attestation_mr_extend_id_put(request, id);
+	if (fd < 0)
+		ctlv_attestation_mr_extend_raw_data_put_va(request, data,
+							   length);
+	else
+		ctlv_attestation_mr_extend_raw_data_put_memfd(request, fd, 0,
+							      length);
+	if (sha256) {
+		ctlv_attestation_mr_values_start(request);
+		ctlv_attestation_mr_value_hash_algo_put(request,
+							HASH_ALGO_SHA256);
+		ctlv_attestation_mr_value_data_put(request, sha256, 32);
+		ctlv_record_end(request);
+	}
+	ret = ctlv_msg_err(request);
+	if (!ret)
+		ret = ctlv_attestation_mr_extend(dev, request, reply, error);
+	ctlv_msg_free(request);
+	return ret;
+}
+
+TEST_F(attestation, extension_by_data)
+{
+	static const unsigned char abc_sha256[32] = {
+		0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea,
+		0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22, 0x23,
+		0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c,
+		0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+	};
+	static const unsigned char abc_sha384[48] = {
+		0xcb, 0x00, 0x75, 0x3f, 0x45, 0xa3, 0x5e, 0x8b,
+		0xb5, 0xa0, 0x3d, 0x69, 0x9a, 0xc6, 0x50, 0x07,
+		0x27, 0x2c, 0x32, 0xab, 0x0e, 0xde, 0xd1, 0x63,
+		0x1a, 0x8b, 0x60, 0x5a, 0x43, 0xff, 0x5b, 0xed,
+		0x80, 0x86, 0x07, 0x2b, 0xa1, 0xe7, 0xcc, 0x23,
+		0x58, 0xba, 0xec, 0xa1, 0x34, 0xc8, 0x25, 0xa7,
+	};
+	static const unsigned char million_sha256[32] = {
+		0xcd, 0xc7, 0x6e, 0x5c, 0x99, 0x14, 0xfb, 0x92,
+		0x81, 0xa1, 0xc7, 0xe2, 0x84, 0xd7, 0x3e, 0x67,
+		0xf1, 0x80, 0x9a, 0x48, 0xa4, 0x97, 0x20, 0x0e,
+		0x04, 0x6d, 0x39, 0xcc, 0xc7, 0x11, 0x2c, 0xd0,
+	};
+	static const unsigned char million_sha384[48] = {
+		0x9d, 0x0e, 0x18, 0x09, 0x71, 0x64, 0x74, 0xcb,
+		0x08, 0x6e, 0x83, 0x4e, 0x31, 0x0a, 0x4a, 0x1c,
+		0xed, 0x14, 0x9e, 0x9c, 0x00, 0xf2, 0x48, 0x52,
+		0x79, 0x72, 0xce, 0xc5, 0x70, 0x4c, 0x2a, 0x5b,
+		0x07, 0xb8, 0xb3, 0xdc, 0x38, 0xec, 0xc4, 0xeb,
+		0xae, 0x97, 0xdd, 0xd8, 0x7f, 0x3d, 0x89, 0x85,
+	};
+	static const unsigned char sha256[32] = { 5 };
+	const __u64 subscriptions[] = {
+		CTLV_ATTESTATION_OP_MR_LOG_ENTRY_APPENDED,
+	};
+	const struct ctlv_hdr *entry;
+	struct ctlv_event *event;
+	struct ctlv_reply *reply;
+	char abc[] = "abc";
+	char block[1000];
+	int fd, i;
+
+	ASSERT_EQ(0, ctlv_subscribe(self->dev, subscriptions,
+				    ARRAY_SIZE(subscriptions), &self->error));
+	ASSERT_EQ(0, mr_extend_raw(self->dev, 1, abc, 3, -1, NULL,
+				   &reply, &self->error)) {
+		TH_LOG("%s", error_text(&self->error));
+	}
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA256,
+			      abc_sha256, sizeof(abc_sha256)));
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA384,
+			      abc_sha384, sizeof(abc_sha384)));
+	ctlv_reply_free(reply);
+	ASSERT_EQ(0, ctlv_event_wait(self->dev, EVENT_WAIT_MS));
+	ASSERT_EQ(0, ctlv_event_read(self->dev, &event));
+	entry = ctlv_attestation_mr_log_entry_appended_entry_get(
+		ctlv_event_root(event));
+	ASSERT_NE(NULL, entry);
+	EXPECT_TRUE(digest_is(entry, HASH_ALGO_SHA256, abc_sha256,
+			      sizeof(abc_sha256)));
+	EXPECT_TRUE(digest_is(entry, HASH_ALGO_SHA384, abc_sha384,
+			      sizeof(abc_sha384)));
+	ctlv_event_free(event);
+
+	fd = memfd_create("attestation-test", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	ASSERT_LE(0, fd);
+	memset(block, 'a', sizeof(block));
+	for (i = 0; i < 1000; i++)
+		ASSERT_EQ((ssize_t)sizeof(block),
+			  write(fd, block, sizeof(block)));
+	ASSERT_EQ(0, fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK));
+	ASSERT_EQ(0, mr_extend_raw(self->dev, 1, NULL, 1000000, fd, NULL,
+				   &reply, &self->error)) {
+		TH_LOG("%s", error_text(&self->error));
+	}
+	close(fd);
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA256,
+			      million_sha256, sizeof(million_sha256)));
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA384,
+			      million_sha384, sizeof(million_sha384)));
+	ctlv_reply_free(reply);
+	ASSERT_EQ(0, ctlv_event_wait(self->dev, EVENT_WAIT_MS));
+	ASSERT_EQ(0, ctlv_event_read(self->dev, &event));
+	entry = ctlv_attestation_mr_log_entry_appended_entry_get(
+		ctlv_event_root(event));
+	ASSERT_NE(NULL, entry);
+	EXPECT_TRUE(digest_is(entry, HASH_ALGO_SHA256, million_sha256,
+			      sizeof(million_sha256)));
+	EXPECT_TRUE(digest_is(entry, HASH_ALGO_SHA384, million_sha384,
+			      sizeof(million_sha384)));
+	ctlv_event_free(event);
+
+	EXPECT_EQ(-EINVAL, mr_extend_raw(self->dev, 1, abc, 3, -1, sha256,
+					 &reply, &self->error));
+	EXPECT_EQ(-EINVAL, mr_extend(self->dev, 1, NULL, NULL, NULL, NULL, 0,
+				     &reply, &self->error));
+	ASSERT_EQ(0, log_get(self->dev, &reply, &self->error));
+	EXPECT_EQ(4, ctlv_reply_generation(reply));
+	ctlv_reply_free(reply);
+
+	ASSERT_EQ(0, fixture_file(self->name, "mr-add", "9 sha256 sm3"));
+	EXPECT_EQ(-EOPNOTSUPP, mr_extend_raw(self->dev, 9, abc, 3, -1, NULL,
+					     &reply, &self->error));
 }
 
 static bool values_in_order(const struct ctlv_hdr *parent,
@@ -464,6 +606,12 @@ TEST_F(attestation, bank_order)
 			       &reply, &self->error)) {
 		TH_LOG("%s", error_text(&self->error));
 	}
+	EXPECT_TRUE(values_in_order(ctlv_reply_root(reply), banks,
+				    ARRAY_SIZE(banks)));
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA256,
+			      sha256, sizeof(sha256)));
+	EXPECT_TRUE(digest_is(ctlv_reply_root(reply), HASH_ALGO_SHA384,
+			      sha384, sizeof(sha384)));
 	ctlv_reply_free(reply);
 
 	ASSERT_EQ(0, mr_read(self->dev, 9, &reply, &self->error));
@@ -526,6 +674,7 @@ TEST_F(attestation, bank_subsets)
 	root = ctlv_reply_root(reply);
 	EXPECT_TRUE(ctlv_attestation_mr_generation_get(root, &generation));
 	EXPECT_EQ(3, generation);
+	EXPECT_TRUE(values_in_order(root, sha256_bank, 1));
 	ctlv_reply_free(reply);
 
 	ASSERT_EQ(0, ctlv_event_wait(self->dev, EVENT_WAIT_MS));
@@ -540,6 +689,7 @@ TEST_F(attestation, bank_subsets)
 
 	ASSERT_EQ(0, mr_extend(self->dev, 1, NULL, sha384, NULL, NULL, 0,
 			       &reply, &self->error));
+	EXPECT_TRUE(values_in_order(ctlv_reply_root(reply), sha384_bank, 1));
 	ctlv_reply_free(reply);
 
 	ASSERT_EQ(0, mr_read(self->dev, 1, &reply, &self->error));

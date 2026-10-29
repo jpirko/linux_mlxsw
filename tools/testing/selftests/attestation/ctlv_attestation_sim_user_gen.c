@@ -709,6 +709,10 @@ static const struct ctlv_node_schema mr_extend_request_field_node_schemas[] = {
 		.min = 0,
 		.max = 0xffffffffULL,
 	},
+};
+
+/* root, optional fields */
+static const struct ctlv_node_schema mr_extend_request_optional_field_node_schemas[] = {
 	{
 		.type = CTLV_ATTESTATION_T_MR_VALUES,
 		.kind = CTLV_SCHEMA_RECORD,
@@ -716,10 +720,16 @@ static const struct ctlv_node_schema mr_extend_request_field_node_schemas[] = {
 		.fields = mr_extend_request_mr_values_field_node_schemas,
 		.fields_count = 2,
 	},
-};
-
-/* root, optional fields */
-static const struct ctlv_node_schema mr_extend_request_optional_field_node_schemas[] = {
+	{
+		.type = CTLV_ATTESTATION_T_MR_EXTEND_RAW_DATA,
+		.kind = CTLV_SCHEMA_BLOB,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_BLOB,
+		.blob_direction = CTLV_BLOB_DIRECTION_INPUT,
+		.blob_backings = 14,
+		.blob_max_length = 0xffffffffULL,
+		.blob_alignment = 1,
+	},
 	{
 		.type = CTLV_ATTESTATION_T_DEVICE_GENERATION,
 		.kind = CTLV_SCHEMA_UINT,
@@ -747,9 +757,29 @@ static const struct ctlv_node_schema mr_extend_request_node_schema = {
 	.kind = CTLV_SCHEMA_RECORD,
 	.max_occurrences = 1,
 	.fields = mr_extend_request_field_node_schemas,
-	.fields_count = 2,
+	.fields_count = 1,
 	.optional_fields = mr_extend_request_optional_field_node_schemas,
-	.optional_fields_count = 3,
+	.optional_fields_count = 5,
+};
+
+/* mr-values, fields */
+static const struct ctlv_node_schema mr_extend_reply_mr_values_field_node_schemas[] = {
+	{
+		.type = CTLV_ATTESTATION_T_MR_VALUE_HASH_ALGO,
+		.kind = CTLV_SCHEMA_ENUM,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN | CTLV_NODE_SCHEMA_HAS_MAX,
+		.min = HASH_ALGO_MD4,
+		.max = HASH_ALGO__LAST - 1,
+	},
+	{
+		.type = CTLV_ATTESTATION_T_MR_VALUE_DATA,
+		.kind = CTLV_SCHEMA_BINARY,
+		.max_occurrences = 1,
+		.present = CTLV_NODE_SCHEMA_HAS_MIN_LENGTH | CTLV_NODE_SCHEMA_HAS_MAX_LENGTH,
+		.min_length = 16,
+		.max_length = 64,
+	},
 };
 
 /* root, fields */
@@ -770,6 +800,13 @@ static const struct ctlv_node_schema mr_extend_reply_field_node_schemas[] = {
 		.min = 0,
 		.max = 0xffffffffULL,
 	},
+	{
+		.type = CTLV_ATTESTATION_T_MR_VALUES,
+		.kind = CTLV_SCHEMA_RECORD,
+		.max_occurrences = 23,
+		.fields = mr_extend_reply_mr_values_field_node_schemas,
+		.fields_count = 2,
+	},
 };
 
 static const struct ctlv_node_schema mr_extend_reply_node_schema = {
@@ -777,7 +814,7 @@ static const struct ctlv_node_schema mr_extend_reply_node_schema = {
 	.kind = CTLV_SCHEMA_RECORD,
 	.max_occurrences = 1,
 	.fields = mr_extend_reply_field_node_schemas,
-	.fields_count = 2,
+	.fields_count = 3,
 };
 
 /* root, fields */
@@ -1436,8 +1473,8 @@ static const struct ctlv_op_spec ctlv_attestation_sim_op_specs[] = {
 		.fd_access = CTLV_OP_FD_ACCESS_READ_WRITE,
 		.availability = CTLV_OP_AVAILABILITY_FIXED,
 		.optional = true,
-		.request_max_len = 7120,
-		.action_reply_max_len = 64,
+		.request_max_len = 7232,
+		.action_reply_max_len = 2824,
 		.error_info_max_len = 456,
 		.request = &mr_extend_request_node_schema,
 		.reply = &mr_extend_reply_node_schema,
