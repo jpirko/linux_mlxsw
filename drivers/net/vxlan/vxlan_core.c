@@ -3208,7 +3208,7 @@ static const struct nla_policy vxlan_del_bulk_policy[NDA_MAX + 1] = {
 					   NTF_ROUTER)
 
 static int vxlan_fdb_delete_bulk(struct nlmsghdr *nlh, struct net_device *dev,
-				 struct netlink_ext_ack *extack)
+				 u32 portid, struct netlink_ext_ack *extack)
 {
 	struct vxlan_dev *vxlan = netdev_priv(dev);
 	struct vxlan_fdb_flush_desc desc = {};
@@ -3266,7 +3266,7 @@ static int vxlan_fdb_delete_bulk(struct nlmsghdr *nlh, struct net_device *dev,
 		desc.dst_ip = ip;
 	}
 
-	vxlan_flush(vxlan, &desc, 0);
+	vxlan_flush(vxlan, &desc, portid);
 
 	return 0;
 }

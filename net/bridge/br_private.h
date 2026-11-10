@@ -1018,7 +1018,7 @@ int br_fdb_delete(struct ndmsg *ndm, struct nlattr *tb[],
 		  const struct ndo_fdb_parms *parms, bool *notified,
 		  struct netlink_ext_ack *extack);
 int br_fdb_delete_bulk(struct nlmsghdr *nlh, struct net_device *dev,
-		       struct netlink_ext_ack *extack);
+		       u32 portid, struct netlink_ext_ack *extack);
 int br_fdb_add(struct ndmsg *nlh, struct nlattr *tb[],
 	       const struct ndo_fdb_parms *parms, bool *notified,
 	       struct netlink_ext_ack *extack);
