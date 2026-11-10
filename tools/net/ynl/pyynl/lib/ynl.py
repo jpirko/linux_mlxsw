@@ -61,6 +61,8 @@ class Netlink:
     NLM_F_CREATE = 0x400
     NLM_F_APPEND = 0x800
 
+    NLM_F_BULK = 0x200
+
     NLM_F_CAPPED = 0x100
     NLM_F_ACK_TLVS = 0x200
 
