@@ -1209,7 +1209,7 @@ static bool fdb_update_dst(struct net_bridge_fdb_entry *fdb,
 
 /* Update (create or replace) forwarding database entry */
 static int fdb_add_entry(struct net_bridge *br, struct net_bridge_dst dst,
-			 const u8 *addr, struct ndmsg *ndm, u16 flags, u16 vid,
+			 struct ndmsg *ndm, const struct ndo_fdb_parms *parms,
 			 struct nlattr *nfea_tb[])
 {
 	struct net_bridge_port *source = br_dst_port(dst);
@@ -1242,12 +1242,12 @@ static int fdb_add_entry(struct net_bridge *br, struct net_bridge_dst dst,
 			return -EINVAL;
 	}
 
-	fdb = br_fdb_find(br, addr, vid);
+	fdb = br_fdb_find(br, parms->addr, parms->vid);
 	if (fdb == NULL) {
-		if (!(flags & NLM_F_CREATE))
+		if (!(parms->flags & NLM_F_CREATE))
 			return -ENOENT;
 
-		fdb = fdb_create(br, dst, addr, vid,
+		fdb = fdb_create(br, dst, parms->addr, parms->vid,
 				 BIT(BR_FDB_ADDED_BY_USER));
 		if (!fdb)
 			return -ENOMEM;
@@ -1256,7 +1256,7 @@ static int fdb_add_entry(struct net_bridge *br, struct net_bridge_dst dst,
 	} else {
 		struct net_bridge_dst old_dst;
 
-		if (flags & NLM_F_EXCL)
+		if (parms->flags & NLM_F_EXCL)
 			return -EEXIST;
 
 		old_dst = br_fdb_dst_read(fdb);
@@ -1271,15 +1271,15 @@ static int fdb_add_entry(struct net_bridge *br, struct net_bridge_dst dst,
 		if (state & NUD_PERMANENT) {
 			set_bit(BR_FDB_LOCAL, &fdb->flags);
 			if (!test_and_set_bit(BR_FDB_STATIC, &fdb->flags))
-				fdb_add_hw_addr(br, addr);
+				fdb_add_hw_addr(br, parms->addr);
 		} else if (state & NUD_NOARP) {
 			clear_bit(BR_FDB_LOCAL, &fdb->flags);
 			if (!test_and_set_bit(BR_FDB_STATIC, &fdb->flags))
-				fdb_add_hw_addr(br, addr);
+				fdb_add_hw_addr(br, parms->addr);
 		} else {
 			clear_bit(BR_FDB_LOCAL, &fdb->flags);
 			if (test_and_clear_bit(BR_FDB_STATIC, &fdb->flags))
-				fdb_del_hw_addr(br, addr);
+				fdb_del_hw_addr(br, parms->addr);
 		}
 
 		modified = true;
@@ -1307,12 +1307,11 @@ static int fdb_add_entry(struct net_bridge *br, struct net_bridge_dst dst,
 }
 
 static int __br_fdb_add(struct ndmsg *ndm, struct net_bridge *br,
-			struct net_bridge_port *p, const unsigned char *addr,
-			u16 nlh_flags, struct net_bridge_vlan *vlan,
-			struct nlattr *nfea_tb[],
+			struct net_bridge_port *p,
+			const struct ndo_fdb_parms *parms,
+			struct net_bridge_vlan *vlan, struct nlattr *nfea_tb[],
 			bool *notified, struct netlink_ext_ack *extack)
 {
-	u16 vid = vlan ? vlan->vid : 0;
 	struct net_bridge_dst dst;
 	int err = 0;
 
@@ -1327,7 +1326,8 @@ static int __br_fdb_add(struct ndmsg *ndm, struct net_bridge *br,
 
 		local_bh_disable();
 		rcu_read_lock();
-		br_fdb_update(br, p, vlan, addr, BIT(BR_FDB_ADDED_BY_USER));
+		br_fdb_update(br, p, vlan, parms->addr,
+			      BIT(BR_FDB_ADDED_BY_USER));
 		rcu_read_unlock();
 		local_bh_enable();
 	} else if (ndm->ndm_flags & NTF_EXT_LEARNED) {
@@ -1336,12 +1336,12 @@ static int __br_fdb_add(struct ndmsg *ndm, struct net_bridge *br,
 					   "FDB entry towards bridge must be permanent");
 			return -EINVAL;
 		}
-		err = br_fdb_external_learn_add(br, p, addr, vid, false, true);
+		err = br_fdb_external_learn_add(br, p, parms->addr, parms->vid,
+						false, true);
 	} else {
 		dst = p && vlan ? br_vlan_to_dst(vlan) : br_port_to_dst(p);
 		spin_lock_bh(&br->hash_lock);
-		err = fdb_add_entry(br, dst, addr, ndm, nlh_flags, vid,
-				    nfea_tb);
+		err = fdb_add_entry(br, dst, ndm, parms, nfea_tb);
 		spin_unlock_bh(&br->hash_lock);
 	}
 
@@ -1422,11 +1422,11 @@ int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		}
 
 		/* VID was specified, so use it. */
-		err = __br_fdb_add(ndm, br, p, parms->addr, parms->flags, v,
-				   nfea_tb, notified, extack);
+		err = __br_fdb_add(ndm, br, p, parms, v, nfea_tb, notified,
+				   extack);
 	} else {
-		err = __br_fdb_add(ndm, br, p, parms->addr, parms->flags,
-				   NULL, nfea_tb, notified, extack);
+		err = __br_fdb_add(ndm, br, p, parms, NULL, nfea_tb, notified,
+				   extack);
 		if (err || !vg || !vg->num_vlans)
 			goto out;
 
@@ -1435,11 +1435,13 @@ int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		 * vlan on this port.
 		 */
 		list_for_each_entry(v, &vg->vlan_list, vlist) {
+			struct ndo_fdb_parms vparms = *parms;
+
 			if (!br_vlan_should_use(v))
 				continue;
-			err = __br_fdb_add(ndm, br, p, parms->addr,
-					   parms->flags, v, nfea_tb, notified,
-					   extack);
+			vparms.vid = v->vid;
+			err = __br_fdb_add(ndm, br, p, &vparms, v, nfea_tb,
+					   notified, extack);
 			if (err)
 				goto out;
 		}
