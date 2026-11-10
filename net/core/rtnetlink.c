@@ -4857,6 +4857,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 		.addr = addr,
 		.vid = vid,
 		.flags = nlh->nlmsg_flags,
+		.portid = NETLINK_CB(skb).portid,
 	};
 
 	err = -EOPNOTSUPP;
@@ -4927,6 +4928,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 {
 	bool del_bulk = !!(nlh->nlmsg_flags & NLM_F_BULK);
 	struct net *net = sock_net(skb->sk);
+	u32 portid = NETLINK_CB(skb).portid;
 	const struct net_device_ops *ops;
 	struct ndmsg *ndm;
 	struct nlattr *tb[NDA_MAX+1];
@@ -4975,6 +4977,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 			.dev = dev,
 			.addr = addr,
 			.vid = vid,
+			.portid = portid,
 		};
 	}
 
