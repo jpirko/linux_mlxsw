@@ -2531,8 +2531,7 @@ static int igb_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 			return -ENOMEM;
 	}
 
-	return ndo_dflt_fdb_add(ndm, tb, parms->dev, parms->addr,
-				parms->vid, parms->flags);
+	return ndo_dflt_fdb_add(ndm, tb, parms);
 }
 
 #define IGB_MAX_MAC_HDR_LEN	127

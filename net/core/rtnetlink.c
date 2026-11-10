@@ -4749,9 +4749,7 @@ errout:
  */
 int ndo_dflt_fdb_add(struct ndmsg *ndm,
 		     struct nlattr *tb[],
-		     struct net_device *dev,
-		     const unsigned char *addr, u16 vid,
-		     u16 flags)
+		     const struct ndo_fdb_parms *parms)
 {
 	int err = -EINVAL;
 
@@ -4759,27 +4757,28 @@ int ndo_dflt_fdb_add(struct ndmsg *ndm,
 	 * implement its own handler for this.
 	 */
 	if (ndm->ndm_state && !(ndm->ndm_state & NUD_PERMANENT)) {
-		netdev_info(dev, "default FDB implementation only supports local addresses\n");
+		netdev_info(parms->dev, "default FDB implementation only supports local addresses\n");
 		return err;
 	}
 
 	if (tb[NDA_FLAGS_EXT]) {
-		netdev_info(dev, "invalid flags given to default FDB implementation\n");
+		netdev_info(parms->dev, "invalid flags given to default FDB implementation\n");
 		return err;
 	}
 
-	if (vid) {
-		netdev_info(dev, "vlans aren't supported yet for dev_uc|mc_add()\n");
+	if (parms->vid) {
+		netdev_info(parms->dev, "vlans aren't supported yet for dev_uc|mc_add()\n");
 		return err;
 	}
 
-	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr))
-		err = dev_uc_add_excl(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_add_excl(dev, addr);
+	if (is_unicast_ether_addr(parms->addr) ||
+	    is_link_local_ether_addr(parms->addr))
+		err = dev_uc_add_excl(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_add_excl(parms->dev, parms->addr);
 
 	/* Only return duplicate errors if NLM_F_EXCL is set */
-	if (err == -EEXIST && !(flags & NLM_F_EXCL))
+	if (err == -EEXIST && !(parms->flags & NLM_F_EXCL))
 		err = 0;
 
 	return err;
@@ -4884,8 +4883,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 			err = dev->netdev_ops->ndo_fdb_add(ndm, tb, &parms,
 							   &notified, extack);
 		else
-			err = ndo_dflt_fdb_add(ndm, tb, dev, addr, vid,
-					       nlh->nlmsg_flags);
+			err = ndo_dflt_fdb_add(ndm, tb, &parms);
 
 		if (!err && !notified) {
 			rtnl_fdb_notify(dev, addr, vid, RTM_NEWNEIGH,
@@ -4902,8 +4900,7 @@ out:
  */
 int ndo_dflt_fdb_del(struct ndmsg *ndm,
 		     struct nlattr *tb[],
-		     struct net_device *dev,
-		     const unsigned char *addr, u16 vid)
+		     const struct ndo_fdb_parms *parms)
 {
 	int err = -EINVAL;
 
@@ -4911,14 +4908,15 @@ int ndo_dflt_fdb_del(struct ndmsg *ndm,
 	 * implement its own handler for this.
 	 */
 	if (!(ndm->ndm_state & NUD_PERMANENT)) {
-		netdev_info(dev, "default FDB implementation only supports local addresses\n");
+		netdev_info(parms->dev, "default FDB implementation only supports local addresses\n");
 		return err;
 	}
 
-	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr))
-		err = dev_uc_del(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_del(dev, addr);
+	if (is_unicast_ether_addr(parms->addr) ||
+	    is_link_local_ether_addr(parms->addr))
+		err = dev_uc_del(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_del(parms->dev, parms->addr);
 
 	return err;
 }
@@ -5019,7 +5017,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 				err = ops->ndo_fdb_del(ndm, tb, &parms,
 						       &notified, extack);
 			else
-				err = ndo_dflt_fdb_del(ndm, tb, dev, addr, vid);
+				err = ndo_dflt_fdb_del(ndm, tb, &parms);
 		} else {
 			/* in case err was cleared by NTF_MASTER call */
 			err = -EOPNOTSUPP;
