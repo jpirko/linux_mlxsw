@@ -797,7 +797,7 @@ static const struct nla_policy br_fdb_del_bulk_policy[NDA_MAX + 1] = {
 };
 
 int br_fdb_delete_bulk(struct nlmsghdr *nlh, struct net_device *dev,
-		       struct netlink_ext_ack *extack)
+		       u32 portid, struct netlink_ext_ack *extack)
 {
 	struct net_bridge_fdb_flush_desc desc = {};
 	struct ndmsg *ndm = nlmsg_data(nlh);
@@ -864,7 +864,7 @@ int br_fdb_delete_bulk(struct nlmsghdr *nlh, struct net_device *dev,
 	br_debug(br, "flushing port ifindex: %d vlan id: %u flags: 0x%lx flags mask: 0x%lx\n",
 		 desc.port_ifindex, desc.vlan_id, desc.flags, desc.flags_mask);
 
-	br_fdb_flush(br, &desc, 0);
+	br_fdb_flush(br, &desc, portid);
 
 	return 0;
 }
