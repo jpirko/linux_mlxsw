@@ -5420,10 +5420,10 @@ static int rtnl_fdb_get(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		.dev = dev,
 		.addr = addr,
 		.vid = vid,
+		.portid = NETLINK_CB(in_skb).portid,
 	};
 
-	err = ops->ndo_fdb_get(skb, tb, &parms, NETLINK_CB(in_skb).portid,
-			       nlh->nlmsg_seq, extack);
+	err = ops->ndo_fdb_get(skb, tb, &parms, nlh->nlmsg_seq, extack);
 	if (err)
 		goto out;
 

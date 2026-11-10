@@ -1146,7 +1146,7 @@ skip:
 
 int br_fdb_get(struct sk_buff *skb,
 	       struct nlattr *tb[],
-	       const struct ndo_fdb_parms *parms, u32 portid, u32 seq,
+	       const struct ndo_fdb_parms *parms, u32 seq,
 	       struct netlink_ext_ack *extack)
 {
 	struct net_bridge *br = netdev_priv(parms->dev);
@@ -1161,8 +1161,7 @@ int br_fdb_get(struct sk_buff *skb,
 		goto errout;
 	}
 
-	err = fdb_fill_info(skb, br, f, portid, seq,
-			    RTM_NEWNEIGH, 0);
+	err = fdb_fill_info(skb, br, f, parms->portid, seq, RTM_NEWNEIGH, 0);
 errout:
 	rcu_read_unlock();
 	return err;
