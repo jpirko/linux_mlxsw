@@ -35,6 +35,7 @@ TEST_PROGS := \
 	fcnal-other.sh \
 	fdb_flush.sh \
 	fdb_notify.sh \
+	fdb_notify_portid.py \
 	fib-onlink-tests.sh \
 	fib_nexthop_multiprefix.sh \
 	fib_nexthop_nongw.sh \
