@@ -177,7 +177,7 @@ static int br_switchdev_event(struct notifier_block *unused,
 		fdb_info = ptr;
 		err = br_fdb_external_learn_add(br, p, fdb_info->addr,
 						fdb_info->vid,
-						fdb_info->locked, false);
+						fdb_info->locked, 0, false);
 		if (err) {
 			err = notifier_from_errno(err);
 			break;
