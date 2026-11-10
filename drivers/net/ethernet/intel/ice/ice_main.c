@@ -6104,39 +6104,37 @@ ice_set_tx_maxrate(struct net_device *netdev, int queue_index, u32 maxrate)
  * ice_fdb_add - add an entry to the hardware database
  * @ndm: the input from the stack
  * @tb: pointer to array of nladdr (unused)
- * @dev: the net device pointer
- * @addr: the MAC address entry being added
- * @vid: VLAN ID
- * @flags: instructions from stack about fdb operation
+ * @parms: common FDB parameters
  * @notified: whether notification was emitted
  * @extack: netlink extended ack
  */
 static int
 ice_fdb_add(struct ndmsg *ndm, struct nlattr __always_unused *tb[],
-	    struct net_device *dev, const unsigned char *addr, u16 vid,
-	    u16 flags, bool *notified,
+	    const struct ndo_fdb_parms *parms, bool *notified,
 	    struct netlink_ext_ack __always_unused *extack)
 {
 	int err;
 
-	if (vid) {
-		netdev_err(dev, "VLANs aren't supported yet for dev_uc|mc_add()\n");
+	if (parms->vid) {
+		netdev_err(parms->dev,
+			   "VLANs aren't supported yet for dev_uc|mc_add()\n");
 		return -EINVAL;
 	}
 	if (ndm->ndm_state && !(ndm->ndm_state & NUD_PERMANENT)) {
-		netdev_err(dev, "FDB only supports static addresses\n");
+		netdev_err(parms->dev, "FDB only supports static addresses\n");
 		return -EINVAL;
 	}
 
-	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr))
-		err = dev_uc_add_excl(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_add_excl(dev, addr);
+	if (is_unicast_ether_addr(parms->addr) ||
+	    is_link_local_ether_addr(parms->addr))
+		err = dev_uc_add_excl(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_add_excl(parms->dev, parms->addr);
 	else
 		err = -EINVAL;
 
 	/* Only return duplicate errors if NLM_F_EXCL is set */
-	if (err == -EEXIST && !(flags & NLM_F_EXCL))
+	if (err == -EEXIST && !(parms->flags & NLM_F_EXCL))
 		err = 0;
 
 	return err;
@@ -6146,29 +6144,26 @@ ice_fdb_add(struct ndmsg *ndm, struct nlattr __always_unused *tb[],
  * ice_fdb_del - delete an entry from the hardware database
  * @ndm: the input from the stack
  * @tb: pointer to array of nladdr (unused)
- * @dev: the net device pointer
- * @addr: the MAC address entry being added
- * @vid: VLAN ID
+ * @parms: common FDB parameters (device, address, VLAN ID)
  * @notified: whether notification was emitted
  * @extack: netlink extended ack
  */
 static int
 ice_fdb_del(struct ndmsg *ndm, __always_unused struct nlattr *tb[],
-	    struct net_device *dev, const unsigned char *addr,
-	    __always_unused u16 vid, bool *notified,
+	    const struct ndo_fdb_parms *parms, bool *notified,
 	    struct netlink_ext_ack *extack)
 {
 	int err;
 
 	if (ndm->ndm_state & NUD_PERMANENT) {
-		netdev_err(dev, "FDB only supports static addresses\n");
+		netdev_err(parms->dev, "FDB only supports static addresses\n");
 		return -EINVAL;
 	}
 
-	if (is_unicast_ether_addr(addr))
-		err = dev_uc_del(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_del(dev, addr);
+	if (is_unicast_ether_addr(parms->addr))
+		err = dev_uc_del(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_del(parms->dev, parms->addr);
 	else
 		err = -EINVAL;
 

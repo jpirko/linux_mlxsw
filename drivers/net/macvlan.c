@@ -1053,49 +1053,46 @@ static int macvlan_vlan_rx_kill_vid(struct net_device *dev,
 }
 
 static int macvlan_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			   struct net_device *dev,
-			   const unsigned char *addr, u16 vid,
-			   u16 flags, bool *notified,
+			   const struct ndo_fdb_parms *parms, bool *notified,
 			   struct netlink_ext_ack *extack)
 {
-	struct macvlan_dev *vlan = netdev_priv(dev);
+	struct macvlan_dev *vlan = netdev_priv(parms->dev);
 	int err = -EINVAL;
 
 	/* Support unicast filter only on passthru devices.
 	 * Multicast filter should be allowed on all devices.
 	 */
-	if (!macvlan_passthru(vlan->port) && is_unicast_ether_addr(addr))
+	if (!macvlan_passthru(vlan->port) && is_unicast_ether_addr(parms->addr))
 		return -EOPNOTSUPP;
 
-	if (flags & NLM_F_REPLACE)
+	if (parms->flags & NLM_F_REPLACE)
 		return -EOPNOTSUPP;
 
-	if (is_unicast_ether_addr(addr))
-		err = dev_uc_add_excl(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_add_excl(dev, addr);
+	if (is_unicast_ether_addr(parms->addr))
+		err = dev_uc_add_excl(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_add_excl(parms->dev, parms->addr);
 
 	return err;
 }
 
 static int macvlan_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
-			   struct net_device *dev,
-			   const unsigned char *addr, u16 vid, bool *notified,
+			   const struct ndo_fdb_parms *parms, bool *notified,
 			   struct netlink_ext_ack *extack)
 {
-	struct macvlan_dev *vlan = netdev_priv(dev);
+	struct macvlan_dev *vlan = netdev_priv(parms->dev);
 	int err = -EINVAL;
 
 	/* Support unicast filter only on passthru devices.
 	 * Multicast filter should be allowed on all devices.
 	 */
-	if (!macvlan_passthru(vlan->port) && is_unicast_ether_addr(addr))
+	if (!macvlan_passthru(vlan->port) && is_unicast_ether_addr(parms->addr))
 		return -EOPNOTSUPP;
 
-	if (is_unicast_ether_addr(addr))
-		err = dev_uc_del(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_del(dev, addr);
+	if (is_unicast_ether_addr(parms->addr))
+		err = dev_uc_del(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_del(parms->dev, parms->addr);
 
 	return err;
 }
