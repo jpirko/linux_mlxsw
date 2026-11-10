@@ -17,7 +17,8 @@ from .utils import CmdExitFailure, fd_read_timeout, cmd, bkg, defer, \
     ctl_file_write, wait_file, tool, tc
 from .bpf import bpf_map_set, bpf_map_dump, bpf_prog_map_ids
 from .ynl import NlError, NlctrlFamily, YnlFamily, \
-    EthtoolFamily, NetdevFamily, RtnlFamily, RtnlAddrFamily, RtnlRouteFamily
+    EthtoolFamily, NetdevFamily, RtnlFamily, RtnlNeighFamily, \
+    RtnlAddrFamily, RtnlRouteFamily
 from .ynl import NetshaperFamily, DevlinkFamily, GtpFamily, PSPFamily, Netlink
 
 __all__ = ["KSRC",
@@ -35,4 +36,5 @@ __all__ = ["KSRC",
            "NetshaperFamily", "DevlinkFamily", "GtpFamily", "PSPFamily",
            "NlError",
            "YnlFamily", "EthtoolFamily", "NetdevFamily", "RtnlFamily",
-           "NlctrlFamily", "RtnlAddrFamily", "RtnlRouteFamily", "Netlink"]
+           "RtnlNeighFamily", "NlctrlFamily", "RtnlAddrFamily",
+           "RtnlRouteFamily", "Netlink"]

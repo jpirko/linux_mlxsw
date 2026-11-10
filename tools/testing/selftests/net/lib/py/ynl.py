@@ -29,7 +29,8 @@ except ModuleNotFoundError as e:
 
 __all__ = [
     "NlError", "NlPolicy", "Netlink", "YnlFamily", "SPEC_PATH",
-    "EthtoolFamily", "RtnlFamily", "RtnlAddrFamily", "RtnlRouteFamily",
+    "EthtoolFamily", "RtnlFamily", "RtnlNeighFamily", "RtnlAddrFamily",
+    "RtnlRouteFamily",
     "NetdevFamily", "NetshaperFamily", "NlctrlFamily", "DevlinkFamily",
     "GtpFamily", "PSPFamily",
 ]
@@ -47,6 +48,13 @@ class EthtoolFamily(YnlFamily):
 class RtnlFamily(YnlFamily):
     def __init__(self, recv_size=0):
         super().__init__((SPEC_PATH / Path('rt-link.yaml')).as_posix(),
+                         schema='', recv_size=recv_size)
+
+class RtnlNeighFamily(YnlFamily):
+    """Netlink interface for neighbour messages."""
+    # pylint: disable=too-few-public-methods
+    def __init__(self, recv_size=0):
+        super().__init__((SPEC_PATH / Path('rt-neigh.yaml')).as_posix(),
                          schema='', recv_size=recv_size)
 
 class RtnlAddrFamily(YnlFamily):
