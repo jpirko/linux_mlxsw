@@ -196,13 +196,14 @@ int vxlan_fdb_create(struct vxlan_dev *vxlan,
 int __vxlan_fdb_delete(struct vxlan_dev *vxlan,
 		       const unsigned char *addr, union vxlan_addr ip,
 		       __be16 port, __be32 src_vni, __be32 vni,
-		       u32 ifindex, bool swdev_notify);
+		       u32 ifindex, u32 portid, bool swdev_notify);
 int vxlan_fdb_update(struct vxlan_dev *vxlan,
 		     const u8 *mac, union vxlan_addr *ip,
 		     __u16 state, __u16 flags,
 		     __be16 port, __be32 src_vni, __be32 vni,
 		     __u32 ifindex, __u16 ndm_flags, u32 nhid,
-		     bool swdev_notify, struct netlink_ext_ack *extack);
+		     u32 portid, bool swdev_notify,
+		     struct netlink_ext_ack *extack);
 void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 		    const struct vxlan_config *cfg,
 		    __be32 default_vni, struct vxlan_rdst *rdst, bool did_rsc);
