@@ -4721,7 +4721,7 @@ static inline size_t rtnl_fdb_nlmsg_size(const struct net_device *dev)
 }
 
 static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, u16 vid, int type,
-			    u16 ndm_state)
+			    u16 ndm_state, u32 portid)
 {
 	struct net *net = dev_net(dev);
 	struct sk_buff *skb;
@@ -4732,7 +4732,7 @@ static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, u16 vid, int type,
 		goto errout;
 
 	err = nlmsg_populate_fdb_fill(skb, dev, addr, vid,
-				      0, 0, type, NTF_SELF, 0, ndm_state);
+				      portid, 0, type, NTF_SELF, 0, ndm_state);
 	if (err < 0) {
 		kfree_skb(skb);
 		goto errout;
@@ -4888,7 +4888,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 		if (!err && !notified) {
 			rtnl_fdb_notify(dev, addr, vid, RTM_NEWNEIGH,
-					ndm->ndm_state);
+					ndm->ndm_state, parms.portid);
 			ndm->ndm_flags &= ~NTF_SELF;
 		}
 	}
@@ -5033,7 +5033,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 		if (!err) {
 			if (!del_bulk && !notified)
 				rtnl_fdb_notify(dev, addr, vid, RTM_DELNEIGH,
-						ndm->ndm_state);
+						ndm->ndm_state, portid);
 			ndm->ndm_flags &= ~NTF_SELF;
 		}
 	}
