@@ -380,7 +380,11 @@ operations:
           value: 29
           attributes:
             - dst
+            - lladdr
+            - vlan
             - ifindex
+            - ndm-state-mask
+            - ndm-flags-mask
     -
       name: delneigh-ntf
       doc: Notify a neighbour deletion
