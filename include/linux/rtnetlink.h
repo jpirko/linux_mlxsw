@@ -211,15 +211,10 @@ extern int ndo_dflt_fdb_dump(struct sk_buff *skb,
 			     int *idx);
 extern int ndo_dflt_fdb_add(struct ndmsg *ndm,
 			    struct nlattr *tb[],
-			    struct net_device *dev,
-			    const unsigned char *addr,
-			    u16 vid,
-			    u16 flags);
+			    const struct ndo_fdb_parms *parms);
 extern int ndo_dflt_fdb_del(struct ndmsg *ndm,
 			    struct nlattr *tb[],
-			    struct net_device *dev,
-			    const unsigned char *addr,
-			    u16 vid);
+			    const struct ndo_fdb_parms *parms);
 
 extern int ndo_dflt_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 				   struct net_device *dev, u16 mode,
