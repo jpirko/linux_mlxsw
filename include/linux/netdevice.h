@@ -1087,6 +1087,20 @@ struct netdev_net_notifier {
 	struct notifier_block *nb;
 };
 
+/**
+ * struct ndo_fdb_parms - parameters for ndo_fdb_{add,del,get}
+ * @dev: device the FDB entry is added to, deleted from or looked up on
+ * @addr: MAC address of the FDB entry
+ * @vid: VLAN ID of the FDB entry, 0 if none
+ * @flags: netlink message flags (NLM_F_*) of the request
+ */
+struct ndo_fdb_parms {
+	struct net_device	*dev;
+	const unsigned char	*addr;
+	u16			vid;
+	u16			flags;
+};
+
 /*
  * This structure defines the management hooks for network devices.
  * The following hooks can be defined; unless noted otherwise, they are
@@ -1330,17 +1344,15 @@ struct netdev_net_notifier {
  *	Must return >0 or -errno if it changed dev->features itself.
  *
  * int (*ndo_fdb_add)(struct ndmsg *ndm, struct nlattr *tb[],
- *		      struct net_device *dev,
- *		      const unsigned char *addr, u16 vid, u16 flags,
+ *		      const struct ndo_fdb_parms *parms,
  *		      bool *notified, struct netlink_ext_ack *extack);
- *	Adds an FDB entry to dev for addr.
+ *	Adds an FDB entry to parms->dev for parms->addr.
  *	Callee shall set *notified to true if it sent any appropriate
  *	notification(s). Otherwise core will send a generic one.
  * int (*ndo_fdb_del)(struct ndmsg *ndm, struct nlattr *tb[],
- *		      struct net_device *dev,
- *		      const unsigned char *addr, u16 vid
+ *		      const struct ndo_fdb_parms *parms,
  *		      bool *notified, struct netlink_ext_ack *extack);
- *	Deletes the FDB entry from dev corresponding to addr.
+ *	Deletes the FDB entry from parms->dev corresponding to parms->addr.
  *	Callee shall set *notified to true if it sent any appropriate
  *	notification(s). Otherwise core will send a generic one.
  * int (*ndo_fdb_del_bulk)(struct nlmsghdr *nlh, struct net_device *dev,
@@ -1614,17 +1626,12 @@ struct net_device_ops {
 
 	int			(*ndo_fdb_add)(struct ndmsg *ndm,
 					       struct nlattr *tb[],
-					       struct net_device *dev,
-					       const unsigned char *addr,
-					       u16 vid,
-					       u16 flags,
+					       const struct ndo_fdb_parms *parms,
 					       bool *notified,
 					       struct netlink_ext_ack *extack);
 	int			(*ndo_fdb_del)(struct ndmsg *ndm,
 					       struct nlattr *tb[],
-					       struct net_device *dev,
-					       const unsigned char *addr,
-					       u16 vid,
+					       const struct ndo_fdb_parms *parms,
 					       bool *notified,
 					       struct netlink_ext_ack *extack);
 	int			(*ndo_fdb_del_bulk)(struct nlmsghdr *nlh,
@@ -1637,9 +1644,8 @@ struct net_device_ops {
 						int *idx);
 	int			(*ndo_fdb_get)(struct sk_buff *skb,
 					       struct nlattr *tb[],
-					       struct net_device *dev,
-					       const unsigned char *addr,
-					       u16 vid, u32 portid, u32 seq,
+					       const struct ndo_fdb_parms *parms,
+					       u32 portid, u32 seq,
 					       struct netlink_ext_ack *extack);
 	int			(*ndo_mdb_add)(struct net_device *dev,
 					       struct nlattr *tb[],

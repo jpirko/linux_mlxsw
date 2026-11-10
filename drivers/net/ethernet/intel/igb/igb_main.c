@@ -2517,21 +2517,22 @@ static int igb_set_features(struct net_device *netdev,
 }
 
 static int igb_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			   struct net_device *dev,
-			   const unsigned char *addr, u16 vid,
-			   u16 flags, bool *notified,
+			   const struct ndo_fdb_parms *parms, bool *notified,
 			   struct netlink_ext_ack *extack)
 {
 	/* guarantee we can provide a unique filter for the unicast address */
-	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr)) {
-		struct igb_adapter *adapter = netdev_priv(dev);
+	if (is_unicast_ether_addr(parms->addr) ||
+	    is_link_local_ether_addr(parms->addr)) {
+		struct igb_adapter *adapter = netdev_priv(parms->dev);
 		int vfn = adapter->vfs_allocated_count;
 
-		if (netdev_uc_count(dev) >= igb_available_rars(adapter, vfn))
+		if (netdev_uc_count(parms->dev) >=
+		    igb_available_rars(adapter, vfn))
 			return -ENOMEM;
 	}
 
-	return ndo_dflt_fdb_add(ndm, tb, dev, addr, vid, flags);
+	return ndo_dflt_fdb_add(ndm, tb, parms->dev, parms->addr,
+				parms->vid, parms->flags);
 }
 
 #define IGB_MAX_MAC_HDR_LEN	127

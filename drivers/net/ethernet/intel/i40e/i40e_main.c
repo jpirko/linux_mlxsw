@@ -13022,28 +13022,24 @@ static int i40e_get_phys_port_id(struct net_device *netdev,
  * i40e_ndo_fdb_add - add an entry to the hardware database
  * @ndm: the input from the stack
  * @tb: pointer to array of nladdr (unused)
- * @dev: the net device pointer
- * @addr: the MAC address entry being added
- * @vid: VLAN ID
- * @flags: instructions from stack about fdb operation
+ * @parms: common FDB parameters
  * @notified: whether notification was emitted
  * @extack: netlink extended ack, unused currently
  */
 static int i40e_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			    struct net_device *dev,
-			    const unsigned char *addr, u16 vid,
-			    u16 flags, bool *notified,
+			    const struct ndo_fdb_parms *parms, bool *notified,
 			    struct netlink_ext_ack *extack)
 {
-	struct i40e_netdev_priv *np = netdev_priv(dev);
+	struct i40e_netdev_priv *np = netdev_priv(parms->dev);
 	struct i40e_pf *pf = np->vsi->back;
 	int err = 0;
 
 	if (!test_bit(I40E_FLAG_SRIOV_ENA, pf->flags))
 		return -EOPNOTSUPP;
 
-	if (vid) {
-		pr_info("%s: vlans aren't supported yet for dev_uc|mc_add()\n", dev->name);
+	if (parms->vid) {
+		pr_info("%s: vlans aren't supported yet for dev_uc|mc_add()\n",
+			parms->dev->name);
 		return -EINVAL;
 	}
 
@@ -13051,19 +13047,20 @@ static int i40e_ndo_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 	 * ndm_state is given only allow permanent addresses
 	 */
 	if (ndm->ndm_state && !(ndm->ndm_state & NUD_PERMANENT)) {
-		netdev_info(dev, "FDB only supports static addresses\n");
+		netdev_info(parms->dev, "FDB only supports static addresses\n");
 		return -EINVAL;
 	}
 
-	if (is_unicast_ether_addr(addr) || is_link_local_ether_addr(addr))
-		err = dev_uc_add_excl(dev, addr);
-	else if (is_multicast_ether_addr(addr))
-		err = dev_mc_add_excl(dev, addr);
+	if (is_unicast_ether_addr(parms->addr) ||
+	    is_link_local_ether_addr(parms->addr))
+		err = dev_uc_add_excl(parms->dev, parms->addr);
+	else if (is_multicast_ether_addr(parms->addr))
+		err = dev_mc_add_excl(parms->dev, parms->addr);
 	else
 		err = -EINVAL;
 
 	/* Only return duplicate errors if NLM_F_EXCL is set */
-	if (err == -EEXIST && !(flags & NLM_F_EXCL))
+	if (err == -EEXIST && !(parms->flags & NLM_F_EXCL))
 		err = 0;
 
 	return err;

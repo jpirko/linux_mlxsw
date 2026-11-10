@@ -366,24 +366,24 @@ static int qlcnic_set_mac(struct net_device *netdev, void *p)
 }
 
 static int qlcnic_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
-			struct net_device *netdev,
-			const unsigned char *addr, u16 vid, bool *notified,
+			const struct ndo_fdb_parms *parms, bool *notified,
 			struct netlink_ext_ack *extack)
 {
-	struct qlcnic_adapter *adapter = netdev_priv(netdev);
+	struct qlcnic_adapter *adapter = netdev_priv(parms->dev);
 	int err = -EOPNOTSUPP;
 
 	if (!adapter->fdb_mac_learn)
-		return ndo_dflt_fdb_del(ndm, tb, netdev, addr, vid);
+		return ndo_dflt_fdb_del(ndm, tb, parms->dev, parms->addr,
+					parms->vid);
 
 	if ((adapter->flags & QLCNIC_ESWITCH_ENABLED) ||
 	    qlcnic_sriov_check(adapter)) {
-		if (is_unicast_ether_addr(addr)) {
-			err = dev_uc_del(netdev, addr);
+		if (is_unicast_ether_addr(parms->addr)) {
+			err = dev_uc_del(parms->dev, parms->addr);
 			if (!err)
-				err = qlcnic_nic_del_mac(adapter, addr);
-		} else if (is_multicast_ether_addr(addr)) {
-			err = dev_mc_del(netdev, addr);
+				err = qlcnic_nic_del_mac(adapter, parms->addr);
+		} else if (is_multicast_ether_addr(parms->addr)) {
+			err = dev_mc_del(parms->dev, parms->addr);
 		} else {
 			err =  -EINVAL;
 		}
@@ -392,15 +392,15 @@ static int qlcnic_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
 }
 
 static int qlcnic_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			struct net_device *netdev,
-			const unsigned char *addr, u16 vid, u16 flags,
-			bool *notified, struct netlink_ext_ack *extack)
+			const struct ndo_fdb_parms *parms, bool *notified,
+			struct netlink_ext_ack *extack)
 {
-	struct qlcnic_adapter *adapter = netdev_priv(netdev);
+	struct qlcnic_adapter *adapter = netdev_priv(parms->dev);
 	int err = 0;
 
 	if (!adapter->fdb_mac_learn)
-		return ndo_dflt_fdb_add(ndm, tb, netdev, addr, vid, flags);
+		return ndo_dflt_fdb_add(ndm, tb, parms->dev, parms->addr,
+					parms->vid, parms->flags);
 
 	if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED) &&
 	    !qlcnic_sriov_check(adapter)) {
@@ -408,16 +408,16 @@ static int qlcnic_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		return -EOPNOTSUPP;
 	}
 
-	if (ether_addr_equal(addr, adapter->mac_addr))
+	if (ether_addr_equal(parms->addr, adapter->mac_addr))
 		return err;
 
-	if (is_unicast_ether_addr(addr)) {
-		if (netdev_uc_count(netdev) < adapter->ahw->max_uc_count)
-			err = dev_uc_add_excl(netdev, addr);
+	if (is_unicast_ether_addr(parms->addr)) {
+		if (netdev_uc_count(parms->dev) < adapter->ahw->max_uc_count)
+			err = dev_uc_add_excl(parms->dev, parms->addr);
 		else
 			err = -ENOMEM;
-	} else if (is_multicast_ether_addr(addr)) {
-		err = dev_mc_add_excl(netdev, addr);
+	} else if (is_multicast_ether_addr(parms->addr)) {
+		err = dev_mc_add_excl(parms->dev, parms->addr);
 	} else {
 		err = -EINVAL;
 	}

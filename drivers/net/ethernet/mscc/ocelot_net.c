@@ -765,30 +765,29 @@ static void ocelot_get_stats64(struct net_device *dev,
 }
 
 static int ocelot_port_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			       struct net_device *dev,
-			       const unsigned char *addr,
-			       u16 vid, u16 flags, bool *notified,
-			       struct netlink_ext_ack *extack)
+			       const struct ndo_fdb_parms *parms,
+			       bool *notified, struct netlink_ext_ack *extack)
 {
-	struct ocelot_port_private *priv = netdev_priv(dev);
+	struct ocelot_port_private *priv = netdev_priv(parms->dev);
 	struct ocelot_port *ocelot_port = &priv->port;
 	struct ocelot *ocelot = ocelot_port->ocelot;
 	int port = priv->port.index;
 
-	return ocelot_fdb_add(ocelot, port, addr, vid, ocelot_port->bridge);
+	return ocelot_fdb_add(ocelot, port, parms->addr, parms->vid,
+			      ocelot_port->bridge);
 }
 
 static int ocelot_port_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
-			       struct net_device *dev,
-			       const unsigned char *addr, u16 vid,
+			       const struct ndo_fdb_parms *parms,
 			       bool *notified, struct netlink_ext_ack *extack)
 {
-	struct ocelot_port_private *priv = netdev_priv(dev);
+	struct ocelot_port_private *priv = netdev_priv(parms->dev);
 	struct ocelot_port *ocelot_port = &priv->port;
 	struct ocelot *ocelot = ocelot_port->ocelot;
 	int port = priv->port.index;
 
-	return ocelot_fdb_del(ocelot, port, addr, vid, ocelot_port->bridge);
+	return ocelot_fdb_del(ocelot, port, parms->addr, parms->vid,
+			      ocelot_port->bridge);
 }
 
 static int ocelot_port_fdb_do_dump(const unsigned char *addr, u16 vid,

@@ -4814,6 +4814,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net *net = sock_net(skb->sk);
 	struct ndmsg *ndm;
 	struct nlattr *tb[NDA_MAX+1];
+	struct ndo_fdb_parms parms;
 	struct net_device *dev;
 	u8 *addr;
 	u16 vid;
@@ -4852,6 +4853,13 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err)
 		return err;
 
+	parms = (struct ndo_fdb_parms) {
+		.dev = dev,
+		.addr = addr,
+		.vid = vid,
+		.flags = nlh->nlmsg_flags,
+	};
+
 	err = -EOPNOTSUPP;
 
 	/* Support fdb on master device the net/bridge default case */
@@ -4861,8 +4869,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 		const struct net_device_ops *ops = br_dev->netdev_ops;
 		bool notified = false;
 
-		err = ops->ndo_fdb_add(ndm, tb, dev, addr, vid,
-				       nlh->nlmsg_flags, &notified, extack);
+		err = ops->ndo_fdb_add(ndm, tb, &parms, &notified, extack);
 		if (err)
 			goto out;
 		else
@@ -4874,9 +4881,7 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 		bool notified = false;
 
 		if (dev->netdev_ops->ndo_fdb_add)
-			err = dev->netdev_ops->ndo_fdb_add(ndm, tb, dev, addr,
-							   vid,
-							   nlh->nlmsg_flags,
+			err = dev->netdev_ops->ndo_fdb_add(ndm, tb, &parms,
 							   &notified, extack);
 		else
 			err = ndo_dflt_fdb_add(ndm, tb, dev, addr, vid,
@@ -4927,6 +4932,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 	const struct net_device_ops *ops;
 	struct ndmsg *ndm;
 	struct nlattr *tb[NDA_MAX+1];
+	struct ndo_fdb_parms parms;
 	struct net_device *dev;
 	__u8 *addr = NULL;
 	int err;
@@ -4966,6 +4972,12 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 		err = fdb_vid_parse(tb[NDA_VLAN], &vid, extack);
 		if (err)
 			return err;
+
+		parms = (struct ndo_fdb_parms) {
+			.dev = dev,
+			.addr = addr,
+			.vid = vid,
+		};
 	}
 
 	if (dev->type != ARPHRD_ETHER) {
@@ -4984,7 +4996,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 		ops = br_dev->netdev_ops;
 		if (!del_bulk) {
 			if (ops->ndo_fdb_del)
-				err = ops->ndo_fdb_del(ndm, tb, dev, addr, vid,
+				err = ops->ndo_fdb_del(ndm, tb, &parms,
 						       &notified, extack);
 		} else {
 			if (ops->ndo_fdb_del_bulk)
@@ -5004,7 +5016,7 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 		ops = dev->netdev_ops;
 		if (!del_bulk) {
 			if (ops->ndo_fdb_del)
-				err = ops->ndo_fdb_del(ndm, tb, dev, addr, vid,
+				err = ops->ndo_fdb_del(ndm, tb, &parms,
 						       &notified, extack);
 			else
 				err = ndo_dflt_fdb_del(ndm, tb, dev, addr, vid);
@@ -5327,6 +5339,7 @@ static int rtnl_fdb_get(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	const struct net_device_ops *ops = NULL;
 	struct net *net = sock_net(in_skb->sk);
 	struct nlattr *tb[NDA_MAX + 1];
+	struct ndo_fdb_parms parms;
 	struct sk_buff *skb;
 	int brport_idx = 0;
 	u8 ndm_flags = 0;
@@ -5404,8 +5417,14 @@ static int rtnl_fdb_get(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 
 	if (br_dev)
 		dev = br_dev;
-	err = ops->ndo_fdb_get(skb, tb, dev, addr, vid,
-			       NETLINK_CB(in_skb).portid,
+
+	parms = (struct ndo_fdb_parms) {
+		.dev = dev,
+		.addr = addr,
+		.vid = vid,
+	};
+
+	err = ops->ndo_fdb_get(skb, tb, &parms, NETLINK_CB(in_skb).portid,
 			       nlh->nlmsg_seq, extack);
 	if (err)
 		goto out;

@@ -1146,17 +1146,15 @@ skip:
 
 int br_fdb_get(struct sk_buff *skb,
 	       struct nlattr *tb[],
-	       struct net_device *dev,
-	       const unsigned char *addr,
-	       u16 vid, u32 portid, u32 seq,
+	       const struct ndo_fdb_parms *parms, u32 portid, u32 seq,
 	       struct netlink_ext_ack *extack)
 {
-	struct net_bridge *br = netdev_priv(dev);
+	struct net_bridge *br = netdev_priv(parms->dev);
 	struct net_bridge_fdb_entry *f;
 	int err = 0;
 
 	rcu_read_lock();
-	f = br_fdb_find_rcu(br, addr, vid);
+	f = br_fdb_find_rcu(br, parms->addr, parms->vid);
 	if (!f) {
 		NL_SET_ERR_MSG(extack, "Fdb entry not found");
 		err = -ENOENT;
@@ -1360,9 +1358,8 @@ static const struct nla_policy br_nda_fdb_pol[NFEA_MAX + 1] = {
 
 /* Add new permanent fdb entry with RTM_NEWNEIGH */
 int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-	       struct net_device *dev,
-	       const unsigned char *addr, u16 vid, u16 nlh_flags,
-	       bool *notified, struct netlink_ext_ack *extack)
+	       const struct ndo_fdb_parms *parms, bool *notified,
+	       struct netlink_ext_ack *extack)
 {
 	struct nlattr *nfea_tb[NFEA_MAX + 1], *attr;
 	struct net_bridge_vlan_group *vg;
@@ -1372,26 +1369,27 @@ int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 	u32 ext_flags = 0;
 	int err = 0;
 
-	trace_br_fdb_add(ndm, dev, addr, vid, nlh_flags);
+	trace_br_fdb_add(ndm, parms->dev, parms->addr, parms->vid,
+			 parms->flags);
 
 	if (!(ndm->ndm_state & (NUD_PERMANENT|NUD_NOARP|NUD_REACHABLE))) {
 		pr_info("bridge: RTM_NEWNEIGH with invalid state %#x\n", ndm->ndm_state);
 		return -EINVAL;
 	}
 
-	if (is_zero_ether_addr(addr)) {
+	if (is_zero_ether_addr(parms->addr)) {
 		pr_info("bridge: RTM_NEWNEIGH with invalid ether address\n");
 		return -EINVAL;
 	}
 
-	if (netif_is_bridge_master(dev)) {
-		br = netdev_priv(dev);
+	if (netif_is_bridge_master(parms->dev)) {
+		br = netdev_priv(parms->dev);
 		vg = br_vlan_group(br);
 	} else {
-		p = br_port_get_rtnl(dev);
+		p = br_port_get_rtnl(parms->dev);
 		if (!p) {
 			pr_info("bridge: RTM_NEWNEIGH %s not a bridge port\n",
-				dev->name);
+				parms->dev->name);
 			return -EINVAL;
 		}
 		br = p->br;
@@ -1416,19 +1414,20 @@ int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		memset(nfea_tb, 0, sizeof(struct nlattr *) * (NFEA_MAX + 1));
 	}
 
-	if (vid) {
-		v = br_vlan_find(vg, vid);
+	if (parms->vid) {
+		v = br_vlan_find(vg, parms->vid);
 		if (!v || !br_vlan_should_use(v)) {
-			pr_info("bridge: RTM_NEWNEIGH with unconfigured vlan %d on %s\n", vid, dev->name);
+			pr_info("bridge: RTM_NEWNEIGH with unconfigured vlan %d on %s\n",
+				parms->vid, parms->dev->name);
 			return -EINVAL;
 		}
 
 		/* VID was specified, so use it. */
-		err = __br_fdb_add(ndm, br, p, addr, nlh_flags, v, nfea_tb,
-				   notified, extack);
+		err = __br_fdb_add(ndm, br, p, parms->addr, parms->flags, v,
+				   nfea_tb, notified, extack);
 	} else {
-		err = __br_fdb_add(ndm, br, p, addr, nlh_flags, NULL, nfea_tb,
-				   notified, extack);
+		err = __br_fdb_add(ndm, br, p, parms->addr, parms->flags,
+				   NULL, nfea_tb, notified, extack);
 		if (err || !vg || !vg->num_vlans)
 			goto out;
 
@@ -1439,8 +1438,9 @@ int br_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		list_for_each_entry(v, &vg->vlan_list, vlist) {
 			if (!br_vlan_should_use(v))
 				continue;
-			err = __br_fdb_add(ndm, br, p, addr, nlh_flags, v,
-					   nfea_tb, notified, extack);
+			err = __br_fdb_add(ndm, br, p, parms->addr,
+					   parms->flags, v, nfea_tb, notified,
+					   extack);
 			if (err)
 				goto out;
 		}
@@ -1481,8 +1481,7 @@ static int __br_fdb_delete(struct net_bridge *br,
 
 /* Remove neighbor entry with RTM_DELNEIGH */
 int br_fdb_delete(struct ndmsg *ndm, struct nlattr *tb[],
-		  struct net_device *dev,
-		  const unsigned char *addr, u16 vid, bool *notified,
+		  const struct ndo_fdb_parms *parms, bool *notified,
 		  struct netlink_ext_ack *extack)
 {
 	struct net_bridge_vlan_group *vg;
@@ -1490,34 +1489,36 @@ int br_fdb_delete(struct ndmsg *ndm, struct nlattr *tb[],
 	struct net_bridge *br;
 	int err;
 
-	if (netif_is_bridge_master(dev)) {
-		br = netdev_priv(dev);
+	if (netif_is_bridge_master(parms->dev)) {
+		br = netdev_priv(parms->dev);
 		vg = br_vlan_group(br);
 	} else {
-		p = br_port_get_rtnl(dev);
+		p = br_port_get_rtnl(parms->dev);
 		if (!p) {
 			pr_info("bridge: RTM_DELNEIGH %s not a bridge port\n",
-				dev->name);
+				parms->dev->name);
 			return -EINVAL;
 		}
 		vg = nbp_vlan_group(p);
 		br = p->br;
 	}
 
-	if (vid) {
-		err = __br_fdb_delete(br, p, addr, vid, notified);
+	if (parms->vid) {
+		err = __br_fdb_delete(br, p, parms->addr, parms->vid,
+				      notified);
 	} else {
 		struct net_bridge_vlan *v;
 
 		err = -ENOENT;
-		err &= __br_fdb_delete(br, p, addr, 0, notified);
+		err &= __br_fdb_delete(br, p, parms->addr, 0, notified);
 		if (!vg || !vg->num_vlans)
 			return err;
 
 		list_for_each_entry(v, &vg->vlan_list, vlist) {
 			if (!br_vlan_should_use(v))
 				continue;
-			err &= __br_fdb_delete(br, p, addr, v->vid, notified);
+			err &= __br_fdb_delete(br, p, parms->addr, v->vid,
+					       notified);
 		}
 	}
 

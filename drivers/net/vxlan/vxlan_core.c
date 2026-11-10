@@ -1241,12 +1241,11 @@ static int vxlan_fdb_parse(struct nlattr *tb[], struct vxlan_dev *vxlan,
 
 /* Add static entry (via netlink) */
 static int vxlan_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
-			 struct net_device *dev,
-			 const unsigned char *addr, u16 vid, u16 flags,
-			 bool *notified, struct netlink_ext_ack *extack)
+			 const struct ndo_fdb_parms *parms, bool *notified,
+			 struct netlink_ext_ack *extack)
 {
 	const struct vxlan_config *cfg;
-	struct vxlan_dev *vxlan = netdev_priv(dev);
+	struct vxlan_dev *vxlan = netdev_priv(parms->dev);
 	/* struct net *net = dev_net(vxlan->dev); */
 	union vxlan_addr ip;
 	__be16 port;
@@ -1273,7 +1272,8 @@ static int vxlan_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 		return -EAFNOSUPPORT;
 
 	spin_lock_bh(&vxlan->hash_lock);
-	err = vxlan_fdb_update(vxlan, addr, &ip, ndm->ndm_state, flags,
+	err = vxlan_fdb_update(vxlan, parms->addr, &ip, ndm->ndm_state,
+			       parms->flags,
 			       port, src_vni, vni, ifindex,
 			       ndm->ndm_flags | NTF_VXLAN_ADDED_BY_USER,
 			       nhid, true, extack);
@@ -1320,11 +1320,10 @@ out:
 
 /* Delete entry (via netlink) */
 static int vxlan_fdb_delete(struct ndmsg *ndm, struct nlattr *tb[],
-			    struct net_device *dev,
-			    const unsigned char *addr, u16 vid, bool *notified,
+			    const struct ndo_fdb_parms *parms, bool *notified,
 			    struct netlink_ext_ack *extack)
 {
-	struct vxlan_dev *vxlan = netdev_priv(dev);
+	struct vxlan_dev *vxlan = netdev_priv(parms->dev);
 	union vxlan_addr ip;
 	__be32 src_vni, vni;
 	u32 ifindex, nhid;
@@ -1337,8 +1336,8 @@ static int vxlan_fdb_delete(struct ndmsg *ndm, struct nlattr *tb[],
 		return err;
 
 	spin_lock_bh(&vxlan->hash_lock);
-	err = __vxlan_fdb_delete(vxlan, addr, ip, port, src_vni, vni, ifindex,
-				 true);
+	err = __vxlan_fdb_delete(vxlan, parms->addr, ip, port, src_vni, vni,
+				 ifindex, true);
 	spin_unlock_bh(&vxlan->hash_lock);
 
 	if (!err)
@@ -1400,12 +1399,10 @@ out:
 
 static int vxlan_fdb_get(struct sk_buff *skb,
 			 struct nlattr *tb[],
-			 struct net_device *dev,
-			 const unsigned char *addr,
-			 u16 vid, u32 portid, u32 seq,
+			 const struct ndo_fdb_parms *parms, u32 portid, u32 seq,
 			 struct netlink_ext_ack *extack)
 {
-	struct vxlan_dev *vxlan = netdev_priv(dev);
+	struct vxlan_dev *vxlan = netdev_priv(parms->dev);
 	const struct vxlan_config *cfg;
 	struct vxlan_fdb *f;
 	__be32 vni;
@@ -1420,7 +1417,7 @@ static int vxlan_fdb_get(struct sk_buff *skb,
 
 	rcu_read_lock();
 
-	f = vxlan_find_mac_rcu(vxlan, cfg, addr, vni);
+	f = vxlan_find_mac_rcu(vxlan, cfg, parms->addr, vni);
 	if (!f) {
 		NL_SET_ERR_MSG(extack, "Fdb entry not found");
 		err = -ENOENT;
