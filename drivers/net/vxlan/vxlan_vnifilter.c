@@ -550,7 +550,7 @@ int vxlan_update_default_fdb_entry(struct vxlan_dev *vxlan, __be32 vni,
 				       vni,
 				       vni,
 				       new_ifindex,
-				       NTF_SELF, 0, true, extack);
+				       NTF_SELF, 0, 0, true, extack);
 		if (err && extack) {
 			spin_unlock_bh(&vxlan->hash_lock);
 			return err;
@@ -563,7 +563,7 @@ int vxlan_update_default_fdb_entry(struct vxlan_dev *vxlan, __be32 vni,
 				   cfg->dst_port,
 				   vni, vni,
 				   old_ifindex,
-				   true);
+				   0, true);
 	}
 	spin_unlock_bh(&vxlan->hash_lock);
 
@@ -727,7 +727,7 @@ static void vxlan_vni_delete_group(struct vxlan_dev *vxlan,
 				   cfg->dst_port,
 				   vninode->vni, vninode->vni,
 				   cfg->remote_ifindex,
-				   true);
+				   0, true);
 		spin_unlock_bh(&vxlan->hash_lock);
 	}
 
