@@ -1001,7 +1001,7 @@ static int br_setport(struct net_bridge_port *p, struct nlattr *tb[],
 			.port_ifindex = p->dev->ifindex,
 		};
 
-		br_fdb_flush(p->br, &desc);
+		br_fdb_flush(p->br, &desc, 0);
 	}
 
 	changed_mask = old_flags ^ flags;
@@ -1431,7 +1431,7 @@ static int br_changelink(struct net_device *brdev, struct nlattr *tb[],
 			.flags_mask = BIT(BR_FDB_STATIC)
 		};
 
-		br_fdb_flush(br, &desc);
+		br_fdb_flush(br, &desc, 0);
 	}
 
 #ifdef CONFIG_BRIDGE_IGMP_SNOOPING

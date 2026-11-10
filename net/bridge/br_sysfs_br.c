@@ -349,7 +349,7 @@ static int set_flush(struct net_bridge *br, unsigned long val,
 		.flags_mask = BIT(BR_FDB_STATIC)
 	};
 
-	br_fdb_flush(br, &desc);
+	br_fdb_flush(br, &desc, 0);
 	return 0;
 }
 
