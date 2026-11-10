@@ -1093,12 +1093,14 @@ struct netdev_net_notifier {
  * @addr: MAC address of the FDB entry
  * @vid: VLAN ID of the FDB entry, 0 if none
  * @flags: netlink message flags (NLM_F_*) of the request
+ * @portid: netlink port ID of the requester
  */
 struct ndo_fdb_parms {
 	struct net_device	*dev;
 	const unsigned char	*addr;
 	u16			vid;
 	u16			flags;
+	u32			portid;
 };
 
 /*
@@ -1645,7 +1647,7 @@ struct net_device_ops {
 	int			(*ndo_fdb_get)(struct sk_buff *skb,
 					       struct nlattr *tb[],
 					       const struct ndo_fdb_parms *parms,
-					       u32 portid, u32 seq,
+					       u32 seq,
 					       struct netlink_ext_ack *extack);
 	int			(*ndo_mdb_add)(struct net_device *dev,
 					       struct nlattr *tb[],

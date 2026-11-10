@@ -1025,7 +1025,7 @@ int br_fdb_add(struct ndmsg *nlh, struct nlattr *tb[],
 int br_fdb_dump(struct sk_buff *skb, struct netlink_callback *cb,
 		struct net_device *dev, struct net_device *fdev, int *idx);
 int br_fdb_get(struct sk_buff *skb, struct nlattr *tb[],
-	       const struct ndo_fdb_parms *parms, u32 portid, u32 seq,
+	       const struct ndo_fdb_parms *parms, u32 seq,
 	       struct netlink_ext_ack *extack);
 int br_fdb_sync_static(struct net_bridge *br, struct net_bridge_port *p);
 void br_fdb_unsync_static(struct net_bridge *br, struct net_bridge_port *p);
